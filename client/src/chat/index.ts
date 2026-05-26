@@ -44,6 +44,14 @@ export {
   useChatThreadScroll,
 } from './hooks'
 export type { ChatThreadScrollMessage } from './hooks'
+export { useChatComposerChrome, CHAT_COMPOSER_GAP_PX } from './useChatComposerChrome'
+export type { UseChatComposerChromeOptions } from './useChatComposerChrome'
+export {
+  DEFAULT_NEAR_BOTTOM_PX,
+  isNearBottom,
+  scrollElementToBottom,
+  shouldShowScrollDownAfterOpen,
+} from './scrollPin'
 
 // Media senders (already existed)
 export { sendImageMessage, sendVideoMessage } from './mediaSenders'

@@ -1,23 +1,16 @@
-// PR2 follow-up: adopt useChatThreadScroll + .chat-layout-smooth from client/src/chat/hooks.ts
-// (same pattern as ChatThread.tsx) and remove inline scroll/initial-pin duplicates here.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { CSSProperties } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import SteveTypingIndicator from '../components/chat/SteveTypingIndicator'
-import { Capacitor } from '@capacitor/core'
-import type { PluginListenerHandle } from '@capacitor/core'
-import { Keyboard } from '@capacitor/keyboard'
-import type { KeyboardInfo } from '@capacitor/keyboard'
-import { computeKeyboardLift, readCssPxVar } from '../utils/keyboardLift'
 import Avatar from '../components/Avatar'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { GroupMessageRow } from '../chat/GroupMessageRow'
-import { getDateKey, normalizeMediaPath } from '../chat'
+import { getDateKey, normalizeMediaPath, useChatComposerChrome, useChatThreadScroll } from '../chat'
 import { retainMessagesIfUnchanged } from '../utils/dmPollMerge'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
@@ -255,7 +248,6 @@ export default function GroupChatThread() {
   const [removingMember, setRemovingMember] = useState<string | null>(null)
   const [deletingMedia, setDeletingMedia] = useState(false)
   const [reactions, setReactions] = useState<Record<number, string>>({})
-  const [showScrollDown, setShowScrollDown] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editText, setEditText] = useState('')
   const [editingSaving, setEditingSaving] = useState(false)
@@ -321,12 +313,11 @@ export default function GroupChatThread() {
       )
     : []
     
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const messageStackRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
-  const userHasScrolledRef = useRef(false)
-  const initialPinActiveRef = useRef(false)
+  const composerRef = useRef<HTMLDivElement | null>(null)
+  const layoutNudgeRef = useRef<(() => void) | undefined>(undefined)
+  const draftSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
@@ -360,25 +351,42 @@ export default function GroupChatThread() {
   const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
   const MIC_ENABLED = true
 
-  // Layout helpers - matching ChatThread exactly
-  // safeBottomPx (JS-probed) used everywhere instead of CSS env() to avoid
-  // WKWebView repaint glitches on iOS warm resume
-  const defaultComposerPadding = 64
-  const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48
-  const NATIVE_KEYBOARD_MIN_HEIGHT = 60
-  const KEYBOARD_OFFSET_EPSILON = 6
-  const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
-  const [safeBottomPx, setSafeBottomPx] = useState(0)
-  const [viewportLift, setViewportLift] = useState(0)
-  const [keyboardOffset, setKeyboardOffset] = useState(0)
+  const chrome = useChatComposerChrome({
+    isMobile,
+    textareaRef,
+    composerRef,
+    onLayoutNudge: () => layoutNudgeRef.current?.(),
+  })
 
-  const composerRef = useRef<HTMLDivElement | null>(null)
-  const composerCardRef = useRef<HTMLDivElement | null>(null)
-  const keyboardOffsetRef = useRef(0)
-  const viewportBaseRef = useRef<number | null>(null)
-  const lastFocusTimeRef = useRef(0)
-  // Draft persistence - save timeout for debounced auto-save
-  const draftSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const {
+    messageStackRef,
+    scrollToBottom,
+    scrollToBottomIfAppropriate,
+    ensurePinnedToBottom,
+    notifyMessagesSettled,
+    userHasScrolledRef,
+    showScrollDown,
+    setShowScrollDown,
+    cancelInitialPin,
+  } = useChatThreadScroll({
+    listRef,
+    threadKey: group_id,
+    messages,
+    bottomInsetPx: chrome.bottomInsetPx,
+  })
+
+  layoutNudgeRef.current = scrollToBottomIfAppropriate
+
+  const {
+    composerCardRef,
+    keyboardLift,
+    safeBottomPx,
+    isWeb,
+    androidKeyboardOpen,
+    listPaddingBottom,
+    scrollButtonBottom,
+    noteComposerFocus,
+  } = chrome
 
   // Format recording time
   const formatRecordingTime = (ms: number) => {
@@ -400,95 +408,9 @@ export default function GroupChatThread() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [headerMenuOpen])
 
-  // Composer height observer
-  useLayoutEffect(() => {
-    if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return
-    const node = composerCardRef.current
-    if (!node) return
-
-    const updateHeight = () => {
-      const height = node.getBoundingClientRect().height
-      if (!height) return
-      setComposerHeight(prev => (Math.abs(prev - height) < 1 ? prev : height))
-    }
-
-    updateHeight()
-    const observer = new ResizeObserver(updateHeight)
-    observer.observe(node)
-
-    return () => {
-      observer.disconnect()
-    }
-  }, [])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    const syncSafeBottom = () => {
-      if (keyboardOffsetRef.current > 0) return
-      const next = readCssPxVar('--sab-px')
-      setSafeBottomPx(prev => {
-        if (next < 1 && prev > 1) return prev
-        return Math.abs(prev - next) < 1 ? prev : next
-      })
-    }
-
-    syncSafeBottom()
-    window.addEventListener('resize', syncSafeBottom)
-    window.visualViewport?.addEventListener('resize', syncSafeBottom)
-
-    return () => {
-      window.removeEventListener('resize', syncSafeBottom)
-      window.visualViewport?.removeEventListener('resize', syncSafeBottom)
-    }
-  }, [])
-
-  const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
-  const liftSource = Math.max(keyboardOffset, viewportLift)
-  const isWeb = Capacitor.getPlatform() === 'web'
-  const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent)
-  const androidKeyboardOpen = isAndroid && liftSource > 0
-
-  // On Android with adjustNothing, fixed elements reference the layout viewport (full screen).
-  // Compute the exact bottom offset to place composer at the visual viewport bottom (keyboard top).
-  const androidComposerBottom = androidKeyboardOpen
-    ? Math.max(0, window.innerHeight - ((window.visualViewport?.offsetTop ?? 0) + (window.visualViewport?.height ?? window.innerHeight)))
-    : 0
-  const keyboardLift = androidKeyboardOpen ? androidComposerBottom : computeKeyboardLift(liftSource)
-
-  const composerGapPx = 4
-  const bottomChromeInset = keyboardLift > 0 || androidKeyboardOpen ? keyboardLift : safeBottomPx
-  const listPaddingBottom = `${bottomChromeInset + effectiveComposerHeight + composerGapPx}px`
-  const scrollButtonBottom = `${bottomChromeInset + effectiveComposerHeight + 12}px`
-
-  const scrollListToBottom = useCallback((behavior: ScrollBehavior) => {
-    const el = listRef.current
-    if (!el) return
-    el.scrollTo({ top: el.scrollHeight, behavior })
-  }, [])
-
-  const scrollToBottom = useCallback(() => {
-    scrollListToBottom('auto')
-  }, [scrollListToBottom])
-
-  const scrollToBottomIfAppropriate = useCallback(() => {
-    const el = listRef.current
-    if (!el) {
-      scrollToBottom()
-      return
-    }
-    const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150
-    if (nearBottom || !userHasScrolledRef.current) scrollToBottom()
-  }, [scrollToBottom])
-  
-  const lastVisibleMsgKeyRef = useRef<string | number | null>(null)
-
   useEffect(() => {
     if (!group_id) return
     threadGenerationRef.current += 1
-    lastVisibleMsgKeyRef.current = null
-    userHasScrolledRef.current = false
-    initialPinActiveRef.current = true
     pollTickRef.current = 0
     skipNextPollsUntil.current = 0
     clientKeyServerIdRef.current.clear()
@@ -500,65 +422,13 @@ export default function GroupChatThread() {
     setReactions({})
     setHasMoreMessages(false)
     setError(null)
-    const endInitialPin = window.setTimeout(() => {
-      initialPinActiveRef.current = false
-    }, 450)
-    return () => clearTimeout(endInitialPin)
   }, [group_id])
-
-  const messageTailKey = useMemo(() => {
-    if (messages.length === 0) return null
-    const last = messages[messages.length - 1] as Message & { clientKey?: string }
-    const ck = (last as any).clientKey as string | undefined
-    if (ck && clientKeyServerIdRef.current.has(ck)) {
-      return clientKeyServerIdRef.current.get(ck)!
-    }
-    return ck || last.id
-  }, [messages])
-
-  // Pre-paint scroll — fires before browser paints to avoid visible jump
-  useLayoutEffect(() => {
-    if (messages.length === 0 || messageTailKey == null) return
-    const el = listRef.current
-    if (!el) return
-    if (messageTailKey === lastVisibleMsgKeyRef.current) return
-    lastVisibleMsgKeyRef.current = messageTailKey
-    const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150
-    if (nearBottom || !userHasScrolledRef.current) {
-      scrollListToBottom('auto')
-      setShowScrollDown(false)
-    } else {
-      setShowScrollDown(true)
-    }
-  }, [messageTailKey, messages.length, scrollListToBottom])
-
-  useLayoutEffect(() => {
-    const stack = messageStackRef.current
-    if (!stack || typeof ResizeObserver === 'undefined') return
-    let frame = 0
-    const onStackResize = () => {
-      if (userHasScrolledRef.current) return
-      cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(() => {
-        const list = listRef.current
-        if (!list || userHasScrolledRef.current) return
-        const behavior: ScrollBehavior = initialPinActiveRef.current ? 'smooth' : 'auto'
-        list.scrollTo({ top: list.scrollHeight, behavior })
-      })
-    }
-    const observer = new ResizeObserver(onStackResize)
-    observer.observe(stack)
-    return () => {
-      cancelAnimationFrame(frame)
-      observer.disconnect()
-    }
-  }, [group_id, messages.length])
 
   const focusTextarea = useCallback(() => {
     if (MIC_ENABLED && recording) return
     const el = textareaRef.current
     if (!el) return
-    lastFocusTimeRef.current = Date.now()
+    noteComposerFocus()
     try {
       el.focus({ preventScroll: true })
     } catch {
@@ -572,7 +442,7 @@ export default function GroupChatThread() {
         // iOS can reject selection updates during focus transitions.
       }
     })
-  }, [recording])
+  }, [recording, noteComposerFocus])
 
   function adjustTextareaHeight(){
     const ta = textareaRef.current
@@ -581,98 +451,6 @@ export default function GroupChatThread() {
     const maxPx = 160
     ta.style.height = Math.min(ta.scrollHeight, maxPx) + 'px'
   }
-
-  // Visual viewport keyboard handling (web + Android native)
-  // On Android with adjustNothing, the Capacitor Keyboard plugin often over-reports
-  // keyboardHeight (including the system nav bar), causing a gap. Using visualViewport
-  // as the sole source of truth on Android avoids this entirely.
-  useEffect(() => {
-    if (!isMobile) return
-    const platform = Capacitor.getPlatform()
-    if (platform !== 'web' && platform !== 'android' && platform !== 'ios') return
-    if (typeof window === 'undefined') return
-    const viewport = window.visualViewport
-    if (!viewport) return
-
-    let rafId: number | null = null
-
-    const updateOffset = () => {
-      const currentHeight = viewport.height
-      if (
-        viewportBaseRef.current === null ||
-        currentHeight > (viewportBaseRef.current ?? currentHeight) - 4
-      ) {
-        viewportBaseRef.current = currentHeight
-      }
-      const baseHeight = viewportBaseRef.current ?? currentHeight
-      const nextOffset = Math.max(0, baseHeight - currentHeight)
-      const normalizedOffset = nextOffset < VISUAL_VIEWPORT_KEYBOARD_THRESHOLD ? 0 : nextOffset
-      if (normalizedOffset > 0 && document.activeElement !== textareaRef.current) return
-      if (Math.abs(keyboardOffsetRef.current - normalizedOffset) < 15) return
-      setViewportLift(prev => (Math.abs(prev - normalizedOffset) < 15 ? prev : normalizedOffset))
-      keyboardOffsetRef.current = normalizedOffset
-      setKeyboardOffset(normalizedOffset)
-      if (normalizedOffset > 0) {
-        requestAnimationFrame(scrollToBottomIfAppropriate)
-      }
-    }
-
-    const handleChange = () => {
-      if (rafId) cancelAnimationFrame(rafId)
-      rafId = requestAnimationFrame(updateOffset)
-    }
-
-    viewport.addEventListener('resize', handleChange)
-    viewport.addEventListener('scroll', handleChange)
-    handleChange()
-
-    return () => {
-      if (rafId) cancelAnimationFrame(rafId)
-      viewport.removeEventListener('resize', handleChange)
-      viewport.removeEventListener('scroll', handleChange)
-    }
-  }, [isMobile, scrollToBottomIfAppropriate])
-
-  // Native keyboard handling (Capacitor — iOS only)
-  // Android uses visualViewport above; the Capacitor plugin over-reports on some devices.
-  useEffect(() => {
-    if (Capacitor.getPlatform() !== 'ios') return
-    let showSub: PluginListenerHandle | undefined
-    let hideSub: PluginListenerHandle | undefined
-
-    const normalizeHeight = (raw: number) => (raw < NATIVE_KEYBOARD_MIN_HEIGHT ? 0 : raw)
-
-    const handleShow = (info: KeyboardInfo) => {
-      const height = normalizeHeight(info?.keyboardHeight ?? 0)
-      if (height === 0) return
-      if (Math.abs(keyboardOffsetRef.current - height) < KEYBOARD_OFFSET_EPSILON) return
-      keyboardOffsetRef.current = height
-      setKeyboardOffset(height)
-      requestAnimationFrame(scrollToBottomIfAppropriate)
-    }
-
-    const handleHide = () => {
-      if (Math.abs(keyboardOffsetRef.current) < KEYBOARD_OFFSET_EPSILON) return
-      keyboardOffsetRef.current = 0
-      setKeyboardOffset(0)
-    }
-
-    Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
-      showSub = handle
-    })
-    Keyboard.addListener('keyboardWillHide', handleHide).then(handle => {
-      hideSub = handle
-    })
-
-    return () => {
-      showSub?.remove()
-      hideSub?.remove()
-    }
-  }, [scrollToBottomIfAppropriate])
-
-  useEffect(() => {
-    requestAnimationFrame(scrollToBottomIfAppropriate)
-  }, [composerHeight, scrollToBottomIfAppropriate])
 
   const loadGroup = useCallback(async () => {
     const gen = threadGenerationRef.current
@@ -712,6 +490,7 @@ export default function GroupChatThread() {
         if (gen !== threadGenerationRef.current || fetchGroupId !== activeGroupIdRef.current) return
         if (cached?.length) {
           setServerMessages(cached as Message[])
+          notifyMessagesSettled(gen)
         }
         setLoading(false)
       }
@@ -804,6 +583,7 @@ export default function GroupChatThread() {
             return [...olderMessages, ...newServerMessages, ...unconfirmedOptimistic]
           })
 
+          if (!silent) notifyMessagesSettled(gen)
           setReactions(prev => mergeGroupReactionsFromMessages(prev, newServerMessages))
         }
 
@@ -824,7 +604,7 @@ export default function GroupChatThread() {
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [group_id])
+  }, [group_id, notifyMessagesSettled, t])
 
   const loadOlderMessages = useCallback(async () => {
     if (loadingOlderRef.current || !hasMoreMessages) return
@@ -1142,6 +922,7 @@ export default function GroupChatThread() {
     
     // Add optimistic message directly to serverMessages (same pattern as DMs)
     setServerMessages(prev => [...prev, optimisticMessage as any])
+    requestAnimationFrame(ensurePinnedToBottom)
 
     let outboxId = -1
     addToOutbox({
@@ -1343,7 +1124,7 @@ export default function GroupChatThread() {
         isOptimistic: true,
       } as any,
     ])
-    scrollToBottom()
+    requestAnimationFrame(ensurePinnedToBottom)
     try {
       const message = await sendGroupDocumentMessage({
         file,
@@ -2461,7 +2242,7 @@ export default function GroupChatThread() {
           <div
             ref={listRef}
             data-preserve-scroll="true"
-            className="flex-1 space-y-[9px] overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3"
+            className="flex-1 space-y-[9px] overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-list-inset"
             style={{
               WebkitOverflowScrolling: 'touch',
               overscrollBehaviorY: 'auto',
@@ -2474,7 +2255,7 @@ export default function GroupChatThread() {
               const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
               if (distFromBottom > 80) {
                 userHasScrolledRef.current = true
-                initialPinActiveRef.current = false
+                cancelInitialPin()
                 if (distFromBottom > 150) setShowScrollDown(true)
               } else {
                 userHasScrolledRef.current = false
@@ -2617,8 +2398,12 @@ export default function GroupChatThread() {
                     />
                   )
                 })}
-                {steveIsTyping && <SteveTypingIndicator active={steveIsTyping} />}
-                <div ref={messagesEndRef} className="h-1" />
+                {steveIsTyping && (
+                  <div className="min-h-[36px]">
+                    <SteveTypingIndicator active={steveIsTyping} />
+                  </div>
+                )}
+                <div className="scroll-anchor h-px w-full flex-shrink-0" aria-hidden="true" />
               </div>
             )}
           </div>
@@ -2648,7 +2433,7 @@ export default function GroupChatThread() {
       {typeof document !== 'undefined' && pendingMedia.length === 0 && createPortal(
       <div
         ref={composerRef}
-        className={`fixed bottom-0 ${isWeb ? 'left-1/2 -translate-x-1/2 max-w-3xl w-full' : 'left-0 right-0'}`}
+        className={`fixed bottom-0 chat-composer-smooth ${isWeb ? 'left-1/2 -translate-x-1/2 max-w-3xl w-full' : 'left-0 right-0'}`}
         style={{
           bottom: keyboardLift > 0 ? `${keyboardLift}px` : '0',
           zIndex: 1000,
@@ -3049,7 +2834,7 @@ export default function GroupChatThread() {
                     pointerEvents: 'auto'
                   } as CSSProperties}
                   onFocus={() => {
-                    lastFocusTimeRef.current = Date.now()
+                  noteComposerFocus()
                   }}
                   onInput={(e) => {
                     const textarea = e.target as HTMLTextAreaElement
@@ -3231,6 +3016,7 @@ export default function GroupChatThread() {
         )}
         {/* Safe area spacer — hidden when keyboard is open to avoid double spacing */}
         <div
+          className="chat-composer-smooth"
           style={{
             height: (keyboardLift > 0 || androidKeyboardOpen) ? '0px' : `${safeBottomPx}px`,
             background: '#000',

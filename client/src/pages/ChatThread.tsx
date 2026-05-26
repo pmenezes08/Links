@@ -1,12 +1,10 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
 import { useEntitlements } from '../hooks/useEntitlements'
@@ -14,11 +12,6 @@ import {
   buildClientPremiumRequiredError,
   shouldClientBlockSteveIntent,
 } from '../utils/steveClientGate'
-import { Capacitor } from '@capacitor/core'
-import type { PluginListenerHandle } from '@capacitor/core'
-import { Keyboard } from '@capacitor/keyboard'
-import type { KeyboardInfo } from '@capacitor/keyboard'
-import { computeKeyboardLift, readCssPxVar } from '../utils/keyboardLift'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -61,6 +54,7 @@ import {
   CHAT_CACHE_VERSION,
   MessageBubble,
   useChatThreadScroll,
+  useChatComposerChrome,
 } from '../chat'
 import {
   mergeDocumentFields,
@@ -255,22 +249,9 @@ export default function ChatThread(){
   // Draft persistence - save timeout for debounced auto-save
   const draftSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  const {
-    messageStackRef,
-    scrollToBottom,
-    scrollToBottomIfAppropriate,
-    userHasScrolledRef,
-    showScrollDown,
-    setShowScrollDown,
-    cancelInitialPin,
-  } = useChatThreadScroll({
-    listRef,
-    threadKey: username,
-    messages,
-  })
-
   const shareAttachDoneRef = useRef(false)
-  const [keyboardOffset, setKeyboardOffset] = useState(0)
+  const composerRef = useRef<HTMLDivElement | null>(null)
+  const layoutNudgeRef = useRef<(() => void) | undefined>(undefined)
 
   // Peer-scoped ref reset when switching DM threads (cache hydrate runs after processRawMessages is defined)
   useEffect(() => {
@@ -335,11 +316,54 @@ export default function ChatThread(){
 
   // Mic always enabled for audio messages
   const MIC_ENABLED = true
+
+  const chrome = useChatComposerChrome({
+    isMobile,
+    textareaRef,
+    composerRef,
+    onLayoutNudge: () => layoutNudgeRef.current?.(),
+  })
+
+  const {
+    messageStackRef,
+    scrollToBottom,
+    scrollToBottomIfAppropriate,
+    ensurePinnedToBottom,
+    notifyMessagesSettled,
+    userHasScrolledRef,
+    showScrollDown,
+    setShowScrollDown,
+    cancelInitialPin,
+  } = useChatThreadScroll({
+    listRef,
+    threadKey: username,
+    messages,
+    bottomInsetPx: chrome.bottomInsetPx,
+  })
+
+  layoutNudgeRef.current = scrollToBottomIfAppropriate
+
+  const {
+    composerCardRef,
+    keyboardLift,
+    safeBottomPx,
+    isWeb,
+    androidKeyboardOpen,
+    listPaddingBottom,
+    listScrollPaddingBottom,
+    scrollButtonBottom,
+    handleContentPointerDown,
+    handleContentPointerUp,
+    handleContentPointerCancel,
+    noteComposerFocus,
+    touchDismissRef,
+  } = chrome
+
   const focusTextarea = useCallback(() => {
     if (MIC_ENABLED && recording) return
     const el = textareaRef.current
     if (!el) return
-    lastFocusTimeRef.current = Date.now()
+    noteComposerFocus()
     try {
       el.focus({ preventScroll: true })
     } catch {
@@ -353,7 +377,7 @@ export default function ChatThread(){
         // iOS can reject selection updates during focus transitions.
       }
     })
-  }, [recording])
+  }, [recording, noteComposerFocus])
   
   // Cleanup preview audio when recording preview changes
   useEffect(() => {
@@ -368,221 +392,6 @@ export default function ChatThread(){
       setPreviewPlaying(false)
     }
   }, [recordingPreview])
-  
-  // Layout helpers
-  // safeBottomPx (JS-probed) used everywhere instead of CSS env() to avoid
-  // WKWebView repaint glitches on iOS warm resume
-  const defaultComposerPadding = 64
-  const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48 // ignore tiny viewport jitters
-  const NATIVE_KEYBOARD_MIN_HEIGHT = 60 // ignore tiny keyboard deltas on iOS app
-  const KEYBOARD_OFFSET_EPSILON = 6
-  const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
-  const [safeBottomPx, setSafeBottomPx] = useState(0)
-  const [viewportLift, setViewportLift] = useState(0)
-  
-  const composerRef = useRef<HTMLDivElement | null>(null)
-  const composerCardRef = useRef<HTMLDivElement | null>(null)
-  const keyboardOffsetRef = useRef(0)
-  const viewportBaseRef = useRef<number | null>(null)
-  const lastFocusTimeRef = useRef(0)
-  const touchDismissRef = useRef<{ active: boolean; x: number; y: number; pointerId: number | null }>({
-    active: false,
-    x: 0,
-    y: 0,
-    pointerId: null,
-  })
-  
-  useLayoutEffect(() => {
-    if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return
-    const node = composerCardRef.current
-    if (!node) return
-    
-    const updateHeight = () => {
-      const height = node.getBoundingClientRect().height
-      if (!height) return
-      setComposerHeight(prev => (Math.abs(prev - height) < 1 ? prev : height))
-    }
-    
-    updateHeight()
-    const observer = new ResizeObserver(updateHeight)
-    observer.observe(node)
-    
-    return () => {
-      observer.disconnect()
-    }
-  }, [])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    const syncSafeBottom = () => {
-      if (keyboardOffsetRef.current > 0) return
-      const next = readCssPxVar('--sab-px')
-      setSafeBottomPx(prev => {
-        if (next < 1 && prev > 1) return prev
-        return Math.abs(prev - next) < 1 ? prev : next
-      })
-    }
-
-    syncSafeBottom()
-    window.addEventListener('resize', syncSafeBottom)
-    window.visualViewport?.addEventListener('resize', syncSafeBottom)
-
-    return () => {
-      window.removeEventListener('resize', syncSafeBottom)
-      window.visualViewport?.removeEventListener('resize', syncSafeBottom)
-    }
-  }, [])
-
-  const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
-  const liftSource = Math.max(keyboardOffset, viewportLift)
-  const isWeb = Capacitor.getPlatform() === 'web'
-  const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent)
-  const androidKeyboardOpen = isAndroid && liftSource > 0
-
-  const androidComposerBottom = androidKeyboardOpen
-    ? Math.max(0, window.innerHeight - ((window.visualViewport?.offsetTop ?? 0) + (window.visualViewport?.height ?? window.innerHeight)))
-    : 0
-  const keyboardLift = androidKeyboardOpen ? androidComposerBottom : computeKeyboardLift(liftSource)
-
-  const composerGapPx = 4
-  const bottomChromeInset = keyboardLift > 0 || androidKeyboardOpen ? keyboardLift : safeBottomPx
-  const listPaddingBottom = `${bottomChromeInset + effectiveComposerHeight + composerGapPx}px`
-  const listScrollPaddingBottom = listPaddingBottom
-  const scrollButtonBottom = `${bottomChromeInset + effectiveComposerHeight + 12}px`
-  const keyboardIsOpen = keyboardLift > 0 || androidKeyboardOpen
-  const handleContentPointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (!keyboardIsOpen) {
-        touchDismissRef.current.active = false
-        return
-      }
-      if (composerRef.current && composerRef.current.contains(event.target as Node)) {
-        touchDismissRef.current.active = false
-        return
-      }
-      const isTouchLike = event.pointerType === 'touch' || event.pointerType === 'pen'
-      if (!isTouchLike) {
-        touchDismissRef.current.active = false
-        return
-      }
-      touchDismissRef.current = {
-        active: true,
-        x: event.clientX,
-        y: event.clientY,
-        pointerId: event.pointerId ?? null,
-      }
-    },
-    [keyboardIsOpen]
-  )
-
-  const handleContentPointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    const start = touchDismissRef.current
-    if (!start.active) return
-    if (start.pointerId !== null && event.pointerId !== start.pointerId) return
-    touchDismissRef.current.active = false
-    const deltaX = event.clientX - start.x
-    const deltaY = event.clientY - start.y
-    if (Math.hypot(deltaX, deltaY) > 10) return
-    const t = event.target as Node | null
-    if (t && composerRef.current?.contains(t)) return
-    if (document.activeElement === textareaRef.current) {
-      if (Date.now() - lastFocusTimeRef.current < 1000) return
-    }
-    textareaRef.current?.blur()
-  }, [])
-
-  const handleContentPointerCancel = useCallback(() => {
-    touchDismissRef.current.active = false
-  }, [])
-  
-  // Visual viewport keyboard handling (web + Android native)
-  // On Android with adjustNothing, the Capacitor Keyboard plugin often over-reports
-  // keyboardHeight (including the system nav bar), causing a gap. Using visualViewport
-  // as the sole source of truth on Android avoids this entirely.
-  useEffect(() => {
-    if (!isMobile) return
-    const platform = Capacitor.getPlatform()
-    if (platform !== 'web' && platform !== 'android' && platform !== 'ios') return
-    if (typeof window === 'undefined') return
-    const viewport = window.visualViewport
-    if (!viewport) return
-    
-    let rafId: number | null = null
-
-    const updateOffset = () => {
-      const currentHeight = viewport.height
-      if (
-        viewportBaseRef.current === null ||
-        currentHeight > (viewportBaseRef.current ?? currentHeight) - 4
-      ) {
-        viewportBaseRef.current = currentHeight
-      }
-      const baseHeight = viewportBaseRef.current ?? currentHeight
-      const nextOffset = Math.max(0, baseHeight - currentHeight)
-      const normalizedOffset = nextOffset < VISUAL_VIEWPORT_KEYBOARD_THRESHOLD ? 0 : nextOffset
-      if (normalizedOffset > 0 && document.activeElement !== textareaRef.current) return
-      if (Math.abs(keyboardOffsetRef.current - normalizedOffset) < 15) return
-      setViewportLift(prev => (Math.abs(prev - normalizedOffset) < 15 ? prev : normalizedOffset))
-      keyboardOffsetRef.current = normalizedOffset
-      setKeyboardOffset(normalizedOffset)
-      if (normalizedOffset > 0) {
-        requestAnimationFrame(scrollToBottomIfAppropriate)
-      }
-    }
-    
-    const handleChange = () => {
-      if (rafId) cancelAnimationFrame(rafId)
-      rafId = requestAnimationFrame(updateOffset)
-    }
-    
-    viewport.addEventListener('resize', handleChange)
-    viewport.addEventListener('scroll', handleChange)
-    handleChange()
-    
-    return () => {
-      if (rafId) cancelAnimationFrame(rafId)
-      viewport.removeEventListener('resize', handleChange)
-      viewport.removeEventListener('scroll', handleChange)
-    }
-  }, [isMobile, scrollToBottomIfAppropriate])
-
-  // Native keyboard handling (Capacitor — iOS only)
-  // Android uses visualViewport above; the Capacitor plugin over-reports on some devices.
-  useEffect(() => {
-    if (Capacitor.getPlatform() !== 'ios') return
-    let showSub: PluginListenerHandle | undefined
-    let hideSub: PluginListenerHandle | undefined
-  
-    const normalizeHeight = (raw: number) => (raw < NATIVE_KEYBOARD_MIN_HEIGHT ? 0 : raw)
-  
-    const handleShow = (info: KeyboardInfo) => {
-      const height = normalizeHeight(info?.keyboardHeight ?? 0)
-      if (height === 0) return
-      if (Math.abs(keyboardOffsetRef.current - height) < KEYBOARD_OFFSET_EPSILON) return
-      keyboardOffsetRef.current = height
-      setKeyboardOffset(height)
-      requestAnimationFrame(scrollToBottomIfAppropriate)
-    }
-  
-    const handleHide = () => {
-      if (Math.abs(keyboardOffsetRef.current) < KEYBOARD_OFFSET_EPSILON) return
-      keyboardOffsetRef.current = 0
-      setKeyboardOffset(0)
-    }
-  
-    Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
-      showSub = handle
-    })
-    Keyboard.addListener('keyboardWillHide', handleHide).then(handle => {
-      hideSub = handle
-    })
-  
-    return () => {
-      showSub?.remove()
-      hideSub?.remove()
-    }
-  }, [scrollToBottomIfAppropriate])
   
   async function commitEdit(){
     if (!editingId) return
@@ -705,6 +514,7 @@ export default function ChatThread(){
       void processRawMessages(cachedChat.messages).then(processed => {
         if (gen !== threadGenerationRef.current) return
         setMessages(processed)
+        notifyMessagesSettled(gen)
       })
       return
     }
@@ -726,11 +536,12 @@ export default function ChatThread(){
           void processRawMessages(idbMsgs).then(processed => {
             if (gen !== threadGenerationRef.current) return
             setMessages(processed)
+            notifyMessagesSettled(gen)
           })
         }
       }).catch(() => {})
     }
-  }, [username, chatCacheKey, profileCacheKey, dmOfflineKey, viewer, processRawMessages])
+  }, [username, chatCacheKey, profileCacheKey, dmOfflineKey, viewer, processRawMessages, notifyMessagesSettled])
 
   // Restore draft when entering chat (only if there's an actual saved draft)
   // Added extra protection for iOS navigation - clear any stale content first
@@ -893,6 +704,7 @@ export default function ChatThread(){
             if (keptOptimistic.length === 0) return processedMessages
             return [...processedMessages, ...keptOptimistic]
           })
+          notifyMessagesSettled(gen)
           setHasMoreMessages(!!msgResponse.has_more)
           lastFetchTime.current = Date.now()
 
@@ -968,7 +780,7 @@ export default function ChatThread(){
         }
       }).catch(()=>{})
     }
-  }, [username, chatCacheKey, profileCacheKey, processRawMessages, viewer, dmOfflineKey])
+  }, [username, chatCacheKey, profileCacheKey, processRawMessages, viewer, dmOfflineKey, notifyMessagesSettled])
 
   // Hydrate pending/failed outbox entries so they survive app restarts
   useEffect(() => {
@@ -1611,7 +1423,7 @@ export default function ChatThread(){
       timestamp: Date.now()
     })
     
-    requestAnimationFrame(scrollToBottom)
+    requestAnimationFrame(ensurePinnedToBottom)
     
     if (replySnippet){
       writeMessageMeta(metaRef.current, now, messageText, true, { replySnippet })
@@ -2906,7 +2718,7 @@ export default function ChatThread(){
       {/* ====== MESSAGES LIST - SCROLLABLE ====== */}
       <div
         ref={listRef}
-        className="flex-1 space-y-[9px] overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-layout-smooth"
+        className="flex-1 space-y-[9px] overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-list-inset"
         style={{
           WebkitOverflowScrolling: 'touch',
           overscrollBehaviorY: 'auto',
@@ -3121,7 +2933,11 @@ export default function ChatThread(){
           )
         })}
 
-        {steveIsTyping && <SteveTypingIndicator active={steveIsTyping} />}
+        {steveIsTyping && (
+          <div className="min-h-[36px]">
+            <SteveTypingIndicator active={steveIsTyping} />
+          </div>
+        )}
         </div>
         
         {/* iOS FIX: Scroll anchor/spacer at the very end to ensure last message can scroll fully into view */}
@@ -3195,7 +3011,7 @@ export default function ChatThread(){
     {!isMultiSelectMode && pendingMedia.length === 0 && typeof document !== 'undefined' && createPortal(
     <div
       ref={composerRef}
-      className={`fixed bottom-0 chat-layout-smooth ${isWeb ? 'left-1/2 -translate-x-1/2 max-w-3xl w-full' : 'left-0 right-0'}`}
+      className={`fixed bottom-0 chat-composer-smooth ${isWeb ? 'left-1/2 -translate-x-1/2 max-w-3xl w-full' : 'left-0 right-0'}`}
       style={{
         bottom: keyboardLift > 0 ? `${keyboardLift}px` : '0',
         zIndex: 1000,
@@ -3550,7 +3366,7 @@ export default function ChatThread(){
                 } as CSSProperties}
                 onPaste={handlePaste}
                 onFocus={() => {
-                  lastFocusTimeRef.current = Date.now()
+                  noteComposerFocus()
                 }}
                 onInput={(e) => {
                   const textarea = e.target as HTMLTextAreaElement
@@ -3734,7 +3550,7 @@ export default function ChatThread(){
       </div>
       {/* Safe area spacer — hidden when keyboard is open to avoid double spacing */}
       <div 
-        className="chat-layout-smooth"
+        className="chat-composer-smooth"
         style={{
           height: (keyboardLift > 0 || androidKeyboardOpen) ? '0px' : `${safeBottomPx}px`,
           background: '#000',

@@ -4,6 +4,12 @@ import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
 import { computeKeyboardLift } from '../utils/keyboardLift'
+import {
+  DEFAULT_NEAR_BOTTOM_PX,
+  isNearBottom,
+  scrollElementToBottom,
+  shouldShowScrollDownAfterOpen,
+} from './scrollPin'
 
 // Layout constants
 const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48
@@ -247,8 +253,8 @@ export function useScrollToBottom(listRef: React.RefObject<HTMLDivElement>) {
 
 interface UseTouchDismissOptions {
   showKeyboard: boolean
-  composerRef: React.RefObject<HTMLDivElement>
-  textareaRef: React.RefObject<HTMLTextAreaElement>
+  composerRef: React.RefObject<HTMLDivElement | null>
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>
 }
 
 /**
@@ -332,28 +338,42 @@ interface UseChatThreadScrollOptions {
   /** Conversation id (DM username or group id string) — resets pin state when it changes. */
   threadKey: string | undefined
   messages: ChatThreadScrollMessage[]
+  /** Composer + keyboard + gap inset in px — list paddingBottom should match this. */
+  bottomInsetPx?: number
+  /** Debounce scroll-down FAB after thread open (ms). */
+  openFabDebounceMs?: number
 }
+
+const OPEN_PIN_MAX_MS = 1200
+const STABLE_SCROLL_HEIGHT_FRAMES = 2
 
 /**
  * Stable scroll-to-bottom for chat threads (DM + group).
- * PR2: GroupChatThread should adopt this hook and drop inline duplicates.
  */
 export function useChatThreadScroll({
   listRef,
   threadKey,
   messages,
+  bottomInsetPx = 0,
+  openFabDebounceMs = 300,
 }: UseChatThreadScrollOptions) {
   const userHasScrolledRef = useRef(false)
   const lastVisibleMsgKeyRef = useRef<string | number | null>(null)
   const initialPinActiveRef = useRef(false)
   const messageStackRef = useRef<HTMLDivElement>(null)
+  const threadOpenedAtRef = useRef(0)
+  const settleGenerationRef = useRef<number | null>(null)
+  const lastBottomInsetRef = useRef(bottomInsetPx)
+  const stableHeightFramesRef = useRef(0)
+  const lastObservedScrollHeightRef = useRef(0)
+  const openPinDeadlineRef = useRef(0)
   const [showScrollDown, setShowScrollDown] = useState(false)
 
   const scrollListToBottom = useCallback(
     (behavior: ScrollBehavior) => {
       const el = listRef.current
       if (!el) return
-      el.scrollTo({ top: el.scrollHeight, behavior })
+      scrollElementToBottom(el, behavior)
     },
     [listRef],
   )
@@ -362,27 +382,57 @@ export function useChatThreadScroll({
     scrollListToBottom('auto')
   }, [scrollListToBottom])
 
+  const ensurePinnedToBottom = useCallback(() => {
+    userHasScrolledRef.current = false
+    scrollListToBottom('auto')
+    setShowScrollDown(false)
+  }, [scrollListToBottom])
+
   const scrollToBottomIfAppropriate = useCallback(() => {
     const el = listRef.current
     if (!el) {
       scrollToBottom()
       return
     }
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150
-    if (nearBottom || !userHasScrolledRef.current) {
+    if (isNearBottom(el, DEFAULT_NEAR_BOTTOM_PX) || !userHasScrolledRef.current) {
       scrollToBottom()
     }
   }, [scrollToBottom, listRef])
+
+  const notifyMessagesSettled = useCallback(
+    (generation: number) => {
+      settleGenerationRef.current = generation
+      if (!userHasScrolledRef.current) {
+        ensurePinnedToBottom()
+      }
+    },
+    [ensurePinnedToBottom],
+  )
+
+  const maybeShowScrollDown = useCallback(
+    (nearBottom: boolean) => {
+      if (nearBottom) {
+        setShowScrollDown(false)
+        return
+      }
+      if (!shouldShowScrollDownAfterOpen(threadOpenedAtRef.current, Date.now(), openFabDebounceMs)) {
+        return
+      }
+      setShowScrollDown(true)
+    },
+    [openFabDebounceMs],
+  )
 
   useEffect(() => {
     if (!threadKey) return
     lastVisibleMsgKeyRef.current = null
     userHasScrolledRef.current = false
     initialPinActiveRef.current = true
-    const endInitialPin = window.setTimeout(() => {
-      initialPinActiveRef.current = false
-    }, 450)
-    return () => clearTimeout(endInitialPin)
+    stableHeightFramesRef.current = 0
+    lastObservedScrollHeightRef.current = 0
+    threadOpenedAtRef.current = Date.now()
+    openPinDeadlineRef.current = Date.now() + OPEN_PIN_MAX_MS
+    setShowScrollDown(false)
   }, [threadKey])
 
   const messageTailKey = useMemo(() => {
@@ -392,19 +442,36 @@ export function useChatThreadScroll({
   }, [messages])
 
   useLayoutEffect(() => {
+    if (Math.abs(lastBottomInsetRef.current - bottomInsetPx) < 1) return
+    lastBottomInsetRef.current = bottomInsetPx
+    const el = listRef.current
+    if (!el) return
+    if (userHasScrolledRef.current && !isNearBottom(el, DEFAULT_NEAR_BOTTOM_PX)) return
+    scrollListToBottom('auto')
+  }, [bottomInsetPx, listRef, scrollListToBottom])
+
+  useLayoutEffect(() => {
     if (messages.length === 0 || messageTailKey == null) return
     const el = listRef.current
     if (!el) return
     if (messageTailKey === lastVisibleMsgKeyRef.current) return
     lastVisibleMsgKeyRef.current = messageTailKey
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150
+    const nearBottom = isNearBottom(el, DEFAULT_NEAR_BOTTOM_PX)
     if (nearBottom || !userHasScrolledRef.current) {
       scrollListToBottom('auto')
       setShowScrollDown(false)
     } else {
-      setShowScrollDown(true)
+      maybeShowScrollDown(false)
     }
-  }, [messageTailKey, messages.length, scrollListToBottom, listRef])
+  }, [messageTailKey, messages.length, scrollListToBottom, listRef, maybeShowScrollDown])
+
+  useLayoutEffect(() => {
+    if (settleGenerationRef.current == null) return
+    const el = listRef.current
+    if (!el || userHasScrolledRef.current) return
+    ensurePinnedToBottom()
+    settleGenerationRef.current = null
+  }, [messages.length, messageTailKey, ensurePinnedToBottom, listRef])
 
   useLayoutEffect(() => {
     const stack = messageStackRef.current
@@ -416,8 +483,25 @@ export function useChatThreadScroll({
       frame = requestAnimationFrame(() => {
         const list = listRef.current
         if (!list || userHasScrolledRef.current) return
-        const behavior: ScrollBehavior = initialPinActiveRef.current ? 'smooth' : 'auto'
-        list.scrollTo({ top: list.scrollHeight, behavior })
+
+        const height = list.scrollHeight
+        if (height === lastObservedScrollHeightRef.current) {
+          stableHeightFramesRef.current += 1
+        } else {
+          stableHeightFramesRef.current = 0
+          lastObservedScrollHeightRef.current = height
+        }
+
+        const pinStillActive =
+          initialPinActiveRef.current && Date.now() < openPinDeadlineRef.current
+        const layoutStable = stableHeightFramesRef.current >= STABLE_SCROLL_HEIGHT_FRAMES
+
+        if (layoutStable) {
+          initialPinActiveRef.current = false
+        }
+
+        const behavior: ScrollBehavior = pinStillActive && !layoutStable ? 'smooth' : 'auto'
+        scrollElementToBottom(list, behavior)
       })
     }
     const observer = new ResizeObserver(onStackResize)
@@ -437,6 +521,8 @@ export function useChatThreadScroll({
     scrollListToBottom,
     scrollToBottom,
     scrollToBottomIfAppropriate,
+    ensurePinnedToBottom,
+    notifyMessagesSettled,
     userHasScrolledRef,
     showScrollDown,
     setShowScrollDown,
