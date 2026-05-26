@@ -1,10 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Capacitor } from '@capacitor/core'
-import type { PluginListenerHandle } from '@capacitor/core'
-import { Keyboard } from '@capacitor/keyboard'
-import type { KeyboardInfo } from '@capacitor/keyboard'
-import { computeKeyboardLift } from '../utils/keyboardLift'
+import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
 import {
   b2bNetworkSizeLabel,
   b2bNetworkSizeOptions,
@@ -412,27 +408,18 @@ export default function OnboardingChat({
   const lastComposedCompanyIntelRef = useRef('')
   const [composingBio, setComposingBio] = useState(false)
   const [tourStep, setTourStep] = useState<number | null>(null)
-  const [keyboardOffset, setKeyboardOffset] = useState(0)
   const [headerLogoSrc, setHeaderLogoSrc] = useState('/api/public/logo')
-  const [safeBottomPx, setSafeBottomPx] = useState(0)
   const [tierHints, setTierHints] = useState<OnboardingTierHints | null>(null)
   const [showDeferConfirm, setShowDeferConfirm] = useState(false)
   const [deferringProfile, setDeferringProfile] = useState(false)
   const [deferError, setDeferError] = useState('')
   const [bioDraftingKind, setBioDraftingKind] = useState<'personal' | 'professional' | null>(null)
 
-  const NATIVE_KEYBOARD_MIN_HEIGHT = 60
-  const KEYBOARD_OFFSET_EPSILON = 6
-  const platform = Capacitor.getPlatform()
-  const isIOS = platform === 'ios'
-  const isAndroid = platform === 'android'
-
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cvFileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const keyboardOffsetRef = useRef(0)
   const onboardingIntentRef = useRef<'b2b' | 'b2c' | null>(null)
   const b2bOrgRef = useRef('')
   const b2bParentRef = useRef('')
@@ -442,105 +429,7 @@ export default function OnboardingChat({
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
   }, [])
 
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return
-    const probe = document.createElement('div')
-    probe.style.position = 'fixed'
-    probe.style.bottom = '0'
-    probe.style.left = '0'
-    probe.style.width = '0'
-    probe.style.height = 'env(safe-area-inset-bottom, 0px)'
-    probe.style.pointerEvents = 'none'
-    probe.style.opacity = '0'
-    probe.style.zIndex = '-1'
-    document.body.appendChild(probe)
-
-    const updateSafeBottom = () => {
-      if (keyboardOffsetRef.current > 0) return
-      const rect = probe.getBoundingClientRect()
-      const next = rect.height || 0
-      setSafeBottomPx(prev => {
-        if (next < 1 && prev > 1) return prev
-        return Math.abs(prev - next) < 1 ? prev : next
-      })
-    }
-
-    updateSafeBottom()
-    window.addEventListener('resize', updateSafeBottom)
-    return () => {
-      window.removeEventListener('resize', updateSafeBottom)
-      probe.remove()
-    }
-  }, [])
-
-  // Native keyboard handling (Capacitor native — iOS pre-animation, Android stable post-animation height)
-  useEffect(() => {
-    if (!isIOS && !isAndroid) return
-    let showSub: PluginListenerHandle | undefined
-    let hideSub: PluginListenerHandle | undefined
-
-    const normalizeHeight = (raw: number) => (raw < NATIVE_KEYBOARD_MIN_HEIGHT ? 0 : raw)
-
-    const handleShow = (info: KeyboardInfo) => {
-      const height = normalizeHeight(info?.keyboardHeight ?? 0)
-      if (height === 0) return
-      if (Math.abs(keyboardOffsetRef.current - height) < KEYBOARD_OFFSET_EPSILON) return
-      keyboardOffsetRef.current = height
-      setKeyboardOffset(height)
-      requestAnimationFrame(scrollToBottom)
-    }
-
-    const handleHide = () => {
-      if (Math.abs(keyboardOffsetRef.current) < KEYBOARD_OFFSET_EPSILON) return
-      keyboardOffsetRef.current = 0
-      setKeyboardOffset(0)
-    }
-
-    if (isAndroid) {
-      Keyboard.addListener('keyboardDidShow', handleShow).then(handle => {
-        showSub = handle
-      })
-      Keyboard.addListener('keyboardDidHide', handleHide).then(handle => {
-        hideSub = handle
-      })
-    } else {
-      Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
-        showSub = handle
-      })
-      Keyboard.addListener('keyboardWillHide', handleHide).then(handle => {
-        hideSub = handle
-      })
-    }
-
-    return () => {
-      showSub?.remove()
-      hideSub?.remove()
-    }
-  }, [isAndroid, isIOS, scrollToBottom])
-
-  // Visual viewport keyboard handling (web + Android)
-  useEffect(() => {
-    if (isIOS || isAndroid) return
-    if (typeof window === 'undefined') return
-    const viewport = window.visualViewport
-    if (!viewport) return
-
-    const onResize = () => {
-      const offset = window.innerHeight - viewport.height - viewport.offsetTop
-      const normalized = offset > 40 ? offset : 0
-      if (Math.abs(keyboardOffsetRef.current - normalized) < 10) return
-      keyboardOffsetRef.current = normalized
-      setKeyboardOffset(normalized)
-      if (normalized > 0) requestAnimationFrame(() => scrollToBottom())
-    }
-
-    viewport.addEventListener('resize', onResize)
-    viewport.addEventListener('scroll', onResize)
-    return () => {
-      viewport.removeEventListener('resize', onResize)
-      viewport.removeEventListener('scroll', onResize)
-    }
-  }, [isIOS, scrollToBottom])
+  const { keyboardLift, safeBottomPx } = useFixedComposerKeyboard({ onLayoutNudge: scrollToBottom })
 
   const addSteveMessage = useCallback((text: string, opts?: Partial<ChatMessage>) => {
     setIsTyping(true)
@@ -2292,10 +2181,9 @@ export default function OnboardingChat({
     !composingBio &&
     !showCvUpload
   const showPhotoUpload = lastSteveMsg?.photoUpload && stage === 'photo'
-  const keyboardLift = computeKeyboardLift(keyboardOffset)
   const composerBottom = `${keyboardLift}px`
   const composerClearance = showPhotoUpload || showCvUpload ? 124 : showInput ? 112 : 24
-  const composerPaddingBottom = keyboardLift > 0 ? '8px' : `calc(env(safe-area-inset-bottom, 0px) + 8px)`
+  const composerPaddingBottom = keyboardLift > 0 ? '8px' : `${safeBottomPx + 8}px`
 
   if (booting) {
     return (

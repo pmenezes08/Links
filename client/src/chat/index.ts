@@ -9,6 +9,7 @@
 export {
   normalizeTimestamp,
   normalizeMediaPath,
+  resolveDocUrl,
   parseMessageTime,
   ensureNormalizedTime,
   getMessageTimestamp,

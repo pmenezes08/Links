@@ -100,7 +100,8 @@ def write_dm_message(sender: str, receiver: str, message_id: int, text: str = ''
                      image_path: str = None, video_path: str = None,
                      audio_path: str = None, audio_duration_seconds=None,
                      audio_mime: str = None, audio_summary: str = None,
-                     media_paths=None, is_encrypted: bool = False, timestamp=None):
+                     media_paths=None, file_path: str = None, file_name: str = None,
+                     is_encrypted: bool = False, timestamp=None):
     """Write a DM message to Firestore after MySQL insert.
     Now includes media_paths array for grouped/multi-media (matches write_group_chat_message
     and write_post; fixes DM Firestore read gap for send_dm_media calls)."""
@@ -132,6 +133,8 @@ def write_dm_message(sender: str, receiver: str, message_id: int, text: str = ''
             'audio_mime': audio_mime,
             'audio_summary': audio_summary,
             'media_paths': media_paths,
+            'file_path': file_path,
+            'file_name': file_name,
             'is_encrypted': is_encrypted,
             'created_at': ts,
             'edited_at': None,
@@ -179,7 +182,9 @@ def write_dm_reaction(sender: str, receiver: str, message_id: int,
 def write_group_chat_message(group_id: int, message_id: int, sender: str,
                              text: str = None, image_path: str = None,
                              voice_path: str = None, video_path: str = None,
-                             audio_summary: str = None, media_paths=None, timestamp=None,
+                             audio_summary: str = None, media_paths=None,
+                             file_path: str = None, file_name: str = None,
+                             timestamp=None,
                              client_key: str = None):
     """Write a group chat message to Firestore after MySQL insert."""
     if not USE_FIRESTORE_WRITES:
@@ -201,6 +206,8 @@ def write_group_chat_message(group_id: int, message_id: int, sender: str,
             'video_path': video_path,
             'audio_summary': audio_summary,
             'media_paths': media_paths,
+            'file_path': file_path,
+            'file_name': file_name,
             'client_key': client_key,
             'created_at': ts,
         })

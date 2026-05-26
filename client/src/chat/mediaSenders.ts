@@ -499,3 +499,105 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
     if (lockComposer) setSending(false)
   }
 }
+
+interface DocumentMediaOptions extends BaseMediaOptions {
+  file: File
+}
+
+export async function sendDocumentMessage(options: DocumentMediaOptions) {
+  if (!options.otherUserId) return
+  const {
+    file,
+    otherUserId,
+    setMessages,
+    scrollToBottom,
+    recentOptimisticRef,
+    idBridgeRef,
+    setSending,
+    notifyError = defaultNotify,
+  } = options
+
+  if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) {
+    notifyError('Only PDF files are allowed')
+    return
+  }
+
+  const tempId = `temp-doc-${Date.now()}`
+  const displayName = file.name || 'document.pdf'
+  setSending(true)
+  setMessages(prev => [
+    ...prev,
+    {
+      id: tempId,
+      clientKey: tempId,
+      text: '',
+      file_path: URL.createObjectURL(file),
+      file_name: displayName,
+      sent: true,
+      time: new Date().toISOString(),
+      isOptimistic: true,
+    },
+  ])
+  scrollToBottom()
+  recentOptimisticRef.current.set(tempId, { message: {} as ChatMessage, timestamp: Date.now() })
+
+  try {
+    const fd = new FormData()
+    fd.append('recipient_id', String(otherUserId))
+    fd.append('document', file, file.name)
+    const res = await fetch('/api/chat/dm/send_document', { method: 'POST', credentials: 'include', body: fd })
+    const payload = await res.json().catch(() => null)
+    if (!payload?.success) {
+      throw new Error(payload?.error || 'Failed to send document')
+    }
+    if (payload.id) {
+      idBridgeRef.current.tempToServer.set(tempId, payload.id)
+      idBridgeRef.current.serverToTemp.set(payload.id, tempId)
+    }
+    setMessages(prev =>
+      prev.map(message => {
+        if ((message.clientKey || message.id) !== tempId) return message
+        return {
+          ...message,
+          id: payload.id ?? message.id,
+          file_path: payload.file_path ?? message.file_path,
+          file_name: payload.file_name ?? message.file_name,
+          isOptimistic: false,
+          time: payload.time ?? message.time,
+        }
+      }),
+    )
+    finalizeOptimisticEntry(recentOptimisticRef, tempId)
+  } catch (error) {
+    console.error('Document upload failed', error)
+    const errMsg = error instanceof Error ? error.message : 'Failed to send document'
+    setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
+    recentOptimisticRef.current.delete(tempId)
+    notifyError(errMsg)
+  } finally {
+    setSending(false)
+  }
+}
+
+export async function sendGroupDocumentMessage(options: { file: File; groupId: number | string; notifyError?: (msg: string) => void }) {
+  const { file, groupId, notifyError = defaultNotify } = options
+  if (!groupId) return null
+
+  if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) {
+    notifyError('Only PDF files are allowed')
+    return null
+  }
+
+  const fd = new FormData()
+  fd.append('document', file, file.name)
+  const res = await fetch(`/api/group_chat/${groupId}/send_document`, {
+    method: 'POST',
+    credentials: 'include',
+    body: fd,
+  })
+  const payload = await res.json().catch(() => null)
+  if (!payload?.success) {
+    throw new Error(payload?.error || 'Failed to send document')
+  }
+  return payload.message as Record<string, unknown>
+}

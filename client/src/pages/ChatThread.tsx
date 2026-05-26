@@ -42,7 +42,7 @@ import {
   chatMessagesDeviceCacheKey,
   chatProfileDeviceCacheKey,
 } from '../utils/chatThreadsCache'
-import { sendImageMessage, sendVideoMessage, sendMultiMediaMessage, SENDING_MEDIA_LABEL, type UploadProgress } from '../chat/mediaSenders'
+import { sendImageMessage, sendVideoMessage, sendMultiMediaMessage, sendDocumentMessage, SENDING_MEDIA_LABEL, type UploadProgress } from '../chat/mediaSenders'
 import type { ChatMessage } from '../types/chat'
 
 // Import utilities and components from chat module
@@ -191,6 +191,7 @@ export default function ChatThread(){
   const cameraInputRef = useRef<HTMLInputElement|null>(null)
   const audioInputRef = useRef<HTMLInputElement|null>(null)
   const videoInputRef = useRef<HTMLInputElement|null>(null)
+  const documentInputRef = useRef<HTMLInputElement|null>(null)
   const { recording, recordMs, preview: recordingPreview, start: startVoiceRecording, stop: stopVoiceRecording, clearPreview: cancelRecordingPreview, level, stopAndGetBlob } = useAudioRecorder() as any
   
   // Format milliseconds as MM:SS
@@ -1804,6 +1805,27 @@ export default function ChatThread(){
     videoInputRef.current?.click()
   }
 
+  function handleDocumentSelect() {
+    setShowAttachMenu(false)
+    documentInputRef.current?.click()
+  }
+
+  function handleDocumentChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    void sendDocumentMessage({
+      file,
+      otherUserId,
+      setMessages,
+      scrollToBottom,
+      recentOptimisticRef,
+      idBridgeRef,
+      setSending,
+      notifyError: msg => alert(msg),
+    })
+    if (documentInputRef.current) documentInputRef.current.value = ''
+  }
+
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const files = event.target.files
     if (!files || files.length === 0) return
@@ -3248,6 +3270,18 @@ export default function ChatThread(){
                     <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.attach_from_library')}</div>
                   </div>
                 </button>
+                <button
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
+                  onClick={handleDocumentSelect}
+                >
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-file-pdf text-[#4db6ac] text-sm sm:text-base" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.document')}</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.send_pdf')}</div>
+                  </div>
+                </button>
               </div>
             </>
           )}
@@ -3391,6 +3425,13 @@ export default function ChatThread(){
             accept="video/mp4,video/webm,video/quicktime,video/x-m4v,video/x-msvideo"
             multiple
             onChange={handleVideoFileChange}
+            className="hidden"
+          />
+          <input
+            ref={documentInputRef}
+            type="file"
+            accept="application/pdf,.pdf"
+            onChange={handleDocumentChange}
             className="hidden"
           />
 

@@ -28,6 +28,7 @@ export function useFixedComposerKeyboard(options: UseFixedComposerKeyboardOption
     if (typeof window === 'undefined') return
 
     const syncSafeBottom = () => {
+      if (keyboardOffsetRef.current > 0) return
       const next = readCssPxVar('--sab-px')
       setSafeBottomPx(prev => (Math.abs(prev - next) < 1 ? prev : next))
     }
@@ -76,7 +77,7 @@ export function useFixedComposerKeyboard(options: UseFixedComposerKeyboardOption
 
     viewport.addEventListener('resize', handleChange)
     viewport.addEventListener('scroll', handleChange)
-    updateOffset()
+    handleChange()
 
     return () => {
       if (rafId) cancelAnimationFrame(rafId)
@@ -118,8 +119,9 @@ export function useFixedComposerKeyboard(options: UseFixedComposerKeyboardOption
     }
   }, [])
 
+  // iOS only — Android uses visualViewport (Capacitor plugin over-reports with adjustNothing).
   useEffect(() => {
-    if (Capacitor.getPlatform() === 'web') return
+    if (Capacitor.getPlatform() !== 'ios') return
     let showSub: PluginListenerHandle | undefined
     let hideSub: PluginListenerHandle | undefined
 
@@ -153,7 +155,18 @@ export function useFixedComposerKeyboard(options: UseFixedComposerKeyboardOption
   }, [])
 
   const liftSource = Math.max(keyboardOffset, viewportLift)
-  const keyboardLift = computeKeyboardLift(liftSource)
+  const isAndroid =
+    typeof navigator !== 'undefined' &&
+    Capacitor.getPlatform() === 'android'
+  const androidKeyboardOpen = isAndroid && liftSource > 0
+  const androidComposerBottom = androidKeyboardOpen
+    ? Math.max(
+        0,
+        window.innerHeight -
+          ((window.visualViewport?.offsetTop ?? 0) + (window.visualViewport?.height ?? window.innerHeight))
+      )
+    : 0
+  const keyboardLift = androidKeyboardOpen ? androidComposerBottom : computeKeyboardLift(liftSource)
   const showKeyboard = keyboardLift > 0
 
   return {

@@ -6,7 +6,7 @@ import { memo, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import Avatar from '../components/Avatar'
 import LongPressActionable from './LongPressActionable'
-import { formatDateLabel, normalizeMediaPath } from './index'
+import { formatDateLabel, normalizeMediaPath, resolveDocUrl } from './index'
 import MessageImage from '../components/MessageImage'
 import VoiceNotePlayer from '../components/VoiceNotePlayer'
 import LinkPreview, { stripExtractedUrlsFromText, feedLinkPreviewUrls } from '../components/LinkPreview'
@@ -22,6 +22,9 @@ export type GroupChatMessageRowModel = {
   voice: string | null
   video?: string | null
   media_paths?: string[] | null
+  file_path?: string | null
+  file_name?: string | null
+  document?: string | null
   client_key?: string | null
   audio_duration_seconds?: number
   audio_summary?: string | null
@@ -390,6 +393,26 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                       </div>
                     )}
                   </>
+                )}
+                {(msg.file_path || msg.document) && (
+                  <a
+                    href={resolveDocUrl(msg.file_path || msg.document || '')}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 flex items-center gap-3 max-w-[280px] rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2.5 hover:bg-white/[0.1] transition-colors"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <div className="w-10 h-10 rounded-lg bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
+                      <i className="fa-solid fa-file-pdf text-[#4db6ac] text-lg" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm text-white font-medium truncate">
+                        {msg.file_name || t('chat.pdf_document')}
+                      </div>
+                      <div className="text-[10px] text-white/50">PDF</div>
+                    </div>
+                    <i className="fa-solid fa-arrow-up-right-from-square text-white/40 text-xs flex-shrink-0" />
+                  </a>
                 )}
                 {msg.voice && (
                   <>

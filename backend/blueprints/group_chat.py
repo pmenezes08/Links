@@ -134,6 +134,24 @@ def _login_required(view_func):
     return wrapper
 
 
+def _ensure_document_columns(cursor):
+    """Ensure file_path and file_name columns exist in group_chat_messages."""
+    from backend.services.database import USE_MYSQL
+
+    for col_name, col_type in (
+        ("file_path", "VARCHAR(500)" if USE_MYSQL else "TEXT"),
+        ("file_name", "VARCHAR(255)" if USE_MYSQL else "TEXT"),
+    ):
+        try:
+            cursor.execute(f"SELECT {col_name} FROM group_chat_messages LIMIT 1")
+        except Exception:
+            try:
+                cursor.execute(f"ALTER TABLE group_chat_messages ADD COLUMN {col_name} {col_type}")
+                logger.info("Added %s column to group_chat_messages", col_name)
+            except Exception as e:
+                logger.warning("Could not add %s column: %s", col_name, e)
+
+
 def _ensure_voice_column(cursor):
     """Ensure voice_path column exists in group_chat_messages."""
     from backend.services.database import USE_MYSQL
@@ -384,6 +402,7 @@ def _ensure_group_chat_tables(cursor):
         _ensure_voice_column(cursor)  # Ensure voice column exists
         _ensure_video_column(cursor)  # Ensure video column exists
         _ensure_media_paths_column(cursor)  # Ensure media_paths column exists for grouped media
+        _ensure_document_columns(cursor)  # PDF attachments
         _ensure_community_id_column(cursor)  # Ensure community_id column exists
         _ensure_is_edited_column(cursor)  # Ensure is_edited column exists
         _ensure_audio_summary_column(cursor)  # Ensure audio_summary column exists for voice transcriptions
@@ -1029,7 +1048,7 @@ def get_group_messages(group_id: int):
             if before_id:
                 c.execute(f"""
                     SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.media_paths, m.client_key, m.created_at,
-                           up.profile_picture, m.is_edited, m.audio_summary
+                           up.profile_picture, m.is_edited, m.audio_summary, m.file_path, m.file_name
                     FROM group_chat_messages m
                     LEFT JOIN user_profiles up ON m.sender_username = up.username
                     WHERE m.group_id = {ph} AND m.id < {ph} AND m.is_deleted = 0{cleared_sql}
@@ -1039,7 +1058,7 @@ def get_group_messages(group_id: int):
             elif since_id and since_id > 0:
                 c.execute(f"""
                     SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.media_paths, m.client_key, m.created_at,
-                           up.profile_picture, m.is_edited, m.audio_summary
+                           up.profile_picture, m.is_edited, m.audio_summary, m.file_path, m.file_name
                     FROM group_chat_messages m
                     LEFT JOIN user_profiles up ON m.sender_username = up.username
                     WHERE m.group_id = {ph} AND m.id > {ph} AND m.is_deleted = 0{cleared_sql}
@@ -1049,7 +1068,7 @@ def get_group_messages(group_id: int):
             else:
                 c.execute(f"""
                     SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.media_paths, m.client_key, m.created_at,
-                           up.profile_picture, m.is_edited, m.audio_summary
+                           up.profile_picture, m.is_edited, m.audio_summary, m.file_path, m.file_name
                     FROM group_chat_messages m
                     LEFT JOIN user_profiles up ON m.sender_username = up.username
                     WHERE m.group_id = {ph} AND m.is_deleted = 0{cleared_sql}
@@ -1073,6 +1092,8 @@ def get_group_messages(group_id: int):
                 is_edited_raw = row["is_edited"] if hasattr(row, "keys") else row[10]
                 is_edited = bool(is_edited_raw) if is_edited_raw is not None else False
                 audio_summary = row["audio_summary"] if hasattr(row, "keys") else row[11]
+                file_path = row["file_path"] if hasattr(row, "keys") else (row[12] if len(row) > 12 else None)
+                file_name = row["file_name"] if hasattr(row, "keys") else (row[13] if len(row) > 13 else None)
                 
                 msg_data = {
                     "id": msg_id,
@@ -1082,6 +1103,9 @@ def get_group_messages(group_id: int):
                     "voice": row["voice_path"] if hasattr(row, "keys") else row[4],
                     "video": row["video_path"] if hasattr(row, "keys") else row[5],
                     "media_paths": media_paths,
+                    "file_path": file_path,
+                    "file_name": file_name,
+                    "document": file_path,
                     "client_key": row["client_key"] if hasattr(row, "keys") else row[7],
                     "created_at": row["created_at"] if hasattr(row, "keys") else row[8],
                     "profile_picture": _public_profile_picture_url(
@@ -1481,6 +1505,79 @@ def send_group_media(group_id: int):
     except Exception as e:
         logger.error(f"Error sending media to group {group_id}: {e}", exc_info=True)
         return jsonify({"success": False, "error": f"Failed to send media: {e}"}), 500
+
+
+@group_chat_bp.route("/api/group_chat/<int:group_id>/send_document", methods=["POST"])
+@_login_required
+def send_group_document(group_id: int):
+    """Upload and send a PDF document to a group chat."""
+    username = session["username"]
+    document = request.files.get("document")
+    caption = (request.form.get("message") or "").strip()
+
+    if not document or not document.filename:
+        return jsonify({"success": False, "error": "No document provided"}), 400
+
+    from backend.services.chat_document_send import send_group_pdf
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            _ensure_group_chat_tables(c)
+
+            ok, payload, status = send_group_pdf(
+                conn,
+                c,
+                sender=username,
+                group_id=group_id,
+                file_storage=document,
+                caption=caption or None,
+            )
+            if not ok:
+                return jsonify(payload), status
+
+            message_id = payload.get("message", {}).get("id")
+            file_name = payload.get("message", {}).get("file_name") or "Document.pdf"
+            now = payload.get("message", {}).get("created_at")
+
+            profile_picture = None
+            try:
+                c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (username,))
+                pp_row = c.fetchone()
+                if pp_row:
+                    profile_picture = pp_row["profile_picture"] if hasattr(pp_row, "keys") else pp_row[0]
+            except Exception:
+                pass
+
+            payload["message"]["profile_picture"] = _public_profile_picture_url(profile_picture)
+
+            try:
+                c.execute(f"SELECT name FROM group_chats WHERE id = {ph}", (group_id,))
+                group_row = c.fetchone()
+                group_name = group_row["name"] if hasattr(group_row, "keys") else group_row[0] if group_row else "Group"
+
+                c.execute(
+                    f"SELECT username FROM group_chat_members WHERE group_id = {ph} AND username != {ph}",
+                    (group_id, username),
+                )
+                other_members = [r["username"] if hasattr(r, "keys") else r[0] for r in c.fetchall()]
+                preview = f"📄 {file_name}"
+                for member in other_members:
+                    try:
+                        _send_group_message_notification(
+                            c, ph, member, username, group_id, group_name, preview, is_mention=False
+                        )
+                    except Exception as notif_err:
+                        logger.warning("Failed to send document notification to %s: %s", member, notif_err)
+                conn.commit()
+            except Exception as notif_batch_err:
+                logger.warning("Failed to send group document notifications: %s", notif_batch_err)
+
+            return jsonify(payload), status
+    except Exception as e:
+        logger.error("Error sending document to group %s: %s", group_id, e, exc_info=True)
+        return jsonify({"success": False, "error": "Failed to send document"}), 500
 
 
 @group_chat_bp.route("/api/group_chat/<int:group_id>/send", methods=["POST"])

@@ -26,7 +26,7 @@ import {
 import ZoomableImage from '../components/ZoomableImage'
 import { sendGroupImageMessage, sendGroupMultiMedia } from '../chat/groupChatMediaSenders'
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
-import { SENDING_MEDIA_LABEL } from '../chat/mediaSenders'
+import { SENDING_MEDIA_LABEL, sendGroupDocumentMessage } from '../chat/mediaSenders'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
 import { openExternalNativeLink } from '../utils/openExternalInApp'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
@@ -221,6 +221,7 @@ export default function GroupChatThread() {
 
   const [viewingMedia, setViewingMedia] = useState<{ urls: string[]; index: number; messageId?: number; senderUsername?: string } | null>(null) // For viewing sent media groups
   const videoInputRef = useRef<HTMLInputElement>(null)
+  const documentInputRef = useRef<HTMLInputElement>(null)
   const [previewPlaying, setPreviewPlaying] = useState(false)
   // Paste from clipboard state
   const [pastedImage, setPastedImage] = useState<File | null>(null)
@@ -1274,6 +1275,50 @@ export default function GroupChatThread() {
   const handleVideoSelect = () => {
     setShowAttachMenu(false)
     videoInputRef.current?.click()
+  }
+
+  const handleDocumentSelect = () => {
+    setShowAttachMenu(false)
+    documentInputRef.current?.click()
+  }
+
+  const handleDocumentChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !group_id) return
+    const optimisticId = -Date.now() - Math.floor(Math.random() * 10000)
+    setSending(true)
+    setServerMessages(prev => [
+      ...prev,
+      {
+        id: optimisticId,
+        sender: currentUsername || 'You',
+        text: null,
+        file_path: URL.createObjectURL(file),
+        file_name: file.name,
+        created_at: new Date().toISOString(),
+        profile_picture: null,
+        isOptimistic: true,
+      } as any,
+    ])
+    scrollToBottom()
+    try {
+      const message = await sendGroupDocumentMessage({
+        file,
+        groupId: group_id,
+        notifyError: msg => alert(msg),
+      })
+      if (message) {
+        setServerMessages(prev =>
+          prev.map(m => (m.id === optimisticId ? { ...message, isOptimistic: false } as any : m)),
+        )
+      }
+    } catch (err) {
+      setServerMessages(prev => prev.filter(m => m.id !== optimisticId))
+      alert(err instanceof Error ? err.message : 'Failed to send document')
+    } finally {
+      setSending(false)
+      if (documentInputRef.current) documentInputRef.current.value = ''
+    }
   }
 
   // Handle multiple file selection (photos or videos)
@@ -2675,6 +2720,18 @@ export default function GroupChatThread() {
                 </button>
                 <button
                   className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
+                  onClick={handleDocumentSelect}
+                >
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-file-pdf text-[#4db6ac] text-sm sm:text-base" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.document')}</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.send_pdf')}</div>
+                  </div>
+                </button>
+                <button
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
                   onClick={() => { setShowAttachMenu(false); setGifPickerOpen(true) }}
                 >
                   <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
@@ -2854,6 +2911,13 @@ export default function GroupChatThread() {
               accept="video/*"
               multiple
               onChange={handleVideoChange}
+              className="hidden"
+            />
+            <input
+              ref={documentInputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              onChange={handleDocumentChange}
               className="hidden"
             />
 

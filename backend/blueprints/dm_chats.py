@@ -303,3 +303,36 @@ def remove_dm_message_media():
     except Exception as e:
         logger.error("remove_dm_message_media: %s", e, exc_info=True)
         return api_errors.error_response("chat.dm.failed_to_update_message", 500)
+
+
+@dm_chats_bp.route("/api/chat/dm/send_document", methods=["POST"])
+@_login_required
+def send_dm_document():
+    """Upload and send a PDF document in a direct message."""
+    username = session.get("username")
+    recipient_id = request.form.get("recipient_id")
+    document = request.files.get("document")
+    caption = (request.form.get("message") or "").strip()
+
+    if not recipient_id:
+        return jsonify({"success": False, "error": "Recipient required"}), 400
+    if not document or not document.filename:
+        return jsonify({"success": False, "error": "No document provided"}), 400
+
+    from backend.services.chat_document_send import send_dm_pdf
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ok, payload, status = send_dm_pdf(
+                conn,
+                c,
+                sender=username,
+                recipient_id=recipient_id,
+                file_storage=document,
+                caption=caption or None,
+            )
+            return jsonify(payload), status
+    except Exception as e:
+        logger.error("send_dm_document error for %s: %s", username, e, exc_info=True)
+        return api_errors.error_response("chat.dm.failed_to_send", 500)

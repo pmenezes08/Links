@@ -123,6 +123,15 @@ export function normalizeMediaPath(path?: string | null): string {
   return `/uploads/${path}`
 }
 
+/** Resolve PDF/document paths for download links in chat. */
+export function resolveDocUrl(filePath?: string | null): string {
+  if (!filePath) return ''
+  if (filePath.startsWith('http://') || filePath.startsWith('https://')) return filePath
+  if (filePath.startsWith('/uploads/') || filePath.startsWith('/static/')) return filePath
+  if (filePath.startsWith('uploads/')) return `/${filePath}`
+  return `/uploads/${filePath}`
+}
+
 /**
  * True if the string has explicit timezone (Z or +/-HH:MM or RFC1123 GMT/UTC).
  * Naive strings like "2025-03-05 14:30:00" must be normalized to UTC before parsing

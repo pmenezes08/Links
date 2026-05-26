@@ -19,7 +19,7 @@ import LinkPreview, { feedLinkPreviewUrls, stripExtractedUrlsFromText } from '..
 import VideoEmbed from '../components/VideoEmbed'
 import YouTubeChatSnippet from '../components/YouTubeChatSnippet'
 import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
-import { normalizeMediaPath, formatMessageTime, parseMessageTime } from './utils'
+import { normalizeMediaPath, formatMessageTime, parseMessageTime, resolveDocUrl } from './utils'
 import AudioMessage from './AudioMessage'
 import LongPressActionable from './LongPressActionable'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
@@ -225,6 +225,30 @@ function MessageBubbleInner({
                 </div>
               ) : null}
             </>
+          )}
+
+          {/* PDF document attachment */}
+          {m.file_path && (
+            <div className="mb-1.5 w-full min-w-0">
+              <a
+                href={resolveDocUrl(m.file_path)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 max-w-[280px] rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2.5 hover:bg-white/[0.1] transition-colors"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="w-10 h-10 rounded-lg bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
+                  <i className="fa-solid fa-file-pdf text-[#4db6ac] text-lg" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm text-white font-medium truncate">
+                    {m.file_name || t('chat.pdf_document')}
+                  </div>
+                  <div className="text-[10px] text-white/50">PDF</div>
+                </div>
+                <i className="fa-solid fa-arrow-up-right-from-square text-white/40 text-xs flex-shrink-0" />
+              </a>
+            </div>
           )}
 
           {/* Audio message — rendered OUTSIDE the text bubble */}

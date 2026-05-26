@@ -69,3 +69,26 @@ def ensure_deleted_chat_threads_table(cursor) -> None:
                 )
                 """
             )
+
+
+def ensure_messages_document_columns(cursor) -> None:
+    """Ensure messages table has file_path and file_name for PDF attachments."""
+    for col_name, col_type in (
+        ("file_path", "TEXT"),
+        ("file_name", "VARCHAR(255)" if USE_MYSQL else "TEXT"),
+    ):
+        try:
+            if USE_MYSQL:
+                cursor.execute(f"SHOW COLUMNS FROM messages LIKE '{col_name}'")
+                if cursor.fetchone():
+                    continue
+            else:
+                cursor.execute(f"SELECT {col_name} FROM messages LIMIT 1")
+                continue
+        except Exception:
+            pass
+        try:
+            cursor.execute(f"ALTER TABLE messages ADD COLUMN {col_name} {col_type}")
+            logger.info("Added %s column to messages table", col_name)
+        except Exception as e:
+            logger.warning("Could not ensure %s column on messages: %s", col_name, e)
