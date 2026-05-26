@@ -7,6 +7,7 @@ import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
 import Avatar from '../components/Avatar'
 import BurgerMenuDrawer from '../components/BurgerMenuDrawer'
+import FeedBottomNav from '../components/FeedBottomNav'
 import ImageLoader from '../components/ImageLoader'
 import { formatSmartTime } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
@@ -550,7 +551,7 @@ export default function GroupFeed(){
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black text-white flex flex-col pb-safe">
+      <div className="min-h-screen bg-black text-white flex flex-col">
         {fixedFeedHeader}
         {burgerMenuOverlay}
         <div
@@ -564,7 +565,7 @@ export default function GroupFeed(){
   }
   if (error) {
     return (
-      <div className="min-h-screen bg-black text-white flex flex-col pb-safe">
+      <div className="min-h-screen bg-black text-white flex flex-col">
         {fixedFeedHeader}
         {burgerMenuOverlay}
         <div
@@ -578,13 +579,13 @@ export default function GroupFeed(){
   }
 
   return (
-    <div className="min-h-screen bg-black text-white pb-safe">
+    <div className="min-h-screen bg-black text-white">
       {fixedFeedHeader}
       {burgerMenuOverlay}
       {/* Scrollable content area */}
       <div
         ref={scrollRef}
-        className="max-w-2xl mx-auto no-scrollbar pb-24 px-3"
+        className="max-w-2xl mx-auto no-scrollbar pb-[var(--app-feed-content-pad-bottom)] px-3"
         style={{
           WebkitOverflowScrolling: 'touch' as any,
           overflowY: 'auto',
@@ -943,47 +944,19 @@ export default function GroupFeed(){
         </div>
       </div>
 
-      {/* Bottom navigation bar - identical to CommunityFeed */}
-      <div
-        className="fixed bottom-0 left-0 right-0 z-[100] px-3 sm:px-6"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', touchAction: 'manipulation' }}
-      >
-        <div className="liquid-glass-surface border border-white/10 rounded-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.45)] max-w-2xl mx-auto mb-2">
-          <div className="h-14 px-2 sm:px-6 flex items-center justify-between text-[#cfd8dc]">
-            <button className="p-3 rounded-full bg-white/10 transition-colors" aria-label={t('navigation.home')} onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
-              <i className="fa-solid fa-house text-lg text-[#4db6ac]" />
-            </button>
-            <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label={t('navigation.members')} onClick={openMembers}>
-              <i className="fa-solid fa-users text-lg" />
-            </button>
-            <button
-              className="w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center transition-all"
-              aria-label={t('feed.new_post')}
-              onClick={()=> navigate(`/compose?group_id=${group_id}`)}
-            >
-              <i className="fa-solid fa-plus" />
-            </button>
-            <button className="relative p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label={t('feed.announcements')} onClick={() => setAnnouncementsOpen(true)}>
-              <span className="relative inline-block">
-                <i className="fa-solid fa-bullhorn text-lg" />
-              </span>
-            </button>
-            <button className="relative p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label={t('common.more')} onClick={()=> setMoreOpen(true)}>
-              <span className="relative inline-block">
-                <i className="fa-solid fa-ellipsis text-lg" />
-                {(hasUnseenDocs || hasPendingRsvps) && (
-                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4db6ac] rounded-full" />
-                )}
-              </span>
-            </button>
-          </div>
-        </div>
-      </div>
+      <FeedBottomNav
+        onHome={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+        onMembers={openMembers}
+        onCompose={() => navigate(`/compose?group_id=${group_id}`)}
+        onAnnouncements={() => setAnnouncementsOpen(true)}
+        onMore={() => setMoreOpen(true)}
+        moreDot={hasUnseenDocs || hasPendingRsvps}
+      />
 
       {/* More bottom sheet */}
       {moreOpen && (
         <div className="fixed inset-0 z-[110] bg-black/30 flex items-end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
-          <div className="w-[75%] max-w-sm mr-2 bg-black/95 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0" style={{ marginBottom: 'calc(70px + env(safe-area-inset-bottom))' }}>
+          <div className="w-[75%] max-w-sm mr-2 bg-black/95 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0" style={{ marginBottom: 'var(--app-feed-bottom-nav-height)' }}>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/key_posts?group_id=${group_id}`) }}>
               {t('feed.key_posts')}
             </button>

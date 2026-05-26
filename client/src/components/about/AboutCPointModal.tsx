@@ -42,7 +42,7 @@ function ModalBackdrop({
 
   return (
     <div
-      className={`fixed inset-0 ${zClass} flex items-end sm:items-center justify-center sm:p-4 bg-black/70 pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] sm:pb-4`}
+      className={`fixed inset-0 ${zClass} flex items-end sm:items-center justify-center sm:p-4 bg-black/70 pb-[var(--app-dashboard-bottom-nav-height)] sm:pb-4`}
       role="presentation"
       onClick={onClose}
     >
@@ -50,7 +50,7 @@ function ModalBackdrop({
         role="dialog"
         aria-modal="true"
         aria-labelledby="about-cpoint-modal-title"
-        className={`grid w-full min-h-0 shrink grid-rows-[minmax(0,1fr)] overflow-hidden ${wide ? 'max-w-lg' : 'max-w-md'} max-h-[calc(100dvh-5rem-env(safe-area-inset-bottom,0px))] sm:max-h-[85vh] rounded-t-2xl sm:rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-xl`}
+        className={`grid w-full min-h-0 shrink grid-rows-[minmax(0,1fr)] overflow-hidden ${wide ? 'max-w-lg' : 'max-w-md'} max-h-[calc(100dvh-var(--app-dashboard-bottom-nav-height)-2rem)] sm:max-h-[85vh] rounded-t-2xl sm:rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-xl`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="min-h-0 overflow-y-auto overscroll-contain touch-pan-y p-4 [-webkit-overflow-scrolling:touch]">

@@ -555,7 +555,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
       style={{ top: 'var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px)))' }}
     >
       <div
-        className={`h-full max-w-2xl mx-auto overflow-y-auto px-3 ${mode === 'dashboard_feed' && hasDashboardCommunities ? 'pb-[calc(3.5rem+env(safe-area-inset-bottom,0px)+12px)]' : 'pb-24'}`}
+        className={`h-full max-w-2xl mx-auto overflow-y-auto px-3 ${mode === 'dashboard_feed' && hasDashboardCommunities ? 'pb-[var(--app-dashboard-content-pad-bottom)]' : 'pb-24'}`}
         style={{
           WebkitOverflowScrolling: 'touch' as any,
           // Match main dashboard column: app-content (8px) + py-6 top (24px) → header-to-content breathing room

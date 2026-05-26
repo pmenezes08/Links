@@ -814,7 +814,7 @@ export default function PremiumDashboard() {
   }
 
     return (
-      <div className="app-content min-h-screen chat-thread-bg text-white pb-safe relative">
+      <div className="app-content min-h-screen chat-thread-bg text-white relative">
       {/* Web uses shared HeaderBar from App.tsx, native platforms use old sidebar */}
       {!isWeb && (
       /* Desktop sidebar - only for native platforms (iOS/Android) */
@@ -875,7 +875,7 @@ export default function PremiumDashboard() {
 
       {/* Main content area with proper positioning */}
       <div
-        className={`min-h-screen pb-[calc(3.5rem+env(safe-area-inset-bottom,0px)+12px)] ${isWeb ? 'lg:ml-64' : 'md:ml-52'}`}
+        className={`min-h-screen pb-[var(--app-dashboard-content-pad-bottom)] ${isWeb ? 'lg:ml-64' : 'md:ml-52'}`}
       >
         <div className="app-content max-w-5xl mx-auto px-3 py-6">
           {showOnboardingCompletionCard && (
@@ -1114,7 +1114,7 @@ export default function PremiumDashboard() {
           <button
             type="button"
             aria-label={t('dashboard.create_community_short')}
-            className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] right-5 z-[120] flex h-16 w-16 items-center justify-center rounded-full bg-[#4db6ac] text-3xl font-light leading-none text-black shadow-[0_12px_34px_rgba(77,182,172,0.36)] transition hover:brightness-110 active:scale-95 touch-manipulation"
+            className="fixed bottom-[calc(var(--app-dashboard-bottom-nav-height)+1.25rem)] right-5 z-[120] flex h-16 w-16 items-center justify-center rounded-full bg-[#4db6ac] text-3xl font-light leading-none text-black shadow-[0_12px_34px_rgba(77,182,172,0.36)] transition hover:brightness-110 active:scale-95 touch-manipulation"
             onClick={() => {
               setNewCommType('General')
               setShowCreateModal(true)

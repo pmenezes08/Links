@@ -34,6 +34,7 @@ import {
 } from '../utils/linkUtils.tsx'
 import EditableAISummary from '../components/EditableAISummary'
 import GifPicker from '../components/GifPicker'
+import FeedBottomNav from '../components/FeedBottomNav'
 import { NativeActionButton } from '../components/NativeActionButton'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
@@ -2464,7 +2465,7 @@ export default function CommunityFeed() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white pb-safe">
+    <div className="min-h-screen bg-black text-white">
       {/* Subscription-expired auto-freeze owner modal. Non-owners are
           blocked at the API layer by ``frozen_access_payload`` so they
           never see this surface. */}
@@ -2650,7 +2651,7 @@ export default function CommunityFeed() {
       <div
         ref={scrollRef}
         data-preserve-scroll="true"
-        className={`max-w-2xl mx-auto ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar pb-24 px-3`}
+        className={`max-w-2xl mx-auto ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar pb-[var(--app-feed-content-pad-bottom)] px-3`}
         style={{
           WebkitOverflowScrolling: 'touch' as any,
           overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto',
@@ -3646,58 +3647,37 @@ export default function CommunityFeed() {
         </div>
       )}
 
-      {/* Bottom navigation bar - fixed at bottom */}
-      <div 
-        className="fixed bottom-0 left-0 right-0 z-[100] px-3 sm:px-6"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', touchAction: 'manipulation' }}
-      >
-        <div className="liquid-glass-surface border border-white/10 rounded-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.45)] max-w-2xl mx-auto mb-2">
-          <div className="h-14 px-2 sm:px-6 flex items-center justify-between text-[#cfd8dc]">
-            <button className="p-3 rounded-full bg-white/10 transition-colors" aria-label={t('navigation.home')} onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <i className="fa-solid fa-house text-lg text-[#4db6ac]" />
-          </button>
-            <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label={t('navigation.members')} onClick={()=> navigate(`/community/${community_id}/members`)}>
-            <i className="fa-solid fa-users text-lg" />
-          </button>
+      <FeedBottomNav
+        onHome={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+        onMembers={() => navigate(`/community/${community_id}/members`)}
+        onAnnouncements={() => { fetchAnnouncements() }}
+        onMore={openMoreMenu}
+        announcementsHighlight={hasUnseenAnnouncements}
+        announcementsDot={hasUnseenAnnouncements}
+        moreDot={hasUnansweredPolls || hasUnseenDocs || hasPendingRsvps}
+        composeSlot={
           <NativeActionButton
-              haptic="light"
-              className={`w-10 h-10 rounded-md p-0 grid place-items-center ${highlightStep === 'post' ? 'ring-[6px] ring-[#4db6ac] shadow-[0_0_40px_rgba(77,182,172,0.8)] animate-pulse scale-125 z-[40] relative' : ''}`}
-            aria-label={t('feed.new_post')} 
-            onClick={()=> {
+            haptic="light"
+            className={`w-10 h-10 rounded-md p-0 grid place-items-center ${highlightStep === 'post' ? 'ring-[6px] ring-[#4db6ac] shadow-[0_0_40px_rgba(77,182,172,0.8)] animate-pulse scale-125 z-[40] relative' : ''}`}
+            aria-label={t('feed.new_post')}
+            onClick={() => {
               if (!navigator.onLine) { alert(t('feed.go_back_online')); return }
               const isFromOnboarding = highlightStep === 'post'
               if (isFromOnboarding) {
-                setHighlightStep(null);
-                // Mark onboarding as complete
-                try { 
-                  const username = data?.username || '';
-                  const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done';
-                  localStorage.setItem(doneKey, '1');
+                setHighlightStep(null)
+                try {
+                  const username = data?.username || ''
+                  const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done'
+                  localStorage.setItem(doneKey, '1')
                 } catch {}
               }
-              // Add first_post param if from onboarding
-              navigate(`/compose?community_id=${community_id}${isFromOnboarding ? '&first_post=true' : ''}`);
+              navigate(`/compose?community_id=${community_id}${isFromOnboarding ? '&first_post=true' : ''}`)
             }}
           >
             <i className="fa-solid fa-plus" />
           </NativeActionButton>
-            <button className="relative p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label={t('feed.announcements')} onClick={()=> { fetchAnnouncements() }}>
-            <span className="relative inline-block">
-              <i className="fa-solid fa-bullhorn text-lg" style={hasUnseenAnnouncements ? { color:'#4db6ac' } : undefined} />
-              {hasUnseenAnnouncements ? (<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4db6ac] rounded-full" />) : null}
-            </span>
-          </button>
-            <button className="relative p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label={t('common.more')} onClick={openMoreMenu}>
-            <span className="relative inline-block">
-              <i className="fa-solid fa-ellipsis text-lg" />
-              {(hasUnansweredPolls || hasUnseenDocs || hasPendingRsvps) && (
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4db6ac] rounded-full" />
-              )}
-            </span>
-          </button>
-          </div>
-        </div>
-      </div>
+        }
+      />
 
       {/* Bottom sheet for More - appears above bottom nav */}
       {moreMenuRendered && (
@@ -3711,7 +3691,7 @@ export default function CommunityFeed() {
             className={`w-[75%] max-w-sm mr-2 bg-black backdrop-blur-sm border border-white/10 rounded-2xl p-2 space-y-2 transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] ${
               moreOpen ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0'
             }`}
-            style={{ marginBottom: 'calc(70px + env(safe-area-inset-bottom))' }}
+            style={{ marginBottom: 'var(--app-feed-bottom-nav-height)' }}
           >
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/key_posts`) }}>
               {t('feed.key_posts')}

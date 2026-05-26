@@ -67,6 +67,7 @@ import KeyPosts from './pages/KeyPosts'
 import AboutCPoint from './pages/AboutCPoint'
 import OnboardingWelcome from './pages/OnboardingWelcome'
 import VerifyOverlay from './components/VerifyOverlay'
+import { isPremiumDashboardPath } from './components/DashboardBottomNav'
 import EventDetail from './pages/EventDetail'
 import GroupFeed from './pages/GroupFeed'
 import EditGroup from './pages/EditGroup'
@@ -677,10 +678,22 @@ function AppRoutes(){
   const showHeader = authLoaded && !hideHeader && !headerHiddenOverride
   const headerHeightValue = showHeader ? 'calc(56px + env(safe-area-inset-top, 0px))' : 'env(safe-area-inset-top, 0px)'
   const contentOffsetValue = headerHiddenOverride ? '0px' : headerHeightValue
+  const hasBottomChrome =
+    isPremiumDashboardPath(currentPathName) ||
+    currentPathName === '/about_cpoint' ||
+    currentPathName === '/feed' ||
+    currentPathName.startsWith('/community_feed_react/') ||
+    currentPathName.startsWith('/group_feed_react/') ||
+    (currentPathName.startsWith('/community/') && currentPathName.includes('/feed'))
+  const mainPaddingBottom = isChatRoute
+    ? '0px'
+    : hasBottomChrome
+      ? `${keyboardOffset}px`
+      : `calc(env(safe-area-inset-bottom, 0px) + ${keyboardOffset}px)`
   const mainStyle = {
     paddingTop: contentOffsetValue,
     minHeight: '100%',
-    paddingBottom: isChatRoute ? '0px' : `calc(env(safe-area-inset-bottom, 0px) + ${keyboardOffset}px)`,
+    paddingBottom: mainPaddingBottom,
     '--app-header-offset': contentOffsetValue,
     '--app-header-height': headerHeightValue,
     '--app-subnav-height': '40px',
