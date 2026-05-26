@@ -333,6 +333,11 @@ def steve_dm_typing_key(viewer, peer):
     """Viewer-specific Steve typing indicator key for 1:1 DM threads."""
     return f"steve_dm_typing:{viewer}:{peer}"
 
+def steve_dm_inflight_key(user_a, user_b):
+    """Single in-flight Steve DM turn per sorted human pair (direct Steve or @Steve in peer DM)."""
+    pair = sorted([(user_a or "").lower(), (user_b or "").lower()])
+    return f"steve_dm_inflight:{pair[0]}:{pair[1]}"
+
 def steve_group_typing_key(group_id):
     return f"steve_group_typing:{group_id}"
 

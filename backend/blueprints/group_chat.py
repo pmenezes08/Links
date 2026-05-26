@@ -3576,19 +3576,13 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
                 logger.warning(f"Could not load referenced user profiles: {mention_err}")
         
         # Only attach images if the user's message explicitly references them
-        image_keywords = ['image', 'photo', 'picture', 'pic', 'imagem', 'foto', 'see', 'look', 'show', 'what is this', 'what\'s this', 'o que é', 'vê', 'olha']
-        msg_lower = user_message.lower()
-        wants_images = any(kw in msg_lower for kw in image_keywords)
-        
-        # Keep only last 5 unique image URLs for API call
-        seen_urls = set()
-        unique_image_urls = []
-        for url in reversed(image_urls):
-            if url not in seen_urls and len(unique_image_urls) < 5:
-                seen_urls.add(url)
-                unique_image_urls.append(url)
-        unique_image_urls.reverse()
-        image_urls = unique_image_urls if wants_images else []
+        from backend.services.steve_chat_images import (
+            build_grok_user_content,
+            select_image_urls_for_turn,
+            vision_system_prompt_addon,
+        )
+
+        image_urls = select_image_urls_for_turn(image_urls, user_message, max_count=5)
         
         if image_urls:
             context += f"\n\n[{len(image_urls)} image(s) from the conversation are attached for you to see.]"
@@ -3779,15 +3773,8 @@ RESPONSE FORMAT:
             if image_urls and _max_imgs < len(image_urls):
                 image_urls = image_urls[:_max_imgs]
 
-            # Build user input — attach images if available
-            if image_urls:
-                user_content = [{"type": "input_text", "text": context}]
-                for img_url in image_urls:
-                    user_content.append({"type": "input_image", "image_url": img_url})
-                effective_system = system_prompt + "\n\nYou can see images shared in this conversation. Describe what you see if asked."
-            else:
-                user_content = context
-                effective_system = system_prompt
+            user_content = build_grok_user_content(context, image_urls)
+            effective_system = system_prompt + (vision_system_prompt_addon() if image_urls else "")
             
             started = time.perf_counter()
             response = client.responses.create(

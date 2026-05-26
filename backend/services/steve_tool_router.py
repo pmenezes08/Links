@@ -46,6 +46,7 @@ _AMBIGUOUS_HINT = re.compile(
     r"\bcareer|\bjob(s| opening| postings?)?\b|\bhiring\b|"
     r"\bcompanies\b|\bcompany\b|\bemploy(er|ers)\b|\bopenings?\b|\broles?\b|"
     r"\bresearch\b|\bexplore\b|\bcheck\s+out\b|\bfind(ing)?\b|\bcompare\b|\bdiscover\b|\blook\s+up\b|"
+    r"\bwhat is this\b|\bwhat's this\b|\bwhats this\b|"
     r"\bheadlines?\b|\bnews\b|\bcurrent\b"
     r")",
     re.I,

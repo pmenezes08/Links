@@ -338,6 +338,7 @@ Steve is C-Point's intelligent member. Here is what he can do across the product
 **Answers and reasoning**
 
 - Explain how C-Point works and answer product/onboarding/discovery questions using the Platform Manual (no web search for those).
+- In **DMs** (and group chats), when you share a **photo** and ask Steve to describe or read it, he can use **vision** on images in the thread (CDN URLs only; say *photo*, *picture*, or similar).
 - Brainstorm, analyse, and discuss substantive topics with structured replies when appropriate.
 - Use **hosted web search** and **X (Twitter) search** for live world news and current events when relevant — not for pure C-Point product questions.
 - In feed/group contexts with permission, use **community context** you are given: events, links, document excerpts, polls, and recent posts.
