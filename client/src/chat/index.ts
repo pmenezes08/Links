@@ -46,6 +46,10 @@ export {
 export type { ChatThreadScrollMessage } from './hooks'
 export { useChatComposerChrome, CHAT_COMPOSER_GAP_PX } from './useChatComposerChrome'
 export type { UseChatComposerChromeOptions } from './useChatComposerChrome'
+export { useChatListScrollHandlers } from './useChatListScrollHandlers'
+export type { UseChatListScrollHandlersOptions } from './useChatListScrollHandlers'
+export { useSmoothedPx } from './useSmoothedPx'
+export { CHAT_KEYBOARD_ANIMATION_MS, easeChatKeyboard } from './constants'
 export {
   DEFAULT_NEAR_BOTTOM_PX,
   isNearBottom,
@@ -55,3 +59,5 @@ export {
 
 // Media senders (already existed)
 export { sendImageMessage, sendVideoMessage } from './mediaSenders'
+export { chatHapticSend, chatHapticAttachToggle, chatHapticComposerTap } from './chatHaptics'
+export { ChatAttachMenuRow } from './ChatAttachMenuRow'

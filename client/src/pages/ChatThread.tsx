@@ -55,7 +55,11 @@ import {
   MessageBubble,
   useChatThreadScroll,
   useChatComposerChrome,
+  useChatListScrollHandlers,
+  chatHapticSend,
+  ChatAttachMenuRow,
 } from '../chat'
+import { NativeIconButton } from '../components/NativeIconButton'
 import {
   mergeDocumentFields,
   messagePollSignature,
@@ -156,6 +160,7 @@ export default function ChatThread(){
   const [replyTo, setReplyTo] = useState<{ text:string; sender?:string; image_path?:string; video_path?:string; audio_path?:string; audio_summary?:string }|null>(null)
   const [sending, setSendingState] = useState(false)
   const listRef = useRef<HTMLDivElement|null>(null)
+  const loadOlderRef = useRef<(() => void) | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement|null>(null)
   const storageKey = useMemo(() => `chat_meta_${username || ''}`, [username])
   const chatCacheKey = useMemo(
@@ -350,6 +355,7 @@ export default function ChatThread(){
   const {
     composerCardRef,
     keyboardLift,
+    displayKeyboardLift,
     safeBottomPx,
     isWeb,
     androidKeyboardOpen,
@@ -362,6 +368,17 @@ export default function ChatThread(){
     noteComposerFocus,
     touchDismissRef,
   } = chrome
+
+  const { onScroll: handleListScroll } = useChatListScrollHandlers({
+    userHasScrolledRef,
+    cancelInitialPin,
+    setShowScrollDown,
+    touchDismissRef,
+    hasMoreMessages,
+    loadingOlderRef,
+    onLoadOlder: () => loadOlderRef.current?.(),
+    loadOlderEnabled: Boolean(otherUserId),
+  })
 
   const focusTextarea = useCallback(() => {
     if (MIC_ENABLED && recording) return
@@ -874,58 +891,7 @@ export default function ChatThread(){
     setLoadingOlder(false)
   }, [hasMoreMessages, otherUserId, messages])
 
-  // Track user scroll to detect manual scrolling
-  useEffect(() => {
-    const el = listRef.current
-    if (!el) return
-    
-    let scrollTimeout: ReturnType<typeof setTimeout> | null = null
-    let lastScrollTop = el.scrollTop
-    
-    const handleScroll = () => {
-      
-      // Check if this is a manual scroll UP (away from bottom)
-      const currentScrollTop = el.scrollTop
-      const isAtBottom = (el.scrollHeight - currentScrollTop - el.clientHeight) < 50
-      
-      // Load older messages when scrolled near the top
-      if (currentScrollTop < 100 && !loadingOlderRef.current && hasMoreMessages && otherUserId) {
-        loadOlderMessages()
-      }
-
-      // If user scrolled up significantly, mark as manual scroll
-      if (currentScrollTop < lastScrollTop - 20 && !isAtBottom) {
-        userHasScrolledRef.current = true
-        cancelInitialPin()
-      }
-      
-      // If user scrolled back to bottom, reset the flag
-      if (isAtBottom) {
-        userHasScrolledRef.current = false
-        setShowScrollDown(false)
-      }
-      
-      lastScrollTop = currentScrollTop
-      
-      // Clear existing timeout
-      if (scrollTimeout) clearTimeout(scrollTimeout)
-      
-      // After scroll stops, check position
-      scrollTimeout = setTimeout(() => {
-        const stillAtBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 100
-        if (stillAtBottom) {
-          userHasScrolledRef.current = false
-        }
-      }, 150)
-    }
-    
-    el.addEventListener('scroll', handleScroll, { passive: true })
-    
-    return () => {
-      el.removeEventListener('scroll', handleScroll)
-      if (scrollTimeout) clearTimeout(scrollTimeout)
-    }
-  }, [username, loadOlderMessages, hasMoreMessages, otherUserId, cancelInitialPin])
+  loadOlderRef.current = loadOlderMessages
 
   // Load metadata from localStorage
   useEffect(() => {
@@ -1335,6 +1301,8 @@ export default function ChatThread(){
     if (!messageText || sendingLockRef.current) return
 
     if (tryBlockSteveIntentSend(messageText)) return
+
+    chatHapticSend()
 
     const steveIntentSend = isSteveDm || mentionsSteve(messageText)
     if (steveIntentSend) {
@@ -2734,14 +2702,7 @@ export default function ChatThread(){
         onPointerDown={handleContentPointerDown}
         onPointerUp={handleContentPointerUp}
         onPointerCancel={handleContentPointerCancel}
-        onScroll={(e)=> {
-          if (touchDismissRef.current.active) {
-            touchDismissRef.current.active = false
-          }
-          const el = e.currentTarget
-          const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
-          if (near) setShowScrollDown(false)
-        }}
+        onScroll={handleListScroll}
       >
         {/* Load older messages indicator */}
         {loadingOlder && (
@@ -2969,7 +2930,7 @@ export default function ChatThread(){
           bottom: scrollButtonBottom,
           right: '22px'
         }}
-        onClick={() => { scrollToBottom(); setShowScrollDown(false) }}
+        onClick={() => { ensurePinnedToBottom() }}
         aria-label={t('chat.scroll_latest')}
       >
         <i className="fa-solid fa-arrow-down" />
@@ -3017,7 +2978,7 @@ export default function ChatThread(){
       ref={composerRef}
       className={`fixed bottom-0 chat-composer-smooth ${isWeb ? 'left-1/2 -translate-x-1/2 max-w-3xl w-full' : 'left-0 right-0'}`}
       style={{
-        bottom: keyboardLift > 0 ? `${keyboardLift}px` : '0',
+        bottom: displayKeyboardLift > 0 ? `${displayKeyboardLift}px` : '0',
         zIndex: 1000,
         display: 'flex',
         flexDirection: 'column',
@@ -3055,10 +3016,7 @@ export default function ChatThread(){
                   left: 0,
                 }}
               >
-                <button
-                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
-                  onClick={handlePhotoSelect}
-                >
+                <ChatAttachMenuRow onClick={handlePhotoSelect}>
                   <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
                     <i className="fa-solid fa-image text-[#4db6ac] text-sm sm:text-base" />
                   </div>
@@ -3066,11 +3024,8 @@ export default function ChatThread(){
                     <div className="text-white font-medium text-sm sm:text-base">{t('chat.photos')}</div>
                     <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.send_from_gallery')}</div>
                   </div>
-                </button>
-                <button
-                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
-                  onClick={handleCameraOpen}
-                >
+                </ChatAttachMenuRow>
+                <ChatAttachMenuRow onClick={handleCameraOpen}>
                   <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
                     <i className="fa-solid fa-camera text-[#4db6ac] text-sm sm:text-base" />
                   </div>
@@ -3078,11 +3033,8 @@ export default function ChatThread(){
                     <div className="text-white font-medium text-sm sm:text-base">{t('chat.camera')}</div>
                     <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.take_photo')}</div>
                   </div>
-                </button>
-                <button
-                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
-                  onClick={() => { setShowAttachMenu(false); setGifPickerOpen(true) }}
-                >
+                </ChatAttachMenuRow>
+                <ChatAttachMenuRow onClick={() => { setShowAttachMenu(false); setGifPickerOpen(true) }}>
                   <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
                     <i className="fa-solid fa-images text-[#4db6ac] text-sm sm:text-base" />
                   </div>
@@ -3090,11 +3042,8 @@ export default function ChatThread(){
                     <div className="text-white font-medium text-sm sm:text-base">GIF</div>
                     <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.powered_by_giphy')}</div>
                   </div>
-                </button>
-                <button
-                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
-                  onClick={handleVideoSelect}
-                >
+                </ChatAttachMenuRow>
+                <ChatAttachMenuRow onClick={handleVideoSelect}>
                   <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
                     <i className="fa-solid fa-video text-[#4db6ac] text-sm sm:text-base" />
                   </div>
@@ -3102,11 +3051,8 @@ export default function ChatThread(){
                     <div className="text-white font-medium text-sm sm:text-base">{t('chat.video')}</div>
                     <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.attach_from_library')}</div>
                   </div>
-                </button>
-                <button
-                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
-                  onClick={handleDocumentSelect}
-                >
+                </ChatAttachMenuRow>
+                <ChatAttachMenuRow onClick={handleDocumentSelect}>
                   <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
                     <i className="fa-solid fa-file-pdf text-[#4db6ac] text-sm sm:text-base" />
                   </div>
@@ -3114,7 +3060,7 @@ export default function ChatThread(){
                     <div className="text-white font-medium text-sm sm:text-base">{t('chat.document')}</div>
                     <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.send_pdf')}</div>
                   </div>
-                </button>
+                </ChatAttachMenuRow>
               </div>
             </>
           )}
@@ -3211,21 +3157,19 @@ export default function ChatThread(){
 
           <div className="flex items-end gap-2 sm:gap-2.5">
             {/* Attachment button */}
-            <button 
-              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 transition-all cursor-pointer select-none"
+            <NativeIconButton
+              size="lg"
+              haptic="selection"
+              preventBlur
               onClick={(e) => {
                 e.stopPropagation()
                 setShowAttachMenu(!showAttachMenu)
-              }}
-              style={{
-                touchAction: 'manipulation',
-                WebkitTapHighlightColor: 'transparent',
               }}
             >
               <i className={`fa-solid text-white text-base sm:text-lg transition-transform duration-200 pointer-events-none ${
                 showAttachMenu ? 'fa-xmark rotate-90' : 'fa-plus'
               }`} />
-            </button>
+            </NativeIconButton>
 
           {/* Hidden file inputs */}
           <input
@@ -3306,33 +3250,38 @@ export default function ChatThread(){
             {MIC_ENABLED && !recording && recordingPreview && (
               <div className="flex-1 flex items-center px-2 py-1.5 gap-2">
                 {/* Delete button */}
-                <button
+                <NativeIconButton
+                  size="sm"
+                  haptic="light"
+                  preventBlur
+                  variant="muted"
+                  className="!rounded-full text-red-400 hover:bg-red-500/20"
                   onPointerDown={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
                     cancelRecordingPreview()
                     setPreviewPlaying(false)
                   }}
-                  className="w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors active:scale-95"
                   aria-label={t('chat.delete_recording')}
-                  style={{ touchAction: 'manipulation' }}
                 >
                   <i className="fa-solid fa-trash text-sm pointer-events-none" />
-                </button>
+                </NativeIconButton>
                 
                 {/* Play/Pause button */}
-                <button
+                <NativeIconButton
+                  size="sm"
+                  haptic="selection"
+                  preventBlur
+                  className="!h-9 !w-9 !rounded-full bg-[#4db6ac] text-white hover:bg-[#45a99c]"
                   onPointerDown={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
                     togglePreviewPlayback()
                   }}
-                  className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
                   aria-label={previewPlaying ? t('chat.pause') : t('chat.play')}
-                  style={{ touchAction: 'manipulation' }}
                 >
                   <i className={`fa-solid ${previewPlaying ? 'fa-pause' : 'fa-play'} text-sm pointer-events-none ${!previewPlaying ? 'ml-0.5' : ''}`} />
-                </button>
+                </NativeIconButton>
                 
                 {/* Waveform placeholder / duration */}
                 <div className="flex-1 flex items-center gap-2">
@@ -3427,8 +3376,11 @@ export default function ChatThread(){
 
           {/* Mic button - shown when not recording, no preview, and no text */}
           {MIC_ENABLED && !recording && !recordingPreview && !draftDisplay.trim() && (
-            <button
-              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 text-white/80 transition-all cursor-pointer select-none"
+            <NativeIconButton
+              size="lg"
+              haptic="light"
+              preventBlur
+              className="text-white/80"
               onClick={(e) => {
                 if (justSentRef.current) return
                 e.preventDefault()
@@ -3436,61 +3388,57 @@ export default function ChatThread(){
                 void checkMicrophonePermission()
               }}
               aria-label={t('chat.start_voice')}
-              style={{
-                touchAction: 'manipulation',
-                WebkitTapHighlightColor: 'transparent',
-                WebkitUserSelect: 'none',
-                userSelect: 'none',
-              }}
             >
               <i className="fa-solid fa-microphone text-base pointer-events-none" />
-            </button>
+            </NativeIconButton>
           )}
 
           {/* Recording controls - WhatsApp style: Pause + Send */}
           {MIC_ENABLED && recording && (
             <>
               {/* Pause button - stops recording, goes to preview */}
-              <button
-                className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-white/15 hover:bg-white/25 text-white transition-colors active:scale-95"
+              <NativeIconButton
+                size="lg"
+                haptic="light"
+                preventBlur
+                variant="muted"
+                className="!bg-white/15 hover:!bg-white/25"
                 onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
                   void stopVoiceRecording()
                 }}
                 aria-label={t('chat.pause_recording')}
-                style={{
-                  touchAction: 'manipulation',
-                  WebkitTapHighlightColor: 'transparent',
-                }}
               >
                 <i className="fa-solid fa-pause text-base pointer-events-none" />
-              </button>
+              </NativeIconButton>
               
               {/* Send button - sends directly */}
-              <button
-                className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
+              <NativeIconButton
+                size="lg"
+                haptic="medium"
+                preventBlur
+                className="!bg-[#4db6ac] text-white hover:!bg-[#45a99c]"
                 onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
                   void sendVoiceDirectly()
                 }}
                 aria-label={t('chat.send_voice')}
-                style={{
-                  touchAction: 'manipulation',
-                  WebkitTapHighlightColor: 'transparent',
-                }}
               >
                 <i className="fa-solid fa-paper-plane text-base pointer-events-none" />
-              </button>
+              </NativeIconButton>
             </>
           )}
           
           {/* Preview controls - Send button */}
           {MIC_ENABLED && !recording && recordingPreview && (
             <>
-              <button
-                className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
+              <NativeIconButton
+                size="lg"
+                haptic="medium"
+                preventBlur
+                className="!bg-[#4db6ac] text-white hover:!bg-[#45a99c]"
                 onClick={(e) => {
                   if (sending) return
                   e.preventDefault()
@@ -3499,17 +3447,13 @@ export default function ChatThread(){
                 }}
                 disabled={sending}
                 aria-label={t('chat.send_voice')}
-                style={{
-                  touchAction: 'manipulation',
-                  WebkitTapHighlightColor: 'transparent',
-                }}
               >
               {sending ? (
                 <i className="fa-solid fa-spinner fa-spin text-base pointer-events-none" />
               ) : (
                 <i className="fa-solid fa-paper-plane text-base pointer-events-none" />
               )}
-            </button>
+            </NativeIconButton>
             </>
           )}
           
@@ -3554,7 +3498,7 @@ export default function ChatThread(){
       </div>
       {/* Safe area spacer — hidden when keyboard is open to avoid double spacing */}
       <div 
-        className="chat-composer-smooth"
+        className="chat-composer-spacer-smooth"
         style={{
           height: (keyboardLift > 0 || androidKeyboardOpen) ? '0px' : `${safeBottomPx}px`,
           background: '#000',

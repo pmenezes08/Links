@@ -235,7 +235,11 @@
 }
 
 .chat-composer-smooth {
-  transition: bottom 250ms cubic-bezier(0.32, 0.72, 0, 1);
+  /* Bottom lift is JS-smoothed in useChatComposerChrome (displayKeyboardLift). */
+}
+
+.chat-composer-spacer-smooth {
+  transition: height 250ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .chat-list-inset {

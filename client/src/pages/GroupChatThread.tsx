@@ -10,7 +10,8 @@ import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { GroupMessageRow } from '../chat/GroupMessageRow'
-import { getDateKey, normalizeMediaPath, useChatComposerChrome, useChatThreadScroll } from '../chat'
+import { getDateKey, normalizeMediaPath, useChatComposerChrome, useChatListScrollHandlers, useChatThreadScroll, chatHapticSend, ChatAttachMenuRow } from '../chat'
+import { NativeIconButton } from '../components/NativeIconButton'
 import { retainMessagesIfUnchanged } from '../utils/dmPollMerge'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
@@ -315,6 +316,7 @@ export default function GroupChatThread() {
     
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const loadOlderRef = useRef<(() => void) | null>(null)
   const composerRef = useRef<HTMLDivElement | null>(null)
   const layoutNudgeRef = useRef<(() => void) | undefined>(undefined)
   const draftSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -360,7 +362,6 @@ export default function GroupChatThread() {
 
   const {
     messageStackRef,
-    scrollToBottom,
     scrollToBottomIfAppropriate,
     ensurePinnedToBottom,
     notifyMessagesSettled,
@@ -381,13 +382,29 @@ export default function GroupChatThread() {
   const {
     composerCardRef,
     keyboardLift,
+    displayKeyboardLift,
     safeBottomPx,
     isWeb,
     androidKeyboardOpen,
     listPaddingBottom,
+    listScrollPaddingBottom,
     scrollButtonBottom,
+    handleContentPointerDown,
+    handleContentPointerUp,
+    handleContentPointerCancel,
     noteComposerFocus,
+    touchDismissRef,
   } = chrome
+
+  const { onScroll: handleListScroll } = useChatListScrollHandlers({
+    userHasScrolledRef,
+    cancelInitialPin,
+    setShowScrollDown,
+    touchDismissRef,
+    hasMoreMessages,
+    loadingOlderRef,
+    onLoadOlder: () => loadOlderRef.current?.(),
+  })
 
   // Format recording time
   const formatRecordingTime = (ms: number) => {
@@ -641,6 +658,8 @@ export default function GroupChatThread() {
     setLoadingOlder(false)
   }, [hasMoreMessages, group_id, serverMessages])
 
+  loadOlderRef.current = loadOlderMessages
+
   // Update active presence (so push notifications are suppressed while viewing)
   const updatePresence = useCallback(() => {
     fetch(`/api/group_chat/${group_id}/presence`, {
@@ -857,6 +876,8 @@ export default function GroupChatThread() {
     }
 
     if (tryBlockSteveIntentSend(formattedMessage)) return
+
+    chatHapticSend()
 
     // Lock immediately (synchronous) to prevent double-clicks
     sendingLockRef.current = true
@@ -1319,6 +1340,7 @@ export default function GroupChatThread() {
           isOptimistic: true,
         }
         setServerMessages(prev => [...prev, optimisticMsg as any])
+        requestAnimationFrame(ensurePinnedToBottom)
         const response = await fetch(`/api/group_chat/${group_id}/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1480,6 +1502,7 @@ export default function GroupChatThread() {
           isOptimistic: true,
         }
         setServerMessages(prev => [...prev, optimisticMsg as any])
+        requestAnimationFrame(ensurePinnedToBottom)
 
         const response = await fetch(`/api/group_chat/${group_id}/send`, {
           method: 'POST',
@@ -1538,6 +1561,7 @@ export default function GroupChatThread() {
           isOptimistic: true,
         }
         setServerMessages(prev => [...prev, optimisticMsg as any])
+        requestAnimationFrame(ensurePinnedToBottom)
 
         const response = await fetch(`/api/group_chat/${group_id}/send`, {
           method: 'POST',
@@ -2248,24 +2272,14 @@ export default function GroupChatThread() {
               WebkitOverflowScrolling: 'touch',
               overscrollBehaviorY: 'auto',
               paddingBottom: listPaddingBottom,
+              scrollPaddingBottom: listScrollPaddingBottom,
               minHeight: 0,
               visibility: listRevealReady ? 'visible' : 'hidden',
             } as CSSProperties}
-            onScroll={(e) => {
-              const el = e.currentTarget
-              const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-              if (distFromBottom > 80) {
-                userHasScrolledRef.current = true
-                cancelInitialPin()
-                if (distFromBottom > 150) setShowScrollDown(true)
-              } else {
-                userHasScrolledRef.current = false
-                setShowScrollDown(false)
-              }
-              if (el.scrollTop < 100 && !loadingOlderRef.current && hasMoreMessages) {
-                loadOlderMessages()
-              }
-            }}
+            onPointerDown={handleContentPointerDown}
+            onPointerUp={handleContentPointerUp}
+            onPointerCancel={handleContentPointerCancel}
+            onScroll={handleListScroll}
           >
             {/* Load older messages */}
             {loadingOlder && (
@@ -2421,8 +2435,7 @@ export default function GroupChatThread() {
             right: '22px',
           }}
           onClick={() => {
-            scrollToBottom()
-            setShowScrollDown(false)
+            ensurePinnedToBottom()
           }}
           aria-label={t('chat.scroll_latest')}
         >
@@ -2436,7 +2449,7 @@ export default function GroupChatThread() {
         ref={composerRef}
         className={`fixed bottom-0 chat-composer-smooth ${isWeb ? 'left-1/2 -translate-x-1/2 max-w-3xl w-full' : 'left-0 right-0'}`}
         style={{
-          bottom: keyboardLift > 0 ? `${keyboardLift}px` : '0',
+          bottom: displayKeyboardLift > 0 ? `${displayKeyboardLift}px` : '0',
           zIndex: 1000,
           display: 'flex',
           flexDirection: 'column',
@@ -2504,10 +2517,7 @@ export default function GroupChatThread() {
                   left: 0,
                 }}
               >
-                <button
-                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
-                  onClick={handlePhotoSelect}
-                >
+                <ChatAttachMenuRow onClick={handlePhotoSelect}>
                   <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
                     <i className="fa-solid fa-image text-[#4db6ac] text-sm sm:text-base" />
                   </div>
@@ -2515,11 +2525,8 @@ export default function GroupChatThread() {
                     <div className="text-white font-medium text-sm sm:text-base">{t('chat.photos')}</div>
                     <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.send_from_gallery')}</div>
                   </div>
-                </button>
-                <button
-                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
-                  onClick={handleCameraOpen}
-                >
+                </ChatAttachMenuRow>
+                <ChatAttachMenuRow onClick={handleCameraOpen}>
                   <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
                     <i className="fa-solid fa-camera text-[#4db6ac] text-sm sm:text-base" />
                   </div>
@@ -2527,11 +2534,8 @@ export default function GroupChatThread() {
                     <div className="text-white font-medium text-sm sm:text-base">{t('chat.camera')}</div>
                     <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.take_photo')}</div>
                   </div>
-                </button>
-                <button
-                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
-                  onClick={handleVideoSelect}
-                >
+                </ChatAttachMenuRow>
+                <ChatAttachMenuRow onClick={handleVideoSelect}>
                   <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
                     <i className="fa-solid fa-video text-[#4db6ac] text-sm sm:text-base" />
                   </div>
@@ -2539,11 +2543,8 @@ export default function GroupChatThread() {
                     <div className="text-white font-medium text-sm sm:text-base">{t('chat.video')}</div>
                     <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.send_from_gallery')}</div>
                   </div>
-                </button>
-                <button
-                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
-                  onClick={handleDocumentSelect}
-                >
+                </ChatAttachMenuRow>
+                <ChatAttachMenuRow onClick={handleDocumentSelect}>
                   <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
                     <i className="fa-solid fa-file-pdf text-[#4db6ac] text-sm sm:text-base" />
                   </div>
@@ -2551,11 +2552,8 @@ export default function GroupChatThread() {
                     <div className="text-white font-medium text-sm sm:text-base">{t('chat.document')}</div>
                     <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.send_pdf')}</div>
                   </div>
-                </button>
-                <button
-                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
-                  onClick={() => { setShowAttachMenu(false); setGifPickerOpen(true) }}
-                >
+                </ChatAttachMenuRow>
+                <ChatAttachMenuRow onClick={() => { setShowAttachMenu(false); setGifPickerOpen(true) }}>
                   <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
                     <i className="fa-solid fa-images text-[#4db6ac] text-sm sm:text-base" />
                   </div>
@@ -2563,7 +2561,7 @@ export default function GroupChatThread() {
                     <div className="text-white font-medium text-sm sm:text-base">GIF</div>
                     <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.powered_by_giphy')}</div>
                   </div>
-                </button>
+                </ChatAttachMenuRow>
               </div>
             </>
           )}
@@ -2694,21 +2692,19 @@ export default function GroupChatThread() {
           {/* Message input row */}
           <div className="flex items-end gap-2">
             {/* Plus/Attachment button */}
-            <button
-              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 transition-all cursor-pointer select-none"
+            <NativeIconButton
+              size="lg"
+              haptic="selection"
+              preventBlur
               onClick={(e) => {
                 e.stopPropagation()
                 setShowAttachMenu(!showAttachMenu)
               }}
-              style={{
-                touchAction: 'manipulation',
-                WebkitTapHighlightColor: 'transparent',
-              } as CSSProperties}
             >
               <i className={`fa-solid text-white text-base sm:text-lg transition-transform duration-200 pointer-events-none ${
                 showAttachMenu ? 'fa-xmark rotate-90' : 'fa-plus'
               }`} />
-            </button>
+            </NativeIconButton>
 
             {/* Hidden file inputs */}
             <input
@@ -2777,31 +2773,36 @@ export default function GroupChatThread() {
               {/* Voice preview - WhatsApp style */}
               {MIC_ENABLED && !recording && recordingPreview && (
                 <div className="flex-1 flex items-center px-2 py-1.5 gap-2">
-                  <button
+                  <NativeIconButton
+                    size="sm"
+                    haptic="light"
+                    preventBlur
+                    variant="muted"
+                    className="!rounded-full text-red-400 hover:bg-red-500/20"
                     onPointerDown={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
                       cancelRecordingPreview()
                       setPreviewPlaying(false)
                     }}
-                    className="w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors active:scale-95"
                     aria-label={t('chat.delete_recording')}
-                    style={{ touchAction: 'manipulation' }}
                   >
                     <i className="fa-solid fa-trash text-sm pointer-events-none" />
-                  </button>
-                  <button
+                  </NativeIconButton>
+                  <NativeIconButton
+                    size="sm"
+                    haptic="selection"
+                    preventBlur
+                    className="!h-9 !w-9 !rounded-full bg-[#4db6ac] text-white hover:bg-[#45a99c]"
                     onPointerDown={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
                       togglePreviewPlayback()
                     }}
-                    className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
                     aria-label={previewPlaying ? t('chat.pause') : t('chat.play')}
-                    style={{ touchAction: 'manipulation' }}
                   >
                     <i className={`fa-solid ${previewPlaying ? 'fa-pause' : 'fa-play'} text-sm pointer-events-none ${!previewPlaying ? 'ml-0.5' : ''}`} />
-                  </button>
+                  </NativeIconButton>
                   <div className="flex-1 flex items-center gap-2">
                     <div className="flex-1 h-1.5 bg-white/20 rounded-full overflow-hidden">
                       <div className="h-full bg-[#4db6ac] w-full" />
@@ -2896,8 +2897,11 @@ export default function GroupChatThread() {
 
             {/* Mic button - shown when not recording, no preview, no text, and not sending */}
             {MIC_ENABLED && !recording && !recordingPreview && !draftDisplay.trim() && !sending && (
-              <button
-                className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 text-white/80 transition-all cursor-pointer select-none"
+              <NativeIconButton
+                size="lg"
+                haptic="light"
+                preventBlur
+                className="text-white/80"
                 onClick={(e) => {
                   if (justSentRef.current) return
                   e.preventDefault()
@@ -2905,55 +2909,53 @@ export default function GroupChatThread() {
                   void checkMicrophonePermission()
                 }}
                 aria-label={t('chat.start_voice')}
-                style={{
-                  touchAction: 'manipulation',
-                  WebkitTapHighlightColor: 'transparent',
-                }}
               >
                 <i className="fa-solid fa-microphone text-base pointer-events-none" />
-              </button>
+              </NativeIconButton>
             )}
 
             {/* Recording controls - Pause + Send */}
             {MIC_ENABLED && recording && (
               <>
-                <button
-                  className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-white/15 hover:bg-white/25 text-white transition-colors active:scale-95"
+                <NativeIconButton
+                  size="lg"
+                  haptic="light"
+                  preventBlur
+                  variant="muted"
+                  className="!bg-white/15 hover:!bg-white/25"
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
                     void stopVoiceRecording()
                   }}
                   aria-label={t('chat.pause_recording')}
-                  style={{
-                    touchAction: 'manipulation',
-                    WebkitTapHighlightColor: 'transparent',
-                  }}
                 >
                   <i className="fa-solid fa-pause text-base pointer-events-none" />
-                </button>
-                <button
-                  className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
+                </NativeIconButton>
+                <NativeIconButton
+                  size="lg"
+                  haptic="medium"
+                  preventBlur
+                  className="!bg-[#4db6ac] text-white hover:!bg-[#45a99c]"
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
                     void sendVoiceDirectly()
                   }}
                   aria-label={t('chat.send_voice')}
-                  style={{
-                    touchAction: 'manipulation',
-                    WebkitTapHighlightColor: 'transparent',
-                  }}
                 >
                   <i className="fa-solid fa-paper-plane text-base pointer-events-none" />
-                </button>
+                </NativeIconButton>
               </>
             )}
 
             {/* Preview controls - Send button */}
             {MIC_ENABLED && !recording && recordingPreview && (
-              <button
-                className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
+              <NativeIconButton
+                size="lg"
+                haptic="medium"
+                preventBlur
+                className="!bg-[#4db6ac] text-white hover:!bg-[#45a99c]"
                 onClick={(e) => {
                   if (sending) return
                   e.preventDefault()
@@ -2962,17 +2964,13 @@ export default function GroupChatThread() {
                 }}
                 disabled={sending}
                 aria-label={t('chat.send_voice')}
-                style={{
-                  touchAction: 'manipulation',
-                  WebkitTapHighlightColor: 'transparent',
-                }}
               >
                 {sending ? (
                   <i className="fa-solid fa-spinner fa-spin text-base pointer-events-none" />
                 ) : (
                   <i className="fa-solid fa-paper-plane text-base pointer-events-none" />
                 )}
-              </button>
+              </NativeIconButton>
             )}
 
             {/* Normal send button - show when there's text OR when sending */}
@@ -3017,7 +3015,7 @@ export default function GroupChatThread() {
         )}
         {/* Safe area spacer — hidden when keyboard is open to avoid double spacing */}
         <div
-          className="chat-composer-smooth"
+          className="chat-composer-spacer-smooth"
           style={{
             height: (keyboardLift > 0 || androidKeyboardOpen) ? '0px' : `${safeBottomPx}px`,
             background: '#000',

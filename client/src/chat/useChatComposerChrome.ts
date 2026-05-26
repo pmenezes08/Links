@@ -14,6 +14,7 @@ import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
 import { computeKeyboardLift, readCssPxVar } from '../utils/keyboardLift'
 import { useTouchDismiss } from './hooks'
+import { useSmoothedPx } from './useSmoothedPx'
 
 const DEFAULT_COMPOSER_PADDING = 64
 const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48
@@ -109,7 +110,14 @@ export function useChatComposerChrome({
     : 0
   const keyboardLift = androidKeyboardOpen ? androidComposerBottom : computeKeyboardLift(liftSource)
 
-  const bottomChromeInset = keyboardLift > 0 || androidKeyboardOpen ? keyboardLift : safeBottomPx
+  const smoothedKeyboardLift = useSmoothedPx(keyboardLift, {
+    onTick: () => onLayoutNudgeRef.current?.(),
+  })
+  /** Composer + list inset — smoothed on iOS/web; Android visualViewport already tracks IME. */
+  const displayKeyboardLift = isAndroid ? keyboardLift : smoothedKeyboardLift
+
+  const bottomChromeInset =
+    displayKeyboardLift > 0 || androidKeyboardOpen ? displayKeyboardLift : safeBottomPx
   const bottomInsetPx = bottomChromeInset + effectiveComposerHeight + CHAT_COMPOSER_GAP_PX
   const listPaddingBottom = `${bottomInsetPx}px`
   const listScrollPaddingBottom = listPaddingBottom
@@ -183,6 +191,7 @@ export function useChatComposerChrome({
       if (Math.abs(keyboardOffsetRef.current) < KEYBOARD_OFFSET_EPSILON) return
       keyboardOffsetRef.current = 0
       setKeyboardOffset(0)
+      requestAnimationFrame(() => onLayoutNudgeRef.current?.())
     }
 
     Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
@@ -231,6 +240,7 @@ export function useChatComposerChrome({
     composerRef,
     composerCardRef,
     keyboardLift,
+    displayKeyboardLift,
     safeBottomPx,
     keyboardIsOpen,
     isWeb,
