@@ -324,7 +324,7 @@ export function useTouchDismiss({ showKeyboard, composerRef, textareaRef }: UseT
 
 export interface ChatThreadScrollMessage {
   id: number | string
-  clientKey?: string
+  clientKey?: string | number
 }
 
 interface UseChatThreadScrollOptions {

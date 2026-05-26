@@ -1399,7 +1399,7 @@ export default function ChatThread(){
                 const bTs = getMessageTimestamp(b.time) ?? Date.now()
                 return aTs - bTs
               })
-              return retainMessagesIfUnchanged(prev, sorted, messagePollSignature)
+              return retainMessagesIfUnchanged(prev, sorted, messagePollSignature) as Message[]
             })
           }
         }catch(e){
