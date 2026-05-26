@@ -4,7 +4,7 @@ import type { PluginListenerHandle } from '@capacitor/core'
 import { App as CapacitorApp } from '@capacitor/app'
 import { Keyboard, KeyboardResize } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
-import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate, useParams } from 'react-router-dom'
 import { extractInviteToken, isInternalLink, joinCommunityWithInvite } from './utils/internalLinkHandler'
 import {
   isClipboardInviteConsumed,
@@ -85,6 +85,16 @@ import {
 } from './constants/googleOAuth'
 
 const queryClient = new QueryClient()
+
+function ChatThreadRoute() {
+  const { username } = useParams()
+  return <ChatThread key={username} />
+}
+
+function GroupChatThreadRoute() {
+  const { group_id } = useParams()
+  return <GroupChatThread key={group_id} />
+}
 
 function AppRoutes(){
   useSafeAreaSync()
@@ -759,10 +769,10 @@ function AppRoutes(){
                 <Route path="/gym" element={<Gym />} />
                 <Route path="/user_chat" element={<Messages />} />
                   <Route path="/user_chat/new" element={<NewMessage />} />
-                  <Route path="/user_chat/chat/:username" element={<ChatThread />} />
+                  <Route path="/user_chat/chat/:username" element={<ChatThreadRoute />} />
                   <Route path="/chat/:username/media" element={<ChatMedia />} />
                   <Route path="/chat/:username/documents" element={<ChatDocuments />} />
-                  <Route path="/group_chat/:group_id" element={<GroupChatThread />} />
+                  <Route path="/group_chat/:group_id" element={<GroupChatThreadRoute />} />
                   <Route path="/group_chat/:group_id/media" element={<GroupChatMedia />} />
                   <Route path="/group_chat/:group_id/documents" element={<GroupChatDocuments />} />
                   <Route path="/profile" element={<Profile />} />

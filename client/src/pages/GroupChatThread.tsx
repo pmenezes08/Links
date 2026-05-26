@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import type { CSSProperties } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import SteveTypingIndicator from '../components/chat/SteveTypingIndicator'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
@@ -17,6 +18,7 @@ import { gifSelectionToFile } from '../utils/gif'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { GroupMessageRow } from '../chat/GroupMessageRow'
 import { getDateKey, normalizeMediaPath } from '../chat'
+import { retainMessagesIfUnchanged } from '../utils/dmPollMerge'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
 import { useEntitlements } from '../hooks/useEntitlements'
@@ -139,6 +141,23 @@ function formatGroupThreadTime(dateStr: string) {
   } catch {
     return ''
   }
+}
+
+function groupMessagePollSignature(m: Message & { isOptimistic?: boolean; clientKey?: string }): string {
+  const mediaPaths = m.media_paths?.join('\u001e') ?? ''
+  return [
+    m.id,
+    m.sender,
+    m.text ?? '',
+    m.reaction ?? '',
+    m.is_edited ? 1 : 0,
+    m.image ?? '',
+    m.video ?? '',
+    m.voice ?? '',
+    mediaPaths,
+    m.isOptimistic ? 1 : 0,
+    m.client_key ?? m.clientKey ?? '',
+  ].join('\u001f')
 }
 
 export default function GroupChatThread() {
@@ -316,6 +335,9 @@ export default function GroupChatThread() {
   const pollTickRef = useRef(0)
   const clientKeyServerIdRef = useRef<Map<string, number>>(new Map())
   const lastMessageIdRef = useRef<number>(0)
+  const threadGenerationRef = useRef(0)
+  const activeGroupIdRef = useRef<string | undefined>(group_id)
+  activeGroupIdRef.current = group_id
   const previewAudioRef = useRef<HTMLAudioElement | null>(null)
   const headerMenuRef = useRef<HTMLDivElement>(null)
   const [hasMoreMessages, setHasMoreMessages] = useState(false)
@@ -462,12 +484,22 @@ export default function GroupChatThread() {
   const lastVisibleMsgKeyRef = useRef<string | number | null>(null)
 
   useEffect(() => {
+    if (!group_id) return
+    threadGenerationRef.current += 1
     lastVisibleMsgKeyRef.current = null
     userHasScrolledRef.current = false
     initialPinActiveRef.current = true
     pollTickRef.current = 0
     skipNextPollsUntil.current = 0
     clientKeyServerIdRef.current.clear()
+    lastMessageIdRef.current = 0
+    pendingDeletions.current.clear()
+    setServerMessages([])
+    setGroup(null)
+    setSteveIsTyping(false)
+    setReactions({})
+    setHasMoreMessages(false)
+    setError(null)
     const endInitialPin = window.setTimeout(() => {
       initialPinActiveRef.current = false
     }, 450)
@@ -643,15 +675,19 @@ export default function GroupChatThread() {
   }, [composerHeight, scrollToBottomIfAppropriate])
 
   const loadGroup = useCallback(async () => {
+    const gen = threadGenerationRef.current
+    const fetchGroupId = group_id
     if (!navigator.onLine) {
       // Offline: load from IndexedDB
       const cached = await getCachedKeyVal<any>(`group-info:${group_id}`)
+      if (gen !== threadGenerationRef.current || fetchGroupId !== activeGroupIdRef.current) return
       if (cached) setGroup(prev => prev || cached)
       return
     }
     try {
       const response = await fetch(`/api/group_chat/${group_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const data = await response.json()
+      if (gen !== threadGenerationRef.current || fetchGroupId !== activeGroupIdRef.current) return
       if (data.success) {
         setGroup(data.group)
         cacheKeyVal(`group-info:${group_id}`, data.group)
@@ -660,16 +696,20 @@ export default function GroupChatThread() {
       }
     } catch (err) {
       console.error('Error loading group:', err)
+      if (gen !== threadGenerationRef.current || fetchGroupId !== activeGroupIdRef.current) return
       const cached = await getCachedKeyVal<any>(`group-info:${group_id}`)
       if (cached) setGroup(prev => prev || cached)
       else setError(t('chat.failed_load_group'))
     }
-  }, [group_id])
+  }, [group_id, t])
 
   const loadMessages = useCallback(async (silent = false, opts?: { pollTick?: number }) => {
+    const gen = threadGenerationRef.current
+    const fetchGroupId = group_id
     if (!navigator.onLine) {
       if (!silent) {
         const cached = await getCachedMessages(`group:${group_id}`)
+        if (gen !== threadGenerationRef.current || fetchGroupId !== activeGroupIdRef.current) return
         if (cached?.length) {
           setServerMessages(cached as Message[])
         }
@@ -691,6 +731,7 @@ export default function GroupChatThread() {
 
       const response = await fetch(url, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const data = await response.json()
+      if (gen !== threadGenerationRef.current || fetchGroupId !== activeGroupIdRef.current) return
       if (data.success) {
         const newServerMessages = (data.messages as Message[]).filter(
           m => !pendingDeletions.current.has(m.id)
@@ -703,6 +744,7 @@ export default function GroupChatThread() {
           // Typing already updated; no message changes.
         } else if (isDelta) {
           setServerMessages(prev => {
+            if (gen !== threadGenerationRef.current) return prev
             const optimistic = prev.filter(m => (m as any).isOptimistic)
             const prevServer = prev.filter(m => !(m as any).isOptimistic)
             const byId = new Map<number, Message>()
@@ -718,13 +760,7 @@ export default function GroupChatThread() {
               !merged.some(nm => isConfirmedGroupMessage(nm, opt))
             )
             const next = [...merged, ...unconfirmedOptimistic]
-            if (
-              next.length === prev.length &&
-              next.every((m, i) => m === prev[i])
-            ) {
-              return prev
-            }
-            return next
+            return retainMessagesIfUnchanged(prev, next, groupMessagePollSignature)
           })
           setReactions(prev => mergeGroupReactionsFromMessages(prev, newServerMessages))
         } else {
@@ -734,6 +770,7 @@ export default function GroupChatThread() {
           }
 
           setServerMessages(prev => {
+            if (gen !== threadGenerationRef.current) return prev
             const optimistic = prev.filter(m => (m as any).isOptimistic)
             const prevServer = prev.filter(m => !(m as any).isOptimistic)
 
@@ -771,12 +808,13 @@ export default function GroupChatThread() {
         }
 
         const newMaxId = newServerMessages.length > 0 ? Math.max(...newServerMessages.map(m => m.id)) : 0
-        if (newMaxId > 0) {
+        if (newMaxId > 0 && gen === threadGenerationRef.current) {
           lastMessageIdRef.current = Math.max(lastMessageIdRef.current, newMaxId)
         }
       }
     } catch (err) {
       console.error('Error loading messages:', err)
+      if (gen !== threadGenerationRef.current || fetchGroupId !== activeGroupIdRef.current) return
       if (!silent) {
         setServerMessages(prev => {
           if (!prev.length) setError(t('chat.failed_load_messages'))
@@ -790,6 +828,8 @@ export default function GroupChatThread() {
 
   const loadOlderMessages = useCallback(async () => {
     if (loadingOlderRef.current || !hasMoreMessages) return
+    const gen = threadGenerationRef.current
+    const fetchGroupId = group_id
     loadingOlderRef.current = true
     setLoadingOlder(true)
     try {
@@ -798,6 +838,7 @@ export default function GroupChatThread() {
       if (oldestId <= 0) { loadingOlderRef.current = false; setLoadingOlder(false); return }
       const r = await fetch(`/api/group_chat/${group_id}/messages?before_id=${oldestId}&limit=50`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const j = await r.json()
+      if (gen !== threadGenerationRef.current || fetchGroupId !== activeGroupIdRef.current) return
       if (j?.success && Array.isArray(j.messages) && j.messages.length > 0) {
         const el = listRef.current
         const prevHeight = el?.scrollHeight || 0
@@ -2576,24 +2617,7 @@ export default function GroupChatThread() {
                     />
                   )
                 })}
-                {/* Steve is typing indicator */}
-                {steveIsTyping && (
-                  <div className="flex items-center gap-3 px-3 py-2 mb-2">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#4db6ac] to-[#26a69a] flex items-center justify-center flex-shrink-0">
-                      <span className="text-white text-xs font-bold">S</span>
-                    </div>
-                    <div className="bg-white/10 rounded-2xl rounded-bl-lg px-4 py-2">
-                      <div className="flex items-center gap-1">
-                        <span className="text-white/70 text-sm">{t('chat.steve_typing')}</span>
-                        <span className="flex gap-0.5">
-                          <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                          <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                          <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {steveIsTyping && <SteveTypingIndicator active={steveIsTyping} />}
                 <div ref={messagesEndRef} className="h-1" />
               </div>
             )}

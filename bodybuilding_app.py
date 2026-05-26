@@ -12820,6 +12820,17 @@ def get_messages():
                                 cached_messages = [m for m in cached_messages if m.get('time') and _dt.strptime(str(m['time'])[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S') > _del_dt]
                 except Exception:
                     pass
+                try:
+                    from backend.services.chat_message_document_merge import enrich_messages_with_mysql_documents
+                    with get_db_connection() as _doc_cache_conn:
+                        _doc_cache_c = _doc_cache_conn.cursor()
+                        cached_messages = enrich_messages_with_mysql_documents(
+                            _doc_cache_c,
+                            cached_messages,
+                            dm_pair=(username, other_username_for_key),
+                        )
+                except Exception as _doc_cache_err:
+                    logger.warning("DM document merge on cache read failed: %s", _doc_cache_err)
                 return jsonify({
                     'success': True,
                     'messages': cached_messages,
@@ -12944,20 +12955,23 @@ def get_messages():
             since_clause = f" AND id > {ph}" if since_id_int else ""
 
             try:
-                from backend.services.dm_human_thread import ensure_human_dm_thread_column, human_pair_thread_key
+                from backend.services.dm_human_thread import (
+                    dm_messages_where_clause,
+                    ensure_human_dm_thread_column,
+                    human_pair_thread_key,
+                )
 
                 ensure_human_dm_thread_column(c)
             except Exception as _htc_err:
                 logger.debug(f"human_dm_thread column ensure: {_htc_err}")
             thr_key_peer = human_pair_thread_key(username, other_username)
 
-            where_pair_dm = (
-                f"(((sender = {ph} AND receiver = {ph}) "
-                f" OR (sender = {ph} AND receiver = {ph}))"
-                f" OR (sender = 'steve' AND human_dm_thread = {ph}))"
+            where_pair_dm, base_params = dm_messages_where_clause(
+                ph,
+                viewer=username,
+                peer=other_username,
+                thr_key=thr_key_peer,
             )
-
-            base_params = (username, other_username, other_username, username, thr_key_peer)
             query_params = base_params + ((since_id_int,) if since_id_int else ()) + deleted_at_params
 
             # Get messages between users (compat: edited_at and encryption fields may not exist yet)
@@ -13386,46 +13400,16 @@ def send_message():
             }
 
             # Trigger Steve AI reply if messaging Steve directly OR mentioning @Steve in any DM
-            mentions_steve = bool(message and re.search(r'@steve\b', message, re.IGNORECASE))
-            is_steve_dm = recipient_username.lower() == 'steve'
-            if (is_steve_dm or mentions_steve) and username.lower() != 'steve' and not is_encrypted:
-                start_steve_dm_thread = True
-                try:
-                    from backend.services.feature_flags import entitlements_enforcement_enabled as _dm_ste_enforce
-                    from backend.services.entitlements_gate import check_steve_access as _check_dm_ste_access
-                    from backend.services import ai_usage as _dm_ai_usage_gate
-                    if _dm_ste_enforce():
-                        _allowed_dm, _dm_ent_payload, _, _ = _check_dm_ste_access(
-                            username, _dm_ai_usage_gate.SURFACE_DM
-                        )
-                        if not _allowed_dm:
-                            dm_success_payload['entitlements_error'] = _dm_ent_payload
-                            start_steve_dm_thread = False
-                            logger.info(
-                                "Steve DM reply skipped (entitlements): user=%s reason=%s",
-                                username,
-                                (_dm_ent_payload or {}).get('reason'),
-                            )
-                except Exception as dm_gate_err:
-                    logger.warning("Steve DM entitlement preflight failed (non-fatal): %s", dm_gate_err)
-
-                if start_steve_dm_thread:
-                    try:
-                        import threading
-                        try:
-                            from backend.services.steve_dm_typing import mark_dm_typing
-                            mark_dm_typing(username, recipient_username if not is_steve_dm else 'steve')
-                        except Exception as typing_err:
-                            logger.warning(f"Failed to mark Steve DM typing: {typing_err}")
-                        thread = threading.Thread(
-                            target=_trigger_steve_dm_reply,
-                            args=(username, message, recipient_username if not is_steve_dm else None)
-                        )
-                        thread.daemon = True
-                        thread.start()
-                        logger.info(f"Triggered Steve DM reply for {username} (in chat with {recipient_username})")
-                    except Exception as steve_err:
-                        logger.warning(f"Failed to trigger Steve DM reply: {steve_err}")
+            steve_started, steve_ent_err = _start_steve_dm_reply_if_allowed(
+                username,
+                message,
+                recipient_username,
+                is_encrypted=is_encrypted,
+            )
+            if steve_ent_err:
+                dm_success_payload['entitlements_error'] = steve_ent_err
+            if steve_started:
+                dm_success_payload['steve_is_typing'] = True
             
             # Dual-write to Firestore
             try:
@@ -13444,6 +13428,62 @@ def send_message():
     except Exception as e:
         logger.error(f"Error sending message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send message'})
+
+def _start_steve_dm_reply_if_allowed(
+    sender_username: str,
+    user_message: str,
+    recipient_username: str,
+    *,
+    is_encrypted: bool = False,
+):
+    """Start background Steve DM thread when messaging Steve or @Steve in a human DM."""
+    mentions_steve = bool(user_message and re.search(r'@steve\b', user_message, re.IGNORECASE))
+    is_steve_dm = recipient_username.lower() == 'steve'
+    if not ((is_steve_dm or mentions_steve) and sender_username.lower() != 'steve' and not is_encrypted):
+        return False, None
+
+    entitlements_error = None
+    start_thread = True
+    try:
+        from backend.services.feature_flags import entitlements_enforcement_enabled as _dm_ste_enforce
+        from backend.services.entitlements_gate import check_steve_access as _check_dm_ste_access
+        from backend.services import ai_usage as _dm_ai_usage_gate
+        if _dm_ste_enforce():
+            _allowed_dm, _dm_ent_payload, _, _ = _check_dm_ste_access(
+                sender_username, _dm_ai_usage_gate.SURFACE_DM
+            )
+            if not _allowed_dm:
+                entitlements_error = _dm_ent_payload
+                start_thread = False
+                logger.info(
+                    "Steve DM reply skipped (entitlements): user=%s reason=%s",
+                    sender_username,
+                    (_dm_ent_payload or {}).get('reason'),
+                )
+    except Exception as dm_gate_err:
+        logger.warning("Steve DM entitlement preflight failed (non-fatal): %s", dm_gate_err)
+
+    if start_thread:
+        try:
+            import threading
+            try:
+                from backend.services.steve_dm_typing import mark_dm_typing
+                mark_dm_typing(sender_username, recipient_username if not is_steve_dm else 'steve')
+            except Exception as typing_err:
+                logger.warning(f"Failed to mark Steve DM typing: {typing_err}")
+            thread = threading.Thread(
+                target=_trigger_steve_dm_reply,
+                args=(sender_username, user_message, recipient_username if not is_steve_dm else None),
+            )
+            thread.daemon = True
+            thread.start()
+            logger.info(f"Triggered Steve DM reply for {sender_username} (in chat with {recipient_username})")
+        except Exception as steve_err:
+            logger.warning(f"Failed to trigger Steve DM reply: {steve_err}")
+            start_thread = False
+
+    return start_thread, entitlements_error
+
 
 def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_username: str = None):
     """Delegates to backend service (thin wrapper)."""
@@ -13869,13 +13909,27 @@ def send_photo_message():
             except Exception as _e:
                 logger.warning(f"push send_photo_message warn: {_e}")
 
-            return jsonify({
+            photo_caption = (message or '').strip()
+            from backend.services.steve_chat_images import STEVE_SHARED_PHOTO_USER_MESSAGE
+            steve_trigger_msg = photo_caption if photo_caption else STEVE_SHARED_PHOTO_USER_MESSAGE
+            steve_started, _steve_ent = _start_steve_dm_reply_if_allowed(
+                username,
+                steve_trigger_msg,
+                recipient_username,
+            )
+
+            response_payload = {
                 'success': True, 
                 'message': 'Photo sent successfully',
                 'image_path': relative_path,
                 'id': inserted_id,
                 'time': inserted_time
-            })
+            }
+            if steve_started:
+                response_payload['steve_is_typing'] = True
+            if _steve_ent:
+                response_payload['entitlements_error'] = _steve_ent
+            return jsonify(response_payload)
             
     except Exception as e:
         logger.error(f"Error sending photo message: {str(e)}")
@@ -14071,12 +14125,26 @@ def send_dm_media():
             except Exception:
                 pass
 
-            return jsonify({
+            from backend.services.steve_chat_images import STEVE_SHARED_PHOTO_USER_MESSAGE
+            steve_started, _steve_ent = (False, None)
+            if first_image:
+                steve_started, _steve_ent = _start_steve_dm_reply_if_allowed(
+                    username,
+                    STEVE_SHARED_PHOTO_USER_MESSAGE,
+                    recipient_username,
+                )
+
+            media_response = {
                 'success': True,
                 'id': inserted_id,
                 'media_paths': uploaded_paths,
                 'time': inserted_time,
-            })
+            }
+            if steve_started:
+                media_response['steve_is_typing'] = True
+            if _steve_ent:
+                media_response['entitlements_error'] = _steve_ent
+            return jsonify(media_response)
 
     except Exception as e:
         logger.error(f"Error in send_dm_media: {e}", exc_info=True)

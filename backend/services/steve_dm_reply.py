@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime
 from typing import List, Optional
 
@@ -28,6 +29,13 @@ from backend.services.feature_flags import entitlements_enforcement_enabled as _
 logger = logging.getLogger(__name__)
 
 PEER_DM_CONTEXT_LINES = 10
+GROK_DM_TIMEOUT_SECONDS = 90
+INFLIGHT_BUSY_MESSAGE = "I'm still on your last message — give me a moment."
+GROK_TIMEOUT_MESSAGE = (
+    "That took longer than expected on my side. Try again in a moment, "
+    "or say **retry** and I'll take another pass."
+)
+GROK_EMPTY_MESSAGE = "I couldn't put together a reply that turn — try again in a moment."
 
 
 def _canonical_app_origin() -> str:
@@ -64,8 +72,6 @@ def run_steve_dm_reply(
     allowed, gate_reason, _ent = gate_or_reason(sender_username, ai_usage.SURFACE_DM)
     if not allowed and _enforce():
         try:
-            from backend.services.content_generation.delivery import send_steve_dm as _send_dm
-
             if gate_reason == _errs.REASON_PREMIUM_REQUIRED:
                 blocked = _premium_subscription_dm_cta()
             elif gate_reason == _errs.REASON_DAILY_CAP:
@@ -75,7 +81,11 @@ def run_steve_dm_reply(
                     "You've used up your Steve calls for this month. "
                     "See Settings → AI Usage."
                 )
-            _send_dm(receiver_username=sender_username, content=blocked)
+            _emit_steves_dm_text(
+                sender_username=sender_username,
+                body=blocked,
+                other_username=other_username,
+            )
         except Exception:
             pass
         try:
@@ -186,16 +196,37 @@ def run_steve_dm_reply(
         _clear_steve_typing()
         return
 
+    from backend.services.steve_dm_typing import (
+        DmTypingHeartbeat,
+        release_dm_inflight,
+        try_acquire_dm_inflight,
+    )
+
+    lock_peer = other_username if other_username else "steve"
+    heartbeat = DmTypingHeartbeat(sender_username, typing_peer)
+    heartbeat.start()
     try:
-        _run_grok_dm_turn(
-            sender_username=sender_username,
-            user_message=user_message,
-            other_username=other_username,
-            entitlements=_ent,
-        )
+        if not try_acquire_dm_inflight(sender_username, lock_peer):
+            _emit_steves_dm_text(
+                sender_username=sender_username,
+                body=INFLIGHT_BUSY_MESSAGE,
+                other_username=other_username,
+            )
+            return
+
+        try:
+            _run_grok_dm_turn(
+                sender_username=sender_username,
+                user_message=user_message,
+                other_username=other_username,
+                entitlements=_ent,
+            )
+        finally:
+            release_dm_inflight(sender_username, lock_peer)
     except Exception as e:
         logger.error("Error in Steve DM reply: %s", e, exc_info=True)
     finally:
+        heartbeat.stop()
         _clear_steve_typing()
 
 
@@ -327,11 +358,14 @@ def _run_grok_dm_turn(
         return None
 
     recent_messages: List[str] = []
+    image_urls_collected: List[str] = []
     context_reset_at = None
     reset_dt = None
     firestore_context_ok = False
     try:
         import os
+
+        from backend.services.steve_chat_images import append_image_from_row
 
         FIRESTORE_DATABASE = os.environ.get("FIRESTORE_DATABASE", "cpoint")
         from google.cloud import firestore as _firestore
@@ -356,19 +390,23 @@ def _run_grok_dm_turn(
             docs = msgs_ref.order_by("created_at").stream()
             for doc in docs:
                 d = doc.to_dict() or {}
+                append_image_from_row(d, image_urls_collected)
                 snd = d.get("sender", "")
                 text = (d.get("text") or "").strip()
-                if not text or not snd:
-                    continue
                 msg_ts = _steve_parse_dt(d.get("created_at"))
                 if reset_dt and msg_ts and msg_ts < reset_dt:
                     continue
-                recent_messages.append(f"{snd}: {text}")
+                if text and snd:
+                    recent_messages.append(f"{snd}: {text}")
+                elif snd and (d.get("image_path") or d.get("media_paths")):
+                    recent_messages.append(f"{snd}: [shared a photo]")
             firestore_context_ok = True
     except Exception as fs_err:
         logger.warning("Steve DM Firestore context failed: %s", fs_err)
 
     if not firestore_context_ok:
+        from backend.services.steve_chat_images import append_image_from_row
+
         with get_db_connection() as conn:
             c = conn.cursor()
             from backend.services.database import get_sql_placeholder
@@ -376,7 +414,7 @@ def _run_grok_dm_turn(
             ph = get_sql_placeholder()
             c.execute(
                 f"""
-                SELECT sender, message, timestamp FROM messages
+                SELECT sender, message, image_path, media_paths, timestamp FROM messages
                 WHERE (sender = {ph} AND receiver = {ph})
                    OR (sender = {ph} AND receiver = {ph})
                 ORDER BY timestamp ASC
@@ -384,15 +422,33 @@ def _run_grok_dm_turn(
                 (chat_user_a, chat_user_b, chat_user_b, chat_user_a),
             )
             for row in c.fetchall():
-                s = row["sender"] if hasattr(row, "keys") else row[0]
-                m = row["message"] if hasattr(row, "keys") else row[1]
-                ts_raw = row["timestamp"] if hasattr(row, "keys") else row[2]
-                if not m:
+                if hasattr(row, "keys"):
+                    row_dict = {
+                        "image_path": row.get("image_path"),
+                        "media_paths": row.get("media_paths"),
+                    }
+                    s = row["sender"]
+                    m = row.get("message")
+                    ts_raw = row.get("timestamp")
+                else:
+                    row_dict = {
+                        "image_path": row[2] if len(row) > 2 else None,
+                        "media_paths": row[3] if len(row) > 3 else None,
+                    }
+                    s = row[0]
+                    m = row[1]
+                    ts_raw = row[4] if len(row) > 4 else None
+                append_image_from_row(row_dict, image_urls_collected)
+                if not s:
                     continue
                 row_ts = _steve_parse_dt(ts_raw) if ts_raw is not None else None
                 if reset_dt and row_ts and row_ts < reset_dt:
                     continue
-                recent_messages.append(f"{s}: {m}")
+                text = (m or "").strip() if m is not None else ""
+                if text:
+                    recent_messages.append(f"{s}: {text}")
+                elif row_dict.get("image_path") or row_dict.get("media_paths"):
+                    recent_messages.append(f"{s}: [shared a photo]")
 
     current_date = datetime.now().strftime("%A, %B %d, %Y at %H:%M UTC")
 
@@ -450,6 +506,29 @@ def _run_grok_dm_turn(
         context += f"\n\n{sender_username} is chatting with you directly. Respond naturally and helpfully."
 
     context += f"\n\n[Current date and time: {current_date}]"
+
+    from backend.services.steve_chat_images import (
+        STEVE_SHARED_PHOTO_USER_MESSAGE,
+        build_grok_user_content,
+        select_image_urls_for_turn,
+        vision_system_prompt_addon,
+    )
+
+    max_imgs = 5
+    try:
+        if entitlements and isinstance(entitlements.get("max_images_per_turn"), int):
+            max_imgs = min(max_imgs, int(entitlements["max_images_per_turn"]))
+    except Exception:
+        pass
+    force_vision = (user_message or "").strip() == STEVE_SHARED_PHOTO_USER_MESSAGE
+    image_urls = select_image_urls_for_turn(
+        image_urls_collected,
+        user_message,
+        force=force_vision,
+        max_count=max_imgs,
+    )
+    if image_urls:
+        context += f"\n\n[{len(image_urls)} image(s) from the conversation are attached for you to see.]"
 
     if context_reset_at and not is_peer:
         context += (
@@ -582,6 +661,9 @@ RESPONSE STYLE:
 
     system_prompt = append_response_policy(system_prompt, user_message, surface=SURFACE_DM)
 
+    if image_urls:
+        system_prompt += vision_system_prompt_addon()
+
     if user_profile_ctx:
         system_prompt += f"""
 
@@ -607,28 +689,52 @@ Only share this information if asked. Be factual — do not embellish or invent 
         model_config.max_output_tokens_dm,
     )
 
-    logger.info("Steve DM Grok model=%s tools=%s", model_to_use, steve_tool_names_for_log(dm_tools))
+    logger.info(
+        "Steve DM Grok model=%s tools=%s images=%s",
+        model_to_use,
+        steve_tool_names_for_log(dm_tools),
+        len(image_urls),
+    )
 
     client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+    user_content = build_grok_user_content(context_for_grok, image_urls)
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": context_for_grok},
+        {"role": "user", "content": user_content},
     ]
 
     started = time.perf_counter()
-    response = client.responses.create(
-        model=model_to_use,
-        input=messages,
-        tools=dm_tools,
-        max_output_tokens=max_output_tokens,
-        temperature=0.7,
-    )
+    response = None
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                client.responses.create,
+                model=model_to_use,
+                input=messages,
+                tools=dm_tools,
+                max_output_tokens=max_output_tokens,
+                temperature=0.7,
+            )
+            response = future.result(timeout=GROK_DM_TIMEOUT_SECONDS)
+    except FuturesTimeoutError:
+        logger.warning("Steve DM reply: Grok timeout after %ss", GROK_DM_TIMEOUT_SECONDS)
+        _persist_grok_steves_reply(
+            sender_username=sender_username,
+            other_username=other_username,
+            body=GROK_TIMEOUT_MESSAGE,
+        )
+        return
     response_time_ms = int((time.perf_counter() - started) * 1000)
 
-    ai_response = response.output_text.strip() if hasattr(response, "output_text") and response.output_text else None
+    ai_response = response.output_text.strip() if response and hasattr(response, "output_text") and response.output_text else None
 
     if not ai_response:
         logger.warning("Steve DM reply: empty response from API")
+        _persist_grok_steves_reply(
+            sender_username=sender_username,
+            other_username=other_username,
+            body=GROK_EMPTY_MESSAGE,
+        )
         return
 
     try:
@@ -642,6 +748,11 @@ Only share this information if asked. Be factual — do not embellish or invent 
 
     ai_response = format_steve_response_links(ai_response)
     if not ai_response or not ai_response.strip():
+        _persist_grok_steves_reply(
+            sender_username=sender_username,
+            other_username=other_username,
+            body=GROK_EMPTY_MESSAGE,
+        )
         return
 
     _persist_grok_steves_reply(

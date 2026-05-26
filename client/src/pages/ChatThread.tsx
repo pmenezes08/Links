@@ -62,7 +62,15 @@ import {
   MessageBubble,
   useChatThreadScroll,
 } from '../chat'
-import { messagePollSignature, retainMessagesIfUnchanged } from '../utils/dmPollMerge'
+import {
+  mergeDocumentFields,
+  messagePollSignature,
+  retainMessagesIfUnchanged,
+  shouldRetainOptimisticDuringUpload,
+  tryMatchDocumentOptimistic,
+} from '../utils/dmPollMerge'
+import { mentionsSteve } from '../utils/steveClientGate'
+import SteveTypingIndicator from '../components/chat/SteveTypingIndicator'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
 import {
   takePendingShareFilesOnce,
@@ -179,6 +187,8 @@ export default function ChatThread(){
   const justSentRef = useRef(false)
   // Optimize polling - track poll count for debouncing auxiliary calls
   const pollCountRef = useRef(0)
+  const threadGenerationRef = useRef(0)
+  const resolvedPeerRef = useRef<{ username: string; userId: number } | null>(null)
   // Track last known message ID for faster incremental polling
   const lastKnownMessageIdRef = useRef<number>(0)
   // Backward pagination (load older messages on scroll up)
@@ -265,6 +275,8 @@ export default function ChatThread(){
   // Peer-scoped ref reset when switching DM threads (cache hydrate runs after processRawMessages is defined)
   useEffect(() => {
     if (!username) return
+    threadGenerationRef.current += 1
+    resolvedPeerRef.current = null
     lastKnownMessageIdRef.current = 0
     pollCountRef.current = 0
     idBridgeRef.current.tempToServer.clear()
@@ -676,6 +688,7 @@ export default function ChatThread(){
   // Sync hydrate on thread switch — device cache first, then IndexedDB fallback (no blank flash)
   useEffect(() => {
     if (!username) return
+    const gen = threadGenerationRef.current
 
     const cachedProfile = profileCacheKey
       ? readDeviceCache<{ display_name: string; profile_picture?: string | null }>(profileCacheKey, CHAT_CACHE_VERSION)
@@ -687,8 +700,10 @@ export default function ChatThread(){
       : null
 
     if (cachedChat?.messages?.length && cachedChat.otherUserId) {
+      resolvedPeerRef.current = { username, userId: cachedChat.otherUserId }
       setOtherUserId(cachedChat.otherUserId)
       void processRawMessages(cachedChat.messages).then(processed => {
+        if (gen !== threadGenerationRef.current) return
         setMessages(processed)
       })
       return
@@ -702,9 +717,14 @@ export default function ChatThread(){
         getCachedMessages(dmOfflineKey),
         getCachedKeyVal<number>(dmUserIdKeyvalKey(viewer, username)),
       ]).then(([idbMsgs, idbUserId]) => {
-        if (idbUserId) setOtherUserId(idbUserId)
+        if (gen !== threadGenerationRef.current) return
+        if (idbUserId) {
+          resolvedPeerRef.current = { username, userId: idbUserId }
+          setOtherUserId(idbUserId)
+        }
         if (idbMsgs?.length) {
           void processRawMessages(idbMsgs).then(processed => {
+            if (gen !== threadGenerationRef.current) return
             setMessages(processed)
           })
         }
@@ -835,9 +855,13 @@ export default function ChatThread(){
     if (!username) return
     // Skip network fetches when offline — navigator.onLine is synchronous and reliable on first render
     if (!navigator.onLine) return
+    const gen = threadGenerationRef.current
     
     // Helper to fetch messages and profile once we have user ID
     const fetchMessagesAndProfile = (userId: number) => {
+      const gen = threadGenerationRef.current
+      const fetchUsername = username
+      resolvedPeerRef.current = { username: fetchUsername, userId }
       // Load fresh messages
       const fd = new URLSearchParams({ other_user_id: String(userId) })
       fetch('/get_messages', { 
@@ -848,9 +872,11 @@ export default function ChatThread(){
       })
       .then(r=>r.json())
       .then(async (msgResponse) => {
+        if (gen !== threadGenerationRef.current) return
         setSteveIsTyping(Boolean(msgResponse?.steve_is_typing))
         if (msgResponse?.success && Array.isArray(msgResponse.messages)) {
           const processedMessages = await processRawMessages(msgResponse.messages)
+          if (gen !== threadGenerationRef.current) return
           setMessages(prev => {
             const serverIds = new Set(processedMessages.map(m => String(m.id)))
             // Keep optimistic messages from state
@@ -875,20 +901,20 @@ export default function ChatThread(){
             const mid = typeof m.id === 'number' ? m.id : parseInt(String(m.id), 10)
             if (!Number.isNaN(mid) && mid > maxServerId) maxServerId = mid
           }
-          if (maxServerId > 0) {
+          if (maxServerId > 0 && gen === threadGenerationRef.current) {
             lastKnownMessageIdRef.current = maxServerId
           }
           
           // Cache the messages for next time
-          if (chatCacheKey) {
+          if (chatCacheKey && gen === threadGenerationRef.current) {
             writeDeviceCache(chatCacheKey, { 
               messages: msgResponse.messages, 
               otherUserId: userId 
             }, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION)
           }
-          if (username && viewer && dmOfflineKey) {
+          if (fetchUsername && viewer && dmOfflineKey && gen === threadGenerationRef.current) {
             cacheMessages(dmOfflineKey, msgResponse.messages)
-            cacheKeyVal(dmUserIdKeyvalKey(viewer, username), userId)
+            cacheKeyVal(dmUserIdKeyvalKey(viewer, fetchUsername), userId)
           }
           
           // Clear the chat threads cache so Messages list shows updated unread counts
@@ -899,9 +925,10 @@ export default function ChatThread(){
       }).catch(()=>{})
       
       // Load user profile (in parallel)
-      fetch(`/api/get_user_profile_brief?username=${encodeURIComponent(username)}`, { credentials:'include', headers: { 'Accept': 'application/json' } })
+      fetch(`/api/get_user_profile_brief?username=${encodeURIComponent(fetchUsername)}`, { credentials:'include', headers: { 'Accept': 'application/json' } })
         .then(r => r.json())
         .then(profileResponse => {
+          if (gen !== threadGenerationRef.current) return
           if (profileResponse?.success) {
             const profile = { 
               display_name: profileResponse.display_name, 
@@ -920,6 +947,7 @@ export default function ChatThread(){
     const cached = chatCacheKey ? readDeviceCache<{ messages: any[]; otherUserId: number }>(chatCacheKey, CHAT_CACHE_VERSION) : null
     if (cached?.otherUserId) {
       // Use cached user ID immediately, fetch messages in parallel
+      resolvedPeerRef.current = { username, userId: cached.otherUserId }
       setOtherUserId(cached.otherUserId)
       fetchMessagesAndProfile(cached.otherUserId)
     } else {
@@ -933,6 +961,8 @@ export default function ChatThread(){
       .then(r=>r.json())
       .then(j=>{
         if (j?.success && j.user_id){
+          if (threadGenerationRef.current !== gen) return
+          resolvedPeerRef.current = { username, userId: j.user_id }
           setOtherUserId(j.user_id)
           fetchMessagesAndProfile(j.user_id)
         }
@@ -1094,9 +1124,14 @@ export default function ChatThread(){
   // Auxiliary calls (typing, active_chat) debounced to reduce network overhead
   useEffect(() => {
     if (!username || !otherUserId) return
+    const peer = resolvedPeerRef.current
+    if (!peer || peer.username !== username || peer.userId !== otherUserId) return
     
     async function poll(){
       if (!navigator.onLine) return
+      const gen = threadGenerationRef.current
+      const pollPeer = resolvedPeerRef.current
+      if (!pollPeer || pollPeer.username !== username || pollPeer.userId !== otherUserId) return
       // Skip polling if we're waiting for server confirmation after sending
       if (Date.now() < skipNextPollsUntil.current) {
         return
@@ -1122,6 +1157,7 @@ export default function ChatThread(){
             body: fd 
           })
           const j = await r.json()
+          if (gen !== threadGenerationRef.current) return
           setSteveIsTyping(Boolean(j?.steve_is_typing))
           
           if (j?.success && Array.isArray(j.messages)){
@@ -1131,10 +1167,12 @@ export default function ChatThread(){
               const msgId = typeof m.id === 'number' ? m.id : parseInt(m.id, 10)
               if (!isNaN(msgId) && msgId > maxId) maxId = msgId
             })
-            lastKnownMessageIdRef.current = maxId
+            if (gen === threadGenerationRef.current) {
+              lastKnownMessageIdRef.current = maxId
+            }
             
             // Persist to IndexedDB for offline access
-            if (username && dmOfflineKey) cacheMessages(dmOfflineKey, j.messages)
+            if (username && dmOfflineKey && gen === threadGenerationRef.current) cacheMessages(dmOfflineKey, j.messages)
             
             const decryptedMessages = j.messages
             
@@ -1142,6 +1180,7 @@ export default function ChatThread(){
             const storedReactions = username ? getAllMessageReactions(username) : {}
             
             setMessages(prev => {
+              if (gen !== threadGenerationRef.current) return prev
               // Build map of existing messages by their stable key (clientKey or id)
               const messagesByKey = new Map()
               prev.forEach(m => {
@@ -1254,6 +1293,17 @@ export default function ChatThread(){
                       continue
                     }
                     
+                    // For PDF document messages: match by server file_path or optimistic blob URL
+                    if (m.file_path || existing.file_path) {
+                      if (tryMatchDocumentOptimistic(m, existing, isSentByMe)) {
+                        stableKey = key
+                        idBridgeRef.current.serverToTemp.set(m.id, key)
+                        idBridgeRef.current.tempToServer.set(key, m.id)
+                        break
+                      }
+                      continue
+                    }
+
                     // For audio messages: match by server audio_path or optimistic blob URL
                     if (m.audio_path && existing.audio_path) {
                       // If existing already has this server path, it's the same message
@@ -1316,6 +1366,7 @@ export default function ChatThread(){
                 
                 const finalText = shouldPreserveExistingText ? existing.text : messageText
                 const finalDecryptionError = shouldPreserveExistingText ? false : m.decryption_error
+                const docFields = mergeDocumentFields(m, existing)
                 
                 // Update or create message
                 // Server-side reaction takes priority over local storage
@@ -1329,6 +1380,8 @@ export default function ChatThread(){
                   audio_path: m.audio_path,
                   audio_duration_seconds: m.audio_duration_seconds,
                   audio_summary: existing?.audio_summary || m.audio_summary || null,
+                  file_path: docFields.file_path,
+                  file_name: docFields.file_name,
                   sent: isSentByMe,
                   time: existing?.time ?? normalizedTime,
                   reaction: serverReaction || existing?.reaction || idBasedReaction || meta.reaction,
@@ -1372,6 +1425,9 @@ export default function ChatThread(){
               const now = Date.now()
               for (const [key, msg] of messagesByKey.entries()) {
                 if (msg.isOptimistic && !msg.sendFailed) {
+                  if (shouldRetainOptimisticDuringUpload(msg, now)) {
+                    continue
+                  }
                   const ts = getMessageTimestamp(msg.time)
                   if (ts !== null) {
                     const age = now - ts
@@ -1464,6 +1520,11 @@ export default function ChatThread(){
 
     if (tryBlockSteveIntentSend(messageText)) return
 
+    const steveIntentSend = isSteveDm || mentionsSteve(messageText)
+    if (steveIntentSend) {
+      setSteveIsTyping(true)
+    }
+
     sendingLockRef.current = true
     justSentRef.current = true
     setTimeout(() => { justSentRef.current = false }, 400)
@@ -1544,9 +1605,6 @@ export default function ChatThread(){
     
     const optimisticWithKey = { ...optimisticMessage, clientKey: tempId }
     setMessages(prev => [...prev, optimisticWithKey])
-    if (isSteveDm || /@steve\b/i.test(messageText)) {
-      setSteveIsTyping(true)
-    }
     
     recentOptimisticRef.current.set(tempId, {
       message: optimisticWithKey,
@@ -1609,6 +1667,8 @@ export default function ChatThread(){
         if (j?.entitlements_error && isEntitlementsError(j.entitlements_error)) {
           entitlementsHandler.showError(j.entitlements_error)
           setSteveIsTyping(false)
+        } else if (j?.steve_is_typing) {
+          setSteveIsTyping(true)
         }
         if (j?.success) {
           if (outboxId >= 0) removeFromOutbox(outboxId).catch(() => {})
@@ -1768,6 +1828,8 @@ export default function ChatThread(){
   function handleDocumentChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file) return
+    const uploadPauseMs = Math.min(60_000, Math.max(15_000, 10_000 + Math.floor(file.size / (512 * 1024)) * 1000))
+    skipNextPollsUntil.current = Date.now() + uploadPauseMs
     void sendDocumentMessage({
       file,
       otherUserId,
@@ -3059,23 +3121,7 @@ export default function ChatThread(){
           )
         })}
 
-        {steveIsTyping && (
-          <div className="flex items-center gap-3 px-3 py-2 mb-2">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#4db6ac] to-[#26a69a] flex items-center justify-center flex-shrink-0">
-              <span className="text-white text-xs font-bold">S</span>
-            </div>
-            <div className="bg-white/10 rounded-2xl rounded-bl-lg px-4 py-2">
-              <div className="flex items-center gap-1">
-                <span className="text-white/70 text-sm">{t('chat.steve_typing')}</span>
-                <span className="flex gap-0.5">
-                  <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
+        {steveIsTyping && <SteveTypingIndicator active={steveIsTyping} />}
         </div>
         
         {/* iOS FIX: Scroll anchor/spacer at the very end to ensure last message can scroll fully into view */}

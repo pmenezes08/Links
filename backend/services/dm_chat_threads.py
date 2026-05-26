@@ -11,6 +11,11 @@ from flask import url_for
 from backend.services.chat_message_preview import preview_from_message_row
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.dm_chats_tables import ensure_archived_chats_table
+from backend.services.dm_human_thread import (
+    dm_last_message_where_clause,
+    ensure_human_dm_thread_column,
+    is_private_steve_dm_peer,
+)
 from redis_cache import CHAT_THREADS_TTL, cache
 
 logger = logging.getLogger(__name__)
@@ -36,16 +41,19 @@ def _fetch_last_message_row(
     deleted_after: str | None,
 ) -> Any:
     """Load the latest message row with media columns when available."""
-    base_where = (
-        f"((sender = {ph} AND receiver = {ph}) OR (sender = {ph} AND receiver = {ph}))"
+    try:
+        ensure_human_dm_thread_column(cursor)
+    except Exception:
+        pass
+    base_where, base_params = dm_last_message_where_clause(
+        ph, viewer=username, peer=other_username
     )
-    params: tuple[Any, ...]
     if deleted_after:
         where = f"{base_where} AND timestamp > {ph}"
-        params = (username, other_username, other_username, username, deleted_after)
+        params = base_params + (deleted_after,)
     else:
         where = base_where
-        params = (username, other_username, other_username, username)
+        params = base_params
 
     full_select = f"""
         SELECT message, timestamp, sender, is_encrypted,
@@ -196,6 +204,8 @@ def build_chat_threads_payload(username: str) -> dict:
                     last_row = _fetch_last_message_row(
                         c, ph, username, other_username, del_at_for_preview
                     )
+                    if is_private_steve_dm_peer(other_username) and not last_row:
+                        continue
                     last_message_text = None
                     last_activity_time = None
                     last_sender = None
@@ -226,15 +236,30 @@ def build_chat_threads_payload(username: str) -> dict:
                             last_activity_time = da
 
                     if del_at_for_preview:
-                        c.execute(
-                            f"SELECT COUNT(*) as count FROM messages WHERE sender={ph} AND receiver={ph} AND is_read=0 AND timestamp > {ph}",
-                            (other_username, username, del_at_for_preview),
-                        )
+                        if is_private_steve_dm_peer(other_username):
+                            c.execute(
+                                f"SELECT COUNT(*) as count FROM messages WHERE sender={ph} AND receiver={ph} "
+                                f"AND is_read=0 AND timestamp > {ph} "
+                                f"AND (human_dm_thread IS NULL OR human_dm_thread = '')",
+                                ("steve", username, del_at_for_preview),
+                            )
+                        else:
+                            c.execute(
+                                f"SELECT COUNT(*) as count FROM messages WHERE sender={ph} AND receiver={ph} AND is_read=0 AND timestamp > {ph}",
+                                (other_username, username, del_at_for_preview),
+                            )
                     else:
-                        c.execute(
-                            f"SELECT COUNT(*) as count FROM messages WHERE sender={ph} AND receiver={ph} AND is_read=0",
-                            (other_username, username),
-                        )
+                        if is_private_steve_dm_peer(other_username):
+                            c.execute(
+                                f"SELECT COUNT(*) as count FROM messages WHERE sender={ph} AND receiver={ph} "
+                                f"AND is_read=0 AND (human_dm_thread IS NULL OR human_dm_thread = '')",
+                                ("steve", username),
+                            )
+                        else:
+                            c.execute(
+                                f"SELECT COUNT(*) as count FROM messages WHERE sender={ph} AND receiver={ph} AND is_read=0",
+                                (other_username, username),
+                            )
                     unread_row = c.fetchone()
                     unread_count = (
                         unread_row["count"]
