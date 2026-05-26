@@ -44,18 +44,17 @@ export default function FeedBottomNav({
 
   const chrome = (
     <div
-      className="fixed bottom-0 left-0 right-0 z-[900] px-3 sm:px-6 bg-black"
+      className="fixed left-0 right-0 z-[900] px-3 sm:px-6 pointer-events-none"
       style={{
-        paddingBottom: 'var(--sab-px, 0px)',
+        bottom: 'calc(var(--sab-px, 0px) + var(--app-feed-nav-float-gap, 20px))',
         paddingLeft: 'var(--sal-px, 0px)',
         paddingRight: 'var(--sar-px, 0px)',
         touchAction: 'manipulation',
-        pointerEvents: 'none',
       }}
     >
       <div
-        className="liquid-glass-surface border border-white/10 rounded-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.45)] max-w-2xl mx-auto"
-        style={{ pointerEvents: 'auto', marginBottom: 'var(--app-feed-nav-float-gap, 12px)' }}
+        className="liquid-glass-surface border border-white/10 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.55)] max-w-2xl mx-auto"
+        style={{ pointerEvents: 'auto' }}
       >
         <div className="h-14 px-2 sm:px-6 flex items-center justify-between text-[#cfd8dc]">
           <button

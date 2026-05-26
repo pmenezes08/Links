@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect } from 'react'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { App as CapacitorApp } from '@capacitor/app'
+import { FEED_NAV_FLOAT_GAP_PX } from '../constants/feedLayout'
 
 const IPHONE_HOME_INDICATOR_MIN = 34
 
@@ -74,8 +75,9 @@ export function applySafeAreaCssVars(insets: { top: number; bottom: number; left
   root.style.setProperty('--app-header-height', `calc(56px + ${insets.top}px)`)
   root.style.setProperty('--app-dashboard-bottom-nav-height', `calc(3.5rem + ${insets.bottom}px)`)
   root.style.setProperty('--app-dashboard-content-pad-bottom', `calc(3.5rem + ${insets.bottom}px + 12px)`)
-  root.style.setProperty('--app-feed-bottom-nav-height', `calc(3.5rem + 12px + ${insets.bottom}px)`)
-  root.style.setProperty('--app-feed-content-pad-bottom', `calc(3.5rem + 12px + ${insets.bottom}px + 12px)`)
+  root.style.setProperty('--app-feed-nav-float-gap', `${FEED_NAV_FLOAT_GAP_PX}px`)
+  root.style.setProperty('--app-feed-bottom-nav-height', `calc(3.5rem + ${FEED_NAV_FLOAT_GAP_PX}px + ${insets.bottom}px)`)
+  root.style.setProperty('--app-feed-content-pad-bottom', `calc(3.5rem + ${FEED_NAV_FLOAT_GAP_PX}px + ${insets.bottom}px + 12px)`)
 }
 
 export function useSafeAreaSync() {
