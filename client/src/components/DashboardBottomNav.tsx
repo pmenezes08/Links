@@ -76,9 +76,9 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
       <div
         className="fixed bottom-0 left-0 right-0 z-[900] bg-black border-t border-[#262f30]"
         style={{
-          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-          paddingLeft: 'env(safe-area-inset-left, 0px)',
-          paddingRight: 'env(safe-area-inset-right, 0px)',
+          paddingBottom: 'var(--sab-px, 0px)',
+          paddingLeft: 'var(--sal-px, env(safe-area-inset-left, 0px))',
+          paddingRight: 'var(--sar-px, env(safe-area-inset-right, 0px))',
           touchAction: 'manipulation',
           pointerEvents: 'auto',
         }}

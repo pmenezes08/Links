@@ -68,6 +68,7 @@ import AboutCPoint from './pages/AboutCPoint'
 import OnboardingWelcome from './pages/OnboardingWelcome'
 import VerifyOverlay from './components/VerifyOverlay'
 import { isPremiumDashboardPath } from './components/DashboardBottomNav'
+import { useSafeAreaSync } from './hooks/useSafeAreaSync'
 import EventDetail from './pages/EventDetail'
 import GroupFeed from './pages/GroupFeed'
 import EditGroup from './pages/EditGroup'
@@ -83,6 +84,7 @@ import {
 const queryClient = new QueryClient()
 
 function AppRoutes(){
+  useSafeAreaSync()
   const [title, setTitle] = useState('')
   const [titleAccessory, setTitleAccessory] = useState<ReactNode>(null)
   const [headerHiddenOverride, setHeaderHiddenOverride] = useState(false)
@@ -689,7 +691,7 @@ function AppRoutes(){
     ? '0px'
     : hasBottomChrome
       ? `${keyboardOffset}px`
-      : `calc(env(safe-area-inset-bottom, 0px) + ${keyboardOffset}px)`
+      : `calc(var(--sab-px, env(safe-area-inset-bottom, 0px)) + ${keyboardOffset}px)`
   const mainStyle = {
     paddingTop: contentOffsetValue,
     minHeight: '100%',

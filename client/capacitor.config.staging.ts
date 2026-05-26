@@ -14,7 +14,7 @@ const config: CapacitorConfig = {
   ios: {
     preferredContentMode: 'mobile',
     backgroundColor: appBackground,
-    contentInset: 'always',
+    contentInset: 'never',
     scrollEnabled: true,
   },
   plugins: {

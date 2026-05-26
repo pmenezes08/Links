@@ -44,9 +44,9 @@ export default function FeedBottomNav({
 
   const chrome = (
     <div
-      className="fixed bottom-0 left-0 right-0 z-[900] px-3 sm:px-6 bg-gradient-to-t from-black via-black/80 to-transparent"
+      className="fixed bottom-0 left-0 right-0 z-[900] px-3 sm:px-6 bg-black"
       style={{
-        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        paddingBottom: 'var(--sab-px, 0px)',
         touchAction: 'manipulation',
         pointerEvents: 'none',
       }}

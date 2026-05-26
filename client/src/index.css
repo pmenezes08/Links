@@ -114,9 +114,13 @@
     ),
     #020202;
   --keyboard-offset: 0px;
-  --app-dashboard-bottom-nav-height: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+  --sab-px: 0px;
+  --sat-px: 0px;
+  --sal-px: 0px;
+  --sar-px: 0px;
+  --app-dashboard-bottom-nav-height: calc(3.5rem + var(--sab-px));
   --app-dashboard-content-pad-bottom: calc(var(--app-dashboard-bottom-nav-height) + 12px);
-  --app-feed-bottom-nav-height: calc(70px + env(safe-area-inset-bottom, 0px));
+  --app-feed-bottom-nav-height: calc(70px + var(--sab-px));
   --app-feed-content-pad-bottom: calc(var(--app-feed-bottom-nav-height) + 12px);
 }
 
