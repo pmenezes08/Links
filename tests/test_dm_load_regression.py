@@ -111,3 +111,49 @@ def test_get_messages_falls_back_to_mysql_when_firestore_empty(mysql_dsn):
     assert body["success"] is True
     texts = [m.get("text") for m in body.get("messages") or []]
     assert "saved note in mysql" in texts
+
+
+def test_get_messages_since_id_returns_only_newer_rows(mysql_dsn):
+    import bodybuilding_app
+    from redis_cache import cache
+    from unittest.mock import patch
+
+    cache.flush_all()
+    _ensure_messages_table()
+    make_user("delta_a", subscription="premium")
+    make_user("delta_b", subscription="premium")
+    first_id = None
+    ph = get_sql_placeholder()
+    ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""
+            INSERT INTO messages (sender, receiver, message, timestamp, is_read, is_encrypted)
+            VALUES ({ph}, {ph}, {ph}, {ph}, 0, 0)
+            """,
+            ("delta_a", "delta_b", "first", ts),
+        )
+        conn.commit()
+        c.execute("SELECT LAST_INSERT_ID() AS id")
+        row = c.fetchone()
+        first_id = row["id"] if hasattr(row, "keys") else row[0]
+    _insert_dm("delta_a", "delta_b", "second")
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "delta_b")
+    other_id = _user_id("delta_a")
+
+    with patch("backend.services.firestore_reads.USE_FIRESTORE_READS", False):
+        resp = client.post(
+            "/get_messages",
+            data={"other_user_id": str(other_id), "since_id": str(first_id)},
+        )
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["success"] is True
+    assert body.get("is_delta") is True
+    texts = [m.get("text") for m in body.get("messages") or []]
+    assert "second" in texts
+    assert "first" not in texts

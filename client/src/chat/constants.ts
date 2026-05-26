@@ -1,6 +1,12 @@
 /** Match iOS keyboard / composer easing (sync with list inset smoothing). */
 export const CHAT_KEYBOARD_ANIMATION_MS = 250
 
+/** DM thread poll interval (ms). */
+export const DM_POLL_INTERVAL_MS = 1500
+
+/** Every Nth poll omits since_id for a full page sync (reactions, edits on existing rows). */
+export const DM_FULL_SYNC_EVERY_N_POLL = 6
+
 /** cubic-bezier(0.32, 0.72, 0, 1) — close ease-out for JS smoothing */
 export function easeChatKeyboard(t: number): number {
   const x = Math.min(1, Math.max(0, t))

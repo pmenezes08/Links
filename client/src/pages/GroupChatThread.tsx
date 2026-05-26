@@ -370,6 +370,8 @@ export default function GroupChatThread() {
     setShowScrollDown,
     cancelInitialPin,
     listRevealReady,
+    listOpening,
+    lastMessageRef,
   } = useChatThreadScroll({
     listRef,
     threadKey: group_id,
@@ -2267,7 +2269,7 @@ export default function GroupChatThread() {
           <div
             ref={listRef}
             data-preserve-scroll="true"
-            className="flex-1 space-y-[9px] overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-list-inset"
+            className={`flex-1 space-y-[9px] overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-list-inset${listOpening ? ' chat-list-opening' : ''}`}
             style={{
               WebkitOverflowScrolling: 'touch',
               overscrollBehaviorY: 'auto',
@@ -2329,6 +2331,7 @@ export default function GroupChatThread() {
                   const firstMedia = msg.media_paths?.[0] || ''
                   const isMediaImage = firstMedia.match(/\.(jpg|jpeg|png|gif|webp)$/i)
                   return (
+                    <div ref={idx === messages.length - 1 ? lastMessageRef : undefined}>
                     <GroupMessageRow
                       key={msgWithKey.clientKey || msg.id}
                       msg={{
@@ -2411,6 +2414,7 @@ export default function GroupChatThread() {
                       }
                       onRemoveMediaItem={selectionMode ? undefined : handleRemoveGroupMediaItem}
                     />
+                    </div>
                   )
                 })}
                 {steveIsTyping && (

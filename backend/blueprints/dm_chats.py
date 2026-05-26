@@ -11,6 +11,8 @@ from backend.services import api_errors, auth_session, session_identity
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services.dm_chat_threads import build_chat_threads_payload
 from backend.services.dm_chats_tables import ensure_deleted_chat_threads_table
+from backend.services.dm_message_reactions import apply_dm_message_reaction, parse_reaction_request
+from backend.services.dm_messages_read import fetch_dm_messages
 from backend.services.dm_unread import count_dm_unread_excluding_cleared, mark_dm_received_before_clear_as_read
 from redis_cache import cache, invalidate_message_cache
 
@@ -350,4 +352,37 @@ def get_dm_documents():
     from backend.services.chat_documents_list import list_dm_documents
 
     ok, payload, status = list_dm_documents(username, peer)
+    return jsonify(payload), status
+
+
+@dm_chats_bp.route("/get_messages", methods=["POST"])
+@_login_required
+def get_messages():
+    """Get messages between current user and another user (full or delta via since_id)."""
+    username = session.get("username")
+    payload = fetch_dm_messages(
+        username,
+        request.form.get("other_user_id"),
+        since_id_param=request.form.get("since_id"),
+        before_id_param=request.form.get("before_id"),
+    )
+    return jsonify(payload)
+
+
+@dm_chats_bp.route("/api/chat/react_to_message", methods=["POST"])
+@_login_required
+def react_to_message():
+    """React to a DM message with an emoji and notify the other participant."""
+    username = session.get("username")
+    message_id, emoji = parse_reaction_request(
+        use_json=request.is_json,
+        json_payload=request.get_json(silent=True) if request.is_json else None,
+        form_message_id=request.form.get("message_id"),
+        form_emoji=request.form.get("emoji") or "",
+    )
+    payload, status = apply_dm_message_reaction(
+        username,
+        message_id=message_id,
+        emoji=emoji,
+    )
     return jsonify(payload), status

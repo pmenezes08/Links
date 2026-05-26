@@ -243,7 +243,11 @@
 }
 
 .chat-list-inset {
-  /* Inset snaps instantly; scroll hook re-pins synchronously in useLayoutEffect. */
+  /* scroll-padding-bottom set inline from composer hook */
+}
+
+.chat-list-inset.chat-list-opening {
+  overflow-anchor: none;
 }
 
 .chat-layout-smooth {

@@ -39,7 +39,6 @@ export type { MessageBubbleProps } from './MessageBubble'
 export {
   useKeyboardLayout,
   useIsMobile,
-  useScrollToBottom,
   useTouchDismiss,
   useChatThreadScroll,
 } from './hooks'
@@ -49,12 +48,15 @@ export type { UseChatComposerChromeOptions } from './useChatComposerChrome'
 export { useChatListScrollHandlers } from './useChatListScrollHandlers'
 export type { UseChatListScrollHandlersOptions } from './useChatListScrollHandlers'
 export { useSmoothedPx } from './useSmoothedPx'
-export { CHAT_KEYBOARD_ANIMATION_MS, easeChatKeyboard } from './constants'
+export { CHAT_KEYBOARD_ANIMATION_MS, easeChatKeyboard, DM_POLL_INTERVAL_MS, DM_FULL_SYNC_EVERY_N_POLL } from './constants'
+export { useDmMessagePoll } from './useDmMessagePoll'
+export type { UseDmMessagePollOptions } from './useDmMessagePoll'
 export {
   DEFAULT_NEAR_BOTTOM_PX,
   isNearBottom,
   scrollElementToBottom,
   shouldShowScrollDownAfterOpen,
+  maxScrollTop,
 } from './scrollPin'
 
 // Media senders (already existed)

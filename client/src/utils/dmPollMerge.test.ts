@@ -6,6 +6,7 @@ import {
   shouldRetainOptimisticDuringUpload,
   tryMatchDocumentOptimistic,
 } from './dmPollMerge'
+import { mergePolledDmMessages } from './dmPollMergeMessages'
 
 describe('dmPollMerge', () => {
   it('mergeDocumentFields prefers server path but keeps existing when server omits', () => {
@@ -61,5 +62,40 @@ describe('dmPollMerge', () => {
     const prev = [{ id: 1, text: 'hi', sent: true }]
     const next = [{ id: 1, text: 'hi', sent: true }]
     expect(retainMessagesIfUnchanged(prev, next, messagePollSignature)).toBe(prev)
+  })
+
+  it('mergePolledDmMessages updates reaction on existing id (full sync)', () => {
+    const prev = [
+      { id: 10, text: 'hello', reaction: null, sent: false, time: '2026-05-26T12:00:00.000Z', clientKey: '10' },
+    ]
+    const next = mergePolledDmMessages(
+      prev,
+      [{ id: 10, text: 'hello', reaction: '👍', sent: false, time: '2026-05-26T12:00:00.000Z' }],
+      {
+        username: 'bob',
+        metaRef: {},
+        idBridge: { tempToServer: new Map(), serverToTemp: new Map() },
+        recentOptimistic: new Map(),
+        pendingDeletions: new Set(),
+        storedReactions: {},
+      },
+    )
+    expect(next).not.toBe(prev)
+    expect(next[0].reaction).toBe('👍')
+  })
+
+  it('mergePolledDmMessages keeps prev ref when server delta is unchanged', () => {
+    const prev = [
+      { id: 10, text: 'hello', reaction: '👍', sent: false, time: '2026-05-26T12:00:00.000Z', clientKey: '10' },
+    ]
+    const next = mergePolledDmMessages(prev, [], {
+      username: 'bob',
+      metaRef: {},
+      idBridge: { tempToServer: new Map(), serverToTemp: new Map() },
+      recentOptimistic: new Map(),
+      pendingDeletions: new Set(),
+      storedReactions: {},
+    })
+    expect(next).toBe(prev)
   })
 })

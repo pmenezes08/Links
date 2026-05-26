@@ -18,14 +18,21 @@ export function shouldShowScrollDownAfterOpen(
 }
 
 export function scrollElementToBottom(el: HTMLElement, behavior: ScrollBehavior = 'auto'): void {
+  const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight)
   if (behavior === 'auto') {
-    // Synchronous jump — avoids a visible smooth scroll through history on thread open.
-    el.scrollTop = el.scrollHeight
+    el.scrollTop = maxScroll
   } else {
-    el.scrollTo({ top: el.scrollHeight, behavior })
+    el.scrollTo({ top: maxScroll, behavior })
   }
-  const anchor = el.querySelector('.scroll-anchor')
-  if (anchor instanceof HTMLElement) {
-    anchor.scrollIntoView({ behavior, block: 'end' })
+  if (el.scrollHeight <= el.clientHeight) {
+    const anchor = el.querySelector('.scroll-anchor')
+    if (anchor instanceof HTMLElement) {
+      anchor.scrollIntoView({ behavior, block: 'end' })
+    }
   }
+}
+
+/** Maximum scrollTop for a scroll container (for tests). */
+export function maxScrollTop(el: Pick<HTMLElement, 'scrollHeight' | 'clientHeight'>): number {
+  return Math.max(0, el.scrollHeight - el.clientHeight)
 }

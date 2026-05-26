@@ -58,15 +58,9 @@ import {
   useChatListScrollHandlers,
   chatHapticSend,
   ChatAttachMenuRow,
+  useDmMessagePoll,
 } from '../chat'
 import { NativeIconButton } from '../components/NativeIconButton'
-import {
-  mergeDocumentFields,
-  messagePollSignature,
-  retainMessagesIfUnchanged,
-  shouldRetainOptimisticDuringUpload,
-  tryMatchDocumentOptimistic,
-} from '../utils/dmPollMerge'
 import { mentionsSteve } from '../utils/steveClientGate'
 import SteveTypingIndicator from '../components/chat/SteveTypingIndicator'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
@@ -180,7 +174,6 @@ export default function ChatThread(){
   const [, setTyping] = useState(false) // keep setter for API calls; UI label removed
   const typingTimer = useRef<any>(null)
   const isTypingRef = useRef(false) // Track if we've already sent typing indicator
-  const pollTimer = useRef<any>(null)
   const pollInFlight = useRef(false)
   const sendingLockRef = useRef(false)
   const justSentRef = useRef(false)
@@ -343,6 +336,8 @@ export default function ChatThread(){
     setShowScrollDown,
     cancelInitialPin,
     listRevealReady,
+    listOpening,
+    lastMessageRef,
   } = useChatThreadScroll({
     listRef,
     threadKey: username,
@@ -901,390 +896,24 @@ export default function ChatThread(){
     }catch{}
   }, [storageKey])
 
-  // Polling for new messages and typing status
-  // PERFORMANCE: Reduced interval from 2500ms to 1500ms for faster message delivery
-  // Auxiliary calls (typing, active_chat) debounced to reduce network overhead
-  useEffect(() => {
-    if (!username || !otherUserId) return
-    const peer = resolvedPeerRef.current
-    if (!peer || peer.username !== username || peer.userId !== otherUserId) return
-    
-    async function poll(){
-      if (!navigator.onLine) return
-      const gen = threadGenerationRef.current
-      const pollPeer = resolvedPeerRef.current
-      if (!pollPeer || pollPeer.username !== username || pollPeer.userId !== otherUserId) return
-      // Skip polling if we're waiting for server confirmation after sending
-      if (Date.now() < skipNextPollsUntil.current) {
-        return
-      }
-      if (pollInFlight.current) {
-        return
-      }
-      pollInFlight.current = true
-      pollCountRef.current++
-      
-      try{
-        try{
-          // Build request params - include since_id for delta fetching if supported
-          const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
-          if (lastKnownMessageIdRef.current > 0) {
-            fd.append('since_id', String(lastKnownMessageIdRef.current))
-          }
-          
-          const r = await fetch('/get_messages', { 
-            method:'POST', 
-            credentials:'include', 
-            headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
-            body: fd 
-          })
-          const j = await r.json()
-          if (gen !== threadGenerationRef.current) return
-          setSteveIsTyping(Boolean(j?.steve_is_typing))
-          
-          if (j?.success && Array.isArray(j.messages)){
-            // Track highest message ID for delta fetching
-            let maxId = lastKnownMessageIdRef.current
-            j.messages.forEach((m: any) => {
-              const msgId = typeof m.id === 'number' ? m.id : parseInt(m.id, 10)
-              if (!isNaN(msgId) && msgId > maxId) maxId = msgId
-            })
-            if (gen === threadGenerationRef.current) {
-              lastKnownMessageIdRef.current = maxId
-            }
-            
-            // Persist to IndexedDB for offline access
-            if (username && dmOfflineKey && gen === threadGenerationRef.current) cacheMessages(dmOfflineKey, j.messages)
-            
-            const decryptedMessages = j.messages
-            
-            // Load all reactions from ID-based storage (more reliable)
-            const storedReactions = username ? getAllMessageReactions(username) : {}
-            
-            setMessages(prev => {
-              if (gen !== threadGenerationRef.current) return prev
-              // Build map of existing messages by their stable key (clientKey or id)
-              const messagesByKey = new Map()
-              prev.forEach(m => {
-                const key = String(m.clientKey || m.id)
-                messagesByKey.set(key, m)
-              })
-              
-              // CRITICAL: Add recent optimistic messages that might not be in prev yet
-              // This handles React state batching race condition
-              recentOptimisticRef.current.forEach((entry, key) => {
-                if (!messagesByKey.has(key)) {
-                  messagesByKey.set(key, entry.message)
-                }
-              })
-              
-              // Process server messages (now decrypted)
-              const serverMessageKeys = new Set()
-              decryptedMessages.forEach((m: any) => {
-                // Skip if pending deletion
-                if (pendingDeletions.current.has(m.id)) return
-                
-                // Parse reply information from message text
-                let messageText = m.text
-                let replySnippet = undefined
-                let storyReply: { id: string; mediaType: string; mediaPath: string } | undefined = undefined
-                
-                // Check for story reply format: [STORY_REPLY:id:emoji:mediaPath]
-                const storyReplyMatch = messageText.match(/^\[STORY_REPLY:([^:]+):([^:]+):([^\]]*)\][\r\n\s]*(.*)$/s)
-                if (storyReplyMatch) {
-                  storyReply = {
-                    id: storyReplyMatch[1],
-                    mediaType: storyReplyMatch[2],
-                    mediaPath: storyReplyMatch[3]
-                  }
-                  messageText = storyReplyMatch[4]
-                } else {
-                  // Check for regular reply format
-                  const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\][\r\n\s]*(.*)$/s)
-                  if (replyMatch) {
-                    replySnippet = replyMatch[2]
-                    messageText = replyMatch[3]
-                  }
-                }
-                
-                const normalizedTime = ensureNormalizedTime(m.time)
-                // Determine 'sent' strictly from server sender match
-                const isSentByMe = m.sender === undefined ? (m.sent === true) : (m.sender === username)
-                const meta = readMessageMeta(metaRef.current, normalizedTime, messageText, isSentByMe)
-                
-                // Check ID-based reaction storage (primary, more reliable)
-                const idBasedReaction = m.id ? storedReactions[String(m.id)] : undefined
-                
-                // Check if we have a bridge mapping or matching optimistic message
-                let stableKey = idBridgeRef.current.serverToTemp.get(m.id)
-                
-                if (!stableKey) {
-                  // Try to find matching message by content or media path
-                  for (const [key, existing] of messagesByKey.entries()) {
-                    if (existing.sent !== isSentByMe) continue
-                    
-                    // For photo/GIF messages: match by server image_path
-                    if (m.image_path && existing.image_path) {
-                      // If existing already has this server path, it's the same message
-                      if (existing.image_path === m.image_path) {
-                        stableKey = key
-                        idBridgeRef.current.serverToTemp.set(m.id, key)
-                        idBridgeRef.current.tempToServer.set(key, m.id)
-                        break
-                      }
-                      // If existing is optimistic (blob URL), match by time window only
-                      // (don't check text - server sends empty string, optimistic has "📷 Photo"/"🎞️ GIF")
-                      if (existing.isOptimistic && existing.image_path.startsWith('blob:')) {
-                        const serverTs = getMessageTimestamp(m.time)
-                        const existingTs = getMessageTimestamp(existing.time)
-                        if (serverTs !== null && existingTs !== null) {
-                          const timeDiff = Math.abs(serverTs - existingTs)
-                          if (timeDiff < 30000) { // 30 second window for photo/GIF uploads
-                            stableKey = key
-                            idBridgeRef.current.serverToTemp.set(m.id, key)
-                            idBridgeRef.current.tempToServer.set(key, m.id)
-                            break
-                          }
-                        }
-                      }
-                      continue
-                    }
-                    
-                    // For video messages: match by server video_path
-                    if (m.video_path && existing.video_path) {
-                      if (existing.video_path === m.video_path) {
-                        stableKey = key
-                        idBridgeRef.current.serverToTemp.set(m.id, key)
-                        idBridgeRef.current.tempToServer.set(key, m.id)
-                        break
-                      }
-                      // If existing is optimistic (blob URL), match by time window only
-                      if (existing.isOptimistic && existing.video_path.startsWith('blob:')) {
-                        const serverTs = getMessageTimestamp(m.time)
-                        const existingTs = getMessageTimestamp(existing.time)
-                        if (serverTs !== null && existingTs !== null) {
-                          const timeDiff = Math.abs(serverTs - existingTs)
-                          if (timeDiff < 30000) { // 30 second window for video uploads
-                            stableKey = key
-                            idBridgeRef.current.serverToTemp.set(m.id, key)
-                            idBridgeRef.current.tempToServer.set(key, m.id)
-                            break
-                          }
-                        }
-                      }
-                      continue
-                    }
-                    
-                    // For PDF document messages: match by server file_path or optimistic blob URL
-                    if (m.file_path || existing.file_path) {
-                      if (tryMatchDocumentOptimistic(m, existing, isSentByMe)) {
-                        stableKey = key
-                        idBridgeRef.current.serverToTemp.set(m.id, key)
-                        idBridgeRef.current.tempToServer.set(key, m.id)
-                        break
-                      }
-                      continue
-                    }
-
-                    // For audio messages: match by server audio_path or optimistic blob URL
-                    if (m.audio_path && existing.audio_path) {
-                      // If existing already has this server path, it's the same message
-                      if (existing.audio_path === m.audio_path) {
-                        stableKey = key
-                        idBridgeRef.current.serverToTemp.set(m.id, key)
-                        idBridgeRef.current.tempToServer.set(key, m.id)
-                        break
-                      }
-                      // If existing is optimistic (blob URL) and within time window, it's our upload
-                      if (existing.isOptimistic && existing.audio_path.startsWith('blob:')) {
-                        const serverTs = getMessageTimestamp(m.time)
-                        const existingTs = getMessageTimestamp(existing.time)
-                        if (serverTs !== null && existingTs !== null) {
-                          const timeDiff = Math.abs(serverTs - existingTs)
-                          if (timeDiff < 60000) { // 60 second window for audio uploads (can take a while)
-                            stableKey = key
-                            idBridgeRef.current.serverToTemp.set(m.id, key)
-                            idBridgeRef.current.tempToServer.set(key, m.id)
-                            break
-                          }
-                        }
-                      }
-                      continue
-                    }
-                    
-                    // For text messages: match by content (only if optimistic)
-                    if (!existing.isOptimistic) continue
-                    if (existing.text !== messageText) continue
-                    const serverTs = getMessageTimestamp(m.time)
-                    const existingTs = getMessageTimestamp(existing.time)
-                    if (serverTs !== null && existingTs !== null) {
-                      const timeDiff = Math.abs(serverTs - existingTs)
-                      if (timeDiff < 5000) {
-                        stableKey = key
-                        // Set up bridge for future
-                        idBridgeRef.current.serverToTemp.set(m.id, key)
-                        idBridgeRef.current.tempToServer.set(key, m.id)
-                        break
-                      }
-                    }
-                  }
-                }
-                
-                // Use stable key if found, otherwise use server id
-                const finalKey = stableKey || String(m.id)
-                serverMessageKeys.add(finalKey)
-                
-                // Get existing message to preserve local state
-                const existing = messagesByKey.get(finalKey)
-                
-                // CRITICAL: Preserve successfully decrypted text
-                // If we already have a successful decryption, don't overwrite it with a failed one
-                const shouldPreserveExistingText = 
-                  existing && 
-                  !existing.decryption_error && 
-                  existing.text && 
-                  !existing.text.startsWith('[🔒') &&
-                  m.decryption_error
-                
-                const finalText = shouldPreserveExistingText ? existing.text : messageText
-                const finalDecryptionError = shouldPreserveExistingText ? false : m.decryption_error
-                const docFields = mergeDocumentFields(m, existing)
-                
-                // Update or create message
-                // Server-side reaction takes priority over local storage
-                const serverReaction = m.reaction || null
-                messagesByKey.set(finalKey, {
-                  id: m.id, // Use server ID now
-                  text: finalText,
-                  image_path: m.image_path,
-                  video_path: m.video_path,
-                  media_paths: m.media_paths ?? existing?.media_paths,
-                  audio_path: m.audio_path,
-                  audio_duration_seconds: m.audio_duration_seconds,
-                  audio_summary: existing?.audio_summary || m.audio_summary || null,
-                  file_path: docFields.file_path,
-                  file_name: docFields.file_name,
-                  sent: isSentByMe,
-                  time: existing?.time ?? normalizedTime,
-                  reaction: serverReaction || existing?.reaction || idBasedReaction || meta.reaction,
-                  replySnippet: replySnippet || existing?.replySnippet || meta.replySnippet,
-                  storyReply: storyReply || existing?.storyReply,
-                  isOptimistic: false, // No longer optimistic
-                  edited_at: m.edited_at || null,
-                  clientKey: finalKey, // Keep stable key
-                  // CRITICAL: Include encryption fields from server!
-                  is_encrypted: m.is_encrypted,
-                  encrypted_body: m.encrypted_body,
-                  encrypted_body_for_sender: m.encrypted_body_for_sender,
-                  signal_protocol: m.signal_protocol, // CRITICAL: Preserve Signal Protocol flag!
-                  decryption_error: finalDecryptionError
-                })
-              })
-              
-              // CRITICAL: Deduplicate by server ID - handles race where poll adds message before confirmation
-              const seenServerIds = new Map<number|string, string>()
-              let dedupCount = 0
-              for (const [key, msg] of messagesByKey.entries()) {
-                const serverId = msg.id
-                if (serverId && !String(serverId).startsWith('temp_')) {
-                  if (seenServerIds.has(serverId)) {
-                    // Duplicate! Keep the one with tempId key (original optimistic)
-                    const existingKey = seenServerIds.get(serverId)!
-                    dedupCount++
-                    if (key.startsWith('temp_')) {
-                      messagesByKey.delete(existingKey)
-                      seenServerIds.set(serverId, key)
-                    } else {
-                      messagesByKey.delete(key)
-                    }
-                  } else {
-                    seenServerIds.set(serverId, key)
-                  }
-                }
-              }
-              
-              // Clean up very old UNCONFIRMED optimistic messages (30s timeout) — never drop failed/outbox bubbles
-              const now = Date.now()
-              for (const [key, msg] of messagesByKey.entries()) {
-                if (msg.isOptimistic && !msg.sendFailed) {
-                  if (shouldRetainOptimisticDuringUpload(msg, now)) {
-                    continue
-                  }
-                  const ts = getMessageTimestamp(msg.time)
-                  if (ts !== null) {
-                    const age = now - ts
-                    if (age > 30000) {
-                      messagesByKey.delete(key)
-                    }
-                  } else {
-                    messagesByKey.delete(key)
-                  }
-                }
-              }
-              
-              // Convert map to array and sort
-              const allMessages = Array.from(messagesByKey.values())
-              
-              const sorted = allMessages.sort((a, b) => {
-                const aId = typeof a.id === 'number' ? a.id : parseInt(String(a.id)) || 0
-                const bId = typeof b.id === 'number' ? b.id : parseInt(String(b.id)) || 0
-                const aIsServer = aId > 0
-                const bIsServer = bId > 0
-                if (aIsServer && bIsServer) return aId - bId
-                if (aIsServer && !bIsServer) return -1
-                if (!aIsServer && bIsServer) return 1
-                const aTs = getMessageTimestamp(a.time) ?? Date.now()
-                const bTs = getMessageTimestamp(b.time) ?? Date.now()
-                return aTs - bTs
-              })
-              return retainMessagesIfUnchanged(prev, sorted, messagePollSignature) as Message[]
-            })
-          }
-        }catch(e){
-          console.error('Polling error:', e)
-        }
-        
-        // PERFORMANCE: Debounce typing status to every 5th poll (~7.5s)
-        // This reduces network calls while still providing reasonable feedback
-        if (pollCountRef.current % 5 === 0) {
-          try{
-            const t = await fetch(`/api/typing?peer=${encodeURIComponent(username!)}`, { credentials:'include', headers: { 'Accept': 'application/json' } })
-            const tj = await t.json().catch(()=>null)
-            setTyping(!!tj?.is_typing)
-          }catch{}
-        }
-      
-        // PERFORMANCE: Debounce active_chat ping to every 4th poll (~6s)
-        // This reduces server load while maintaining presence
-        if (pollCountRef.current % 4 === 0) {
-          try{
-            await fetch('/api/active_chat', {
-              method:'POST',
-              credentials:'include',
-              headers:{ 'Content-Type':'application/json' },
-              body: JSON.stringify({ peer: username })
-            })
-          }catch{}
-        }
-      } finally {
-        pollInFlight.current = false
-      }
-    }
-    
-    poll()
-    
-    pollTimer.current = setInterval(poll, 1500)
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') poll()
-    }
-    document.addEventListener('visibilitychange', handleVisibility)
-    
-    return () => { 
-      if (pollTimer.current) clearInterval(pollTimer.current)
-      document.removeEventListener('visibilitychange', handleVisibility)
-    }
-  }, [username, otherUserId, dmOfflineKey])
+  useDmMessagePoll<Message>({
+    username,
+    otherUserId,
+    dmOfflineKey,
+    threadGenerationRef,
+    resolvedPeerRef,
+    lastKnownMessageIdRef,
+    skipNextPollsUntil,
+    pollInFlightRef: pollInFlight,
+    pollCountRef,
+    idBridgeRef,
+    recentOptimisticRef,
+    pendingDeletions,
+    metaRef,
+    setMessages,
+    setSteveIsTyping,
+    setTyping,
+  })
 
   function adjustTextareaHeight(){
     const ta = textareaRef.current
@@ -2690,7 +2319,7 @@ export default function ChatThread(){
       {/* ====== MESSAGES LIST - SCROLLABLE ====== */}
       <div
         ref={listRef}
-        className="flex-1 space-y-[9px] overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-list-inset"
+        className={`flex-1 space-y-[9px] overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-list-inset${listOpening ? ' chat-list-opening' : ''}`}
         style={{
           WebkitOverflowScrolling: 'touch',
           overscrollBehaviorY: 'auto',
@@ -2731,7 +2360,7 @@ export default function ChatThread(){
           const showDateSeparator = messageDate !== prevMessageDate
           
           return (
-            <div key={m.clientKey ?? m.id}>
+            <div key={m.clientKey ?? m.id} ref={index === messages.length - 1 ? lastMessageRef : undefined}>
               {showDateSeparator && (
                 <div className="flex justify-center my-3">
                   <div className="liquid-glass-chip px-3 py-1 text-xs text-white/80 border">

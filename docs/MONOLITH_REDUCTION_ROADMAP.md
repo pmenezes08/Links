@@ -31,7 +31,7 @@ Engineering initiative to shrink oversized modules so **humans and agents** can 
 
 | Epic | Hot spots | Acceptance idea |
 |------|-----------|-----------------|
-| **Chat UI kernel** | `client/src/pages/ChatThread.tsx`, `GroupChatThread.tsx`, `client/src/chat/*` | New DM/group behaviour added via **shared** `chat/` modules (`useChatThreadScroll`, `useChatComposerChrome`, `scrollPin.ts`); page files mostly wire routes + layout. **ChatThread** composer/keyboard block extracted to `useChatComposerChrome.ts` (PR2). |
+| **Chat UI kernel** | `client/src/pages/ChatThread.tsx`, `GroupChatThread.tsx`, `client/src/chat/*` | New DM/group behaviour added via **shared** `chat/` modules (`useChatThreadScroll`, `useChatComposerChrome`, `scrollPin.ts`, `useDmMessagePoll`); page files mostly wire routes + layout. **`backend/blueprints/dm_chats.py`** now owns **`POST /get_messages`** and **`POST /api/chat/react_to_message`** via **`dm_messages_read`** / **`dm_message_reactions`** services (removed from monolith). |
 | **Community surfaces** | `CommunityFeed.tsx`, `PostDetail.tsx` | Feed/post changes touch **named subcomponents/hooks**; no single-file 5k-line growth. |
 | **Group chat API** | `backend/blueprints/group_chat.py` | Blueprint handlers stay thin; complex logic in **importable services** with unit tests where feasible. |
 | **KB / Steve / retrieval services** | `backend/services/knowledge_base.py`, `steve_knowledge_base.py`, `networking_retrieval.py` | Clear module boundaries (e.g. seeds vs runtime resolution vs RAG); no circular imports. |
