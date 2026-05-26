@@ -685,6 +685,9 @@ export default function Communities(){
     navigate(`${location.pathname}${qs ? `?${qs}` : ''}`, { replace: true })
   }, [location.pathname, location.search, navigate])
 
+  const parentIdFromQuery = new URLSearchParams(location.search).get('parent_id')
+  const showSubCommunityFab = activeTab === 'management' && !!parentIdFromQuery
+
   return (
     <div className="min-h-screen bg-black text-white relative pb-safe">
       {/* Global header used from App */}
@@ -851,7 +854,7 @@ export default function Communities(){
       {/* Menu unified via HeaderBar */}
 
       <div
-        className="app-subnav-offset max-w-2xl mx-auto pb-6 px-3"
+        className={`app-subnav-offset max-w-2xl mx-auto px-3 ${showSubCommunityFab ? 'pb-[calc(var(--sab-px,0px)+6.5rem)]' : 'pb-6'}`}
         style={{ '--app-subnav-height': '48px' } as CSSProperties}
       >
         {ownerIntroResumeFeedId != null && (

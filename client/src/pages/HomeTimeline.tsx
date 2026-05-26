@@ -12,6 +12,8 @@ import { openExternalInApp } from '../utils/openExternalInApp'
 import EditableAISummary from '../components/EditableAISummary'
 import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
 import DashboardBottomNav from '../components/DashboardBottomNav'
+import { NativeListRow } from '../components/NativeListRow'
+import { PanelCard } from '../components/settings/SettingsSection'
 import { useBadges } from '../contexts/BadgeContext'
 const HOME_TIMELINE_CACHE_KEY = 'home-timeline'
 const HOME_TIMELINE_CACHE_TTL_MS = 2 * 60 * 1000 // 2 minutes
@@ -178,7 +180,101 @@ function dashboardFeedScopeSegment(feedMode: 'unread' | 'recent48h', feedParentI
 const DASHBOARD_FEED_CACHE_TTL_MS = 2 * 60 * 1000
 const DASHBOARD_FEED_LAST_NONEMPTY_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const DASHBOARD_FEED_CACHE_VERSION = 'dashboard-feed-v2'
-const DASHBOARD_FEED_LAST_NONEMPTY_VERSION = 'dashboard-feed-last-v1'
+const DASHBOARD_FEED_LAST_NONEMPTY_VERSION = 'dashboard-feed-last-v2'
+
+function DashboardFeedCaughtUpEmpty() {
+  const { t } = useTranslation()
+  return (
+    <div className="flex flex-col items-center justify-center py-12 px-4">
+      <div className="w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
+        <i className="fa-regular fa-comment-dots text-3xl text-white/30" />
+      </div>
+      <h3 className="text-lg font-medium text-white/80 mb-2 text-center">{t('feed.caught_up')}</h3>
+      <p className="text-sm text-white/50 text-center max-w-xs">{t('feed.no_unread_posts')}</p>
+    </div>
+  )
+}
+
+function DashboardFeedNetworkPicker({
+  feedParentId,
+  dashboardParents,
+  onSelect,
+}: {
+  feedParentId: number | null
+  dashboardParents: { id: number; name: string }[]
+  onSelect: (id: number | null) => void
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const selectedLabel =
+    feedParentId == null
+      ? t('feed.all_networks')
+      : dashboardParents.find((c) => c.id === feedParentId)?.name || t('feed.all_networks')
+
+  const options: { id: number | null; label: string }[] = [
+    { id: null, label: t('feed.all_networks') },
+    ...dashboardParents.map((c) => ({ id: c.id, label: c.name })),
+  ]
+
+  return (
+    <>
+      <PanelCard>
+        <NativeListRow
+          className="px-4 py-3.5 gap-3"
+          onClick={() => setOpen(true)}
+          aria-expanded={open}
+        >
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/28">
+              {t('feed.filter_by_community')}
+            </div>
+            <div className="mt-0.5 text-sm font-medium text-white truncate">{selectedLabel}</div>
+          </div>
+          <i className="fa-solid fa-chevron-down text-xs text-[#9fb0b5] shrink-0" />
+        </NativeListRow>
+      </PanelCard>
+      {open ? (
+        <div
+          className="fixed inset-0 z-[950] flex items-end justify-center bg-black/70 px-3 pb-[calc(var(--sab-px,0px)+12px)]"
+          role="presentation"
+          onClick={() => setOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('feed.filter_by_community')}
+            className="w-full max-w-lg overflow-hidden rounded-3xl border border-[#4db6ac] bg-[#0d1214] shadow-[0_24px_56px_rgba(0,0,0,0.52)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-white/10 text-sm font-semibold text-white text-center">
+              {t('feed.filter_by_community')}
+            </div>
+            <div className="max-h-[min(360px,55dvh)] overflow-y-auto">
+              {options.map((opt) => {
+                const selected = opt.id === feedParentId
+                return (
+                  <NativeListRow
+                    key={opt.id ?? 'all'}
+                    className="px-4 py-3.5 gap-3 border-b border-white/[0.06] last:border-b-0"
+                    onClick={() => {
+                      onSelect(opt.id)
+                      setOpen(false)
+                    }}
+                  >
+                    <span className={`flex-1 text-sm ${selected ? 'text-[#4db6ac] font-medium' : 'text-white'}`}>
+                      {opt.label}
+                    </span>
+                    {selected ? <i className="fa-solid fa-check text-[#4db6ac] text-sm" /> : null}
+                  </NativeListRow>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  )
+}
 
 function dashboardFeedShortCacheKey(scope: string): string {
   return `dashboard-feed:${scope}`
@@ -269,7 +365,8 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
   const [feedMode, setFeedMode] = useState<'unread' | 'recent48h'>('unread')
   const [feedParentId, setFeedParentId] = useState<number | null>(null)
   const [dashboardParents, setDashboardParents] = useState<{ id: number; name: string }[]>([])
-  const [showStaleFeed, setShowStaleFeed] = useState(false)
+  const feedModeRef = useRef(feedMode)
+  feedModeRef.current = feedMode
   const feedFiltersHydrated = useRef(false)
 
   useEffect(() => {
@@ -407,32 +504,14 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
         }
         if (j?.success) {
           const list = Array.isArray(j.posts) ? j.posts : []
-          if (list.length === 0 && feedMode === 'unread') {
-            const fallback = readDeviceCache<any>(lastKey, DASHBOARD_FEED_LAST_NONEMPTY_VERSION)
-            const fbPosts = Array.isArray(fallback?.posts) ? fallback.posts : []
-            if (fbPosts.length > 0) {
-              setData(fallback)
-              setShowStaleFeed(true)
-              setError(null)
-              writeDeviceCache(shortKey, j, DASHBOARD_FEED_CACHE_TTL_MS, DASHBOARD_FEED_CACHE_VERSION)
-            } else {
-              setData(j)
-              setShowStaleFeed(false)
-              setError(null)
-              writeDeviceCache(shortKey, j, DASHBOARD_FEED_CACHE_TTL_MS, DASHBOARD_FEED_CACHE_VERSION)
-            }
-          } else {
-            setData(j)
-            setShowStaleFeed(false)
-            setError(null)
-            writeDeviceCache(shortKey, j, DASHBOARD_FEED_CACHE_TTL_MS, DASHBOARD_FEED_CACHE_VERSION)
-            if (list.length > 0) {
-              writeDeviceCache(lastKey, j, DASHBOARD_FEED_LAST_NONEMPTY_TTL_MS, DASHBOARD_FEED_LAST_NONEMPTY_VERSION)
-            }
+          setData(j)
+          setError(null)
+          writeDeviceCache(shortKey, j, DASHBOARD_FEED_CACHE_TTL_MS, DASHBOARD_FEED_CACHE_VERSION)
+          if (list.length > 0 && feedMode === 'recent48h') {
+            writeDeviceCache(lastKey, j, DASHBOARD_FEED_LAST_NONEMPTY_TTL_MS, DASHBOARD_FEED_LAST_NONEMPTY_VERSION)
           }
         } else if (!hadCache) {
           setError(j?.error || t('errors.generic'))
-          setShowStaleFeed(false)
         }
       } catch {
         if (mounted && !hadCache) setError(t('feed.error_loading'))
@@ -474,6 +553,9 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
           setData((prev: any) => {
             if (!prev) return prev
             const pl = Array.isArray(prev.posts) ? prev.posts : []
+            if (mode === 'dashboard_feed' && feedModeRef.current === 'unread') {
+              return { ...prev, posts: pl.filter((post: any) => post.id !== postId) }
+            }
             const updated = pl.map((post: any) =>
               post.id === postId ? { ...post, has_viewed: true } : post,
             )
@@ -489,7 +571,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
         return false
       }
     },
-    [refreshBadges],
+    [refreshBadges, mode],
   )
 
   const { setTitle } = useHeader()
@@ -594,24 +676,11 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
                 />
               </button>
             </div>
-            <label className="block">
-              <span className="sr-only">{t('feed.filter_by_community')}</span>
-              <select
-                value={feedParentId ?? ''}
-                onChange={(e) => {
-                  const v = e.target.value
-                  setFeedParentId(v === '' ? null : parseInt(v, 10))
-                }}
-                className="w-full rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5 text-sm text-white focus:outline-none focus:border-[#4db6ac]/50 focus:ring-1 focus:ring-[#4db6ac]/25"
-              >
-                <option value="">{t('feed.all_networks')}</option>
-                {dashboardParents.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <DashboardFeedNetworkPicker
+              feedParentId={feedParentId}
+              dashboardParents={dashboardParents}
+              onSelect={setFeedParentId}
+            />
           </div>
         ) : null}
         {loading ? (
@@ -619,6 +688,9 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
         ) : error ? (
           <div className="p-3 text-red-400">{error}</div>
         ) : posts.length === 0 ? (
+          mode === 'dashboard_feed' && feedMode === 'unread' ? (
+            <DashboardFeedCaughtUpEmpty />
+          ) : (
           <div className="p-3 text-[#9fb0b5]">
             {mode === 'dashboard_feed'
               ? feedMode === 'recent48h'
@@ -626,19 +698,9 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
                 : t('feed.no_unread_posts')
               : t('feed.no_recent_posts')}
           </div>
+          )
         ) : (
           <div className="space-y-3">
-            {showStaleFeed && mode === 'dashboard_feed' ? (
-              <div className="flex flex-col items-center justify-center py-8 px-4 mb-1">
-                <div className="w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
-                  <i className="fa-regular fa-comment-dots text-3xl text-white/30" />
-                </div>
-                <h3 className="text-lg font-medium text-white/80 mb-2 text-center">{t('feed.caught_up')}</h3>
-                <p className="text-sm text-white/50 text-center max-w-xs">
-                  {t('feed.showing_recent_activity')}
-                </p>
-              </div>
-            ) : null}
             {posts.flatMap((p, i) => {
               const prev = i > 0 ? posts[i - 1] : null
               const prevCid = prev?.community_id ?? null

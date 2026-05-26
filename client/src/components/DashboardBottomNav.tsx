@@ -142,13 +142,13 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
             role="dialog"
             aria-modal="true"
             aria-label={steveModalView === 'main' ? t('steve.main_aria') : steveModalView === 'recommendations' ? t('steve.recommendations_aria') : t('steve.news_aria')}
-            className="relative z-[950] w-full max-w-sm rounded-2xl overflow-hidden liquid-glass-surface border border-[#4db6ac]/25 shadow-[0_0_52px_-14px_rgba(77,182,172,0.38),0_24px_56px_rgba(0,0,0,0.52)] flex flex-col max-h-[min(420px,78dvh)] min-h-[220px]"
+            className="relative z-[950] w-full max-w-sm rounded-2xl overflow-hidden border border-[#4db6ac] bg-[#0d1214] shadow-[0_24px_56px_rgba(0,0,0,0.52)] flex flex-col max-h-[min(420px,78dvh)] min-h-[220px]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="relative z-[1] flex flex-col flex-1 min-h-0 p-2">
             {steveModalView === 'main' && (
               <>
-                <div className="shrink-0 text-center text-sm font-semibold text-white/95 py-2 border-b border-[#4db6ac]/20 tracking-tight">
+                <div className="shrink-0 text-center text-sm font-semibold text-white/95 py-2 border-b border-white/10 tracking-tight">
                   {t('steve.label')}
                 </div>
                 <div className="flex flex-col justify-center gap-2 flex-1 py-4 px-0.5">
@@ -177,7 +177,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
 
             {steveModalView === 'recommendations' && (
               <>
-                <div className="shrink-0 flex items-center gap-2 py-2 border-b border-[#4db6ac]/20">
+                <div className="shrink-0 flex items-center gap-2 py-2 border-b border-white/10">
                   <button
                     type="button"
                     className="p-2 rounded-lg text-[#9fb0b5] hover:bg-[#4db6ac]/15 hover:text-[#4db6ac] transition-colors"
@@ -215,7 +215,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
 
             {steveModalView === 'news_soon' && (
               <>
-                <div className="shrink-0 flex items-center gap-2 py-2 border-b border-[#4db6ac]/20">
+                <div className="shrink-0 flex items-center gap-2 py-2 border-b border-white/10">
                   <button
                     type="button"
                     className="p-2 rounded-lg text-[#9fb0b5] hover:bg-[#4db6ac]/15 hover:text-[#4db6ac] transition-colors"

@@ -6,6 +6,7 @@ import DeleteCommunityModal, { type DeleteCommunityResult } from '../components/
 import { clearDeviceCache } from '../utils/deviceCache'
 import { invalidateDashboardCache } from '../utils/dashboardCache'
 import { openExternalBillingUrl, providerBadge, providerLabel } from '../utils/mobileStoreBilling'
+import { resolveCommunityBackgroundUrl } from '../utils/communityBackgroundUrl'
 
 // Tiers and Stripe state live exclusively on the root community. The
 // API now also returns a payload for sub-community owners with
@@ -701,7 +702,7 @@ export default function EditCommunity(){
             {currentBackgroundPath && !removeBackground && !imageFile && (
               <div style={{ position: 'relative' }} className="mb-3 rounded-lg border border-white/10 overflow-hidden">
                 <img 
-                  src={`/uploads/${currentBackgroundPath}`} 
+                  src={resolveCommunityBackgroundUrl(currentBackgroundPath)} 
                   alt={t('communities.current_community_image_alt')} 
                   className="w-full max-h-48 object-cover"
                 />

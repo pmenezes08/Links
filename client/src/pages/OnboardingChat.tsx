@@ -431,7 +431,7 @@ export default function OnboardingChat({
   const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
 
   const scrollToBottom = useCallback(() => {
-    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'instant' }), 100)
   }, [])
 
   const { keyboardLift, safeBottomPx } = useFixedComposerKeyboard({ onLayoutNudge: scrollToBottom })

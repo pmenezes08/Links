@@ -7,6 +7,7 @@ import { computeKeyboardLift, readCssPxVar, readVisualViewportImeInset } from '.
 
 const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48
 const NATIVE_KEYBOARD_MIN_HEIGHT = 60
+const ANDROID_IME_INSET_EPSILON = 15
 
 type UseFixedComposerKeyboardOptions = {
   /** Called after keyboard offset reset (visibility/resume) to nudge scroll containers. */
@@ -57,10 +58,12 @@ export function useFixedComposerKeyboard(options: UseFixedComposerKeyboardOption
     const updateOffset = () => {
       if (isAndroid) {
         const ime = readVisualViewportImeInset(VISUAL_VIEWPORT_KEYBOARD_THRESHOLD)
-        setAndroidImeInset(prev => (Math.abs(prev - ime) < 1 ? prev : ime))
-        keyboardOffsetRef.current = ime
-        setKeyboardOffset(ime)
-        setViewportLift(ime)
+        if (ime === 0 || Math.abs(keyboardOffsetRef.current - ime) >= ANDROID_IME_INSET_EPSILON) {
+          keyboardOffsetRef.current = ime
+          setKeyboardOffset(ime)
+          setViewportLift(ime)
+          setAndroidImeInset(ime)
+        }
         return
       }
 
@@ -88,13 +91,17 @@ export function useFixedComposerKeyboard(options: UseFixedComposerKeyboardOption
     }
 
     viewport.addEventListener('resize', handleChange)
-    viewport.addEventListener('scroll', handleChange)
+    if (!isAndroid) {
+      viewport.addEventListener('scroll', handleChange)
+    }
     handleChange()
 
     return () => {
       if (rafId) cancelAnimationFrame(rafId)
       viewport.removeEventListener('resize', handleChange)
-      viewport.removeEventListener('scroll', handleChange)
+      if (!isAndroid) {
+        viewport.removeEventListener('scroll', handleChange)
+      }
     }
   }, [isAndroid])
 

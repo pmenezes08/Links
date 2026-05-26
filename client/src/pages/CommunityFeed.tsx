@@ -35,6 +35,7 @@ import {
 import EditableAISummary from '../components/EditableAISummary'
 import GifPicker from '../components/GifPicker'
 import FeedBottomNav from '../components/FeedBottomNav'
+import { resolveCommunityBackgroundUrl } from '../utils/communityBackgroundUrl'
 import { NativeActionButton } from '../components/NativeActionButton'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
@@ -320,6 +321,7 @@ export default function CommunityFeed() {
     durationSeconds?: number | null
   }
   const [storyEditorOpen, setStoryEditorOpen] = useState(false)
+  const storyChromeActive = !!activeStoryPointer || storyEditorOpen
   const [storyEditorFiles, setStoryEditorFiles] = useState<StoryEditorFile[]>([])
   const [storyEditorActiveIndex, setStoryEditorActiveIndex] = useState(0)
   const storyEditorMediaRef = useRef<HTMLDivElement | null>(null)
@@ -2676,18 +2678,7 @@ export default function CommunityFeed() {
                 <div className="absolute inset-0 bg-black/90 z-[45] pointer-events-none" />
               )}
               <img 
-                src={
-                  (() => {
-                    const p = String(data.community.background_path || '').trim()
-                    if (!p) return ''
-                    if (p.startsWith('http')) return p
-                    if (p.startsWith('/uploads') || p.startsWith('uploads/')) return p.startsWith('/') ? p : `/${p}`
-                    if (p.startsWith('/static')) return p
-                    if (p.startsWith('static/')) return `/${p}`
-                    const fname = p.split('/').slice(-1)[0]
-                    return `/static/community_backgrounds/${fname}`
-                  })()
-                }
+                src={resolveCommunityBackgroundUrl(data.community.background_path)}
                 alt={data.community?.name + ' Header'}
                 className="block w-full h-auto header-image transition-transform duration-300 hover:scale-[1.015]"
                 onError={(e:any)=>{ e.currentTarget.style.display='none' }}
@@ -3644,6 +3635,7 @@ export default function CommunityFeed() {
         </div>
       )}
 
+      {!storyChromeActive ? (
       <FeedBottomNav
         onHome={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
         onMembers={() => navigate(`/community/${community_id}/members`)}
@@ -3675,6 +3667,7 @@ export default function CommunityFeed() {
           </NativeActionButton>
         }
       />
+      ) : null}
 
       {/* Bottom sheet for More - appears above bottom nav */}
       {moreMenuRendered && (

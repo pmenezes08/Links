@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { clearDeviceCache } from '../../utils/deviceCache'
 import { invalidateDashboardCache } from '../../utils/dashboardCache'
+import { resolveCommunityBackgroundUrl } from '../../utils/communityBackgroundUrl'
 
 export const communityOwnerSetupStorageKey = (username: string, communityId: string) =>
   `cpoint_community_owner_setup:v1:${username.trim().toLowerCase()}:${communityId}`
@@ -609,7 +610,7 @@ export default function CommunityOwnerSetupIntro({
           {draft.backgroundPath && !removeBackground && !imageFile && (
             <div className="mt-3 overflow-hidden rounded-lg border border-white/10">
               <img
-                src={`/uploads/${draft.backgroundPath}`}
+                src={resolveCommunityBackgroundUrl(draft.backgroundPath)}
                 alt=""
                 className="max-h-40 w-full object-cover"
               />
