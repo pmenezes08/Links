@@ -91,6 +91,7 @@ from backend.services.notifications import (
     send_push_to_user,
     truncate_notification_preview,
 )
+from backend.services.chat_message_preview import format_chat_message_preview, preview_from_message_row
 from backend.services.native_push import (
     DEFAULT_APNS_ENVIRONMENT,
     associate_install_tokens_with_user,
@@ -13304,9 +13305,9 @@ def send_message():
             # Create or update notification for the recipient (truly atomic)
             _dm_link = f"/user_chat/chat/{username}"
             if is_encrypted:
-                _dm_preview = "New encrypted message"
+                _dm_preview = "Encrypted message"
             else:
-                _dm_preview = _truncate_notif_preview((message or "").strip()) or f"Message from {username}"
+                _dm_preview = format_chat_message_preview(message) or f"Message from {username}"
             try:
                 if USE_MYSQL:
                     c.execute("""
@@ -13796,11 +13797,7 @@ def send_photo_message():
             invalidate_message_cache(username, recipient_username)
             
             _photo_dm_link = f"/user_chat/chat/{username}"
-            _photo_preview = (
-                _truncate_notif_preview((message or "").strip())
-                if (message or "").strip()
-                else "Photo"
-            )
+            _photo_preview = format_chat_message_preview(message, image_path=relative_path) or "Photo"
             # Create or update notification for the recipient (truly atomic)
             try:
                 if USE_MYSQL:
@@ -14000,10 +13997,12 @@ def send_dm_media():
             invalidate_message_cache(username, recipient_username)
 
             count = len(uploaded_paths)
-            if count > 1:
-                _dm_media_preview = _truncate_notif_preview(f"{count} media files")
-            else:
-                _dm_media_preview = "Photo" if first_image else "Video"
+            _dm_media_preview = format_chat_message_preview(
+                '',
+                image_path=first_image,
+                video_path=first_video,
+                media_paths=uploaded_paths,
+            ) or ("Photo" if first_image else "Video")
             _dm_media_link = f"/user_chat/chat/{username}"
 
             try:
@@ -14153,11 +14152,7 @@ def send_video_message():
             invalidate_message_cache(username, recipient_username)
             
             _video_dm_link = f"/user_chat/chat/{username}"
-            _video_preview = (
-                _truncate_notif_preview((message or "").strip())
-                if (message or "").strip()
-                else "Video"
-            )
+            _video_preview = format_chat_message_preview(message, video_path=relative_path) or "Video"
             try:
                 if USE_MYSQL:
                     c.execute("""
@@ -14349,7 +14344,9 @@ def send_audio_message():
 
             # Notification (same as text/photo)
             _audio_dm_link = f"/user_chat/chat/{username}"
-            _audio_preview = "Voice message"
+            _audio_preview = format_chat_message_preview(
+                '', audio_path=rel_path, audio_summary=audio_summary
+            ) or "Voice message"
             try:
                 if USE_MYSQL:
                     c.execute(
@@ -16255,30 +16252,21 @@ def api_archived_chats():
                             display_name = profile_row[0] or other_username
                             profile_picture = profile_row[1] if len(profile_row) > 1 else None
                     
-                    # Get last message
-                    c.execute(
-                        f"""
-                        SELECT message, timestamp 
-                        FROM messages 
-                        WHERE (sender = {ph} AND receiver = {ph}) OR (sender = {ph} AND receiver = {ph})
-                        ORDER BY timestamp DESC
-                        LIMIT 1
-                        """,
-                        (username, other_username, other_username, username)
-                    )
-                    msg_row = c.fetchone()
+                    # Get last message (with media-aware preview)
+                    from backend.services.dm_chat_threads import _fetch_last_message_row
+
+                    msg_row = _fetch_last_message_row(c, ph, username, other_username, None)
                     last_message_text = None
                     last_activity_time = None
                     if msg_row:
                         if hasattr(msg_row, 'get'):
-                            last_message_text = msg_row.get('message', '')
                             last_activity_time = msg_row.get('timestamp')
                         elif hasattr(msg_row, 'keys'):
-                            last_message_text = msg_row['message']
                             last_activity_time = msg_row['timestamp']
                         else:
-                            last_message_text = msg_row[0]
                             last_activity_time = msg_row[1] if len(msg_row) > 1 else None
+                        preview = preview_from_message_row(msg_row)
+                        last_message_text = preview or None
                     
                     profile_picture_url = url_for('static', filename=profile_picture) if profile_picture else None
                     

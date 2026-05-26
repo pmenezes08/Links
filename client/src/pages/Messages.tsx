@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
+import { formatChatMessagePreview } from '../utils/chatMessagePreview'
 import { useHeader } from '../contexts/HeaderContext'
 import { useBadges } from '../contexts/BadgeContext'
 import { useUserProfile } from '../contexts/UserProfileContext'
@@ -44,24 +45,9 @@ type CommunityNode = {
 const CACHE_VERSION = 'v1'
 const CACHE_TTL_MS = 10 * 60 * 1000 // 10 minutes
 
-// Format last message for preview - handles story replies and regular replies
+// Format last message for preview - handles story replies, regular replies, and media labels
 function formatLastMessagePreview(text: string | null, t: TFunction): string {
-  if (!text) return t('chat.say_hello')
-  
-  // Check for story reply format: [STORY_REPLY:id:emoji:mediaPath]\n<message>
-  const storyReplyMatch = text.match(/^\[STORY_REPLY:[^\]]+\][\r\n\s]*(.*)$/s)
-  if (storyReplyMatch) {
-    const actualMessage = storyReplyMatch[1]?.trim()
-    return actualMessage ? t('chat.replied_to_story_with', { message: actualMessage }) : t('chat.replied_to_story')
-  }
-  
-  // Check for regular reply format: [REPLY:sender:snippet]\n<message>
-  const replyMatch = text.match(/^\[REPLY:[^\]]+\][\r\n\s]*(.*)$/s)
-  if (replyMatch) {
-    return replyMatch[1]?.trim() || text
-  }
-  
-  return text
+  return formatChatMessagePreview(text, t)
 }
 
 export default function Messages(){
@@ -838,7 +824,7 @@ export default function Messages(){
                               </div>
                               <div className="text-[13px] text-[#9fb0b5] truncate">
                                 {gc.last_message ? (
-                                  <span><span className="font-medium">{gc.last_message.sender}:</span> {gc.last_message.text}</span>
+                                  <span><span className="font-medium">{gc.last_message.sender}:</span> {formatLastMessagePreview(gc.last_message.text, t)}</span>
                                 ) : (
                                   <span>{t('chat.members_count', { count: gc.member_count })}</span>
                                 )}

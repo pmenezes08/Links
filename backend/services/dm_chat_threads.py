@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime
+from typing import Any
 
 from flask import url_for
 
+from backend.services.chat_message_preview import preview_from_message_row
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.dm_chats_tables import ensure_archived_chats_table
 from redis_cache import CHAT_THREADS_TTL, cache
@@ -24,6 +26,51 @@ def _normalize_last_activity_time(value: object) -> str | None:
         return value.isoformat()
     s = str(value).strip()
     return s if s else None
+
+
+def _fetch_last_message_row(
+    cursor,
+    ph: str,
+    username: str,
+    other_username: str,
+    deleted_after: str | None,
+) -> Any:
+    """Load the latest message row with media columns when available."""
+    base_where = (
+        f"((sender = {ph} AND receiver = {ph}) OR (sender = {ph} AND receiver = {ph}))"
+    )
+    params: tuple[Any, ...]
+    if deleted_after:
+        where = f"{base_where} AND timestamp > {ph}"
+        params = (username, other_username, other_username, username, deleted_after)
+    else:
+        where = base_where
+        params = (username, other_username, other_username, username)
+
+    full_select = f"""
+        SELECT message, timestamp, sender, is_encrypted,
+               image_path, video_path, audio_path, audio_summary, media_paths
+        FROM messages
+        WHERE {where}
+        ORDER BY timestamp DESC
+        LIMIT 1
+    """
+    minimal_select = f"""
+        SELECT message, timestamp, sender
+        FROM messages
+        WHERE {where}
+        ORDER BY timestamp DESC
+        LIMIT 1
+    """
+    try:
+        cursor.execute(full_select, params)
+        return cursor.fetchone()
+    except Exception:
+        try:
+            cursor.execute(minimal_select, params)
+            return cursor.fetchone()
+        except Exception:
+            return None
 
 
 def build_chat_threads_payload(username: str) -> dict:
@@ -146,62 +193,15 @@ def build_chat_threads_payload(username: str) -> dict:
                         continue
 
                     del_at_for_preview = deleted_threads.get(other_username) if other_username in deleted_threads else None
-                    try:
-                        if del_at_for_preview:
-                            c.execute(
-                                f"""
-                                SELECT message, timestamp, sender, is_encrypted
-                                FROM messages
-                                WHERE ((sender = {ph} AND receiver = {ph}) OR (sender = {ph} AND receiver = {ph}))
-                                  AND timestamp > {ph}
-                                ORDER BY timestamp DESC
-                                LIMIT 1
-                                """,
-                                (username, other_username, other_username, username, del_at_for_preview),
-                            )
-                        else:
-                            c.execute(
-                                f"""
-                                SELECT message, timestamp, sender, is_encrypted
-                                FROM messages
-                                WHERE (sender = {ph} AND receiver = {ph}) OR (sender = {ph} AND receiver = {ph})
-                                ORDER BY timestamp DESC
-                                LIMIT 1
-                                """,
-                                (username, other_username, other_username, username),
-                            )
-                    except Exception:
-                        if del_at_for_preview:
-                            c.execute(
-                                f"""
-                                SELECT message, timestamp, sender
-                                FROM messages
-                                WHERE ((sender = {ph} AND receiver = {ph}) OR (sender = {ph} AND receiver = {ph}))
-                                  AND timestamp > {ph}
-                                ORDER BY timestamp DESC
-                                LIMIT 1
-                                """,
-                                (username, other_username, other_username, username, del_at_for_preview),
-                            )
-                        else:
-                            c.execute(
-                                f"""
-                                SELECT message, timestamp, sender
-                                FROM messages
-                                WHERE (sender = {ph} AND receiver = {ph}) OR (sender = {ph} AND receiver = {ph})
-                                ORDER BY timestamp DESC
-                                LIMIT 1
-                                """,
-                                (username, other_username, other_username, username),
-                            )
-                    last_row = c.fetchone()
+                    last_row = _fetch_last_message_row(
+                        c, ph, username, other_username, del_at_for_preview
+                    )
                     last_message_text = None
                     last_activity_time = None
                     last_sender = None
                     is_encrypted = False
                     if last_row:
                         if hasattr(last_row, "keys"):
-                            last_message_text = last_row["message"]
                             last_activity_time = last_row["timestamp"]
                             last_sender = last_row["sender"]
                             try:
@@ -209,13 +209,14 @@ def build_chat_threads_payload(username: str) -> dict:
                             except (KeyError, IndexError, TypeError):
                                 is_encrypted = False
                         else:
-                            last_message_text = last_row[0]
                             last_activity_time = last_row[1]
                             last_sender = last_row[2]
                             is_encrypted = bool(last_row[3]) if len(last_row) > 3 else False
 
-                    if is_encrypted and not last_message_text:
-                        last_message_text = "🔒 Encrypted message"
+                        preview = preview_from_message_row(last_row)
+                        last_message_text = preview or None
+                        if is_encrypted and not preview:
+                            last_message_text = "Encrypted message"
 
                     if del_at_for_preview and not last_activity_time:
                         da = str(del_at_for_preview).strip()

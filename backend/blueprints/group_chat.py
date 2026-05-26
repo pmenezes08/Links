@@ -14,6 +14,7 @@ from functools import wraps
 from flask import Blueprint, jsonify, request, session, url_for
 from werkzeug.utils import secure_filename
 
+from backend.services.chat_message_preview import format_chat_message_preview
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.media import save_uploaded_file
 from backend.services import ai_usage, api_errors, auth_session, session_identity
@@ -733,7 +734,8 @@ def list_group_chats():
                 cleared_before_id = _get_cleared_before_message_id(c, group_id, username, ph)
                 if cleared_before_id > 0:
                     c.execute(f"""
-                        SELECT sender_username, message_text, created_at
+                        SELECT sender_username, message_text, created_at,
+                               image_path, video_path, voice_path, audio_summary
                         FROM group_chat_messages
                         WHERE group_id = {ph} AND is_deleted = 0 AND id > {ph}
                         ORDER BY id DESC
@@ -741,7 +743,8 @@ def list_group_chats():
                     """, (group_id, cleared_before_id))
                 else:
                     c.execute(f"""
-                        SELECT sender_username, message_text, created_at
+                        SELECT sender_username, message_text, created_at,
+                               image_path, video_path, voice_path, audio_summary
                         FROM group_chat_messages
                         WHERE group_id = {ph} AND is_deleted = 0
                         ORDER BY created_at DESC
@@ -750,10 +753,33 @@ def list_group_chats():
                 last_msg_row = c.fetchone()
                 last_message = None
                 if last_msg_row:
+                    if hasattr(last_msg_row, "keys"):
+                        sender = last_msg_row["sender_username"]
+                        msg_text = last_msg_row["message_text"]
+                        created_at = last_msg_row["created_at"]
+                        image_path = last_msg_row.get("image_path")
+                        video_path = last_msg_row.get("video_path")
+                        voice_path = last_msg_row.get("voice_path")
+                        audio_summary = last_msg_row.get("audio_summary")
+                    else:
+                        sender = last_msg_row[0]
+                        msg_text = last_msg_row[1]
+                        created_at = last_msg_row[2]
+                        image_path = last_msg_row[3] if len(last_msg_row) > 3 else None
+                        video_path = last_msg_row[4] if len(last_msg_row) > 4 else None
+                        voice_path = last_msg_row[5] if len(last_msg_row) > 5 else None
+                        audio_summary = last_msg_row[6] if len(last_msg_row) > 6 else None
+                    preview_text = format_chat_message_preview(
+                        msg_text,
+                        image_path=image_path,
+                        video_path=video_path,
+                        audio_path=voice_path,
+                        audio_summary=audio_summary,
+                    )
                     last_message = {
-                        "sender": last_msg_row["sender_username"] if hasattr(last_msg_row, "keys") else last_msg_row[0],
-                        "text": last_msg_row["message_text"] if hasattr(last_msg_row, "keys") else last_msg_row[1],
-                        "time": last_msg_row["created_at"] if hasattr(last_msg_row, "keys") else last_msg_row[2],
+                        "sender": sender,
+                        "text": preview_text or msg_text or "",
+                        "time": created_at,
                     }
                 
                 # Get unread count
@@ -1768,14 +1794,22 @@ def send_group_message(group_id: int):
                 other_members = [r["username"] if hasattr(r, "keys") else r[0] for r in c.fetchall()]
                 
                 # Determine message preview
-                if voice_path:
-                    preview = "🎤 Voice message"
-                elif video_path:
-                    preview = "🎬 Video"
-                elif image_path:
-                    preview = "📷 Photo"
-                else:
-                    preview = message_text[:50] + "..." if len(message_text) > 50 else message_text
+                preview = format_chat_message_preview(
+                    message_text,
+                    image_path=image_path,
+                    video_path=video_path,
+                    audio_path=voice_path,
+                    audio_summary=audio_summary,
+                )
+                if not preview:
+                    if voice_path:
+                        preview = "Voice message"
+                    elif video_path:
+                        preview = "Video"
+                    elif image_path:
+                        preview = "Photo"
+                    else:
+                        preview = message_text[:50] + "..." if len(message_text) > 50 else message_text
                 
                 # Detect @mentions in the message (case-insensitive)
                 mentioned_users = set()
