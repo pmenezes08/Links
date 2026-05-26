@@ -2329,6 +2329,16 @@ export default function GroupChatThread() {
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
                   onClick={() => {
                     setHeaderMenuOpen(false)
+                    navigate(`/group_chat/${group_id}/documents`)
+                  }}
+                >
+                  <i className="fa-solid fa-file-pdf text-xs text-[#4db6ac]" />
+                  <span>{t('chat.view_documents')}</span>
+                </button>
+                <button
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                  onClick={() => {
+                    setHeaderMenuOpen(false)
                     if (!confirm(t('chat.reset_steve_confirm'))) return
                     fetch(`/api/group_chat/${group_id}/steve_reset_context`, {
                       method: 'POST',

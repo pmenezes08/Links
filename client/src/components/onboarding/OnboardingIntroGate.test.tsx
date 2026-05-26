@@ -70,7 +70,7 @@ describe('OnboardingIntroGate', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     expect(screen.getByRole('heading', { name: 'Meet Steve' })).toBeInTheDocument()
     expect(screen.getByText(/C-Point's heart and intelligence/i)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Start onboarding' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Set up your Profile' }))
     expect(onStart).toHaveBeenCalledTimes(1)
   })
 
@@ -106,7 +106,7 @@ describe('OnboardingIntroGate', () => {
     expect(screen.getByRole('heading', { name: 'The C-Point Manifesto' })).toBeInTheDocument()
     expect(screen.getByText(/No public feeds\. No self-promotion/i)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Start onboarding' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Set up your Profile' }))
     expect(onStart).toHaveBeenCalledTimes(1)
   })
 

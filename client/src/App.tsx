@@ -52,6 +52,8 @@ import ChatThread from './pages/ChatThread'
 import GroupChatThread from './pages/GroupChatThread'
 import GroupChatMedia from './pages/GroupChatMedia'
 import ChatMedia from './pages/ChatMedia'
+import GroupChatDocuments from './pages/GroupChatDocuments'
+import ChatDocuments from './pages/ChatDocuments'
 import Profile from './pages/Profile'
 import PublicProfile from './pages/PublicProfile'
 import AccountSettings from './pages/AccountSettings'
@@ -74,6 +76,7 @@ import GroupFeed from './pages/GroupFeed'
 import EditGroup from './pages/EditGroup'
 import CommentReply from './pages/CommentReply'
 import ShareIncomingRouteRedirect from './pages/ShareIncomingRouteRedirect'
+import { isOnboardingFullscreenOverlayActive } from './utils/fullscreenOverlay'
 import { ensureAccountIsolationForUsername } from './utils/accountStateReset'
 import {
   GOOGLE_ANDROID_CLIENT_ID,
@@ -99,6 +102,7 @@ function AppRoutes(){
   const [profileLoading, setProfileLoading] = useState(true)
   const [profileError, setProfileError] = useState<string | null>(null)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
+  const [fullscreenOverlayTick, setFullscreenOverlayTick] = useState(0)
   const isChatRoute = location.pathname.startsWith('/user_chat/chat/') || location.pathname.startsWith('/group_chat/')
 
   const scrollRegionRef = useRef<HTMLDivElement | null>(null)
@@ -159,6 +163,12 @@ function AppRoutes(){
     }
   }, [])
 
+  useEffect(() => {
+    const bump = () => setFullscreenOverlayTick(t => t + 1)
+    window.addEventListener('cpoint-fullscreen-overlay', bump)
+    return () => window.removeEventListener('cpoint-fullscreen-overlay', bump)
+  }, [])
+
   const applyKeyboardOffset = useCallback((nextOffset: number) => {
     setKeyboardOffset(prev => (Math.abs(prev - nextOffset) < 1 ? prev : nextOffset))
     document.documentElement.style.setProperty('--keyboard-offset', `${nextOffset}px`)
@@ -168,7 +178,7 @@ function AppRoutes(){
   }, [])
 
   useLayoutEffect(() => {
-    if (isChatRoute) {
+    if (isChatRoute || isOnboardingFullscreenOverlayActive()) {
       applyKeyboardOffset(0)
       return
     }
@@ -179,6 +189,10 @@ function AppRoutes(){
     let rafId: number | null = null
 
     const updateOffset = () => {
+      if (isChatRoute || isOnboardingFullscreenOverlayActive()) {
+        applyKeyboardOffset(0)
+        return
+      }
       const nextOffset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
       applyKeyboardOffset(nextOffset)
     }
@@ -201,7 +215,7 @@ function AppRoutes(){
         delete document.body.dataset.keyboard
       }
     }
-  }, [applyKeyboardOffset, isChatRoute])
+  }, [applyKeyboardOffset, isChatRoute, fullscreenOverlayTick])
 
   useEffect(() => {
     if (Capacitor.getPlatform() === 'web') return
@@ -209,12 +223,18 @@ function AppRoutes(){
     Keyboard.setResizeMode({ mode: KeyboardResize.None }).catch(() => {})
     Keyboard.setScroll({ isDisabled: true }).catch(() => {})
 
-    if (isChatRoute) return
+    // Chat + onboarding manage keyboard lift locally; Android uses visualViewport only (see useFixedComposerKeyboard).
+    if (isChatRoute || isOnboardingFullscreenOverlayActive()) return
+    if (Capacitor.getPlatform() !== 'ios') return
 
     let showSub: PluginListenerHandle | undefined
     let hideSub: PluginListenerHandle | undefined
 
     const handleShow = (info: KeyboardInfo) => {
+      if (isOnboardingFullscreenOverlayActive()) {
+        applyKeyboardOffset(0)
+        return
+      }
       const height = info?.keyboardHeight ?? 0
       applyKeyboardOffset(height)
     }
@@ -235,7 +255,7 @@ function AppRoutes(){
       hideSub?.remove()
       applyKeyboardOffset(0)
     }
-  }, [applyKeyboardOffset, isChatRoute])
+  }, [applyKeyboardOffset, isChatRoute, fullscreenOverlayTick])
 
   const [deepLinkJoin, setDeepLinkJoin] = useState<{ name: string; id: number } | null>(null)
   const processedUrlsRef = useRef<Set<string>>(new Set())
@@ -689,7 +709,8 @@ function AppRoutes(){
     currentPathName.startsWith('/community_feed_react/') ||
     currentPathName.startsWith('/group_feed_react/') ||
     (currentPathName.startsWith('/community/') && currentPathName.includes('/feed'))
-  const mainPaddingBottom = isChatRoute
+  const suppressGlobalKeyboardPad = isChatRoute || isOnboardingFullscreenOverlayActive()
+  const mainPaddingBottom = suppressGlobalKeyboardPad
     ? '0px'
     : hasBottomChrome
       ? `${keyboardOffset}px`
@@ -740,8 +761,10 @@ function AppRoutes(){
                   <Route path="/user_chat/new" element={<NewMessage />} />
                   <Route path="/user_chat/chat/:username" element={<ChatThread />} />
                   <Route path="/chat/:username/media" element={<ChatMedia />} />
+                  <Route path="/chat/:username/documents" element={<ChatDocuments />} />
                   <Route path="/group_chat/:group_id" element={<GroupChatThread />} />
                   <Route path="/group_chat/:group_id/media" element={<GroupChatMedia />} />
+                  <Route path="/group_chat/:group_id/documents" element={<GroupChatDocuments />} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/profile_react" element={<Profile />} />
                   <Route path="/profile/:username" element={<PublicProfile />} />

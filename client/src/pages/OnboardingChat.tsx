@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
 import {
@@ -424,12 +425,16 @@ export default function OnboardingChat({
   const b2bOrgRef = useRef('')
   const b2bParentRef = useRef('')
   const tierHintsRef = useRef<OnboardingTierHints | null>(null)
+  const composerRef = useRef<HTMLDivElement | null>(null)
+  const composerCardRef = useRef<HTMLDivElement | null>(null)
+  const defaultComposerPadding = 72
+  const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
   }, [])
 
-  const { keyboardLift, safeBottomPx } = useFixedComposerKeyboard({ onLayoutNudge: scrollToBottom })
+  const { keyboardLift, safeBottomPx, showKeyboard } = useFixedComposerKeyboard({ onLayoutNudge: scrollToBottom })
 
   const addSteveMessage = useCallback((text: string, opts?: Partial<ChatMessage>) => {
     setIsTyping(true)
@@ -2181,9 +2186,30 @@ export default function OnboardingChat({
     !composingBio &&
     !showCvUpload
   const showPhotoUpload = lastSteveMsg?.photoUpload && stage === 'photo'
-  const composerBottom = `${keyboardLift}px`
-  const composerClearance = showPhotoUpload || showCvUpload ? 124 : showInput ? 112 : 24
-  const composerPaddingBottom = keyboardLift > 0 ? '8px' : `${safeBottomPx + 8}px`
+  const showComposer = showInput || showPhotoUpload || showCvUpload
+  const bottomChromeInset = keyboardLift > 0 ? keyboardLift : safeBottomPx
+  const effectiveComposerHeight = showComposer ? composerHeight : 24
+  const listPaddingBottom = `${bottomChromeInset + effectiveComposerHeight + 8}px`
+
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return
+    const node = composerCardRef.current
+    if (!node) return
+
+    const updateHeight = () => {
+      const height = node.getBoundingClientRect().height
+      if (!height) return
+      setComposerHeight(prev => (Math.abs(prev - height) < 1 ? prev : height))
+    }
+
+    updateHeight()
+    const observer = new ResizeObserver(updateHeight)
+    observer.observe(node)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [showComposer, showInput, showPhotoUpload, showCvUpload])
 
   if (booting) {
     return (
@@ -2247,7 +2273,7 @@ export default function OnboardingChat({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ paddingBottom: `${safeBottomPx + keyboardLift + composerClearance}px` }}>
+      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ paddingBottom: listPaddingBottom }}>
         <div className="max-w-lg mx-auto space-y-3">
           {messages.map((msg, i) => (
             <div key={i}>
@@ -2500,173 +2526,164 @@ export default function OnboardingChat({
         </div>
       </div>
 
-      {/* Photo upload area */}
-      {showPhotoUpload && (
+      {/* Composer — portaled for Android keyboard lift (matches ChatThread) */}
+      {showComposer && typeof document !== 'undefined' && createPortal(
         <div
-          className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3"
+          ref={composerRef}
+          className="fixed left-0 right-0"
           style={{
-            bottom: composerBottom,
-            position: 'fixed',
-            left: '0',
-            right: '0',
-            zIndex: 1000,
-            paddingBottom: composerPaddingBottom,
+            bottom: keyboardLift > 0 ? `${keyboardLift}px` : '0',
+            zIndex: 1101,
+            display: 'flex',
+            flexDirection: 'column',
+            touchAction: 'manipulation',
+            pointerEvents: 'auto',
           }}
         >
-          <div className="max-w-lg mx-auto">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-            <div className="flex items-center gap-3">
-              {picPreview ? (
-                <img src={picPreview} alt={oc(t, 'ui.preview_alt')} className="w-14 h-14 rounded-full object-cover border-2 border-[#4db6ac]/40" />
-              ) : (
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-14 h-14 rounded-full border-2 border-dashed border-white/20 flex items-center justify-center cursor-pointer hover:border-[#4db6ac]/50 transition"
-                >
-                  <i className="fa-solid fa-camera text-white/30" />
+          <div
+            ref={composerCardRef}
+            className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3"
+          >
+            {showPhotoUpload && (
+              <div className="max-w-lg mx-auto">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                <div className="flex items-center gap-3">
+                  {picPreview ? (
+                    <img src={picPreview} alt={oc(t, 'ui.preview_alt')} className="w-14 h-14 rounded-full object-cover border-2 border-[#4db6ac]/40" />
+                  ) : (
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-14 h-14 rounded-full border-2 border-dashed border-white/20 flex items-center justify-center cursor-pointer hover:border-[#4db6ac]/50 transition"
+                    >
+                      <i className="fa-solid fa-camera text-white/30" />
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    {!picFile ? (
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-4 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white/70 hover:bg-white/[0.1] transition w-full"
+                      >
+                        {oc(t, 'ui.choose_photo')}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handlePhotoUpload}
+                        disabled={uploadingPic}
+                        className="px-4 py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110 transition w-full disabled:opacity-50"
+                      >
+                        {uploadingPic ? oc(t, 'ui.uploading') : oc(t, 'ui.upload_photo')}
+                      </button>
+                    )}
+                  </div>
                 </div>
-              )}
-              <div className="flex-1">
-                {!picFile ? (
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-4 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white/70 hover:bg-white/[0.1] transition w-full"
-                  >
-                    {oc(t, 'ui.choose_photo')}
-                  </button>
-                ) : (
-                  <button
-                    onClick={handlePhotoUpload}
-                    disabled={uploadingPic}
-                    className="px-4 py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110 transition w-full disabled:opacity-50"
-                  >
-                    {uploadingPic ? oc(t, 'ui.uploading') : oc(t, 'ui.upload_photo')}
-                  </button>
-                )}
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showCvUpload && (
-        <div
-          className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3"
-          style={{
-            bottom: composerBottom,
-            position: 'fixed',
-            left: '0',
-            right: '0',
-            zIndex: 1000,
-            paddingBottom: composerPaddingBottom,
-          }}
-        >
-          <div className="max-w-lg mx-auto">
-            <input
-              ref={cvFileInputRef}
-              type="file"
-              accept="application/pdf,.pdf"
-              onChange={handleCvFileSelect}
-              className="hidden"
-            />
-            <div className="flex items-center gap-3">
-              <div
-                onClick={() => !cvUploading && cvFileInputRef.current?.click()}
-                className="w-14 h-14 rounded-xl border-2 border-dashed border-white/20 flex items-center justify-center cursor-pointer hover:border-[#4db6ac]/50 transition shrink-0"
-                role="presentation"
-              >
-                <i className="fa-solid fa-file-pdf text-white/35 text-lg" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[11px] text-white/50 truncate mb-1.5">
-                  {cvFile ? cvFile.name : oc(t, 'ui.no_file')}
-                </div>
-                {!cvFile ? (
-                  <button
-                    type="button"
-                    onClick={() => cvFileInputRef.current?.click()}
-                    disabled={cvUploading}
-                    className="px-4 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white/70 hover:bg-white/[0.1] transition w-full disabled:opacity-50"
-                  >
-                    {oc(t, 'ui.choose_pdf')}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleCvParseUpload}
-                    disabled={cvUploading}
-                    className="px-4 py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110 transition w-full disabled:opacity-50"
-                  >
-                    {cvUploading ? oc(t, 'ui.reading_cv') : oc(t, 'ui.upload_extract')}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Text input */}
-      {showInput && (
-        <div
-          className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3"
-          style={{
-            bottom: composerBottom,
-            position: 'fixed',
-            left: '0',
-            right: '0',
-            zIndex: 1000,
-            paddingBottom: composerPaddingBottom,
-          }}
-        >
-          <div className="max-w-lg mx-auto flex gap-2">
-            {lastSteveMsg?.inputType === 'textarea' ? (
-              <textarea
-                ref={textareaRef}
-                value={inputValue}
-                onChange={e => setInputValue(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    handleSubmit()
-                  }
-                }}
-                placeholder={lastSteveMsg.inputPlaceholder || oc(t, 'placeholders.type_here')}
-                rows={3}
-                className="flex-1 px-3.5 py-2.5 rounded-xl border border-white/10 bg-white/[0.04] text-sm text-white placeholder-white/30 focus:border-[#4db6ac]/50 focus:outline-none resize-none"
-              />
-            ) : (
-              <input
-                ref={inputRef}
-                type={lastSteveMsg?.inputType === 'url' ? 'url' : 'text'}
-                value={inputValue}
-                onChange={e => setInputValue(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    handleSubmit()
-                  }
-                }}
-                placeholder={lastSteveMsg?.inputPlaceholder || oc(t, 'placeholders.type_here')}
-                className="flex-1 px-3.5 py-2.5 rounded-xl border border-white/10 bg-white/[0.04] text-sm text-white placeholder-white/30 focus:border-[#4db6ac]/50 focus:outline-none"
-                autoFocus
-              />
             )}
-            <button
-              onClick={handleSubmit}
-              disabled={!inputValue.trim()}
-              className="px-4 py-2.5 rounded-xl bg-[#4db6ac] text-black font-semibold text-sm hover:brightness-110 transition disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
-            >
-              <i className="fa-solid fa-paper-plane" />
-            </button>
+
+            {showCvUpload && (
+              <div className="max-w-lg mx-auto">
+                <input
+                  ref={cvFileInputRef}
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  onChange={handleCvFileSelect}
+                  className="hidden"
+                />
+                <div className="flex items-center gap-3">
+                  <div
+                    onClick={() => !cvUploading && cvFileInputRef.current?.click()}
+                    className="w-14 h-14 rounded-xl border-2 border-dashed border-white/20 flex items-center justify-center cursor-pointer hover:border-[#4db6ac]/50 transition shrink-0"
+                    role="presentation"
+                  >
+                    <i className="fa-solid fa-file-pdf text-white/35 text-lg" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] text-white/50 truncate mb-1.5">
+                      {cvFile ? cvFile.name : oc(t, 'ui.no_file')}
+                    </div>
+                    {!cvFile ? (
+                      <button
+                        type="button"
+                        onClick={() => cvFileInputRef.current?.click()}
+                        disabled={cvUploading}
+                        className="px-4 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white/70 hover:bg-white/[0.1] transition w-full disabled:opacity-50"
+                      >
+                        {oc(t, 'ui.choose_pdf')}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleCvParseUpload}
+                        disabled={cvUploading}
+                        className="px-4 py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110 transition w-full disabled:opacity-50"
+                      >
+                        {cvUploading ? oc(t, 'ui.reading_cv') : oc(t, 'ui.upload_extract')}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showInput && (
+              <div className="max-w-lg mx-auto flex gap-2">
+                {lastSteveMsg?.inputType === 'textarea' ? (
+                  <textarea
+                    ref={textareaRef}
+                    value={inputValue}
+                    onChange={e => setInputValue(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        handleSubmit()
+                      }
+                    }}
+                    placeholder={lastSteveMsg.inputPlaceholder || oc(t, 'placeholders.type_here')}
+                    rows={3}
+                    className="flex-1 px-3.5 py-2.5 rounded-xl border border-white/10 bg-white/[0.04] text-sm text-white placeholder-white/30 focus:border-[#4db6ac]/50 focus:outline-none resize-none"
+                  />
+                ) : (
+                  <input
+                    ref={inputRef}
+                    type={lastSteveMsg?.inputType === 'url' ? 'url' : 'text'}
+                    value={inputValue}
+                    onChange={e => setInputValue(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        handleSubmit()
+                      }
+                    }}
+                    placeholder={lastSteveMsg?.inputPlaceholder || oc(t, 'placeholders.type_here')}
+                    className="flex-1 px-3.5 py-2.5 rounded-xl border border-white/10 bg-white/[0.04] text-sm text-white placeholder-white/30 focus:border-[#4db6ac]/50 focus:outline-none"
+                    autoFocus
+                  />
+                )}
+                <button
+                  onClick={handleSubmit}
+                  disabled={!inputValue.trim()}
+                  className="px-4 py-2.5 rounded-xl bg-[#4db6ac] text-black font-semibold text-sm hover:brightness-110 transition disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                >
+                  <i className="fa-solid fa-paper-plane" />
+                </button>
+              </div>
+            )}
           </div>
-        </div>
+          <div
+            style={{
+              height: showKeyboard ? '0px' : `${safeBottomPx}px`,
+              background: '#000',
+              flexShrink: 0,
+            }}
+          />
+        </div>,
+        document.body
       )}
 
       {showDeferConfirm && (

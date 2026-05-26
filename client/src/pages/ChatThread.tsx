@@ -2807,6 +2807,16 @@ export default function ChatThread(){
                   <i className="fa-solid fa-photo-film text-xs text-[#4db6ac]" />
                   <span>{t('chat.view_media')}</span>
                 </button>
+                <button
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                  onClick={() => {
+                    setHeaderMenuOpen(false)
+                    navigate(`/chat/${username}/documents`)
+                  }}
+                >
+                  <i className="fa-solid fa-file-pdf text-xs text-[#4db6ac]" />
+                  <span>{t('chat.view_documents')}</span>
+                </button>
                 {isSteveDm && (
                   <button
                     type="button"

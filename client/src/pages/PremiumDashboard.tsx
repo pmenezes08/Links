@@ -21,6 +21,7 @@ import OnboardingChat from './OnboardingChat'
 import OnboardingIntroGate from '../components/onboarding/OnboardingIntroGate'
 import DashboardBottomNav, { isPremiumDashboardPath } from '../components/DashboardBottomNav'
 import AboutCPointModal from '../components/about/AboutCPointModal'
+import { setOnboardingFullscreenOverlay } from '../utils/fullscreenOverlay'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
 const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
@@ -183,6 +184,13 @@ export default function PremiumDashboard() {
     setHeaderHidden(hideHeaderForOnboarding)
     return () => setHeaderHidden(false)
   }, [showOnboarding, showOnboardingWelcome, onboardingLaunching, onboardingGateRequired, setHeaderHidden])
+
+  useEffect(() => {
+    const overlayActive =
+      showOnboarding || showOnboardingWelcome || onboardingLaunching || onboardingGateRequired
+    setOnboardingFullscreenOverlay(overlayActive)
+    return () => setOnboardingFullscreenOverlay(false)
+  }, [showOnboarding, showOnboardingWelcome, onboardingLaunching, onboardingGateRequired])
 
   useEffect(() => {
     // Once Steve is mounted, the bridging overlay is no longer needed; clear it so it never

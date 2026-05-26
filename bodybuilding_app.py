@@ -12888,6 +12888,15 @@ def get_messages():
                                         messages = [m for m in messages if m.get('time') and _dt.strptime(str(m['time'])[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S') > _del_dt2]
                         except Exception:
                             pass
+                        try:
+                            from backend.services.chat_message_document_merge import enrich_messages_with_mysql_documents
+                            with get_db_connection() as _doc_conn:
+                                _doc_c = _doc_conn.cursor()
+                                messages = enrich_messages_with_mysql_documents(
+                                    _doc_c, messages, dm_pair=(username, peer_username)
+                                )
+                        except Exception as _doc_merge_err:
+                            logger.warning("DM document merge failed: %s", _doc_merge_err)
                         if not messages:
                             has_more = False
                         return jsonify({
@@ -12961,7 +12970,8 @@ def get_messages():
                 c.execute(
                     f"""
                     SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, 
-                           is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at, audio_summary, reaction, reaction_by, media_paths
+                           is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at, audio_summary, reaction, reaction_by, media_paths,
+                           file_path, file_name
                     FROM messages
                     WHERE {where_pair_dm}{since_clause}{deleted_at_clause}
                     ORDER BY timestamp ASC
@@ -13089,6 +13099,8 @@ def get_messages():
                     'reaction': reaction_val,
                     'reaction_by': reaction_by_val,
                     'media_paths': media_paths_val,
+                    'file_path': msg.get('file_path') if hasattr(msg, 'get') else None,
+                    'file_name': msg.get('file_name') if hasattr(msg, 'get') else None,
                 }
                 
                 # Add encryption fields if available

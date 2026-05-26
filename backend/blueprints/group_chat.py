@@ -983,40 +983,60 @@ def get_group_messages(group_id: int):
             )
             messages = _enrich_group_message_profile_pictures(messages)
             logger.info(f"Firestore group chat read: {len(messages)} messages for group {group_id}")
-            # Update read receipt even when using Firestore reads
-            if messages:
+            fs_initial_empty = (
+                not before_id
+                and not (since_id and since_id > 0)
+                and not messages
+            )
+            if fs_initial_empty:
+                logger.info(
+                    "Firestore group chat empty on initial load for group %s; falling back to MySQL",
+                    group_id,
+                )
+            else:
                 try:
-                    max_id = max(m["id"] for m in messages if m.get("id", 0) > 0)
-                    if max_id > 0:
-                        now_str = datetime.now().isoformat()
-                        with get_db_connection() as _conn:
-                            _c = _conn.cursor()
-                            _ph = get_sql_placeholder()
-                            _merge_user_group_message_reactions(_c, messages, username, _ph)
-                            from backend.services.database import USE_MYSQL as _USE_MYSQL
-                            if _USE_MYSQL:
-                                _c.execute(f"""
-                                    INSERT INTO group_chat_read_receipts (group_id, username, last_read_message_id, last_read_at)
-                                    VALUES ({_ph}, {_ph}, {_ph}, {_ph})
-                                    ON DUPLICATE KEY UPDATE
-                                        last_read_message_id = GREATEST(last_read_message_id, VALUES(last_read_message_id)),
-                                        last_read_at = VALUES(last_read_at)
-                                """, (group_id, username, max_id, now_str))
-                            else:
-                                _c.execute(f"""
-                                    INSERT INTO group_chat_read_receipts (group_id, username, last_read_message_id, last_read_at)
-                                    VALUES ({_ph}, {_ph}, {_ph}, {_ph})
-                                    ON CONFLICT(group_id, username) DO UPDATE SET
-                                        last_read_message_id = MAX(last_read_message_id, {_ph}),
-                                        last_read_at = {_ph}
-                                """, (group_id, username, max_id, now_str, max_id, now_str))
-                            _conn.commit()
-                except Exception as rr_err:
-                    logger.warning(f"Failed to update read receipt on Firestore path: {rr_err}")
-            
-            # Steve typing status is stored in Redis/in-memory cache, not Firestore.
-            _steve_typing = is_group_typing(group_id)
-            return jsonify({"success": True, "messages": messages, "has_more": len(messages) == limit, "steve_is_typing": _steve_typing})
+                    from backend.services.chat_message_document_merge import enrich_messages_with_mysql_documents
+                    with get_db_connection() as _doc_conn:
+                        _doc_c = _doc_conn.cursor()
+                        messages = enrich_messages_with_mysql_documents(
+                            _doc_c, messages, group_id=group_id
+                        )
+                except Exception as _doc_merge_err:
+                    logger.warning("Group document merge failed: %s", _doc_merge_err)
+                # Update read receipt even when using Firestore reads
+                if messages:
+                    try:
+                        max_id = max(m["id"] for m in messages if m.get("id", 0) > 0)
+                        if max_id > 0:
+                            now_str = datetime.now().isoformat()
+                            with get_db_connection() as _conn:
+                                _c = _conn.cursor()
+                                _ph = get_sql_placeholder()
+                                _merge_user_group_message_reactions(_c, messages, username, _ph)
+                                from backend.services.database import USE_MYSQL as _USE_MYSQL
+                                if _USE_MYSQL:
+                                    _c.execute(f"""
+                                        INSERT INTO group_chat_read_receipts (group_id, username, last_read_message_id, last_read_at)
+                                        VALUES ({_ph}, {_ph}, {_ph}, {_ph})
+                                        ON DUPLICATE KEY UPDATE
+                                            last_read_message_id = GREATEST(last_read_message_id, VALUES(last_read_message_id)),
+                                            last_read_at = VALUES(last_read_at)
+                                    """, (group_id, username, max_id, now_str))
+                                else:
+                                    _c.execute(f"""
+                                        INSERT INTO group_chat_read_receipts (group_id, username, last_read_message_id, last_read_at)
+                                        VALUES ({_ph}, {_ph}, {_ph}, {_ph})
+                                        ON CONFLICT(group_id, username) DO UPDATE SET
+                                            last_read_message_id = MAX(last_read_message_id, {_ph}),
+                                            last_read_at = {_ph}
+                                    """, (group_id, username, max_id, now_str, max_id, now_str))
+                                _conn.commit()
+                    except Exception as rr_err:
+                        logger.warning(f"Failed to update read receipt on Firestore path: {rr_err}")
+
+                # Steve typing status is stored in Redis/in-memory cache, not Firestore.
+                _steve_typing = is_group_typing(group_id)
+                return jsonify({"success": True, "messages": messages, "has_more": len(messages) == limit, "steve_is_typing": _steve_typing})
     except Exception as fs_err:
         logger.warning(f"Firestore group chat read failed, falling back to MySQL: {fs_err}")
 
@@ -1257,6 +1277,38 @@ def get_group_media(group_id: int):
     except Exception as e:
         logger.error(f"Error getting media for group {group_id}: {e}")
         return jsonify({"success": False, "error": "Failed to load media"}), 500
+
+
+@group_chat_bp.route("/api/group_chat/<int:group_id>/documents", methods=["GET"])
+@_login_required
+def get_group_documents(group_id: int):
+    """List PDF documents shared in a group chat."""
+    username = session["username"]
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            _ensure_group_chat_tables(c)
+            c.execute(
+                f"""
+                SELECT 1 FROM group_chat_members
+                WHERE group_id = {ph} AND username = {ph}
+                """,
+                (group_id, username),
+            )
+            if not c.fetchone():
+                return jsonify({"success": False, "error": "Access denied"}), 403
+            _ensure_cleared_before_message_id_column(c)
+            cleared_mid = _get_cleared_before_message_id(c, group_id, username, ph)
+    except Exception as e:
+        logger.error("get_group_documents auth failed for group %s: %s", group_id, e)
+        return jsonify({"success": False, "error": "Failed to load documents"}), 500
+
+    from backend.services.chat_documents_list import list_group_documents
+
+    ok, payload, status = list_group_documents(username, group_id, cleared_before_id=cleared_mid)
+    return jsonify(payload), status
 
 
 @group_chat_bp.route("/api/upload_voice_message", methods=["POST"])

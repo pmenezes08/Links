@@ -336,3 +336,18 @@ def send_dm_document():
     except Exception as e:
         logger.error("send_dm_document error for %s: %s", username, e, exc_info=True)
         return api_errors.error_response("chat.dm.failed_to_send", 500)
+
+
+@dm_chats_bp.route("/api/chat/documents", methods=["GET"])
+@_login_required
+def get_dm_documents():
+    """List PDF documents shared in a DM conversation."""
+    username = session.get("username")
+    peer = (request.args.get("peer") or "").strip()
+    if not peer:
+        return jsonify({"success": False, "error": "peer required"}), 400
+
+    from backend.services.chat_documents_list import list_dm_documents
+
+    ok, payload, status = list_dm_documents(username, peer)
+    return jsonify(payload), status

@@ -322,4 +322,4 @@ export function formatDuration(seconds: number): string {
 
 // Cache settings for chat messages
 export const CHAT_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes (matches server Redis TTL)
-export const CHAT_CACHE_VERSION = 'chat-v1'
+export const CHAT_CACHE_VERSION = 'chat-v2'

@@ -20,6 +20,22 @@ MAX_CHAT_PDF_BYTES = 25 * 1024 * 1024
 MESSAGE_DOCUMENTS_SUBFOLDER = "message_documents"
 
 
+def _firestore_write_with_retry(label: str, write_fn) -> None:
+    last_err = None
+    for attempt in (1, 2):
+        try:
+            write_fn()
+            return
+        except Exception as err:
+            last_err = err
+            if attempt == 1:
+                logger.warning("Firestore %s write attempt %s failed, retrying: %s", label, attempt, err)
+            else:
+                logger.error("Firestore %s write failed after retry: %s", label, err)
+    if last_err:
+        raise last_err
+
+
 def _pdf_size_ok(file_storage: Any) -> Tuple[bool, Optional[str]]:
     size = getattr(file_storage, "content_length", None)
     if size is None:
@@ -210,17 +226,23 @@ def send_dm_pdf(
     try:
         from backend.services.firestore_writes import write_dm_message
 
-        write_dm_message(
-            sender=sender,
-            receiver=recipient_username,
-            message_id=message_id,
-            text=message_text,
-            file_path=stored_path,
-            file_name=file_name,
-            timestamp=inserted_time,
+        def _write():
+            write_dm_message(
+                sender=sender,
+                receiver=recipient_username,
+                message_id=message_id,
+                text=message_text,
+                file_path=stored_path,
+                file_name=file_name,
+                timestamp=inserted_time,
+            )
+
+        _firestore_write_with_retry(
+            f"DM document msg {message_id} ({sender}<->{recipient_username})",
+            _write,
         )
     except Exception as fs_err:
-        logger.warning("Firestore DM document write failed: %s", fs_err)
+        logger.error("Firestore DM document write failed: %s", fs_err)
 
     try:
         from redis_cache import invalidate_message_cache
@@ -316,17 +338,23 @@ def send_group_pdf(
     try:
         from backend.services.firestore_writes import write_group_chat_message
 
-        write_group_chat_message(
-            group_id=group_id,
-            message_id=message_id,
-            sender=sender,
-            text=message_text,
-            file_path=stored_path,
-            file_name=file_name,
-            timestamp=now,
+        def _write():
+            write_group_chat_message(
+                group_id=group_id,
+                message_id=message_id,
+                sender=sender,
+                text=message_text,
+                file_path=stored_path,
+                file_name=file_name,
+                timestamp=now,
+            )
+
+        _firestore_write_with_retry(
+            f"group document msg {message_id} (group {group_id})",
+            _write,
         )
     except Exception as fs_err:
-        logger.warning("Firestore group document write failed: %s", fs_err)
+        logger.error("Firestore group document write failed: %s", fs_err)
 
     return True, {
         "success": True,

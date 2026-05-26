@@ -253,3 +253,60 @@ def test_dm_send_document_route(mysql_dsn):
     body = resp.get_json()
     assert body["success"] is True
     assert body["file_name"] == "brief.pdf"
+
+
+def test_enrich_messages_with_mysql_documents_patches_missing_file_path(mysql_dsn):
+    from backend.services.chat_message_document_merge import enrich_messages_with_mysql_documents
+
+    make_user("merge_a", subscription="premium")
+    make_user("merge_b", subscription="premium")
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        _ensure_messages_table(c)
+        ensure_messages_document_columns(c)
+        c.execute(
+            f"""
+            INSERT INTO messages (sender, receiver, message, file_path, file_name, timestamp)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, NOW())
+            """,
+            ("merge_a", "merge_b", "", "message_documents/merged.pdf", "merged.pdf"),
+        )
+        conn.commit()
+        msg_id = c.lastrowid
+
+        messages = [{"id": msg_id, "text": "", "sent": True, "time": "2026-01-01T00:00:00Z"}]
+        enriched = enrich_messages_with_mysql_documents(
+            c, messages, dm_pair=("merge_a", "merge_b")
+        )
+        assert enriched[0]["file_path"] == "message_documents/merged.pdf"
+        assert enriched[0]["file_name"] == "merged.pdf"
+
+
+def test_dm_documents_list_route(mysql_dsn):
+    import bodybuilding_app
+
+    make_user("doc_list_a", subscription="premium")
+    make_user("doc_list_b", subscription="premium")
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        _ensure_messages_table(c)
+        ensure_messages_document_columns(c)
+        c.execute(
+            f"""
+            INSERT INTO messages (sender, receiver, message, file_path, file_name, timestamp)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, NOW())
+            """,
+            ("doc_list_a", "doc_list_b", "", "message_documents/list.pdf", "list.pdf"),
+        )
+        conn.commit()
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "doc_list_a")
+    resp = client.get("/api/chat/documents?peer=doc_list_b")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["success"] is True
+    assert len(body["documents"]) >= 1
+    assert body["documents"][0]["file_name"] == "list.pdf"

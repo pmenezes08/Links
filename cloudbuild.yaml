@@ -21,6 +21,8 @@ steps:
       - '--allow-unauthenticated'
       - '--timeout=600'
       - '--cpu-boost'
+      - '--min-instances=1'
+      - '--add-cloudsql-instances=cpoint-127c2:europe-west1:cpoint-db'
       # Admin is a separate Cloud Run service; CSRF origin gate must allow its Origin header.
       - '--update-env-vars=CSRF_ALLOWED_ORIGINS=https://cpoint-admin-staging-739552904126.europe-west1.run.app'
 
