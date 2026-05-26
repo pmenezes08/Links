@@ -524,22 +524,21 @@ export async function sendDocumentMessage(options: DocumentMediaOptions) {
 
   const tempId = `temp-doc-${Date.now()}`
   const displayName = file.name || 'document.pdf'
+  const now = new Date().toISOString()
   setSending(true)
-  setMessages(prev => [
-    ...prev,
-    {
-      id: tempId,
-      clientKey: tempId,
-      text: '',
-      file_path: URL.createObjectURL(file),
-      file_name: displayName,
-      sent: true,
-      time: new Date().toISOString(),
-      isOptimistic: true,
-    },
-  ])
+  const optimisticMessage: ChatMessage = {
+    id: tempId,
+    clientKey: tempId,
+    text: '',
+    file_path: URL.createObjectURL(file),
+    file_name: displayName,
+    sent: true,
+    time: now,
+    isOptimistic: true,
+  }
+  setMessages(prev => [...prev, optimisticMessage])
   scrollToBottom()
-  recentOptimisticRef.current.set(tempId, { message: {} as ChatMessage, timestamp: Date.now() })
+  recentOptimisticRef.current.set(tempId, { message: optimisticMessage, timestamp: Date.now() })
 
   try {
     const fd = new FormData()
