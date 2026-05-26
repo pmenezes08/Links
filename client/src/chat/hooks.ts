@@ -368,6 +368,12 @@ export function useChatThreadScroll({
   const lastObservedScrollHeightRef = useRef(0)
   const openPinDeadlineRef = useRef(0)
   const [showScrollDown, setShowScrollDown] = useState(false)
+  /** Hide list until first instant bottom pin (WhatsApp-style open). */
+  const [listRevealReady, setListRevealReady] = useState(false)
+
+  const markListRevealReady = useCallback(() => {
+    setListRevealReady(prev => (prev ? prev : true))
+  }, [])
 
   const scrollListToBottom = useCallback(
     (behavior: ScrollBehavior) => {
@@ -423,7 +429,7 @@ export function useChatThreadScroll({
     [openFabDebounceMs],
   )
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!threadKey) return
     lastVisibleMsgKeyRef.current = null
     userHasScrolledRef.current = false
@@ -433,7 +439,15 @@ export function useChatThreadScroll({
     threadOpenedAtRef.current = Date.now()
     openPinDeadlineRef.current = Date.now() + OPEN_PIN_MAX_MS
     setShowScrollDown(false)
+    setListRevealReady(false)
   }, [threadKey])
+
+  useLayoutEffect(() => {
+    if (!threadKey) return
+    if (messages.length === 0) {
+      setListRevealReady(true)
+    }
+  }, [threadKey, messages.length])
 
   const messageTailKey = useMemo(() => {
     if (messages.length === 0) return null
@@ -448,7 +462,8 @@ export function useChatThreadScroll({
     if (!el) return
     if (userHasScrolledRef.current && !isNearBottom(el, DEFAULT_NEAR_BOTTOM_PX)) return
     scrollListToBottom('auto')
-  }, [bottomInsetPx, listRef, scrollListToBottom])
+    if (messages.length > 0) markListRevealReady()
+  }, [bottomInsetPx, listRef, scrollListToBottom, messages.length, markListRevealReady])
 
   useLayoutEffect(() => {
     if (messages.length === 0 || messageTailKey == null) return
@@ -460,57 +475,54 @@ export function useChatThreadScroll({
     if (nearBottom || !userHasScrolledRef.current) {
       scrollListToBottom('auto')
       setShowScrollDown(false)
+      markListRevealReady()
     } else {
       maybeShowScrollDown(false)
     }
-  }, [messageTailKey, messages.length, scrollListToBottom, listRef, maybeShowScrollDown])
+  }, [messageTailKey, messages.length, scrollListToBottom, listRef, maybeShowScrollDown, markListRevealReady])
 
   useLayoutEffect(() => {
     if (settleGenerationRef.current == null) return
     const el = listRef.current
     if (!el || userHasScrolledRef.current) return
     ensurePinnedToBottom()
+    markListRevealReady()
     settleGenerationRef.current = null
-  }, [messages.length, messageTailKey, ensurePinnedToBottom, listRef])
+  }, [messages.length, messageTailKey, ensurePinnedToBottom, listRef, markListRevealReady])
 
   useLayoutEffect(() => {
     const stack = messageStackRef.current
     if (!stack || typeof ResizeObserver === 'undefined') return
-    let frame = 0
     const onStackResize = () => {
       if (userHasScrolledRef.current) return
-      cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(() => {
-        const list = listRef.current
-        if (!list || userHasScrolledRef.current) return
+      const list = listRef.current
+      if (!list) return
 
-        const height = list.scrollHeight
-        if (height === lastObservedScrollHeightRef.current) {
-          stableHeightFramesRef.current += 1
-        } else {
-          stableHeightFramesRef.current = 0
-          lastObservedScrollHeightRef.current = height
-        }
+      const height = list.scrollHeight
+      if (height === lastObservedScrollHeightRef.current) {
+        stableHeightFramesRef.current += 1
+      } else {
+        stableHeightFramesRef.current = 0
+        lastObservedScrollHeightRef.current = height
+      }
 
-        const pinStillActive =
-          initialPinActiveRef.current && Date.now() < openPinDeadlineRef.current
-        const layoutStable = stableHeightFramesRef.current >= STABLE_SCROLL_HEIGHT_FRAMES
+      const layoutStable = stableHeightFramesRef.current >= STABLE_SCROLL_HEIGHT_FRAMES
+      if (
+        layoutStable ||
+        (initialPinActiveRef.current && Date.now() >= openPinDeadlineRef.current)
+      ) {
+        initialPinActiveRef.current = false
+      }
 
-        if (layoutStable) {
-          initialPinActiveRef.current = false
-        }
-
-        const behavior: ScrollBehavior = pinStillActive && !layoutStable ? 'smooth' : 'auto'
-        scrollElementToBottom(list, behavior)
-      })
+      scrollElementToBottom(list, 'auto')
+      if (messages.length > 0) markListRevealReady()
     }
     const observer = new ResizeObserver(onStackResize)
     observer.observe(stack)
     return () => {
-      cancelAnimationFrame(frame)
       observer.disconnect()
     }
-  }, [threadKey, messages.length, listRef])
+  }, [threadKey, messages.length, listRef, markListRevealReady])
 
   const cancelInitialPin = useCallback(() => {
     initialPinActiveRef.current = false
@@ -527,5 +539,6 @@ export function useChatThreadScroll({
     showScrollDown,
     setShowScrollDown,
     cancelInitialPin,
+    listRevealReady,
   }
 }

@@ -18,7 +18,12 @@ export function shouldShowScrollDownAfterOpen(
 }
 
 export function scrollElementToBottom(el: HTMLElement, behavior: ScrollBehavior = 'auto'): void {
-  el.scrollTo({ top: el.scrollHeight, behavior })
+  if (behavior === 'auto') {
+    // Synchronous jump — avoids a visible smooth scroll through history on thread open.
+    el.scrollTop = el.scrollHeight
+  } else {
+    el.scrollTo({ top: el.scrollHeight, behavior })
+  }
   const anchor = el.querySelector('.scroll-anchor')
   if (anchor instanceof HTMLElement) {
     anchor.scrollIntoView({ behavior, block: 'end' })

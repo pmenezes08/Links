@@ -368,6 +368,7 @@ export default function GroupChatThread() {
     showScrollDown,
     setShowScrollDown,
     cancelInitialPin,
+    listRevealReady,
   } = useChatThreadScroll({
     listRef,
     threadKey: group_id,
@@ -2248,7 +2249,7 @@ export default function GroupChatThread() {
               overscrollBehaviorY: 'auto',
               paddingBottom: listPaddingBottom,
               minHeight: 0,
-              // No opacity transition - always visible
+              visibility: listRevealReady ? 'visible' : 'hidden',
             } as CSSProperties}
             onScroll={(e) => {
               const el = e.currentTarget

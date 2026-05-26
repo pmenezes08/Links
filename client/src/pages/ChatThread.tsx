@@ -266,6 +266,9 @@ export default function ChatThread(){
     pendingDeletions.current.clear()
     shareAttachDoneRef.current = false
     setSteveIsTyping(false)
+    setMessages([])
+    setHasMoreMessages(false)
+    setOtherUserId('')
   }, [username])
 
   const loadReminderVault = useCallback(async () => {
@@ -334,6 +337,7 @@ export default function ChatThread(){
     showScrollDown,
     setShowScrollDown,
     cancelInitialPin,
+    listRevealReady,
   } = useChatThreadScroll({
     listRef,
     threadKey: username,
@@ -2724,8 +2728,8 @@ export default function ChatThread(){
           overscrollBehaviorY: 'auto',
           paddingBottom: listPaddingBottom,
           scrollPaddingBottom: listScrollPaddingBottom,
-          minHeight: 0, // Required for flex child scrolling
-          // No opacity transition - always visible
+          minHeight: 0,
+          visibility: listRevealReady ? 'visible' : 'hidden',
         } as CSSProperties}
         onPointerDown={handleContentPointerDown}
         onPointerUp={handleContentPointerUp}
