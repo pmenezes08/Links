@@ -552,7 +552,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
   return (
     <div
       className="fixed inset-x-0 bottom-0 bg-black text-white"
-      style={{ top: 'var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px)))' }}
+      style={{ top: 'var(--app-header-offset, calc(56px + var(--sat-px, 0px)))' }}
     >
       <div
         className={`h-full max-w-2xl mx-auto overflow-y-auto px-3 ${mode === 'dashboard_feed' && hasDashboardCommunities ? 'pb-[var(--app-dashboard-content-pad-bottom)]' : 'pb-24'}`}

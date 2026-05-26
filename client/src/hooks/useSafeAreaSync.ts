@@ -1,5 +1,7 @@
-import { useLayoutEffect } from 'react'
+import { useEffect, useLayoutEffect } from 'react'
 import { Capacitor } from '@capacitor/core'
+import type { PluginListenerHandle } from '@capacitor/core'
+import { App as CapacitorApp } from '@capacitor/app'
 
 const IPHONE_HOME_INDICATOR_MIN = 34
 
@@ -10,6 +12,11 @@ function hasIosHomeIndicator(): boolean {
   return Math.max(h, w) >= 812 && Math.min(h, w) >= 375
 }
 
+function isIosDevice(): boolean {
+  if (typeof navigator === 'undefined') return false
+  return /iPhone|iPod|iPad/i.test(navigator.userAgent)
+}
+
 /** Probe env(safe-area-inset-*) and sync pixel CSS vars (Capacitor iOS often reports env as 0). */
 export function measureSafeAreaInsets(): { top: number; bottom: number; left: number; right: number } {
   if (typeof document === 'undefined') {
@@ -18,26 +25,39 @@ export function measureSafeAreaInsets(): { top: number; bottom: number; left: nu
 
   const probe = document.createElement('div')
   probe.style.cssText =
+    'position:fixed;bottom:0;left:0;width:0;height:env(safe-area-inset-bottom,0px);' +
+    'pointer-events:none;visibility:hidden;z-index:-1;'
+  document.body.appendChild(probe)
+  let bottom = probe.getBoundingClientRect().height || 0
+  probe.remove()
+
+  probe.style.cssText =
+    'position:fixed;top:0;left:0;width:0;height:env(safe-area-inset-top,0px);' +
+    'pointer-events:none;visibility:hidden;z-index:-1;'
+  document.body.appendChild(probe)
+  let top = probe.getBoundingClientRect().height || 0
+  probe.remove()
+
+  const edgeProbe = document.createElement('div')
+  edgeProbe.style.cssText =
     'position:fixed;top:0;right:0;bottom:0;left:0;width:0;height:0;margin:0;border:0;padding:0;' +
     'padding-top:env(safe-area-inset-top,0px);padding-right:env(safe-area-inset-right,0px);' +
     'padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);' +
     'visibility:hidden;pointer-events:none;z-index:-1;'
-  document.body.appendChild(probe)
+  document.body.appendChild(edgeProbe)
+  const edgeStyle = getComputedStyle(edgeProbe)
+  if (top < 1) top = parseFloat(edgeStyle.paddingTop) || 0
+  if (bottom < 1) bottom = parseFloat(edgeStyle.paddingBottom) || 0
+  const left = parseFloat(edgeStyle.paddingLeft) || 0
+  const right = parseFloat(edgeStyle.paddingRight) || 0
+  edgeProbe.remove()
 
-  const style = getComputedStyle(probe)
-  let top = parseFloat(style.paddingTop) || 0
-  let right = parseFloat(style.paddingRight) || 0
-  let bottom = parseFloat(style.paddingBottom) || 0
-  let left = parseFloat(style.paddingLeft) || 0
-  probe.remove()
-
-  if (bottom < 1 && Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios' && hasIosHomeIndicator()) {
+  if (bottom < 1 && isIosDevice() && hasIosHomeIndicator()) {
     bottom = IPHONE_HOME_INDICATOR_MIN
   }
 
-  if (top < 1 && Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios' && hasIosHomeIndicator()) {
-    const statusFallback = typeof window !== 'undefined' && window.innerHeight >= 812 ? 47 : 20
-    top = statusFallback
+  if (top < 1 && isIosDevice() && hasIosHomeIndicator()) {
+    top = typeof window !== 'undefined' && window.innerHeight >= 812 ? 47 : 20
   }
 
   return { top, bottom, left, right }
@@ -49,6 +69,9 @@ export function applySafeAreaCssVars(insets: { top: number; bottom: number; left
   root.style.setProperty('--sat-px', `${insets.top}px`)
   root.style.setProperty('--sal-px', `${insets.left}px`)
   root.style.setProperty('--sar-px', `${insets.right}px`)
+  root.style.setProperty('--sab', `${insets.bottom}px`)
+  root.style.setProperty('--sat', `${insets.top}px`)
+  root.style.setProperty('--app-header-height', `calc(56px + ${insets.top}px)`)
   root.style.setProperty('--app-dashboard-bottom-nav-height', `calc(3.5rem + ${insets.bottom}px)`)
   root.style.setProperty('--app-dashboard-content-pad-bottom', `calc(3.5rem + ${insets.bottom}px + 12px)`)
   root.style.setProperty('--app-feed-bottom-nav-height', `calc(70px + ${insets.bottom}px)`)
@@ -70,6 +93,24 @@ export function useSafeAreaSync() {
     return () => {
       window.removeEventListener('resize', sync)
       window.visualViewport?.removeEventListener('resize', sync)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+
+    let resumeHandle: PluginListenerHandle | undefined
+
+    const sync = () => {
+      applySafeAreaCssVars(measureSafeAreaInsets())
+    }
+
+    CapacitorApp.addListener('resume', sync).then((handle) => {
+      resumeHandle = handle
+    })
+
+    return () => {
+      resumeHandle?.remove()
     }
   }, [])
 }

@@ -47,6 +47,8 @@ export default function FeedBottomNav({
       className="fixed bottom-0 left-0 right-0 z-[900] px-3 sm:px-6 bg-black"
       style={{
         paddingBottom: 'var(--sab-px, 0px)',
+        paddingLeft: 'var(--sal-px, 0px)',
+        paddingRight: 'var(--sar-px, 0px)',
         touchAction: 'manipulation',
         pointerEvents: 'none',
       }}

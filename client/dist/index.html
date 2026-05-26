@@ -21,14 +21,19 @@
     <style>
       :root {
         color-scheme: dark;
-        --sat: env(safe-area-inset-top, 0px);
-        --sab: env(safe-area-inset-bottom, 0px);
+        --sat-px: 0px;
+        --sab-px: 0px;
+        --sal-px: 0px;
+        --sar-px: 0px;
       }
       
       html, body {
         margin: 0;
         padding: 0;
+        width: 100%;
         height: 100%;
+        min-height: 100dvh;
+        overflow: hidden;
         background: #000000;
         color: #ffffff;
         color-scheme: dark;
@@ -47,9 +52,9 @@
       input, textarea, select { font-size: 16px !important; }
     </style>
     <!-- Font Awesome is now bundled via npm (@fortawesome/fontawesome-free) in main.tsx -->
-    <script type="module" crossorigin src="/assets/index-Dqv02wQt.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-4udBkth8.css">
-      <link rel="modulepreload" href="/assets/index-Dqv02wQt.js">
+    <script type="module" crossorigin src="/assets/index-D8VMhhDF.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-XQlc2xTm.css">
+      <link rel="modulepreload" href="/assets/index-D8VMhhDF.js">
   </head>
   <body>
     <!-- Outside #root so React createRoot() does not remove this until auth is ready -->

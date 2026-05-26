@@ -2395,7 +2395,7 @@ export default function CommunityFeed() {
   const visiblePosts = useMemo(() => postsOnly.slice(0, visiblePostCount), [postsOnly, visiblePostCount])
 
   const feedBackButton = (
-    <div style={{ paddingTop: 'env(safe-area-inset-top, 0px)', background: '#000' }}>
+    <div style={{ paddingTop: 'var(--sat-px, 0px)', background: '#000' }}>
       <div className="h-12 flex items-center px-3">
         <button className="p-2 rounded-full hover:bg-white/10" onClick={() => navigate(-1)} aria-label={t('navigation.back')}>
           <i className="fa-solid fa-arrow-left text-white" />
@@ -2503,7 +2503,7 @@ export default function CommunityFeed() {
       <div
         className="fixed left-0 right-0 top-0 z-[1000] border-b border-white/10"
         style={{
-          paddingTop: 'env(safe-area-inset-top, 0px)',
+          paddingTop: 'var(--sat-px, 0px)',
           background: '#000',
         }}
       >
@@ -2589,7 +2589,7 @@ export default function CommunityFeed() {
             />
             <div
               className="fixed left-3 right-3 z-[1002] rounded-3xl border border-[#4db6ac]/25 bg-[#070909]/95 p-4 text-white shadow-2xl shadow-black/70 ring-1 ring-white/[0.04] backdrop-blur-md sm:left-1/2 sm:right-auto sm:w-[420px] sm:-translate-x-1/2"
-              style={{ top: 'calc(env(safe-area-inset-top, 0px) + 64px)' }}
+              style={{ top: 'calc(var(--sat-px, 0px) + 64px)' }}
             >
               <div className="mb-2 flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -2627,7 +2627,7 @@ export default function CommunityFeed() {
       {(refreshHint || isRefreshing) && (
         <div 
           className="fixed left-0 right-0 z-50 flex items-center justify-center pointer-events-none transition-transform duration-150"
-          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 56px + 16px)', transform: `translateY(${Math.min(pullPx * 0.3, 20)}px)` }}
+          style={{ top: 'calc(var(--sat-px, 0px) + 56px + 16px)', transform: `translateY(${Math.min(pullPx * 0.3, 20)}px)` }}
         >
             <div className="px-3 py-1.5 text-xs rounded-full bg-black/80 border border-white/15 text-white/80 flex items-center gap-2">
               {isRefreshing ? (
@@ -2657,7 +2657,7 @@ export default function CommunityFeed() {
           overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto',
           overscrollBehaviorY: 'auto',
           touchAction: highlightStep === 'reaction' ? 'none' : 'pan-y',
-          paddingTop: `calc(env(safe-area-inset-top, 0px) + ${feedScrollHeaderBodyPx}px + ${pullPx}px)`,
+          paddingTop: `calc(var(--sat-px, 0px) + ${feedScrollHeaderBodyPx}px + ${pullPx}px)`,
         }}
       >
         <div className="space-y-3">
@@ -2965,7 +2965,7 @@ export default function CommunityFeed() {
           {/* Top overlay - progress bars, user info, close button - MUST be above media (z-130) */}
           <div 
             className="absolute left-0 right-0 top-0 z-[30] bg-gradient-to-b from-black via-black/75 to-transparent"
-            style={{ paddingTop: 'max(14px, env(safe-area-inset-top, 14px))' }}
+            style={{ paddingTop: 'max(14px, var(--sat-px, 14px))' }}
             onClick={(e) => {
               e.stopPropagation()
               // Dismiss keyboard when clicking on top overlay

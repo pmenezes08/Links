@@ -678,8 +678,10 @@ function AppRoutes(){
     currentPathName.startsWith('/group_feed_react/') ||
     currentPathName.startsWith('/community/') && currentPathName.includes('/feed')
   const showHeader = authLoaded && !hideHeader && !headerHiddenOverride
-  const headerHeightValue = showHeader ? 'calc(56px + env(safe-area-inset-top, 0px))' : 'env(safe-area-inset-top, 0px)'
-  const contentOffsetValue = headerHiddenOverride ? '0px' : headerHeightValue
+  const headerHeightValue = showHeader
+    ? 'calc(56px + var(--sat-px, 0px))'
+    : 'var(--sat-px, 0px)'
+  const contentOffsetValue = headerHiddenOverride || !showHeader ? '0px' : headerHeightValue
   const hasBottomChrome =
     isPremiumDashboardPath(currentPathName) ||
     currentPathName === '/about_cpoint' ||
@@ -691,7 +693,7 @@ function AppRoutes(){
     ? '0px'
     : hasBottomChrome
       ? `${keyboardOffset}px`
-      : `calc(var(--sab-px, env(safe-area-inset-bottom, 0px)) + ${keyboardOffset}px)`
+      : `calc(var(--sab-px, 0px) + ${keyboardOffset}px)`
   const mainStyle = {
     paddingTop: contentOffsetValue,
     minHeight: '100%',

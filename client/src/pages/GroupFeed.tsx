@@ -210,7 +210,7 @@ export default function GroupFeed(){
     <div
       className="fixed left-0 right-0 top-0 z-[1000] border-b border-white/10"
       style={{
-        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingTop: 'var(--sat-px, 0px)',
         background: '#000',
       }}
     >
@@ -299,7 +299,7 @@ export default function GroupFeed(){
           />
           <div
             className="fixed left-3 right-3 z-[1002] rounded-3xl border border-[#4db6ac]/25 bg-[#070909]/95 p-4 text-white shadow-2xl shadow-black/70 ring-1 ring-white/[0.04] backdrop-blur-md sm:left-1/2 sm:right-auto sm:w-[420px] sm:-translate-x-1/2"
-            style={{ top: 'calc(env(safe-area-inset-top, 0px) + 64px)' }}
+            style={{ top: 'calc(var(--sat-px, 0px) + 64px)' }}
           >
             <div className="mb-2 flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -556,7 +556,7 @@ export default function GroupFeed(){
         {burgerMenuOverlay}
         <div
           className="flex-1 flex items-center justify-center text-[#9fb0b5]"
-          style={{ paddingTop: `calc(env(safe-area-inset-top, 0px) + ${feedScrollHeaderBodyPx}px)` }}
+          style={{ paddingTop: `calc(var(--sat-px, 0px) + ${feedScrollHeaderBodyPx}px)` }}
         >
           {t('common.loading')}
         </div>
@@ -570,7 +570,7 @@ export default function GroupFeed(){
         {burgerMenuOverlay}
         <div
           className="flex-1 flex items-center justify-center px-4 text-red-400 text-center"
-          style={{ paddingTop: `calc(env(safe-area-inset-top, 0px) + ${feedScrollHeaderBodyPx}px)` }}
+          style={{ paddingTop: `calc(var(--sat-px, 0px) + ${feedScrollHeaderBodyPx}px)` }}
         >
           {error}
         </div>
@@ -591,7 +591,7 @@ export default function GroupFeed(){
           overflowY: 'auto',
           overscrollBehaviorY: 'auto',
           touchAction: 'pan-y',
-          paddingTop: `calc(env(safe-area-inset-top, 0px) + ${feedScrollHeaderBodyPx}px + 8px)`,
+          paddingTop: `calc(var(--sat-px, 0px) + ${feedScrollHeaderBodyPx}px + 8px)`,
         }}
       >
         <div className="space-y-3">
@@ -1144,7 +1144,7 @@ export default function GroupFeed(){
             }}
           >
             {/* Safe area top spacer */}
-            <div className="flex-shrink-0" style={{ height: 'env(safe-area-inset-top, 0px)' }} />
+            <div className="flex-shrink-0" style={{ height: 'var(--sat-px, 0px)' }} />
             {/* Header with close button */}
             <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10 flex-shrink-0">
               <button
