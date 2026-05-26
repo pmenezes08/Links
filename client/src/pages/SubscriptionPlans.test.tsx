@@ -1,37 +1,13 @@
 /**
- * Smoke + flow test for `SubscriptionPlans.tsx` (Personal + Community
- * redesign).
- *
- * The page is KB-driven: backend `/api/kb/pricing` returns four SKUs
- * (User Premium, Community Paid Tier, Steve Package, Networking).
- * Business-logic for that payload lives in
- * `tests/test_kb_pricing_endpoint.py`. This front-end suite covers
- * the rendering + interaction contract:
- *
- *   1. While the fetch is in-flight, a skeleton is shown (no cards).
- *   2. After a successful fetch, the two top cards (Personal, Community)
- *      appear and the four "deep" SKU labels (L1/L2/L3, Steve, Networking)
- *      are *not* visible until the user opens the Community modal.
- *   3. Clicking "See community plans" opens the modal listing
- *      L1/L2/L3 + an Enterprise mailto + a "Community Add-ons" entry.
- *   4. Picking a tier opens the CommunityPickerModal preselected on
- *      the chosen tier.
- *   5. The Enterprise row exposes a mailto link to ``sales@c-point.co``.
- *   6. Clicking "Community Add-ons" opens a sub-modal with Steve and
- *      Networking, both badged "Coming soon" with mailto CTAs.
- *   7. A failed fetch renders an inline error (and no crash).
+ * Smoke + flow test for `SubscriptionPlans.tsx` (settings-style hub redesign).
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 import SubscriptionPlans from './SubscriptionPlans'
 import { HeaderContext } from '../contexts/HeaderContext'
-
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
 
 type PricingPayload = ReturnType<typeof makePricingPayload>
 
@@ -146,16 +122,12 @@ function makeActivePayload() {
         subscription_status: 'active',
         current_period_end: '2026-05-24 12:00:00',
         cancel_at_period_end: false,
+        tier_subscription_active: true,
       },
     ],
   }
 }
 
-/**
- * Multi-route fetch mock. Maps URL prefixes to JSON payloads and lets
- * any test that calls multiple endpoints (pricing fetch + community
- * picker fetch) wire all of them up in a single ``installFetch`` call.
- */
 function installFetch(routes: Record<string, unknown>) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input.toString()
@@ -191,6 +163,13 @@ function mockFetchOnce(payload: unknown, init: { ok?: boolean; status?: number }
         json: async () => makeActivePayload(),
       } as Response
     }
+    if (url.startsWith('/api/iap/config')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: false }),
+      } as Response
+    }
     return {
       ok: init.ok ?? true,
       status: init.status ?? 200,
@@ -202,7 +181,7 @@ function mockFetchOnce(payload: unknown, init: { ok?: boolean; status?: number }
 }
 
 function renderPage(initialEntry = '/subscription_plans') {
-  const header = { setTitle: vi.fn(), setHeaderHidden: vi.fn() }
+  const header = { setTitle: vi.fn(), setHeaderHidden: vi.fn(), setTitleAccessory: vi.fn() }
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <HeaderContext.Provider value={header}>
@@ -212,108 +191,77 @@ function renderPage(initialEntry = '/subscription_plans') {
   )
 }
 
-async function choosePlanView() {
-  expect(await screen.findByText(/What would you like to manage/i)).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: /choose your plan/i }))
+async function waitForHub() {
+  expect(await screen.findByText('Get a plan')).toBeInTheDocument()
 }
 
-async function chooseActiveView() {
-  expect(await screen.findByText(/What would you like to manage/i)).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: /active subscriptions/i }))
+function openPersonalPlanPanel() {
+  const rows = screen.getAllByRole('button', { name: /User Premium Membership/i })
+  fireEvent.click(rows[rows.length - 1])
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+function openCommunityTiersPanel() {
+  fireEvent.click(screen.getByRole('button', { name: /^Community Paid Tier/i }))
+}
 
-describe('SubscriptionPlans (Personal + Community redesign)', () => {
+describe('SubscriptionPlans (settings-style hub)', () => {
   beforeEach(() => {
     vi.unstubAllGlobals()
     window.scrollTo = vi.fn()
+    window.history.replaceState({}, '', '/subscription_plans')
   })
 
-  it('shows back button on entry choice modal', async () => {
+  it('renders the hub immediately with plan rows and hides tier details until opened', async () => {
     mockFetchOnce(makePricingPayload())
     renderPage()
+    await waitForHub()
 
-    expect(await screen.findByText(/What would you like to manage/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^back$/i })).toBeInTheDocument()
-  })
-
-  it('renders the two top cards (Personal + Community) and hides tier details until opened', async () => {
-    mockFetchOnce(makePricingPayload())
-    renderPage()
-    await choosePlanView()
-
-    await waitFor(() =>
-      expect(screen.getAllByText('User Premium Membership').length).toBeGreaterThan(0),
-    )
+    expect(screen.getAllByText('User Premium Membership').length).toBeGreaterThan(0)
     expect(screen.getByText('Community Paid Tier')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Choose your plan' })).toBeInTheDocument()
-    expect(screen.queryByText('Jola de Domingo')).toBeNull()
-
-    // Tier rows live inside the (closed) Community modal — they
-    // should NOT be on the landing.
-    expect(screen.queryByText('Paid L1')).toBeNull()
-    expect(screen.queryByText('Paid L2')).toBeNull()
-    expect(screen.queryByText('Paid L3')).toBeNull()
-    // Add-ons live inside a (closed) sub-modal.
-    expect(screen.queryByText('Steve Community Package')).toBeNull()
-    expect(screen.queryByText('Networking Package')).toBeNull()
+    expect(screen.getByText('Jola de Domingo')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /upgrade a community/i })).toBeNull()
   })
 
-  it('shows standard Premium price with early-adoption subline', async () => {
+  it('shows standard Premium price with early-adoption subline in the personal panel', async () => {
     mockFetchOnce(makePricingPayload())
     renderPage()
-    await choosePlanView()
+    await waitForHub()
+
+    openPersonalPlanPanel()
 
     await waitFor(() => expect(screen.getByText('€7.99')).toBeInTheDocument())
-    expect(
-      screen.getByText('€4.99 / month for your first 3 months'),
-    ).toBeInTheDocument()
+    expect(screen.getByText('€4.99 / month for your first 3 months')).toBeInTheDocument()
   })
 
-  it('opens Active subscriptions as a separate view', async () => {
+  it('shows active subscriptions on the hub', async () => {
     mockFetchOnce(makePricingPayload())
     renderPage()
-    await chooseActiveView()
+    await waitForHub()
 
-    expect(await screen.findByText('Jola de Domingo')).toBeInTheDocument()
-    expect(screen.getByText(/Personal.*Active/)).toBeInTheDocument()
-    expect(screen.getByText(/Community.*Needs Attention/)).toBeInTheDocument()
+    expect(screen.getByText('Jola de Domingo')).toBeInTheDocument()
     expect(screen.getAllByText(/Next renewal:/).length).toBeGreaterThan(0)
-    expect(screen.queryByText(/Change tier/i)).toBeNull()
-    expect(screen.queryByText('Community Paid Tier')).toBeNull()
   })
 
   it('opens community plans directly from query parameters', async () => {
     mockFetchOnce(makePricingPayload())
     renderPage('/subscription_plans?mode=choose&open=community_plans&community_id=7')
 
-    expect(await screen.findByText('Pick your tier')).toBeInTheDocument()
-    expect(screen.getByText('Paid L1')).toBeInTheDocument()
+    expect((await screen.findAllByText('Paid L1')).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByRole('button', { name: /^back$/i })).toBeInTheDocument()
   })
 
-  it('opens the Community modal with L1/L2/L3 + Enterprise + Add-ons row', async () => {
+  it('opens the community tiers panel with L1/L2/L3 + Enterprise + Add-ons row', async () => {
     mockFetchOnce(makePricingPayload())
     renderPage()
-    await choosePlanView()
+    await waitForHub()
 
-    await waitFor(() =>
-      expect(screen.getByText('Community Paid Tier')).toBeInTheDocument(),
-    )
+    openCommunityTiersPanel()
 
-    fireEvent.click(screen.getByRole('button', { name: /see community plans/i }))
-
-    // Modal renders the three Stripe-backed tiers + a hard-coded
-    // Enterprise row + an Add-ons entry.
-    expect(await screen.findByText('Paid L1')).toBeInTheDocument()
+    expect((await screen.findAllByText('Paid L1')).length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('Paid L2')).toBeInTheDocument()
     expect(screen.getByText('Paid L3')).toBeInTheDocument()
     expect(screen.getByText('Enterprise')).toBeInTheDocument()
-    expect(screen.getByText('Community Add-ons')).toBeInTheDocument()
-
-    // Each tier surfaces its KB-sourced cap so owners can pick.
+    expect(screen.getAllByText('Community Add-ons').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText(/75 members/)).toBeInTheDocument()
     expect(screen.getByText(/150 members/)).toBeInTheDocument()
     expect(screen.getByText(/250 members/)).toBeInTheDocument()
@@ -322,12 +270,9 @@ describe('SubscriptionPlans (Personal + Community redesign)', () => {
   it('Enterprise row exposes a mailto link to sales@c-point.co', async () => {
     mockFetchOnce(makePricingPayload())
     renderPage()
-    await choosePlanView()
+    await waitForHub()
 
-    await waitFor(() =>
-      expect(screen.getByText('Community Paid Tier')).toBeInTheDocument(),
-    )
-    fireEvent.click(screen.getByRole('button', { name: /see community plans/i }))
+    openCommunityTiersPanel()
 
     const link = await screen.findByRole('link', { name: /contact us/i })
     expect(link).toHaveAttribute(
@@ -336,36 +281,28 @@ describe('SubscriptionPlans (Personal + Community redesign)', () => {
     )
   })
 
-  it('clicking a tier opens the CommunityPickerModal', async () => {
+  it('clicking a tier opens the community picker panel', async () => {
     installFetch({
       '/api/kb/pricing': makePricingPayload(),
       '/api/user_communities_hierarchical': {
         success: true,
         username: 'paulo',
-        communities: [
-          { id: 1, name: 'Paulo IST', creator_username: 'paulo' },
-        ],
+        communities: [{ id: 1, name: 'Paulo IST', creator_username: 'paulo' }],
       },
     })
     renderPage()
-    await choosePlanView()
+    await waitForHub()
 
-    await waitFor(() =>
-      expect(screen.getByText('Community Paid Tier')).toBeInTheDocument(),
-    )
-    fireEvent.click(screen.getByRole('button', { name: /see community plans/i }))
-
-    // Each tier row exposes the cta_label as its button.
+    openCommunityTiersPanel()
     const upgradeButtons = await screen.findAllByRole('button', {
       name: /upgrade a community/i,
     })
     fireEvent.click(upgradeButtons[0])
 
-    // Picker shows the chosen tier's level label in its header.
     await waitFor(() =>
       expect(screen.getByText(/Upgrade to Paid L1/)).toBeInTheDocument(),
     )
-    expect(screen.getByText('Pick a community')).toBeInTheDocument()
+    expect(screen.getByText('Paulo IST')).toBeInTheDocument()
   })
 
   it('hides communities already on the selected tier from the picker', async () => {
@@ -383,116 +320,118 @@ describe('SubscriptionPlans (Personal + Community redesign)', () => {
       },
     })
     renderPage()
-    await choosePlanView()
+    await waitForHub()
 
-    fireEvent.click(await screen.findByRole('button', { name: /see community plans/i }))
+    openCommunityTiersPanel()
     const upgradeButtons = await screen.findAllByRole('button', { name: /upgrade a community/i })
     fireEvent.click(upgradeButtons[0])
 
     expect(await screen.findByText(/No eligible owned communities for Paid L1/)).toBeInTheDocument()
-    expect(screen.queryByRole('radio', { name: /Already L1/ })).toBeNull()
   })
 
-  it('keeps checkout errors inside the picker and keeps radio sizing stable', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input.toString()
-      if (url.startsWith('/api/kb/pricing')) {
-        return { ok: true, status: 200, json: async () => makePricingPayload() } as Response
-      }
-      if (url.startsWith('/api/me/subscriptions')) {
-        return { ok: true, status: 200, json: async () => makeActivePayload() } as Response
-      }
-      if (url.startsWith('/api/user_communities_hierarchical')) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            success: true,
-            username: 'paulo',
-            communities: [{ id: 1, name: 'A very long community name that should wrap correctly', creator_username: 'paulo' }],
-          }),
-        } as Response
-      }
-      if (url.startsWith('/api/stripe/create_checkout_session') && init?.method === 'POST') {
-        return {
-          ok: false,
-          status: 403,
-          json: async () => ({ success: false, error: 'Only the community owner can subscribe.' }),
-        } as Response
-      }
-      throw new Error(`No fetch mock for ${url}`)
-    })
-    vi.stubGlobal('fetch', fetchMock)
+  it('keeps checkout errors inside the picker panel', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString()
+        if (url.startsWith('/api/kb/pricing')) {
+          return { ok: true, status: 200, json: async () => makePricingPayload() } as Response
+        }
+        if (url.startsWith('/api/me/subscriptions')) {
+          return { ok: true, status: 200, json: async () => makeActivePayload() } as Response
+        }
+        if (url.startsWith('/api/user_communities_hierarchical')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              success: true,
+              username: 'paulo',
+              communities: [
+                {
+                  id: 1,
+                  name: 'A very long community name that should wrap correctly',
+                  creator_username: 'paulo',
+                },
+              ],
+            }),
+          } as Response
+        }
+        if (url.startsWith('/api/stripe/create_checkout_session') && init?.method === 'POST') {
+          return {
+            ok: false,
+            status: 403,
+            json: async () => ({ success: false, error: 'Only the community owner can subscribe.' }),
+          } as Response
+        }
+        throw new Error(`No fetch mock for ${url}`)
+      }),
+    )
     renderPage()
-    await choosePlanView()
+    await waitForHub()
 
-    await screen.findByText('Community Paid Tier')
-    fireEvent.click(screen.getByRole('button', { name: /see community plans/i }))
+    openCommunityTiersPanel()
     const upgradeButtons = await screen.findAllByRole('button', { name: /upgrade a community/i })
     fireEvent.click(upgradeButtons[0])
-    const radio = await screen.findByRole('radio', { name: /A very long community name/ })
-    fireEvent.click(radio)
+    fireEvent.click(await screen.findByRole('button', { name: /A very long community name/ }))
     fireEvent.click(screen.getByRole('button', { name: /continue to checkout/i }))
 
-    expect(await screen.findByText('Only the community owner can subscribe.')).toBeInTheDocument()
-    expect(screen.getByText('Pick a community')).toBeInTheDocument()
-    expect(radio).toHaveClass('h-4', 'w-4', 'shrink-0')
+    expect((await screen.findAllByText('Only the community owner can subscribe.')).length).toBeGreaterThan(0)
+    expect(screen.getByText(/Upgrade to Paid L1/)).toBeInTheDocument()
   })
 
-  it('Community Add-ons sub-modal shows Steve + Networking with "Coming soon" + Notify me', async () => {
+  it('add-ons panel shows Steve + Networking with Coming soon + Notify me', async () => {
     mockFetchOnce(makePricingPayload())
     renderPage()
-    await choosePlanView()
+    await waitForHub()
 
-    await waitFor(() =>
-      expect(screen.getByText('Community Paid Tier')).toBeInTheDocument(),
-    )
+    fireEvent.click(screen.getByRole('button', { name: /Community Add-ons/i }))
 
-    fireEvent.click(screen.getByRole('button', { name: /see community plans/i }))
-    const addonsEntry = await screen.findByRole('button', {
-      name: /community add-ons/i,
-    })
-    fireEvent.click(addonsEntry)
-
-    // Both Coming-soon SKUs render in the sub-modal.
     expect(await screen.findByText('Steve Community Package')).toBeInTheDocument()
     expect(screen.getByText('Networking Package')).toBeInTheDocument()
     const chips = screen.getAllByText(/coming soon/i)
     expect(chips.length).toBeGreaterThanOrEqual(2)
 
-    // Each "Notify me" CTA is a mailto pointed at sales@c-point.co
-    // with a subject line mentioning the package name. We grab the
-    // closest <section> for each card and assert its link.
-    const steveSection = screen.getByText('Steve Community Package').closest('section')!
-    expect(within(steveSection as HTMLElement).getByRole('link', { name: /notify me/i }))
-      .toHaveAttribute(
-        'href',
-        'mailto:sales@c-point.co?subject=Notify%20me%20-%20Steve%20Package',
-      )
+    const notifyLinks = await screen.findAllByRole('link', { name: /notify me/i })
+    expect(notifyLinks.length).toBeGreaterThanOrEqual(2)
+    expect(notifyLinks[0]).toHaveAttribute(
+      'href',
+      'mailto:sales@c-point.co?subject=Notify%20me%20-%20Steve%20Package',
+    )
+    expect(notifyLinks[1]).toHaveAttribute(
+      'href',
+      'mailto:sales@c-point.co?subject=Notify%20me%20-%20Networking%20Package',
+    )
+  })
 
-    const networkingSection = screen.getByText('Networking Package').closest('section')!
-    expect(within(networkingSection as HTMLElement).getByRole('link', { name: /notify me/i }))
-      .toHaveAttribute(
-        'href',
-        'mailto:sales@c-point.co?subject=Notify%20me%20-%20Networking%20Package',
-      )
+  it('panel back closes nested picker and returns to tiers panel', async () => {
+    installFetch({
+      '/api/kb/pricing': makePricingPayload(),
+      '/api/user_communities_hierarchical': {
+        success: true,
+        username: 'paulo',
+        communities: [{ id: 1, name: 'Paulo IST', creator_username: 'paulo' }],
+      },
+    })
+    renderPage()
+    await waitForHub()
+
+    openCommunityTiersPanel()
+    const upgradeButtons = await screen.findAllByRole('button', { name: /upgrade a community/i })
+    fireEvent.click(upgradeButtons[0])
+    await screen.findByText('Paulo IST')
+
+    fireEvent.click(screen.getByRole('button', { name: /^back$/i }))
+    expect(await screen.findAllByRole('button', { name: /upgrade a community/i })).toHaveLength(3)
   })
 
   it('shows an error banner when /api/kb/pricing fails', async () => {
     mockFetchOnce({ success: false, error: 'kaboom' }, { ok: false, status: 500 })
     renderPage()
 
-    await waitFor(() =>
-      expect(screen.getByText(/HTTP 500/)).toBeInTheDocument(),
-    )
-
+    await waitFor(() => expect(screen.getByText(/HTTP 500/)).toBeInTheDocument())
     expect(screen.queryByText('User Premium Membership')).toBeNull()
-    expect(screen.queryByText('Community Paid Tier')).toBeNull()
   })
 })
 
-// Keep TS happy when new type fields are added to the payload: any
-// mismatch between the local fixture and the production interface would
-// show up here, so a failing build is the early-warning signal that
-// this file needs updating.
 export type _ExpectedPayloadShape = PricingPayload
