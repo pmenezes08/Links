@@ -54,8 +54,8 @@ export default function FeedBottomNav({
       }}
     >
       <div
-        className="liquid-glass-surface border border-white/10 rounded-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.45)] max-w-2xl mx-auto mb-2"
-        style={{ pointerEvents: 'auto' }}
+        className="liquid-glass-surface border border-white/10 rounded-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.45)] max-w-2xl mx-auto"
+        style={{ pointerEvents: 'auto', marginBottom: 'var(--app-feed-nav-float-gap, 12px)' }}
       >
         <div className="h-14 px-2 sm:px-6 flex items-center justify-between text-[#cfd8dc]">
           <button

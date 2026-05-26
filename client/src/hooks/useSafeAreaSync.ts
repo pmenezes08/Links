@@ -74,8 +74,8 @@ export function applySafeAreaCssVars(insets: { top: number; bottom: number; left
   root.style.setProperty('--app-header-height', `calc(56px + ${insets.top}px)`)
   root.style.setProperty('--app-dashboard-bottom-nav-height', `calc(3.5rem + ${insets.bottom}px)`)
   root.style.setProperty('--app-dashboard-content-pad-bottom', `calc(3.5rem + ${insets.bottom}px + 12px)`)
-  root.style.setProperty('--app-feed-bottom-nav-height', `calc(70px + ${insets.bottom}px)`)
-  root.style.setProperty('--app-feed-content-pad-bottom', `calc(70px + ${insets.bottom}px + 12px)`)
+  root.style.setProperty('--app-feed-bottom-nav-height', `calc(3.5rem + 12px + ${insets.bottom}px)`)
+  root.style.setProperty('--app-feed-content-pad-bottom', `calc(3.5rem + 12px + ${insets.bottom}px + 12px)`)
 }
 
 export function useSafeAreaSync() {

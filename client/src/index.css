@@ -114,7 +114,8 @@
   --sar-px: 0px;
   --app-dashboard-bottom-nav-height: calc(3.5rem + var(--sab-px));
   --app-dashboard-content-pad-bottom: calc(var(--app-dashboard-bottom-nav-height) + 12px);
-  --app-feed-bottom-nav-height: calc(70px + var(--sab-px));
+  --app-feed-nav-float-gap: 12px;
+  --app-feed-bottom-nav-height: calc(3.5rem + var(--app-feed-nav-float-gap) + var(--sab-px));
   --app-feed-content-pad-bottom: calc(var(--app-feed-bottom-nav-height) + 12px);
 }
 

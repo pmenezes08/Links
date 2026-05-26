@@ -2564,7 +2564,7 @@ export default function GroupChatThread() {
       )}
 
       {/* ====== COMPOSER - FIXED AT BOTTOM (portaled for keyboard lift) ====== */}
-      {typeof document !== 'undefined' && createPortal(
+      {typeof document !== 'undefined' && pendingMedia.length === 0 && createPortal(
       <div
         ref={composerRef}
         className={`fixed bottom-0 ${isWeb ? 'left-1/2 -translate-x-1/2 max-w-3xl w-full' : 'left-0 right-0'}`}
@@ -3609,16 +3609,15 @@ export default function GroupChatThread() {
         </div>
       )}
 
-      {/* Multi-media preview modal - shown before sending */}
-      {pendingMedia.length > 0 && (
+      {pendingMedia.length > 0 && typeof document !== 'undefined' && createPortal(
         <div 
-          className="fixed inset-0 bg-black z-[9999] flex flex-col"
+          className="fixed inset-0 bg-black z-[10050] flex flex-col"
           onClick={cancelMediaPreview}
         >
           {/* Header */}
           <div 
             className="flex items-center justify-between px-4 py-3 bg-black/80"
-            style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+            style={{ paddingTop: 'calc(var(--sat-px, 0px) + 12px)' }}
           >
             <button
               type="button"
@@ -3726,8 +3725,8 @@ export default function GroupChatThread() {
 
           {/* Send button */}
           <div 
-            className="flex items-center justify-center gap-4 px-4 py-4 bg-black/80"
-            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
+            className="flex items-center justify-center gap-4 px-4 py-4 bg-black/80 flex-shrink-0"
+            style={{ paddingBottom: 'calc(var(--sab-px, 0px) + 16px)' }}
           >
             <button
               type="button"
@@ -3735,7 +3734,7 @@ export default function GroupChatThread() {
                 e.stopPropagation()
                 cancelMediaPreview()
               }}
-              className="px-6 py-3 bg-white/10 text-white rounded-full font-medium hover:bg-white/20 transition"
+              className="px-6 py-3 bg-white/10 text-white rounded-full font-medium hover:bg-white/20 transition touch-manipulation"
             >
               Cancel
             </button>
@@ -3745,13 +3744,14 @@ export default function GroupChatThread() {
                 e.stopPropagation()
                 confirmSendMedia()
               }}
-              className="px-8 py-3 bg-[#4db6ac] text-black rounded-full font-medium hover:bg-[#45a89c] transition flex items-center gap-2"
+              className="px-8 py-3 bg-[#4db6ac] text-black rounded-full font-medium hover:bg-[#45a89c] transition flex items-center gap-2 touch-manipulation"
             >
               <i className="fa-solid fa-paper-plane" />
               Send {pendingMedia.length > 1 ? `(${pendingMedia.length})` : ''}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Pasted image preview modal */}
