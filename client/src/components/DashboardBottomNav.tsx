@@ -91,7 +91,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
             aria-current={isDashboard ? 'page' : undefined}
             onClick={() => { tabPress(); navigate('/premium_dashboard') }}
           >
-            <i className={`fa-solid fa-th text-lg ${isDashboard ? 'text-[#4db6ac]' : ''}`} />
+            <i className={`fa-solid fa-th text-[24px] leading-none ${isDashboard ? 'text-[#4db6ac]' : ''}`} />
           </button>
           <button
             type="button"
@@ -100,7 +100,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
             aria-current={isFeed ? 'page' : undefined}
             onClick={() => { tabPress(); navigate('/feed') }}
           >
-            <i className={`fa-solid fa-rss text-lg ${isFeed ? 'text-[#4db6ac]' : ''}`} />
+            <i className={`fa-solid fa-rss text-[24px] leading-none ${isFeed ? 'text-[#4db6ac]' : ''}`} />
           </button>
           <button
             type="button"
@@ -109,8 +109,8 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
             aria-expanded={steveOpen}
             onClick={() => { tabPress(); setSteveOpen(true) }}
           >
-            <i className="fa-solid fa-user text-[15px] sm:text-base leading-none" />
-            <span className="text-[8px] sm:text-[9px] text-[#cfd8dc]/90 font-medium tracking-tight">{t('steve.label')}</span>
+            <i className="fa-solid fa-user text-[22px] sm:text-[24px] leading-none" />
+            <span className="text-[9px] sm:text-[10px] text-[#cfd8dc]/90 font-medium tracking-tight">{t('steve.label')}</span>
           </button>
           <button
             type="button"
@@ -119,7 +119,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
             aria-pressed={!isFeed && !isAbout && searchOpen}
             onClick={() => { tabPress(); onSearch() }}
           >
-            <i className="fa-solid fa-magnifying-glass text-lg" />
+            <i className="fa-solid fa-magnifying-glass text-[24px] leading-none" />
           </button>
         </div>
       </div>
