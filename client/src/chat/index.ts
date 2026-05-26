@@ -41,7 +41,9 @@ export {
   useIsMobile,
   useScrollToBottom,
   useTouchDismiss,
+  useChatThreadScroll,
 } from './hooks'
+export type { ChatThreadScrollMessage } from './hooks'
 
 // Media senders (already existed)
 export { sendImageMessage, sendVideoMessage } from './mediaSenders'

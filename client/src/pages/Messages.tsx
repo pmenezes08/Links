@@ -21,6 +21,7 @@ import {
   chatProfileDeviceCacheKey,
 } from '../utils/chatThreadsCache'
 import { cacheConversations, getCachedConversations, cacheKeyVal, getCachedKeyVal, clearConversationMessages, deleteCachedConversationRow } from '../utils/offlineDb'
+import { mergeGroupChatLists, mergeThreadLists } from '../utils/chatThreadListMerge'
 
 type Thread = {
   other_username: string
@@ -157,7 +158,7 @@ export default function Messages(){
           const newThreads = j.threads as Thread[]
           writeDeviceCache(threadsListCacheKey(me), newThreads, CACHE_TTL_MS, CACHE_VERSION)
           cacheConversations(me, newThreads)
-          setThreads(newThreads)
+          setThreads(prev => mergeThreadLists(prev, newThreads))
         }
       })
       .catch(() => {})
@@ -188,7 +189,7 @@ export default function Messages(){
       .then(r => r.json())
       .then(j => {
         if (j?.success && Array.isArray(j.groups)) {
-          setGroupChats(j.groups)
+          setGroupChats(prev => mergeGroupChatLists(prev, j.groups))
           cacheKeyVal(groupChatsListCacheKey(me), j.groups)
         }
       })
@@ -868,7 +869,7 @@ export default function Messages(){
                   <i className={`fa-solid fa-chevron-${directMessagesCollapsed ? 'down' : 'up'} text-xs text-white/40`} />
                 </button>
               )}
-              {!directMessagesCollapsed && (loading ? (
+              {!directMessagesCollapsed && (loading && visibleThreads.length === 0 ? (
                 <SkeletonList count={4} />
               ) : visibleThreads.length === 0 ? (
                 <div className="px-4 py-4 text-sm text-[#9fb0b5]">

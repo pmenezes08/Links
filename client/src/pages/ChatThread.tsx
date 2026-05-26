@@ -60,7 +60,9 @@ import {
   CHAT_CACHE_TTL_MS,
   CHAT_CACHE_VERSION,
   MessageBubble,
+  useChatThreadScroll,
 } from '../chat'
+import { messagePollSignature, retainMessagesIfUnchanged } from '../utils/dmPollMerge'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
 import {
   takePendingShareFilesOnce,
@@ -111,9 +113,7 @@ export default function ChatThread(){
   // Hide the main header - we use our own header in this page
   useEffect(() => { setTitle('') }, [setTitle])
   
-  // Scroll state - reset when switching chats
-  const userHasScrolledRef = useRef<boolean>(false)
-  const hasScrolledToBottomRef = useRef(false)
+  // Scroll state managed by useChatThreadScroll (threadKey = username)
 
   // Detect mobile device
   useEffect(() => {
@@ -245,18 +245,26 @@ export default function ChatThread(){
   // Draft persistence - save timeout for debounced auto-save
   const draftSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Scroll behavior
-  const [showScrollDown, setShowScrollDown] = useState(false)
-  const [keyboardOffset, setKeyboardOffset] = useState(0)
-  const lastVisibleMsgKeyRef = useRef<string | number | null>(null)
-  const shareAttachDoneRef = useRef(false)
+  const {
+    messageStackRef,
+    scrollToBottom,
+    scrollToBottomIfAppropriate,
+    userHasScrolledRef,
+    showScrollDown,
+    setShowScrollDown,
+    cancelInitialPin,
+  } = useChatThreadScroll({
+    listRef,
+    threadKey: username,
+    messages,
+  })
 
-  // Reset peer-scoped state when switching DM threads (fixes stale since_id, wrong-thread poll merge, cache bleed)
+  const shareAttachDoneRef = useRef(false)
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
+
+  // Peer-scoped ref reset when switching DM threads (cache hydrate runs after processRawMessages is defined)
   useEffect(() => {
     if (!username) return
-    userHasScrolledRef.current = false
-    hasScrolledToBottomRef.current = false
-    lastVisibleMsgKeyRef.current = null
     lastKnownMessageIdRef.current = 0
     pollCountRef.current = 0
     idBridgeRef.current.tempToServer.clear()
@@ -264,9 +272,6 @@ export default function ChatThread(){
     recentOptimisticRef.current.clear()
     pendingDeletions.current.clear()
     shareAttachDoneRef.current = false
-    setOtherUserId('')
-    setOtherProfile(null)
-    setMessages([])
     setSteveIsTyping(false)
   }, [username])
 
@@ -293,12 +298,6 @@ export default function ChatThread(){
   useEffect(() => {
     if (reminderVaultOpen) void loadReminderVault()
   }, [reminderVaultOpen, loadReminderVault])
-
-  const scrollToBottom = useCallback(() => {
-    const el = listRef.current
-    if (!el) return
-    el.scrollTop = el.scrollHeight
-  }, [])
 
   useEffect(() => {
     if (!headerMenuOpen) return
@@ -516,7 +515,7 @@ export default function ChatThread(){
       keyboardOffsetRef.current = normalizedOffset
       setKeyboardOffset(normalizedOffset)
       if (normalizedOffset > 0) {
-        requestAnimationFrame(scrollToBottom)
+        requestAnimationFrame(scrollToBottomIfAppropriate)
       }
     }
     
@@ -534,7 +533,7 @@ export default function ChatThread(){
       viewport.removeEventListener('resize', handleChange)
       viewport.removeEventListener('scroll', handleChange)
     }
-  }, [isMobile, scrollToBottom])
+  }, [isMobile, scrollToBottomIfAppropriate])
 
   // Native keyboard handling (Capacitor — iOS only)
   // Android uses visualViewport above; the Capacitor plugin over-reports on some devices.
@@ -551,7 +550,7 @@ export default function ChatThread(){
       if (Math.abs(keyboardOffsetRef.current - height) < KEYBOARD_OFFSET_EPSILON) return
       keyboardOffsetRef.current = height
       setKeyboardOffset(height)
-      requestAnimationFrame(scrollToBottom)
+      requestAnimationFrame(scrollToBottomIfAppropriate)
     }
   
     const handleHide = () => {
@@ -571,11 +570,7 @@ export default function ChatThread(){
       showSub?.remove()
       hideSub?.remove()
     }
-  }, [scrollToBottom])
-
-  useEffect(() => {
-    requestAnimationFrame(scrollToBottom)
-  }, [composerHeight, scrollToBottom])
+  }, [scrollToBottomIfAppropriate])
   
   async function commitEdit(){
     if (!editingId) return
@@ -678,39 +673,44 @@ export default function ChatThread(){
     })
   }, [username])
 
-  // Load cached profile immediately
+  // Sync hydrate on thread switch — device cache first, then IndexedDB fallback (no blank flash)
   useEffect(() => {
-    if (!profileCacheKey) return
-    const cached = readDeviceCache<{ display_name: string; profile_picture?: string | null }>(profileCacheKey, CHAT_CACHE_VERSION)
-    if (cached) {
-      setOtherProfile(cached)
-    }
-  }, [profileCacheKey])
+    if (!username) return
 
-  // Load cached messages immediately for instant display
-  useEffect(() => {
-    if (!chatCacheKey) return
-    const cached = readDeviceCache<{ messages: any[]; otherUserId: number }>(chatCacheKey, CHAT_CACHE_VERSION)
-    if (cached?.messages && cached.otherUserId) {
-      setOtherUserId(cached.otherUserId)
-      processRawMessages(cached.messages).then(processed => {
+    const cachedProfile = profileCacheKey
+      ? readDeviceCache<{ display_name: string; profile_picture?: string | null }>(profileCacheKey, CHAT_CACHE_VERSION)
+      : null
+    setOtherProfile(cachedProfile)
+
+    const cachedChat = chatCacheKey
+      ? readDeviceCache<{ messages: any[]; otherUserId: number }>(chatCacheKey, CHAT_CACHE_VERSION)
+      : null
+
+    if (cachedChat?.messages?.length && cachedChat.otherUserId) {
+      setOtherUserId(cachedChat.otherUserId)
+      void processRawMessages(cachedChat.messages).then(processed => {
         setMessages(processed)
       })
-    } else if (username && dmOfflineKey && viewer) {
-      // Fallback: try IndexedDB (survives localStorage eviction, no TTL expiry)
+      return
+    }
+
+    setOtherUserId('')
+    setMessages([])
+
+    if (dmOfflineKey && viewer) {
       Promise.all([
         getCachedMessages(dmOfflineKey),
         getCachedKeyVal<number>(dmUserIdKeyvalKey(viewer, username)),
       ]).then(([idbMsgs, idbUserId]) => {
-        if (idbUserId) setOtherUserId(prev => prev || idbUserId)
+        if (idbUserId) setOtherUserId(idbUserId)
         if (idbMsgs?.length) {
-          processRawMessages(idbMsgs).then(processed => {
-            setMessages(prev => prev.length ? prev : processed)
+          void processRawMessages(idbMsgs).then(processed => {
+            setMessages(processed)
           })
         }
-      })
+      }).catch(() => {})
     }
-  }, [chatCacheKey, processRawMessages, username, dmOfflineKey, viewer])
+  }, [username, chatCacheKey, profileCacheKey, dmOfflineKey, viewer, processRawMessages])
 
   // Restore draft when entering chat (only if there's an actual saved draft)
   // Added extra protection for iOS navigation - clear any stale content first
@@ -992,53 +992,6 @@ export default function ChatThread(){
     window.addEventListener('outbox-drained', handler)
     return () => window.removeEventListener('outbox-drained', handler)
   }, [otherUserId, processRawMessages])
-  
-  // Initial scroll to bottom when chat loads (handles images and large message lists)
-  // This ensures we always open at the last message without flicker
-  useEffect(() => {
-    if (messages.length === 0 || hasScrolledToBottomRef.current) return
-    const el = listRef.current
-    if (!el) return
-
-    // Scroll to bottom on initial load, with delay to allow images to render
-    const scrollToEnd = () => {
-      el.scrollTop = el.scrollHeight
-    }
-    
-    // Multiple attempts with increasing delays to handle images loading
-    scrollToEnd()
-    requestAnimationFrame(scrollToEnd)
-    setTimeout(scrollToEnd, 100)
-    setTimeout(scrollToEnd, 300)
-    setTimeout(scrollToEnd, 800)
-    
-    hasScrolledToBottomRef.current = true
-  }, [messages.length, hasScrolledToBottomRef])
-
-  // Handle new messages while chat is open (maintains existing behavior)
-  useLayoutEffect(() => {
-    if (messages.length === 0) return
-    const el = listRef.current
-    if (!el) return
-    
-    const lastMsg = messages[messages.length - 1]
-    const lastMsgKey = (lastMsg as any).clientKey || lastMsg.id
-    if (lastMsgKey === lastVisibleMsgKeyRef.current) return
-    
-    lastVisibleMsgKeyRef.current = lastMsgKey
-    
-    // Only auto-scroll for new messages if near bottom or user hasn't scrolled away
-    const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150
-    if (nearBottom || !userHasScrolledRef.current) {
-      el.scrollTop = el.scrollHeight
-      setShowScrollDown(false)
-    } else {
-      setShowScrollDown(true)
-    }
-  }, [messages])
-
-  // Simple scroll-to-bottom for new messages only (no aggressive initial load behavior)
-  // This prevents the unwanted scrolling/jumping when opening a chat
 
   // Load older messages when user scrolls to top
   const loadOlderMessages = useCallback(async () => {
@@ -1097,6 +1050,7 @@ export default function ChatThread(){
       // If user scrolled up significantly, mark as manual scroll
       if (currentScrollTop < lastScrollTop - 20 && !isAtBottom) {
         userHasScrolledRef.current = true
+        cancelInitialPin()
       }
       
       // If user scrolled back to bottom, reset the flag
@@ -1125,7 +1079,7 @@ export default function ChatThread(){
       el.removeEventListener('scroll', handleScroll)
       if (scrollTimeout) clearTimeout(scrollTimeout)
     }
-  }, [username])
+  }, [username, loadOlderMessages, hasMoreMessages, otherUserId, cancelInitialPin])
 
   // Load metadata from localStorage
   useEffect(() => {
@@ -1433,7 +1387,7 @@ export default function ChatThread(){
               // Convert map to array and sort
               const allMessages = Array.from(messagesByKey.values())
               
-              return allMessages.sort((a, b) => {
+              const sorted = allMessages.sort((a, b) => {
                 const aId = typeof a.id === 'number' ? a.id : parseInt(String(a.id)) || 0
                 const bId = typeof b.id === 'number' ? b.id : parseInt(String(b.id)) || 0
                 const aIsServer = aId > 0
@@ -1445,6 +1399,7 @@ export default function ChatThread(){
                 const bTs = getMessageTimestamp(b.time) ?? Date.now()
                 return aTs - bTs
               })
+              return retainMessagesIfUnchanged(prev, sorted, messagePollSignature)
             })
           }
         }catch(e){
@@ -2889,7 +2844,7 @@ export default function ChatThread(){
       {/* ====== MESSAGES LIST - SCROLLABLE ====== */}
       <div
         ref={listRef}
-        className="flex-1 space-y-[9px] overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3"
+        className="flex-1 space-y-[9px] overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-layout-smooth"
         style={{
           WebkitOverflowScrolling: 'touch',
           overscrollBehaviorY: 'auto',
@@ -2930,6 +2885,7 @@ export default function ChatThread(){
             <div className="text-xs mt-1 opacity-70">{t('chat.offline_go_online')}</div>
           </div>
         )}
+        <div ref={messageStackRef} className="space-y-[9px]">
         {messages.map((m, index) => {
           const messageDate = getDateKey(m.time)
           const prevMessageDate = index > 0 ? getDateKey(messages[index - 1].time) : null
@@ -3120,6 +3076,7 @@ export default function ChatThread(){
             </div>
           </div>
         )}
+        </div>
         
         {/* iOS FIX: Scroll anchor/spacer at the very end to ensure last message can scroll fully into view */}
         <div 
@@ -3192,7 +3149,7 @@ export default function ChatThread(){
     {!isMultiSelectMode && pendingMedia.length === 0 && typeof document !== 'undefined' && createPortal(
     <div
       ref={composerRef}
-      className={`fixed bottom-0 ${isWeb ? 'left-1/2 -translate-x-1/2 max-w-3xl w-full' : 'left-0 right-0'}`}
+      className={`fixed bottom-0 chat-layout-smooth ${isWeb ? 'left-1/2 -translate-x-1/2 max-w-3xl w-full' : 'left-0 right-0'}`}
       style={{
         bottom: keyboardLift > 0 ? `${keyboardLift}px` : '0',
         zIndex: 1000,
@@ -3731,6 +3688,7 @@ export default function ChatThread(){
       </div>
       {/* Safe area spacer — hidden when keyboard is open to avoid double spacing */}
       <div 
+        className="chat-layout-smooth"
         style={{
           height: (keyboardLift > 0 || androidKeyboardOpen) ? '0px' : `${safeBottomPx}px`,
           background: '#000',

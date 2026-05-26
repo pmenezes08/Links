@@ -1,3 +1,5 @@
+// PR2 follow-up: adopt useChatThreadScroll + .chat-layout-smooth from client/src/chat/hooks.ts
+// (same pattern as ChatThread.tsx) and remove inline scroll/initial-pin duplicates here.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { CSSProperties } from 'react'

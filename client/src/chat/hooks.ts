@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
@@ -319,5 +319,127 @@ export function useTouchDismiss({ showKeyboard, composerRef, textareaRef }: UseT
     handleContentPointerCancel,
     handleScroll,
     touchDismissRef,
+  }
+}
+
+export interface ChatThreadScrollMessage {
+  id: number | string
+  clientKey?: string
+}
+
+interface UseChatThreadScrollOptions {
+  listRef: React.RefObject<HTMLDivElement | null>
+  /** Conversation id (DM username or group id string) — resets pin state when it changes. */
+  threadKey: string | undefined
+  messages: ChatThreadScrollMessage[]
+}
+
+/**
+ * Stable scroll-to-bottom for chat threads (DM + group).
+ * PR2: GroupChatThread should adopt this hook and drop inline duplicates.
+ */
+export function useChatThreadScroll({
+  listRef,
+  threadKey,
+  messages,
+}: UseChatThreadScrollOptions) {
+  const userHasScrolledRef = useRef(false)
+  const lastVisibleMsgKeyRef = useRef<string | number | null>(null)
+  const initialPinActiveRef = useRef(false)
+  const messageStackRef = useRef<HTMLDivElement>(null)
+  const [showScrollDown, setShowScrollDown] = useState(false)
+
+  const scrollListToBottom = useCallback(
+    (behavior: ScrollBehavior) => {
+      const el = listRef.current
+      if (!el) return
+      el.scrollTo({ top: el.scrollHeight, behavior })
+    },
+    [listRef],
+  )
+
+  const scrollToBottom = useCallback(() => {
+    scrollListToBottom('auto')
+  }, [scrollListToBottom])
+
+  const scrollToBottomIfAppropriate = useCallback(() => {
+    const el = listRef.current
+    if (!el) {
+      scrollToBottom()
+      return
+    }
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150
+    if (nearBottom || !userHasScrolledRef.current) {
+      scrollToBottom()
+    }
+  }, [scrollToBottom, listRef])
+
+  useEffect(() => {
+    if (!threadKey) return
+    lastVisibleMsgKeyRef.current = null
+    userHasScrolledRef.current = false
+    initialPinActiveRef.current = true
+    const endInitialPin = window.setTimeout(() => {
+      initialPinActiveRef.current = false
+    }, 450)
+    return () => clearTimeout(endInitialPin)
+  }, [threadKey])
+
+  const messageTailKey = useMemo(() => {
+    if (messages.length === 0) return null
+    const last = messages[messages.length - 1]
+    return last.clientKey ?? last.id
+  }, [messages])
+
+  useLayoutEffect(() => {
+    if (messages.length === 0 || messageTailKey == null) return
+    const el = listRef.current
+    if (!el) return
+    if (messageTailKey === lastVisibleMsgKeyRef.current) return
+    lastVisibleMsgKeyRef.current = messageTailKey
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150
+    if (nearBottom || !userHasScrolledRef.current) {
+      scrollListToBottom('auto')
+      setShowScrollDown(false)
+    } else {
+      setShowScrollDown(true)
+    }
+  }, [messageTailKey, messages.length, scrollListToBottom, listRef])
+
+  useLayoutEffect(() => {
+    const stack = messageStackRef.current
+    if (!stack || typeof ResizeObserver === 'undefined') return
+    let frame = 0
+    const onStackResize = () => {
+      if (userHasScrolledRef.current) return
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const list = listRef.current
+        if (!list || userHasScrolledRef.current) return
+        const behavior: ScrollBehavior = initialPinActiveRef.current ? 'smooth' : 'auto'
+        list.scrollTo({ top: list.scrollHeight, behavior })
+      })
+    }
+    const observer = new ResizeObserver(onStackResize)
+    observer.observe(stack)
+    return () => {
+      cancelAnimationFrame(frame)
+      observer.disconnect()
+    }
+  }, [threadKey, messages.length, listRef])
+
+  const cancelInitialPin = useCallback(() => {
+    initialPinActiveRef.current = false
+  }, [])
+
+  return {
+    messageStackRef,
+    scrollListToBottom,
+    scrollToBottom,
+    scrollToBottomIfAppropriate,
+    userHasScrolledRef,
+    showScrollDown,
+    setShowScrollDown,
+    cancelInitialPin,
   }
 }

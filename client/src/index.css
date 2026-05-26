@@ -224,6 +224,18 @@
   .burger-menu-sheet {
     animation: none;
   }
+
+  .chat-layout-smooth {
+    transition: none !important;
+  }
+}
+
+.chat-layout-smooth {
+  transition:
+    bottom 250ms cubic-bezier(0.32, 0.72, 0, 1),
+    padding-bottom 250ms cubic-bezier(0.32, 0.72, 0, 1),
+    scroll-padding-bottom 250ms cubic-bezier(0.32, 0.72, 0, 1),
+    height 250ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .app-scroll-region {
