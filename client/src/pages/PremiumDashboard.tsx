@@ -21,6 +21,7 @@ import { useLogoutRequest } from '../contexts/LogoutPromptContext'
 import OnboardingChat from './OnboardingChat'
 import OnboardingIntroGate from '../components/onboarding/OnboardingIntroGate'
 import DashboardBottomNav, { isPremiumDashboardPath } from '../components/DashboardBottomNav'
+import { SkeletonCommunityCard } from '../components/SkeletonRow'
 import AboutCPointModal from '../components/about/AboutCPointModal'
 import { setOnboardingFullscreenOverlay } from '../utils/fullscreenOverlay'
 
@@ -780,45 +781,16 @@ export default function PremiumDashboard() {
     }
     return communities[0]?.name || communityFallback
   })()
-  // Show loading screen while initial data loads
+  // Show skeleton shell while initial data loads (matches final layout to prevent CLS)
   if (initialLoading) {
     return (
-      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative">
-            <img
-              src="/api/public/logo"
-              alt="C-Point"
-              className="w-16 h-16 rounded-2xl object-contain"
-              onError={(e) => {
-                const img = e.currentTarget
-                if (img.src.includes('cpoint-logo.svg')) return
-                img.onerror = null
-                img.src = '/static/cpoint-logo.svg'
-              }}
-            />
-            <div className="absolute -inset-2">
-              <svg className="w-20 h-20 animate-spin" viewBox="0 0 24 24">
-                <circle 
-                  className="opacity-20" 
-                  cx="12" cy="12" r="10" 
-                  stroke="currentColor" 
-                  strokeWidth="2" 
-                  fill="none"
-                  style={{ color: '#00CEC8' }}
-                />
-                <path 
-                  className="opacity-80" 
-                  fill="none"
-                  stroke="#00CEC8"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  d="M12 2a10 10 0 0 1 10 10"
-                />
-              </svg>
-            </div>
+      <div className="app-content min-h-screen chat-thread-bg text-white relative">
+        <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:ml-52">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <SkeletonCommunityCard />
+            <SkeletonCommunityCard />
+            <SkeletonCommunityCard />
           </div>
-          <p className="text-white/60 text-sm">{t('common.loading')}</p>
         </div>
       </div>
     )
