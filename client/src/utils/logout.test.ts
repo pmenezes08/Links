@@ -162,26 +162,6 @@ describe('performLogout (Phase G4)', () => {
     expect(order[order.length - 1]).toBe('replace:/logout')
   })
 
-  it('sends empty body to unregister_fcm (bulk deactivate, no single-token leak)', async () => {
-    let capturedBody: string | undefined
-    fetchMock.mockImplementation((url: string | Request, opts?: RequestInit) => {
-      const u = typeof url === 'string' ? url : ''
-      if (u.includes('/api/push/unregister_fcm')) {
-        capturedBody = opts?.body as string
-      }
-      return Promise.resolve({ ok: true, status: 200 } as Response)
-    })
-
-    // Simulate a stale FCM token on window (should NOT be sent to server)
-    ;(window as any).__fcmToken = 'stale-fcm-token-abc123'
-
-    await performLogout()
-
-    expect(capturedBody).toBeDefined()
-    const parsed = JSON.parse(capturedBody!)
-    expect(parsed).toEqual({})
-  })
-
   it('deletes the offline account database during logout', async () => {
     await performLogout()
     expect(deletedDbs).toContain('cpoint-offline')

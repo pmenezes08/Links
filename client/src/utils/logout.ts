@@ -21,33 +21,23 @@ async function clearCapacitorStorage(): Promise<void> {
 
 /** Deactivate server-side push mappings and browser subscription before session cookies are cleared. */
 export async function unregisterPushBeforeLogout(): Promise<void> {
+  const w = typeof window !== 'undefined' ? (window as unknown as { __fcmToken?: string }) : null
+  const fcmToken = w?.__fcmToken?.trim() || ''
+
   try {
     const res = await fetch('/api/push/unregister_fcm', {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ token: fcmToken }),
     })
     if (!res.ok) {
       console.warn('unregister_fcm response:', res.status)
     } else {
-      console.log('📴 All push tokens deactivated on server')
+      console.log('📴 FCM tokens deactivated on server')
     }
   } catch (e) {
     console.warn('unregister_fcm failed:', e)
-  }
-
-  // On native (iOS/Android): clear delivered notifications from the notification tray
-  // so the prior user's messages aren't visible to the next user on this device.
-  try {
-    const { Capacitor } = await import('@capacitor/core')
-    if (Capacitor.isNativePlatform()) {
-      const { PushNotifications } = await import('@capacitor/push-notifications')
-      await PushNotifications.removeAllDeliveredNotifications()
-      console.log('📴 Native delivered notifications cleared')
-    }
-  } catch {
-    // Not on native or plugin unavailable
   }
 
   try {
