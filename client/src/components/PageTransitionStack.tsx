@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, type ReactNode } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigationType } from 'react-router-dom'
 import { PAGE_TRANSITION_MS, TAB_CROSSFADE_MS, CPOINT_EASE_OUT, REDUCED_MOTION_FADE_MS } from '../design/motion'
 import { isPremiumDashboardPath, isAboutCPointPath } from './DashboardBottomNav'
 
@@ -11,10 +11,11 @@ function isDashboardTab(path: string) {
   return isPremiumDashboardPath(path) || path === '/feed' || isAboutCPointPath(path)
 }
 
-function detectTransitionType(prev: string, next: string): TransitionType {
+function detectTransitionType(prev: string, next: string, navType: 'POP' | 'PUSH' | 'REPLACE'): TransitionType {
   if (!TRANSITIONS_ENABLED) return 'none'
   if (prev === next) return 'none'
   if (isDashboardTab(prev) && isDashboardTab(next)) return 'tab'
+  if (navType === 'POP') return 'pop'
   return 'push'
 }
 
@@ -32,6 +33,7 @@ interface PageTransitionStackProps {
  */
 export default function PageTransitionStack({ children }: PageTransitionStackProps) {
   const location = useLocation()
+  const navigationType = useNavigationType()
   const prevPathRef = useRef(location.pathname)
   const [transitioning, setTransitioning] = useState(false)
   const [transitionType, setTransitionType] = useState<TransitionType>('none')
@@ -46,7 +48,7 @@ export default function PageTransitionStack({ children }: PageTransitionStackPro
   useEffect(() => {
     const prev = prevPathRef.current
     prevPathRef.current = location.pathname
-    const type = detectTransitionType(prev, location.pathname)
+    const type = detectTransitionType(prev, location.pathname, navigationType)
     if (type === 'none') return
 
     setOutgoing(childRef.current)
@@ -88,7 +90,9 @@ export default function PageTransitionStack({ children }: PageTransitionStackPro
               ? `ptFadeOut ${durationMs}ms linear forwards`
               : transitionType === 'tab'
                 ? `ptFadeOut ${durationMs}ms ${CPOINT_EASE_OUT} forwards`
-                : `ptSlideOutLeft ${durationMs}ms ${CPOINT_EASE_OUT} forwards`,
+                : transitionType === 'pop'
+                  ? `ptSlideOutRight ${durationMs}ms ${CPOINT_EASE_OUT} forwards`
+                  : `ptSlideOutLeft ${durationMs}ms ${CPOINT_EASE_OUT} forwards`,
           }}
         >
           {outgoing}
@@ -104,7 +108,9 @@ export default function PageTransitionStack({ children }: PageTransitionStackPro
               ? `ptFadeIn ${durationMs}ms linear forwards`
               : transitionType === 'tab'
                 ? `ptFadeIn ${durationMs}ms ${CPOINT_EASE_OUT} forwards`
-                : `ptSlideInRight ${durationMs}ms ${CPOINT_EASE_OUT} forwards`
+                : transitionType === 'pop'
+                  ? `ptSlideInLeft ${durationMs}ms ${CPOINT_EASE_OUT} forwards`
+                  : `ptSlideInRight ${durationMs}ms ${CPOINT_EASE_OUT} forwards`
             : 'none',
         }}
       >

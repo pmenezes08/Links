@@ -71,6 +71,7 @@ import OnboardingWelcome from './pages/OnboardingWelcome'
 import VerifyOverlay from './components/VerifyOverlay'
 import { isPremiumDashboardPath, isAboutCPointPath } from './components/DashboardBottomNav'
 import DashboardLayout from './components/DashboardLayout'
+import PageTransitionStack from './components/PageTransitionStack'
 import { useSafeAreaSync } from './hooks/useSafeAreaSync'
 import EventDetail from './pages/EventDetail'
 import GroupFeed from './pages/GroupFeed'
@@ -758,6 +759,7 @@ function AppRoutes(){
           style={mainStyle}
         >
             <ErrorBoundary>
+              <PageTransitionStack>
               <Routes>
                 <Route path="/" element={rootRouteElement} />
                 <Route path="/welcome" element={<OnboardingWelcome />} />
@@ -823,6 +825,7 @@ function AppRoutes(){
                 <Route path="/group/:group_id/edit" element={<EditGroup />} />
                 <Route path="*" element={<PremiumDashboard />} />
               </Routes>
+              </PageTransitionStack>
             </ErrorBoundary>
         </main>
         {requireVerification && authLoaded && isVerified === false && (
