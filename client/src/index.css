@@ -27,10 +27,10 @@
 }
 
 .glass-highlight {
-  border: 1px solid rgba(77, 182, 172, 0.35);
-  background: linear-gradient(135deg, rgba(77, 182, 172, 0.28), rgba(18, 32, 32, 0.85));
+  border: 1px solid rgba(var(--cpoint-accent-rgb), 0.35);
+  background: linear-gradient(135deg, rgba(var(--cpoint-accent-rgb), 0.28), rgba(18, 32, 32, 0.85));
   color: #e0f2f1;
-  box-shadow: 0 20px 55px rgba(77, 182, 172, 0.25);
+  box-shadow: 0 20px 55px rgba(var(--cpoint-accent-rgb), 0.25);
 }
 @tailwind base;
 @tailwind components;
@@ -91,14 +91,28 @@
 }
 
 :root {
+  /* C-Point brand tokens (see docs/DESIGN.md § Color).
+     These mirror the canonical hex values used in marketing + product.
+     The product accent is currently the legacy Material teal (#4db6ac)
+     exposed via --cpoint-accent-rgb so glass/accent surfaces can be
+     flipped to brand turquoise (#00CEC8) in a single edit later without
+     a visual change in this PR. */
+  --cpoint-turquoise: #00CEC8;
+  --cpoint-bg-app: #000000;
+  --cpoint-white: #FFFFFF;
+  --cpoint-black-marketing: #0F172A;
+  /* Legacy accent triplet — kept at #4db6ac (77, 182, 172) until the brand
+     accent flip ships in a follow-up phase. Do NOT change to turquoise here. */
+  --cpoint-accent-rgb: 77, 182, 172;
+
   --glass-base: rgba(12, 12, 16, 0.68);
-  --glass-tint: rgba(77, 182, 172, 0.22);
+  --glass-tint: rgba(var(--cpoint-accent-rgb), 0.22);
   --glass-border: rgba(255, 255, 255, 0.14);
   --glass-highlight: rgba(255, 255, 255, 0.09);
   --glass-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
   --glass-gradient: radial-gradient(
       circle at 10% 20%,
-      rgba(77, 182, 172, 0.25),
+      rgba(var(--cpoint-accent-rgb), 0.25),
       transparent 55%
     ),
     radial-gradient(
@@ -167,8 +181,8 @@
 }
 
 .liquid-glass-bubble--sent {
-  background: linear-gradient(135deg, rgba(77, 182, 172, 0.9), rgba(32, 84, 78, 0.85));
-  border-color: rgba(77, 182, 172, 0.65);
+  background: linear-gradient(135deg, rgba(var(--cpoint-accent-rgb), 0.9), rgba(32, 84, 78, 0.85));
+  border-color: rgba(var(--cpoint-accent-rgb), 0.65);
 }
 
 .liquid-glass-bubble--received {

@@ -30,6 +30,8 @@ Turquoise conveys technology, trust, and freshness; black and white add structur
 
 **Legacy note:** Many screens still use `#4db6ac` (Material teal). Do not add new `#4db6ac` surfaces — use `cpoint-turquoise` / `#00CEC8`. A full backfill is a separate epic.
 
+The four brand tokens above are declared as CSS custom properties in [`client/src/index.css`](../client/src/index.css) `:root` and mirrored as Tailwind colors (`cpoint.turquoise`, `cpoint.bgApp`, `cpoint.white`, `cpoint.blackMarketing`) in [`client/tailwind.config.js`](../client/tailwind.config.js). Glass/accent CSS reads the legacy accent via `rgba(var(--cpoint-accent-rgb), <alpha>)` so the brand-turquoise flip lands in one edit when scheduled.
+
 ## Typography
 
 Stack (from [`client/src/index.css`](../client/src/index.css)):

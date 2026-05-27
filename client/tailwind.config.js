@@ -7,11 +7,15 @@ export default {
   theme: {
     extend: {
       colors: {
-        // C-Point design-system accent. Rolled out in Step E
-        // (Subscriptions UI) — not yet backfilled on legacy `#4db6ac`
-        // surfaces. Keep adding it to new screens going forward.
+        // C-Point design-system tokens. Mirror the CSS custom properties
+        // declared in `client/src/index.css` :root (see docs/DESIGN.md
+        // § Color). Turquoise is the primary accent for new work; legacy
+        // `#4db6ac` surfaces will be backfilled in a separate phase.
         cpoint: {
           turquoise: '#00CEC8',
+          bgApp: '#000000',
+          white: '#FFFFFF',
+          blackMarketing: '#0F172A',
         },
       },
       keyframes: {
