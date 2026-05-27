@@ -161,7 +161,7 @@ function SortableThumb({ id, file, isActive, onSelect, onRemove }: {
       <button
         onClick={onSelect}
         className={`relative w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 border-2 ${
-          isActive ? 'border-[#4db6ac]' : 'border-white/20'
+          isActive ? 'border-cpoint-turquoise' : 'border-white/20'
         }`}
       >
         {file.type === 'video' ? (
@@ -2411,7 +2411,7 @@ export default function CommunityFeed() {
         <div className="flex flex-col items-center gap-3">
           <div className="relative">
             <div className="w-12 h-12 border-4 border-white/10 rounded-full" />
-            <div className="absolute inset-0 w-12 h-12 border-4 border-transparent border-t-[#4db6ac] rounded-full animate-spin" />
+            <div className="absolute inset-0 w-12 h-12 border-4 border-transparent border-t-cpoint-turquoise rounded-full animate-spin" />
           </div>
           <div className="text-sm text-[#9fb0b5]">{t('feed.loading_feed')}</div>
         </div>
@@ -2532,7 +2532,7 @@ export default function CommunityFeed() {
           </button>
           <button
             type="button"
-            className="flex-1 min-w-0 rounded-xl px-2 py-1 text-left transition hover:bg-white/[0.04] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]/50"
+            className="flex-1 min-w-0 rounded-xl px-2 py-1 text-left transition hover:bg-white/[0.04] focus:outline-none focus:ring-1 focus:ring-cpoint-turquoise/50"
             onClick={() => setCommunityInfoOpen(open => !open)}
             aria-expanded={communityInfoOpen}
             aria-label={t('feed.show_community_description')}
@@ -2559,7 +2559,7 @@ export default function CommunityFeed() {
             >
               <i className="fa-solid fa-comments text-white" />
               {unreadMsgs > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#4db6ac] text-black text-[10px] flex items-center justify-center">
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-cpoint-turquoise text-black text-[10px] flex items-center justify-center">
                   {unreadMsgs > 99 ? '99+' : unreadMsgs}
                 </span>
               )}
@@ -2571,7 +2571,7 @@ export default function CommunityFeed() {
             >
               <i className="fa-regular fa-bell text-white" />
               {unreadNotifs > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#4db6ac] text-black text-[10px] flex items-center justify-center">
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-cpoint-turquoise text-black text-[10px] flex items-center justify-center">
                   {unreadNotifs > 99 ? '99+' : unreadNotifs}
                 </span>
               )}
@@ -2587,17 +2587,17 @@ export default function CommunityFeed() {
               onClick={() => setCommunityInfoOpen(false)}
             />
             <div
-              className="fixed left-3 right-3 z-[1002] rounded-3xl border border-[#4db6ac]/25 bg-[#070909]/95 p-4 text-white shadow-2xl shadow-black/70 ring-1 ring-white/[0.04] backdrop-blur-md sm:left-1/2 sm:right-auto sm:w-[420px] sm:-translate-x-1/2"
+              className="fixed left-3 right-3 z-[1002] rounded-3xl border border-cpoint-turquoise/25 bg-[#070909]/95 p-4 text-white shadow-2xl shadow-black/70 ring-1 ring-white/[0.04] backdrop-blur-md sm:left-1/2 sm:right-auto sm:w-[420px] sm:-translate-x-1/2"
               style={{ top: 'calc(var(--sat-px, 0px) + 64px)' }}
             >
               <div className="mb-2 flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#4db6ac]/80">{t('feed.community_fallback')}</div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cpoint-turquoise/80">{t('feed.community_fallback')}</div>
                   <h2 className="mt-1 text-base font-semibold text-white">{data?.community?.name || t('feed.community_fallback')}</h2>
                 </div>
                 <button
                   type="button"
-                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/70 hover:border-[#4db6ac]/50 hover:text-[#4db6ac]"
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/70 hover:border-cpoint-turquoise/50 hover:text-cpoint-turquoise"
                   onClick={() => setCommunityInfoOpen(false)}
                   aria-label={t('feed.close_community_description')}
                 >
@@ -2708,12 +2708,12 @@ export default function CommunityFeed() {
           <div className="rounded-2xl border border-white/10 bg-white/[0.025] px-3 py-2.5 mb-3 shadow-lg shadow-black/20">
             <div className="flex gap-4 overflow-x-auto no-scrollbar">
               <button
-                className="flex flex-col items-center gap-1 min-w-[60px] text-white/80 transition hover:text-[#4db6ac] disabled:opacity-50"
+                className="flex flex-col items-center gap-1 min-w-[60px] text-white/80 transition hover:text-cpoint-turquoise disabled:opacity-50"
                 onClick={handleStoryUploadClick}
                 disabled={storyUploading || !community_id}
                 aria-label={t('feed.add_story')}
               >
-                <span className="w-14 h-14 rounded-full border-[3px] border-dashed border-[#4db6ac]/50 bg-[#4db6ac]/10 flex items-center justify-center">
+                <span className="w-14 h-14 rounded-full border-[3px] border-dashed border-cpoint-turquoise/50 bg-cpoint-turquoise/10 flex items-center justify-center">
                   <i className="fa-solid fa-plus text-base" />
                 </span>
                 <span className="text-[11px] text-[#9fb0b5]">{storyUploading ? t('feed.posting') : t('feed.your_story')}</span>
@@ -2728,7 +2728,7 @@ export default function CommunityFeed() {
                   className="flex flex-col items-center gap-1 min-w-[60px]"
                   onClick={() => openStory(idx, 0)}
                 >
-                  <span className={`w-14 h-14 rounded-full border-[3px] ${group.has_unseen ? 'border-[#4db6ac]' : 'border-white/20'} p-0.5`}>
+                  <span className={`w-14 h-14 rounded-full border-[3px] ${group.has_unseen ? 'border-cpoint-turquoise' : 'border-white/20'} p-0.5`}>
                     <Avatar
                       username={group.username}
                       url={group.profile_picture || undefined}
@@ -2963,7 +2963,7 @@ export default function CommunityFeed() {
                 {(currentStoryGroup?.stories || []).map((story, idx) => (
                   <div
                     key={story.id}
-                    className={`h-0.5 flex-1 rounded-full ${idx <= (activeStoryPointer?.storyIndex ?? 0) ? 'bg-[#4db6ac]' : 'bg-white/25'}`}
+                    className={`h-0.5 flex-1 rounded-full ${idx <= (activeStoryPointer?.storyIndex ?? 0) ? 'bg-cpoint-turquoise' : 'bg-white/25'}`}
                   />
                 ))}
               </div>
@@ -2984,7 +2984,7 @@ export default function CommunityFeed() {
                 <div className="flex flex-shrink-0 items-center gap-1.5">
                   <button
                     type="button"
-                    className="flex h-10 min-w-10 items-center justify-center gap-1 rounded-full border border-white/10 bg-black/55 px-3 text-xs font-medium text-white/80 backdrop-blur-md transition hover:border-[#4db6ac]/50 hover:text-[#4db6ac]"
+                    className="flex h-10 min-w-10 items-center justify-center gap-1 rounded-full border border-white/10 bg-black/55 px-3 text-xs font-medium text-white/80 backdrop-blur-md transition hover:border-cpoint-turquoise/50 hover:text-cpoint-turquoise"
                     style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={() => openStoryViewers(currentStory.id)}
@@ -3036,7 +3036,7 @@ export default function CommunityFeed() {
                   )}
                   {/* Back to feed button */}
                   <button
-                    className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white/80 backdrop-blur-md transition hover:border-[#4db6ac]/50 hover:text-[#4db6ac]"
+                    className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white/80 backdrop-blur-md transition hover:border-cpoint-turquoise/50 hover:text-cpoint-turquoise"
                     onClick={closeStoryViewer}
                     aria-label="Close story viewer"
                   >
@@ -3095,7 +3095,7 @@ export default function CommunityFeed() {
                   }}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && storyCommentText.trim()) { e.preventDefault(); handleSubmitStoryComment(currentStory.id) } }}
                   placeholder="Add a comment..."
-                  className="flex-1 min-h-9 bg-white/10 border border-white/20 rounded-2xl px-4 py-1 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac] resize-none overflow-y-auto"
+                  className="flex-1 min-h-9 bg-white/10 border border-white/20 rounded-2xl px-4 py-1 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-cpoint-turquoise resize-none overflow-y-auto"
                   style={{ maxHeight: '120px' }}
                   rows={1}
                   disabled={storyCommentSending}
@@ -3157,7 +3157,7 @@ export default function CommunityFeed() {
                   }}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && storyPrivateReplyText.trim()) { e.preventDefault(); handleSendPrivateReply(currentStory) } }}
                   placeholder={`Message @${currentStory.username} privately...`}
-                  className="flex-1 min-h-9 bg-white/10 border border-white/20 rounded-2xl px-4 py-1 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac] resize-none overflow-y-auto"
+                  className="flex-1 min-h-9 bg-white/10 border border-white/20 rounded-2xl px-4 py-1 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-cpoint-turquoise resize-none overflow-y-auto"
                   style={{ maxHeight: '120px' }}
                   rows={1}
                   disabled={storyPrivateReplySending}
@@ -3205,7 +3205,7 @@ export default function CommunityFeed() {
                         onFocus={() => setStoryCommentFocused(true)}
                         onBlur={() => { setTimeout(() => { if (!storyCommentText.trim()) setStoryCommentFocused(false) }, 150) }}
                         placeholder="Comment..."
-                        className={`w-full min-h-9 bg-white/10 border border-white/20 px-4 py-1 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac] resize-none overflow-y-auto transition-all duration-200 ${
+                        className={`w-full min-h-9 bg-white/10 border border-white/20 px-4 py-1 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-cpoint-turquoise resize-none overflow-y-auto transition-all duration-200 ${
                           storyCommentFocused || storyCommentText.trim() ? 'rounded-2xl' : 'rounded-full'
                         }`}
                         style={{ maxHeight: '120px' }}
@@ -3225,7 +3225,7 @@ export default function CommunityFeed() {
                         >
                           <i className="fa-regular fa-comment text-lg" />
                           {storyComments.length > 0 && (
-                            <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-[#4db6ac] text-[9px] text-black font-bold flex items-center justify-center">{storyComments.length > 9 ? '9+' : storyComments.length}</span>
+                            <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-cpoint-turquoise text-[9px] text-black font-bold flex items-center justify-center">{storyComments.length > 9 ? '9+' : storyComments.length}</span>
                           )}
                         </button>
 
@@ -3301,7 +3301,7 @@ export default function CommunityFeed() {
             {/* Sound toggle for videos */}
             {currentStory.media_type === 'video' && (
               <button
-                className="absolute -top-14 right-4 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/70 text-white backdrop-blur-md transition hover:border-[#4db6ac]/50 hover:text-[#4db6ac]"
+                className="absolute -top-14 right-4 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/70 text-white backdrop-blur-md transition hover:border-cpoint-turquoise/50 hover:text-cpoint-turquoise"
                 onClick={(e) => {
                   e.stopPropagation()
                   setStoryMuted(!storyMuted)
@@ -3380,7 +3380,7 @@ export default function CommunityFeed() {
           >
             <button
               onClick={handleStoryEditorClose}
-              className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-white/85 font-medium text-sm hover:border-[#4db6ac]/50 hover:text-[#4db6ac]"
+              className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-white/85 font-medium text-sm hover:border-cpoint-turquoise/50 hover:text-cpoint-turquoise"
             >
               {t('common.cancel')}
             </button>
@@ -3394,7 +3394,7 @@ export default function CommunityFeed() {
               <button
                 onClick={handleStoryEditorPublish}
                 disabled={storyUploading}
-                className="px-4 py-2 rounded-full bg-[#4db6ac] text-black font-semibold text-sm hover:brightness-110 disabled:opacity-50"
+                className="px-4 py-2 rounded-full bg-cpoint-turquoise text-black font-semibold text-sm hover:brightness-110 disabled:opacity-50"
               >
                 {storyUploading ? t('feed.posting') : t('common.share')}
               </button>
@@ -3471,7 +3471,7 @@ export default function CommunityFeed() {
               onChange={(e) => setStoryEditorDescription(e.target.value)}
               placeholder={t('feed.story_description_placeholder')}
               maxLength={2000}
-              className="w-full px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-[#4db6ac]/50"
+              className="w-full px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-cpoint-turquoise/50"
             />
             <input
               type="text"
@@ -3479,7 +3479,7 @@ export default function CommunityFeed() {
               onChange={(e) => updateActiveStoryEditorFile({ caption: e.target.value })}
               placeholder={storyEditorFiles.length > 1 ? t('feed.caption_for_slide', { number: storyEditorActiveIndex + 1 }) : t('feed.add_caption')}
               maxLength={500}
-              className="w-full px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-[#4db6ac]/50"
+              className="w-full px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-cpoint-turquoise/50"
             />
           </div>
         </div>
@@ -3495,7 +3495,7 @@ export default function CommunityFeed() {
               </div>
               {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
                 <div className="mb-3 p-2 rounded-xl border border-white/10 bg-white/[0.02]">
-                  <textarea value={newAnnouncement} onChange={(e)=> setNewAnnouncement(e.target.value)} placeholder={t('feed.write_announcement_placeholder')} className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none min-h-[72px]" />
+                  <textarea value={newAnnouncement} onChange={(e)=> setNewAnnouncement(e.target.value)} placeholder={t('feed.write_announcement_placeholder')} className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-cpoint-turquoise/70 outline-none min-h-[72px]" />
                   <div className="text-right mt-2">
                     <NativeActionButton
                       haptic="light"
@@ -3532,8 +3532,8 @@ export default function CommunityFeed() {
         <div className="fixed inset-0 z-[90] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowSearch(false)}>
           <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
             <div className="flex items-center gap-2 mb-2">
-              <i className="fa-solid fa-hashtag text-[#4db6ac]" />
-              <input id="hashtag-input" value={q} onChange={(e)=> setQ(e.target.value)} placeholder="#hashtag" className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" />
+              <i className="fa-solid fa-hashtag text-cpoint-turquoise" />
+              <input id="hashtag-input" value={q} onChange={(e)=> setQ(e.target.value)} placeholder="#hashtag" className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-cpoint-turquoise/70 outline-none" />
               <NativeActionButton haptic="selection" className="px-3 py-2 rounded-md text-sm" onClick={runSearch}>
                 {t('common.search')}
               </NativeActionButton>
@@ -3569,12 +3569,12 @@ export default function CommunityFeed() {
           
           {/* Instruction prompt and Next button */}
           <div className="fixed top-[15%] left-1/2 transform -translate-x-1/2 z-[51] text-center w-[90%] max-w-sm pointer-events-auto">
-            <div className="text-white text-base font-medium px-6 py-3 rounded-xl bg-black/70 backdrop-blur-md border border-[#4db6ac]/30 shadow-lg mb-3">
-              {t('feed.onboarding_react_to_post')} <span className="text-[#4db6ac] text-sm ml-2">(1/2)</span>
+            <div className="text-white text-base font-medium px-6 py-3 rounded-xl bg-black/70 backdrop-blur-md border border-cpoint-turquoise/30 shadow-lg mb-3">
+              {t('feed.onboarding_react_to_post')} <span className="text-cpoint-turquoise text-sm ml-2">(1/2)</span>
             </div>
             <div className="flex gap-3 justify-center">
               <button 
-                className="px-6 py-2 rounded-full bg-[#4db6ac]/50 text-white text-sm font-medium hover:bg-[#4db6ac]/70 shadow-[0_0_20px_rgba(77,182,172,0.6)] hover:shadow-[0_0_30px_rgba(77,182,172,0.8)]"
+                className="px-6 py-2 rounded-full bg-cpoint-turquoise/50 text-white text-sm font-medium hover:bg-cpoint-turquoise/70 shadow-[0_0_20px_rgba(0,206,200,0.6)] hover:shadow-[0_0_30px_rgba(0,206,200,0.8)]"
                 onClick={()=> setHighlightStep('post')}
               >
                 {t('common.next')}
@@ -3602,10 +3602,10 @@ export default function CommunityFeed() {
         <div className="fixed inset-0 z-[39] bg-black/85">
           {/* Description near the glowing button at bottom */}
           <div className="fixed bottom-32 left-1/2 transform -translate-x-1/2 text-center w-[90%] max-w-sm">
-            <div className="text-white text-base font-medium px-6 py-3 rounded-xl bg-black/70 backdrop-blur-md border border-[#4db6ac]/30 shadow-lg">
-              {t('feed.onboarding_create_first_post')} <span className="text-[#4db6ac] text-sm ml-2">(2/2)</span>
+            <div className="text-white text-base font-medium px-6 py-3 rounded-xl bg-black/70 backdrop-blur-md border border-cpoint-turquoise/30 shadow-lg">
+              {t('feed.onboarding_create_first_post')} <span className="text-cpoint-turquoise text-sm ml-2">(2/2)</span>
             </div>
-            <div className="w-1 h-12 mx-auto bg-gradient-to-b from-[#4db6ac]/50 to-transparent" />
+            <div className="w-1 h-12 mx-auto bg-gradient-to-b from-cpoint-turquoise/50 to-transparent" />
           </div>
           
           {/* Action buttons at top */}
@@ -3642,7 +3642,7 @@ export default function CommunityFeed() {
         composeSlot={
           <NativeActionButton
             haptic="light"
-            className={`w-10 h-10 rounded-md p-0 grid place-items-center ${highlightStep === 'post' ? 'ring-[6px] ring-[#4db6ac] shadow-[0_0_40px_rgba(77,182,172,0.8)] animate-pulse scale-125 z-[40] relative' : ''}`}
+            className={`w-10 h-10 rounded-md p-0 grid place-items-center ${highlightStep === 'post' ? 'ring-[6px] ring-cpoint-turquoise shadow-[0_0_40px_rgba(0,206,200,0.8)] animate-pulse scale-125 z-[40] relative' : ''}`}
             aria-label={t('feed.new_post')}
             onClick={() => {
               if (!navigator.onLine) { alert(t('feed.go_back_online')); return }
@@ -3683,11 +3683,11 @@ export default function CommunityFeed() {
             </button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/polls_react`) }}>
               {t('feed.polls')}
-              {hasUnansweredPolls && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
+              {hasUnansweredPolls && <span className="w-2 h-2 bg-cpoint-turquoise rounded-full" />}
             </button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/calendar_react`) }}>
               {t('feed.calendar')}
-              {hasPendingRsvps && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
+              {hasPendingRsvps && <span className="w-2 h-2 bg-cpoint-turquoise rounded-full" />}
             </button>
             {showTasks && (
               <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/tasks_react`) }}>{t('feed.tasks')}</button>
@@ -3699,7 +3699,7 @@ export default function CommunityFeed() {
                 <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/resources_react`) }}>{t('feed.forum')}</button>
                 <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/useful_links_react`) }}>
                   {t('feed.useful_links_docs')}
-                  {hasUnseenDocs && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
+                  {hasUnseenDocs && <span className="w-2 h-2 bg-cpoint-turquoise rounded-full" />}
                 </button>
               </>
             )}
@@ -3711,7 +3711,7 @@ export default function CommunityFeed() {
               } catch {}
               closeMoreMenu()
             }}>
-              <i className={`fa-solid ${communityMuted ? 'fa-bell' : 'fa-bell-slash'} text-xs ${communityMuted ? 'text-[#4db6ac]' : 'text-white/40'}`} />
+              <i className={`fa-solid ${communityMuted ? 'fa-bell' : 'fa-bell-slash'} text-xs ${communityMuted ? 'text-cpoint-turquoise' : 'text-white/40'}`} />
               {communityMuted ? t('feed.unmute_notifications') : t('feed.mute_notifications')}
             </button>
             <p className="text-[10px] text-white/30 text-right px-4 pb-1">
@@ -4497,7 +4497,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
           <div className="font-medium tracking-[-0.01em]">{post.username}</div>
           {!!post.is_system_post && (
             <span
-              className="px-1.5 py-0.5 rounded-full text-[10px] uppercase tracking-wide bg-[#4db6ac]/15 text-[#4db6ac] border border-[#4db6ac]/30"
+              className="px-1.5 py-0.5 rounded-full text-[10px] uppercase tracking-wide bg-cpoint-turquoise/15 text-cpoint-turquoise border border-cpoint-turquoise/30"
               title={t('feed.steve_welcome_title')}
             >
               {t('feed.welcome')}
@@ -4508,7 +4508,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
             <div className="flex items-center gap-2">
               {/* Personal star (turquoise when selected) */}
               <button className="px-2 py-1 rounded-full" title={personalStarred ? t('feed.unstar_yours') : t('feed.star_yours')} onClick={toggleStar} aria-label={t('feed.star_yours')}>
-                <i className={`${personalStarred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: personalStarred ? '#4db6ac' : '#6c757d' }} />
+                <i className={`${personalStarred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: personalStarred ? '#00CEC8' : '#6c757d' }} />
               </button>
               {/* Community pin (yellow) for owner/admins */}
               {(isAdmin || currentUser === 'admin') && (
@@ -4517,13 +4517,13 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                 </button>
               )}
               {(post.username === currentUser || isAdmin || currentUser === 'admin') && !isSystemPostLocked(post) && (
-                <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title={t('common.delete')}
+                <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-cpoint-turquoise" title={t('common.delete')}
                   onClick={(e)=> { e.stopPropagation(); const ok = confirm(t('feed.delete_post_confirm')); if(!ok) return; onDeletePost?.(post.id) }}>
                   <i className="fa-regular fa-trash-can" style={{ color: 'inherit' }} />
                 </button>
               )}
               {(post.username === currentUser || isAdmin || currentUser === 'admin') && !post.is_system_post && (
-                <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title={t('common.edit')}
+                <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-cpoint-turquoise" title={t('common.edit')}
                   onClick={(e)=> { e.stopPropagation(); setIsEditing(true) }}>
                   <i className="fa-regular fa-pen-to-square" />
                 </button>
@@ -4554,7 +4554,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                           fetchSummary()
                         }}
                       >
-                        <i className="fa-solid fa-wand-magic-sparkles text-teal-400 w-4" />
+                        <i className="fa-solid fa-wand-magic-sparkles text-cpoint-turquoise w-4" />
                         {t('feed.summary')}
                       </button>
                       <button
@@ -4623,7 +4623,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
           </>
         ) : (
           <div className="px-3 space-y-2" onClick={(e)=> e.stopPropagation()}>
-            <textarea className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[100px]" value={editText} onChange={(e)=> setEditText(e.target.value)} />
+            <textarea className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-cpoint-turquoise/70 outline-none min-h-[100px]" value={editText} onChange={(e)=> setEditText(e.target.value)} />
             
             {/* Current/New Media Preview */}
             {!removeMedia && (editMediaPreview || post.image_path || post.video_path) && (
@@ -4698,13 +4698,13 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                 {detectedLinks.map((link, idx) => (
                   <div key={idx} className="flex items-center gap-2 p-2 rounded-lg border border-white/10 bg-white/5">
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs text-[#4db6ac] truncate">{link.displayText}</div>
+                      <div className="text-xs text-cpoint-turquoise truncate">{link.displayText}</div>
                       {link.displayText !== link.url && (
                         <div className="text-xs text-white/50 truncate">{link.url}</div>
                       )}
                     </div>
                     <button
-                      className="px-2 py-1 rounded text-xs border border-[#4db6ac]/30 text-[#4db6ac] hover:bg-[#4db6ac]/10"
+                      className="px-2 py-1 rounded text-xs border border-cpoint-turquoise/30 text-cpoint-turquoise hover:bg-cpoint-turquoise/10"
                       onClick={() => startRenamingLink(link)}
                     >
                       {t('feed.rename')}
@@ -4716,7 +4716,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
             
             <div className="flex gap-2 justify-end">
               <button className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm" onClick={cancelEdit}>{t('common.cancel')}</button>
-              <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110" onClick={saveEdit}>{t('common.save')}</button>
+              <button className="px-3 py-1.5 rounded-md bg-cpoint-turquoise text-black text-sm hover:brightness-110" onClick={saveEdit}>{t('common.save')}</button>
             </div>
           </div>
         )}
@@ -4855,7 +4855,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
         {post.poll && (
           <div className="px-3 space-y-2" onClick={(e)=> e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-2">
-              <i className="fa-solid fa-chart-bar text-[#4db6ac]" />
+              <i className="fa-solid fa-chart-bar text-cpoint-turquoise" />
               <div className="font-medium text-sm flex-1">
                 {post.poll.question}
                 {post.poll.expires_at ? (
@@ -4865,7 +4865,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
               {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
                 <>
                   <button 
-                    className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" 
+                    className="px-2 py-1 rounded-full text-[#6c757d] hover:text-cpoint-turquoise" 
                     title={t('feed.edit_poll')}
                     onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (navigate && communityId) navigate(`/community/${communityId}/polls_react?edit=${post.poll?.id}`) }}
                   >
@@ -4886,7 +4886,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                 </>
               )}
               <button 
-                className="ml-1 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" 
+                className="ml-1 px-2 py-1 rounded-full text-[#6c757d] hover:text-cpoint-turquoise" 
                 title={t('feed.voters')}
                 onClick={(e)=> { 
                   e.preventDefault()
@@ -4912,10 +4912,10 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                     key={option.id}
                     type="button"
                     disabled={isExpired}
-                    className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isExpired ? 'opacity-60 cursor-not-allowed' : (isUserVote ? 'border-[#4db6ac] bg-[#4db6ac]/10' : 'border-white/10 hover:bg-white/5')}`}
+                    className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isExpired ? 'opacity-60 cursor-not-allowed' : (isUserVote ? 'border-cpoint-turquoise bg-cpoint-turquoise/10' : 'border-white/10 hover:bg-white/5')}`}
                     onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (!isExpired && onPollVote) { void triggerHaptic('selection'); onPollVote(post.id, post.poll!.id, option.id) } }}
                   >
-                    <div className="absolute inset-0 bg-[#4db6ac]/20" style={{ width: `${percentage}%`, transition: 'width 0.3s ease' }} />
+                    <div className="absolute inset-0 bg-cpoint-turquoise/20" style={{ width: `${percentage}%`, transition: 'width 0.3s ease' }} />
                     <div className="relative flex items-center justify-between">
                       <span className="text-sm">{option.text}</span>
                       <span className="text-xs text-[#9fb0b5] font-medium">{option.votes} {percentage > 0 ? `(${percentage}%)` : ''}</span>
@@ -4931,7 +4931,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                 <button 
                   type="button"
                   onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (onPollClick) onPollClick() }}
-                  className="text-[#4db6ac] hover:underline"
+                  className="text-cpoint-turquoise hover:underline"
                 >
                   {t('feed.view_all_polls')}
                 </button>
@@ -4941,7 +4941,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
         {/* Hide reactions and comments for poll posts */}
         {!post.poll && (
           <div className={`flex items-center gap-2 text-xs ${highlightStep === 'reaction' && idx === 0 ? 'relative z-[9999] pointer-events-auto' : ''}`} onClick={(e)=> e.stopPropagation()}>
-            <div className={`${highlightStep === 'reaction' && idx === 0 ? 'ring-[3px] ring-[#4db6ac] shadow-[0_0_25px_rgba(77,182,172,1),0_0_50px_rgba(77,182,172,0.8)] rounded-lg bg-[#4db6ac]/10 animate-pulse' : ''}`}>
+            <div className={`${highlightStep === 'reaction' && idx === 0 ? 'ring-[3px] ring-cpoint-turquoise shadow-[0_0_25px_rgba(0,206,200,1),0_0_50px_rgba(0,206,200,0.8)] rounded-lg bg-cpoint-turquoise/10 animate-pulse' : ''}`}>
               <ReactionFA 
                 icon="fa-regular fa-heart" 
                 count={post.reactions?.['heart']||0} 
@@ -4990,7 +4990,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                     <span className="text-[11px] text-[#9fb0b5]">{formatSmartTime(r.timestamp)}</span>
                     <div className="ml-auto flex items-center gap-1">
                       <button
-                        className={`px-2 py-0.5 rounded-full text-[11px] ${activeChildReplyFor === r.id ? 'text-[#4db6ac]' : 'text-[#9fb0b5] hover:text-[#4db6ac]'}`}
+                        className={`px-2 py-0.5 rounded-full text-[11px] ${activeChildReplyFor === r.id ? 'text-cpoint-turquoise' : 'text-[#9fb0b5] hover:text-cpoint-turquoise'}`}
                         onClick={(e)=> { e.stopPropagation(); setActiveChildReplyFor(id => id === r.id ? null : r.id); setChildReplyText('') }}
                       >
                         {t('feed.reply')}
@@ -5111,7 +5111,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                     {/* Thumbs up */}
                     <button
                       className={`text-[11px] flex items-center gap-1 transition ${
-                        r.user_reaction === '👍' ? 'text-[#4db6ac]' : 'text-[#9fb0b5] hover:text-[#4db6ac]'
+                        r.user_reaction === '👍' ? 'text-cpoint-turquoise' : 'text-[#9fb0b5] hover:text-cpoint-turquoise'
                       }`}
                       onClick={async (e) => {
                         e.stopPropagation()
@@ -5162,7 +5162,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                     </button>
                     {/* Reply count - click to view thread */}
                     <button
-                      className="text-[11px] text-[#9fb0b5] hover:text-[#4db6ac] flex items-center gap-1"
+                      className="text-[11px] text-[#9fb0b5] hover:text-cpoint-turquoise flex items-center gap-1"
                       onClick={(e) => { e.stopPropagation(); window.location.href = `/reply/${r.id}` }}
                     >
                       <i className="fa-regular fa-comment text-[10px]" />
@@ -5240,14 +5240,14 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
           {(() => {
             const topLevelReplies = post.replies.filter((r: any) => !r.parent_reply_id)
             return topLevelReplies.length > 2 && (
-              <button className="text-xs text-[#4db6ac] hover:underline" onClick={()=> onOpen()}>{t('feed.view_all_comments', { count: topLevelReplies.length })}</button>
+              <button className="text-xs text-cpoint-turquoise hover:underline" onClick={()=> onOpen()}>{t('feed.view_all_comments', { count: topLevelReplies.length })}</button>
             )
           })()}
           {/* Steve is typing indicator */}
           {steveIsTyping && (
             <div className="flex items-center gap-2 py-2 text-xs text-white/60">
               <div className="flex items-center gap-1">
-                <span className="font-medium text-[#4db6ac]">Steve</span>
+                <span className="font-medium text-cpoint-turquoise">Steve</span>
                 <span>{t('feed.is_typing')}</span>
                 <span className="inline-flex gap-0.5">
                   <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -5263,7 +5263,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
       {steveIsTyping && (!post.replies || post.replies.length === 0) && (
         <div className="px-3 pb-2 flex items-center gap-2 text-xs text-white/60">
           <div className="flex items-center gap-1">
-            <span className="font-medium text-[#4db6ac]">Steve</span>
+            <span className="font-medium text-cpoint-turquoise">Steve</span>
             <span>{t('feed.is_typing')}</span>
             <span className="inline-flex gap-0.5">
               <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -5356,7 +5356,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
       {/* Rename link modal */}
       {renamingLink && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-sm" onClick={(e)=> e.stopPropagation()}>
-          <div className="w-[90%] max-w-md rounded-2xl border border-[#4db6ac]/30 bg-[#0b0b0b] p-6 shadow-[0_0_40px_rgba(77,182,172,0.3)]">
+          <div className="w-[90%] max-w-md rounded-2xl border border-cpoint-turquoise/30 bg-[#0b0b0b] p-6 shadow-[0_0_40px_rgba(0,206,200,0.3)]">
             <h3 className="text-lg font-bold text-white mb-4">{t('feed.rename_link')}</h3>
             <div className="space-y-3">
               <div>
@@ -5371,7 +5371,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                   type="text"
                   value={linkDisplayName}
                   onChange={(e) => setLinkDisplayName(e.target.value)}
-                  className="w-full p-2 rounded bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+                  className="w-full p-2 rounded bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:ring-1 focus:ring-cpoint-turquoise"
                   placeholder={t('feed.display_name_placeholder')}
                   autoFocus
                   onClick={(e) => e.stopPropagation()}
@@ -5386,7 +5386,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                 {t('common.cancel')}
               </button>
               <button
-                className="flex-1 px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110"
+                className="flex-1 px-4 py-2 rounded-lg bg-cpoint-turquoise text-black font-medium hover:brightness-110"
                 onClick={(e)=> { e.stopPropagation(); saveRenamedLink() }}
               >
                 {t('common.save')}
@@ -5409,7 +5409,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
               <div className="flex items-center gap-2">
-                <i className="fa-solid fa-wand-magic-sparkles text-teal-400" />
+                <i className="fa-solid fa-wand-magic-sparkles text-cpoint-turquoise" />
                 <span className="font-semibold text-white">{t('feed.steve_summary')}</span>
               </div>
               <button 
@@ -5424,7 +5424,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
             <div className="p-4 overflow-y-auto max-h-[60vh]">
               {summaryLoading && (
                 <div className="flex flex-col items-center justify-center py-8 gap-3">
-                  <div className="w-8 h-8 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
+                  <div className="w-8 h-8 border-2 border-cpoint-turquoise border-t-transparent rounded-full animate-spin" />
                   <span className="text-white/60 text-sm">{t('feed.steve_summary_loading')}</span>
                 </div>
               )}
@@ -5446,7 +5446,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
             {/* Footer */}
             <div className="px-4 py-3 border-t border-white/10">
               <button
-                className="w-full py-2.5 rounded-xl bg-[#4db6ac] text-black font-medium hover:brightness-110"
+                className="w-full py-2.5 rounded-xl bg-cpoint-turquoise text-black font-medium hover:brightness-110"
                 onClick={() => setShowSummaryModal(false)}
               >
                 {t('common.close')}
@@ -5465,7 +5465,7 @@ function ReactionFA({ icon, count, active, onClick, isHighlighted }:{ icon: stri
   const iconStyle: React.CSSProperties = isHighlighted 
     ? { color: '#5ffff0', filter: 'brightness(1.5) saturate(1.5)' }
     : active
-    ? { color: '#4db6ac', WebkitTextStroke: '1px #4db6ac' }
+    ? { color: '#00CEC8', WebkitTextStroke: '1px #00CEC8' }
     : { color: '#6c757d' }
   const handleClick = () => {
     setPopping(true)

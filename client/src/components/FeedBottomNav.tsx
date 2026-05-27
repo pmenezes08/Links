@@ -34,7 +34,7 @@ export default function FeedBottomNav({
   const composeControl = composeSlot ?? (
     <button
       type="button"
-      className="w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center transition-all touch-manipulation"
+      className="w-10 h-10 rounded-md bg-cpoint-turquoise text-black hover:brightness-110 grid place-items-center transition-all touch-manipulation"
       aria-label={t('feed.new_post')}
       onClick={onCompose}
     >
@@ -63,7 +63,7 @@ export default function FeedBottomNav({
             aria-label={t('navigation.home')}
             onClick={onHome}
           >
-            <i className="fa-solid fa-house text-lg text-[#4db6ac]" />
+            <i className="fa-solid fa-house text-lg text-cpoint-turquoise" />
           </button>
           <button
             type="button"
@@ -83,10 +83,10 @@ export default function FeedBottomNav({
             <span className="relative inline-block">
               <i
                 className="fa-solid fa-bullhorn text-lg"
-                style={announcementsHighlight ? { color: '#4db6ac' } : undefined}
+                style={announcementsHighlight ? { color: '#00CEC8' } : undefined}
               />
               {announcementsDot ? (
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4db6ac] rounded-full" />
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-cpoint-turquoise rounded-full" />
               ) : null}
             </span>
           </button>
@@ -99,7 +99,7 @@ export default function FeedBottomNav({
             <span className="relative inline-block">
               <i className="fa-solid fa-ellipsis text-lg" />
               {moreDot ? (
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4db6ac] rounded-full" />
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-cpoint-turquoise rounded-full" />
               ) : null}
             </span>
           </button>

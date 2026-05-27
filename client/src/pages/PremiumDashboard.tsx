@@ -805,12 +805,12 @@ export default function PremiumDashboard() {
                   stroke="currentColor" 
                   strokeWidth="2" 
                   fill="none"
-                  style={{ color: '#4db6ac' }}
+                  style={{ color: '#00CEC8' }}
                 />
                 <path 
                   className="opacity-80" 
                   fill="none"
-                  stroke="#4db6ac"
+                  stroke="#00CEC8"
                   strokeWidth="2"
                   strokeLinecap="round"
                   d="M12 2a10 10 0 0 1 10 10"
@@ -831,13 +831,13 @@ export default function PremiumDashboard() {
       /* Desktop sidebar - only for native platforms (iOS/Android) */
       <div className="fixed left-0 top-14 bottom-0 w-52 hidden md:flex flex-col z-30 liquid-glass-surface border border-white/10 rounded-r-3xl shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
         <nav className="flex-1 overflow-y-auto py-3">
-          <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/premium_dashboard">{t('navigation.dashboard')}</a>
-          <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/profile">{t('navigation.profile')}</a>
-          <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/user_chat">{t('navigation.messages')}</a>
-          <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/followers">{t('navigation.followers')}</a>
-          {hasGymAccess && <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/your_sports">{t('dashboard.your_sports')}</a>}
-          <button className="block w-full text-left px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" onClick={requestLogout}>{t('navigation.logout')}</button>
-          <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/account_settings">
+          <a className="block px-5 py-3 text-sm text-white hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/premium_dashboard">{t('navigation.dashboard')}</a>
+          <a className="block px-5 py-3 text-sm text-white hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/profile">{t('navigation.profile')}</a>
+          <a className="block px-5 py-3 text-sm text-white hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/user_chat">{t('navigation.messages')}</a>
+          <a className="block px-5 py-3 text-sm text-white hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/followers">{t('navigation.followers')}</a>
+          {hasGymAccess && <a className="block px-5 py-3 text-sm text-white hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/your_sports">{t('dashboard.your_sports')}</a>}
+          <button className="block w-full text-left px-5 py-3 text-sm text-white hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" onClick={requestLogout}>{t('navigation.logout')}</button>
+          <a className="block px-5 py-3 text-sm text-white hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/account_settings">
             <i className="fa-solid fa-cog mr-2" />{t('navigation.settings')}
           </a>
         </nav>
@@ -845,7 +845,7 @@ export default function PremiumDashboard() {
           <div className="p-4 border-t border-[#333]">
             <button
               type="button"
-              className="w-full rounded-lg bg-gradient-to-r from-teal-400 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white hover:from-teal-500 hover:to-teal-600 transition"
+              className="w-full rounded-lg bg-cpoint-turquoise px-4 py-2.5 text-sm font-semibold text-white hover:brightness-110 transition"
               onClick={() => navigate('/subscription_plans')}
             >
               {t('dashboard.upgrade_to_premium')}
@@ -872,7 +872,7 @@ export default function PremiumDashboard() {
             <div className="px-4 py-4">
               <button
                 type="button"
-                  className="w-full rounded-2xl liquid-glass-chip border border-[#4db6ac]/30 px-4 py-3 text-sm font-semibold text-teal-50 tracking-[0.2em] uppercase shadow-[0_15px_35px_rgba(0,0,0,0.4)] hover:shadow-[0_20px_45px_rgba(0,0,0,0.55)] transition"
+                  className="w-full rounded-2xl liquid-glass-chip border border-cpoint-turquoise/30 px-4 py-3 text-sm font-semibold text-white tracking-[0.2em] uppercase shadow-[0_15px_35px_rgba(0,0,0,0.4)] hover:shadow-[0_20px_45px_rgba(0,0,0,0.55)] transition"
                 onClick={() => {
                   setMobileMenuOpen(false)
                   navigate('/subscription_plans')
@@ -890,7 +890,7 @@ export default function PremiumDashboard() {
       >
         <div className="app-content max-w-5xl mx-auto px-3 py-6">
           {showOnboardingCompletionCard && (
-            <div className="mb-4 rounded-2xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 p-4 shadow-[0_16px_45px_rgba(0,0,0,0.28)]">
+            <div className="mb-4 rounded-2xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 p-4 shadow-[0_16px_45px_rgba(0,0,0,0.28)]">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="text-base font-semibold text-white">{t('dashboard.complete_onboarding_title')}</div>
@@ -903,10 +903,10 @@ export default function PremiumDashboard() {
                     <div className="mt-2 text-xs font-medium text-[#d5fffb]">{onboardingRemaining}</div>
                   )}
                   <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
-                    <span className={`rounded-full border px-2.5 py-1 ${onboardingStateSummary?.onboardingProgress?.personalSectionComplete ? 'border-[#4db6ac]/35 bg-[#4db6ac]/10 text-[#d5fffb]' : 'border-white/10 bg-white/5 text-white/55'}`}>
+                    <span className={`rounded-full border px-2.5 py-1 ${onboardingStateSummary?.onboardingProgress?.personalSectionComplete ? 'border-cpoint-turquoise/35 bg-cpoint-turquoise/10 text-[#d5fffb]' : 'border-white/10 bg-white/5 text-white/55'}`}>
                       {onboardingStateSummary?.onboardingProgress?.personalSectionComplete ? t('dashboard.personal_complete') : t('dashboard.personal_pending')}
                     </span>
-                    <span className={`rounded-full border px-2.5 py-1 ${onboardingStateSummary?.onboardingProgress?.professionalSectionComplete ? 'border-[#4db6ac]/35 bg-[#4db6ac]/10 text-[#d5fffb]' : 'border-white/10 bg-white/5 text-white/55'}`}>
+                    <span className={`rounded-full border px-2.5 py-1 ${onboardingStateSummary?.onboardingProgress?.professionalSectionComplete ? 'border-cpoint-turquoise/35 bg-cpoint-turquoise/10 text-[#d5fffb]' : 'border-white/10 bg-white/5 text-white/55'}`}>
                       {onboardingStateSummary?.onboardingProgress?.professionalSectionComplete ? t('dashboard.professional_complete') : t('dashboard.professional_pending')}
                     </span>
                   </div>
@@ -914,7 +914,7 @@ export default function PremiumDashboard() {
                 <button
                   type="button"
                   onClick={openOnboardingResume}
-                  className="shrink-0 rounded-xl bg-[#4db6ac] px-4 py-2.5 text-sm font-semibold text-black transition hover:brightness-110"
+                  className="shrink-0 rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-sm font-semibold text-black transition hover:brightness-110"
                 >
                   {t('dashboard.continue_onboarding')}
                 </button>
@@ -955,7 +955,7 @@ export default function PremiumDashboard() {
               <div className="px-3 py-6">
                 <div className="mx-auto max-w-xl space-y-4">
                   <div className="liquid-glass-surface overflow-hidden rounded-3xl border border-white/10 p-5 text-center shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#4db6ac]">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cpoint-turquoise">
                       {t('dashboard.welcome_badge')}
                     </div>
                     <h2 className="mt-2 text-xl font-semibold leading-tight tracking-[-0.025em] text-white sm:text-[22px]">
@@ -966,7 +966,7 @@ export default function PremiumDashboard() {
                     </p>
                     <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
                       <button
-                        className="rounded-full bg-[#4db6ac] px-5 py-2.5 font-semibold text-black shadow-lg transition-transform hover:brightness-110 active:scale-95 touch-manipulation"
+                        className="rounded-full bg-cpoint-turquoise px-5 py-2.5 font-semibold text-black shadow-lg transition-transform hover:brightness-110 active:scale-95 touch-manipulation"
                         onClick={() => { setNewCommType('General'); setShowCreateModal(true) }}
                         style={{ WebkitTapHighlightColor: 'transparent' }}
                       >
@@ -990,7 +990,7 @@ export default function PremiumDashboard() {
                       { icon: 'fa-solid fa-user-group', titleKey: 'dashboard.tile_networking_title', textKey: 'dashboard.tile_networking_text' },
                     ].map((tile) => (
                       <div key={tile.titleKey} className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-                        <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-[#4db6ac]/10 text-[#4db6ac]">
+                        <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-cpoint-turquoise/10 text-cpoint-turquoise">
                           <i className={`${tile.icon} text-sm`} />
                         </div>
                         <div className="text-sm font-semibold text-white">{t(tile.titleKey)}</div>
@@ -1005,7 +1005,7 @@ export default function PremiumDashboard() {
                       <div className="text-xs text-[#9fb0b5]">{t('dashboard.ask_try_first')}</div>
                     </div>
                     <button
-                      className="shrink-0 rounded-full border border-[#4db6ac]/40 px-4 py-2 text-sm font-medium text-[#4db6ac] transition hover:bg-[#4db6ac]/10 active:scale-95 touch-manipulation"
+                      className="shrink-0 rounded-full border border-cpoint-turquoise/40 px-4 py-2 text-sm font-medium text-cpoint-turquoise transition hover:bg-cpoint-turquoise/10 active:scale-95 touch-manipulation"
                       onClick={() => navigate('/user_chat/chat/Steve')}
                       style={{ WebkitTapHighlightColor: 'transparent' }}
                     >
@@ -1026,7 +1026,7 @@ export default function PremiumDashboard() {
                       placeholder={t('navigation.search_communities')}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-[#9fb0b5] focus:outline-none focus:border-[#4db6ac]/40"
+                      className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-[#9fb0b5] focus:outline-none focus:border-cpoint-turquoise/40"
                     />
                   </div>
                 </div>
@@ -1125,7 +1125,7 @@ export default function PremiumDashboard() {
           <button
             type="button"
             aria-label={t('dashboard.create_community_short')}
-            className="fixed bottom-[calc(var(--app-dashboard-bottom-nav-height)+1.25rem)] right-5 z-[120] flex h-16 w-16 items-center justify-center rounded-full bg-[#4db6ac] text-3xl font-light leading-none text-black shadow-[0_12px_34px_rgba(77,182,172,0.36)] transition hover:brightness-110 active:scale-95 touch-manipulation"
+            className="fixed bottom-[calc(var(--app-dashboard-bottom-nav-height)+1.25rem)] right-5 z-[120] flex h-16 w-16 items-center justify-center rounded-full bg-cpoint-turquoise text-3xl font-light leading-none text-black shadow-[0_12px_34px_rgba(0,206,200,0.36)] transition hover:brightness-110 active:scale-95 touch-manipulation"
             onClick={() => {
               setNewCommType('General')
               setShowCreateModal(true)
@@ -1161,7 +1161,7 @@ export default function PremiumDashboard() {
                 </p>
                 <button
                   type="button"
-                  className="w-full rounded-xl bg-[#4db6ac] text-black font-semibold py-3 text-sm hover:brightness-110 transition"
+                  className="w-full rounded-xl bg-cpoint-turquoise text-black font-semibold py-3 text-sm hover:brightness-110 transition"
                   onClick={openOnboardingResume}
                 >
                   {t('dashboard.continue_with_steve')}
@@ -1173,7 +1173,7 @@ export default function PremiumDashboard() {
             <div className="fixed inset-0 z-[1200] bg-black/80 backdrop-blur-sm flex items-center justify-center px-6">
               <div className="flex flex-col items-center gap-4 text-center">
                 <img src="/api/public/logo" alt="C-Point" className="w-14 h-14 rounded-2xl object-contain" />
-                <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-[#4db6ac] animate-spin" />
+                <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-cpoint-turquoise animate-spin" />
                 <div className="text-sm text-white/65">{t('dashboard.opening_steve')}</div>
               </div>
             </div>
@@ -1223,7 +1223,7 @@ export default function PremiumDashboard() {
       {/* Success Toast - Subtle notification */}
       {showSuccessModal && (
         <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[60] pointer-events-none">
-          <div className="px-6 py-3 rounded-full border border-[#4db6ac]/40 bg-black/90 backdrop-blur-sm shadow-lg animate-fade-in">
+          <div className="px-6 py-3 rounded-full border border-cpoint-turquoise/40 bg-black/90 backdrop-blur-sm shadow-lg animate-fade-in">
             <div className="text-sm font-medium text-white">
               {t('dashboard.joined_community', { name: joinedCommunityName ?? '' })}
             </div>
@@ -1238,7 +1238,7 @@ export default function PremiumDashboard() {
             <div className="text-sm text-[#9fb0b5]">{t('dashboard.verify_email_body')}</div>
             <div className="flex items-center justify-end gap-2 mt-3">
               <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowVerifyFirstModal(false)}>{t('common.close')}</button>
-              <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=>{ try{ await fetch('/resend_verification', { method:'POST', credentials:'include' }) }catch{} alert(t('dashboard.verification_sent_rate_limit')); setShowVerifyFirstModal(false) }}>{t('dashboard.resend_email')}</button>
+              <button className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black hover:brightness-110" onClick={async()=>{ try{ await fetch('/resend_verification', { method:'POST', credentials:'include' }) }catch{} alert(t('dashboard.verification_sent_rate_limit')); setShowVerifyFirstModal(false) }}>{t('dashboard.resend_email')}</button>
             </div>
           </div>
         </div>
@@ -1278,7 +1278,7 @@ export default function PremiumDashboard() {
                 <div className="flex items-center justify-end gap-2">
                   <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={handleCloseCreateModal} disabled={isCreatingCommunity}>{t('common.cancel')}</button>
                     <button 
-                      className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" 
+                      className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" 
                       disabled={isCreatingCommunity}
                       onClick={async()=> {
                         if (isCreatingCommunity) return
@@ -1324,7 +1324,7 @@ export default function PremiumDashboard() {
               <input value={joinCode} onChange={e=> setJoinCode(e.target.value)} placeholder={t('dashboard.join_code_placeholder')} className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm" />
               <div className="flex items-center justify-end gap-2">
                 <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowJoinModal(false)}>{t('common.cancel')}</button>
-                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=> {
+                <button className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black hover:brightness-110" onClick={async()=> {
                   if (!joinCode.trim()) { alert(t('dashboard.code_required')); return }
                   // If not verified, gate join with verification
                   if (emailVerified === false){
@@ -1394,13 +1394,13 @@ function CommunityCard({
     <button
       onClick={onClick}
       aria-label={name}
-      className="group relative flex min-h-[8.5rem] w-full rounded-2xl overflow-hidden text-white transition-all duration-300 liquid-glass-surface border border-white/15 hover:border-teal-400/40 shadow-[0_24px_56px_rgba(0,0,0,0.48)] hover:shadow-[0_32px_64px_rgba(0,0,0,0.58)] hover:-translate-y-0.5 text-left"
+      className="group relative flex min-h-[8.5rem] w-full rounded-2xl overflow-hidden text-white transition-all duration-300 liquid-glass-surface border border-white/15 hover:border-cpoint-turquoise/40 shadow-[0_24px_56px_rgba(0,0,0,0.48)] hover:shadow-[0_32px_64px_rgba(0,0,0,0.58)] hover:-translate-y-0.5 text-left"
     >
       <div
         className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
         style={{
           background:
-            'radial-gradient(600px circle at var(--x,50%) var(--y,50%), rgba(77,182,172,0.18), transparent 45%)',
+            'radial-gradient(600px circle at var(--x,50%) var(--y,50%), rgba(0,206,200,0.18), transparent 45%)',
         }}
       />
 
@@ -1430,7 +1430,7 @@ function CommunityCard({
         <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[#9fb0b5] pt-1">
           {typeof memberCount === 'number' && (
             <span className="flex items-center gap-1.5">
-              <i className="fa-solid fa-users text-[10px] text-[#4db6ac] drop-shadow-[0_0_8px_rgba(77,182,172,0.45)]" aria-hidden />
+              <i className="fa-solid fa-users text-[10px] text-cpoint-turquoise drop-shadow-[0_0_8px_rgba(0,206,200,0.45)]" aria-hidden />
               {memberCount}
             </span>
           )}
@@ -1444,18 +1444,18 @@ function CommunityCard({
       </div>
 
       {badge && (
-        <span className="pointer-events-none absolute top-4 right-4 sm:top-5 sm:right-5 z-10 flex-shrink-0 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide rounded-full bg-[#4db6ac]/20 text-[#4db6ac] border border-[#4db6ac]/30">
+        <span className="pointer-events-none absolute top-4 right-4 sm:top-5 sm:right-5 z-10 flex-shrink-0 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide rounded-full bg-cpoint-turquoise/20 text-cpoint-turquoise border border-cpoint-turquoise/30">
           {badge}
         </span>
       )}
 
       {unread > 0 && (
-        <span className="pointer-events-none absolute bottom-4 right-4 sm:bottom-5 sm:right-5 z-10 flex-shrink-0 px-2 py-0.5 text-[10px] font-medium rounded-full bg-[#4db6ac]/20 text-[#4db6ac] border border-[#4db6ac]/30">
+        <span className="pointer-events-none absolute bottom-4 right-4 sm:bottom-5 sm:right-5 z-10 flex-shrink-0 px-2 py-0.5 text-[10px] font-medium rounded-full bg-cpoint-turquoise/20 text-cpoint-turquoise border border-cpoint-turquoise/30">
           {t('dashboard.new_posts', { count: unread })}
         </span>
       )}
 
-      <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-teal-300/60 to-transparent opacity-80" />
+      <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-cpoint-turquoise/60 to-transparent opacity-80" />
     </button>
   )
 }

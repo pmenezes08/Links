@@ -715,7 +715,7 @@ export default function MobileLogin() {
                   <button
                     type="button"
                     disabled={googleLoading || isSubmitting || !window.__googleAuthReady}
-                    className="w-full rounded-lg border border-white/10 bg-white/5 py-2.5 text-sm font-medium active:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="w-full rounded-lg border border-white/10 bg-white/5 py-2.5 text-sm font-medium active:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
                     onClick={async () => {
                       const isAndroid = Capacitor.getPlatform() === 'android'
                       setGoogleLoading(true)
@@ -762,7 +762,7 @@ export default function MobileLogin() {
                     <button
                       type="button"
                       disabled={appleLoading || googleLoading || isSubmitting}
-                      className="w-full rounded-lg bg-white py-2.5 text-sm font-semibold text-black active:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                      className="w-full rounded-lg bg-white py-2.5 text-sm font-semibold text-black active:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
                       onClick={async () => {
                         setAppleLoading(true)
                         setError(null)
@@ -846,7 +846,7 @@ export default function MobileLogin() {
                 </div>
               )}
 
-              <a href={inviteToken ? `/signup?invite=${inviteToken}` : '/signup'} className="block w-full text-center rounded-lg border border-white/10 bg-white/5 py-2 text-sm">{t('auth.login.create_account_cta')}</a>
+              <a href={inviteToken ? `/signup?invite=${inviteToken}` : '/signup'} className="block w-full text-center rounded-lg border border-white/10 bg-white/5 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50">{t('auth.login.create_account_cta')}</a>
 
               {Capacitor.getPlatform() !== 'web' && !inviteToken && authCheckDone && (
                 <div className="space-y-2">
@@ -854,7 +854,7 @@ export default function MobileLogin() {
                     type="button"
                     disabled={inviteFromInstallBusy}
                     onClick={() => setShowInviteClipboardModal(true)}
-                    className="w-full rounded-lg border border-white/10 bg-white/5 py-2 text-sm text-center active:opacity-90 disabled:opacity-50"
+                    className="w-full rounded-lg border border-white/10 bg-white/5 py-2 text-sm text-center active:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
                   >
                     Use Community Invite
                   </button>

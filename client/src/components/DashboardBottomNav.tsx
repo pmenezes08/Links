@@ -73,7 +73,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
   }
 
   const steveRowBtn =
-    'w-full text-left px-4 py-3.5 rounded-xl border border-white/10 bg-white/[0.04] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] hover:border-[#4db6ac]/40 hover:bg-[#4db6ac]/10 active:bg-[#4db6ac]/15 active:scale-[0.98] transition-[transform,background-color,border-color] duration-100 touch-manipulation'
+    'w-full text-left px-4 py-3.5 rounded-xl border border-white/10 bg-white/[0.04] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] hover:border-cpoint-turquoise/40 hover:bg-cpoint-turquoise/10 active:bg-cpoint-turquoise/15 active:scale-[0.98] transition-[transform,background-color,border-color] duration-100 touch-manipulation'
 
   const tabPress = () => {
     void triggerHaptic('selection')
@@ -99,7 +99,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
             aria-current={isDashboard ? 'page' : undefined}
             onClick={() => { tabPress(); navigate('/premium_dashboard') }}
           >
-            <i className={`fa-solid fa-th text-[24px] leading-none ${isDashboard ? 'text-[#4db6ac]' : ''}`} />
+            <i className={`fa-solid fa-th text-[24px] leading-none ${isDashboard ? 'text-cpoint-turquoise' : ''}`} />
           </button>
           <button
             type="button"
@@ -108,7 +108,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
             aria-current={isFeed ? 'page' : undefined}
             onClick={() => { tabPress(); navigate('/feed') }}
           >
-            <i className={`fa-solid fa-rss text-[24px] leading-none ${isFeed ? 'text-[#4db6ac]' : ''}`} />
+            <i className={`fa-solid fa-rss text-[24px] leading-none ${isFeed ? 'text-cpoint-turquoise' : ''}`} />
           </button>
           <button
             type="button"
@@ -122,7 +122,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
           </button>
           <button
             type="button"
-            className={`p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${!isFeed && !isAbout && searchOpen ? 'bg-white/10 text-[#4db6ac]' : 'hover:bg-white/10 active:bg-white/15'}`}
+            className={`p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${!isFeed && !isAbout && searchOpen ? 'bg-white/10 text-cpoint-turquoise' : 'hover:bg-white/10 active:bg-white/15'}`}
             aria-label={searchOpen && !isFeed && !isAbout ? t('navigation.close_search') : t('navigation.search_communities')}
             aria-pressed={!isFeed && !isAbout && searchOpen}
             onClick={() => { tabPress(); onSearch() }}
@@ -142,7 +142,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
             role="dialog"
             aria-modal="true"
             aria-label={steveModalView === 'main' ? t('steve.main_aria') : steveModalView === 'recommendations' ? t('steve.recommendations_aria') : t('steve.news_aria')}
-            className="relative z-[950] w-full max-w-sm rounded-2xl overflow-hidden border border-[#4db6ac] bg-[#0d1214] shadow-[0_24px_56px_rgba(0,0,0,0.52)] flex flex-col max-h-[min(420px,78dvh)] min-h-[220px]"
+            className="relative z-[950] w-full max-w-sm rounded-2xl overflow-hidden border border-cpoint-turquoise bg-[#0d1214] shadow-[0_24px_56px_rgba(0,0,0,0.52)] flex flex-col max-h-[min(420px,78dvh)] min-h-[220px]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="relative z-[1] flex flex-col flex-1 min-h-0 p-2">
@@ -180,7 +180,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
                 <div className="shrink-0 flex items-center gap-2 py-2 border-b border-white/10">
                   <button
                     type="button"
-                    className="p-2 rounded-lg text-[#9fb0b5] hover:bg-[#4db6ac]/15 hover:text-[#4db6ac] transition-colors"
+                    className="p-2 rounded-lg text-[#9fb0b5] hover:bg-cpoint-turquoise/15 hover:text-cpoint-turquoise transition-colors"
                     aria-label={t('navigation.back')}
                     onClick={() => setSteveModalView('main')}
                   >
@@ -218,7 +218,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
                 <div className="shrink-0 flex items-center gap-2 py-2 border-b border-white/10">
                   <button
                     type="button"
-                    className="p-2 rounded-lg text-[#9fb0b5] hover:bg-[#4db6ac]/15 hover:text-[#4db6ac] transition-colors"
+                    className="p-2 rounded-lg text-[#9fb0b5] hover:bg-cpoint-turquoise/15 hover:text-cpoint-turquoise transition-colors"
                     aria-label={t('navigation.back')}
                     onClick={() => setSteveModalView('recommendations')}
                   >
