@@ -362,6 +362,8 @@ _TRUNCATE_TABLES: List[str] = [
     "remember_tokens",
     "native_push_tokens",
     "fcm_tokens",
+    "push_tokens",
+    "push_subscriptions",
 ]
 
 

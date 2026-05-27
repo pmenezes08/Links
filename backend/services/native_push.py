@@ -262,11 +262,211 @@ def deactivate_for_install(install_id: Optional[str]) -> dict[str, int]:
     return {"native_push_tokens": int(native_rows), "fcm_tokens": int(fcm_rows)}
 
 
+def upsert_fcm_token(
+    token: str,
+    username: Optional[str],
+    platform: str = "ios",
+    device_name: str = "",
+) -> dict:
+    """Upsert an FCM token with a re-activation guard.
+
+    If the caller is **not** authenticated (``username is None``) and the
+    token row already belongs to a user, we only refresh ``last_seen`` /
+    metadata — we never flip ``is_active`` back to 1.  This prevents
+    the logout→re-register race that caused push notifications to
+    continue after logout.
+    """
+    token = (token or "").strip()
+    if not token:
+        raise ValueError("token required")
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        ph = get_sql_placeholder()
+
+        # Check for an existing row first.
+        c.execute(f"SELECT username, is_active FROM fcm_tokens WHERE token = {ph}", (token,))
+        existing = c.fetchone()
+
+        if existing is None:
+            # Brand-new token — insert.
+            if USE_MYSQL:
+                c.execute(
+                    f"""INSERT INTO fcm_tokens
+                        (token, username, platform, device_name, last_seen, is_active)
+                        VALUES ({ph}, {ph}, {ph}, {ph}, NOW(), 1)""",
+                    (token, username, platform, device_name),
+                )
+            else:
+                c.execute(
+                    """INSERT INTO fcm_tokens
+                       (token, username, platform, device_name, last_seen, is_active)
+                       VALUES (?, ?, ?, ?, datetime('now'), 1)""",
+                    (token, username, platform, device_name),
+                )
+        else:
+            existing_username = existing["username"] if hasattr(existing, "keys") else existing[0]
+
+            if username:
+                # Authenticated caller — full upsert, activate.
+                if USE_MYSQL:
+                    c.execute(
+                        f"""UPDATE fcm_tokens
+                            SET username={ph}, platform={ph}, device_name={ph},
+                                last_seen=NOW(), is_active=1
+                            WHERE token={ph}""",
+                        (username, platform, device_name, token),
+                    )
+                else:
+                    c.execute(
+                        """UPDATE fcm_tokens
+                           SET username=?, platform=?, device_name=?,
+                               last_seen=datetime('now'), is_active=1
+                           WHERE token=?""",
+                        (username, platform, device_name, token),
+                    )
+            elif existing_username:
+                # Unauthenticated but row belongs to a user — refresh
+                # metadata only, never re-activate.
+                if USE_MYSQL:
+                    c.execute(
+                        f"""UPDATE fcm_tokens
+                            SET platform={ph}, device_name={ph}, last_seen=NOW()
+                            WHERE token={ph}""",
+                        (platform, device_name, token),
+                    )
+                else:
+                    c.execute(
+                        """UPDATE fcm_tokens
+                           SET platform=?, device_name=?, last_seen=datetime('now')
+                           WHERE token=?""",
+                        (platform, device_name, token),
+                    )
+            else:
+                # Anonymous row, no user — safe to update fully.
+                if USE_MYSQL:
+                    c.execute(
+                        f"""UPDATE fcm_tokens
+                            SET platform={ph}, device_name={ph},
+                                last_seen=NOW(), is_active=1
+                            WHERE token={ph}""",
+                        (platform, device_name, token),
+                    )
+                else:
+                    c.execute(
+                        """UPDATE fcm_tokens
+                           SET platform=?, device_name=?,
+                               last_seen=datetime('now'), is_active=1
+                           WHERE token=?""",
+                        (platform, device_name, token),
+                    )
+
+        conn.commit()
+
+    logger.info(
+        "upsert_fcm_token user=%s platform=%s existing=%s",
+        username or "anonymous",
+        platform,
+        "yes" if existing else "no",
+    )
+    return {"success": True}
+
+
+def upsert_native_push_token(
+    token: str,
+    username: Optional[str],
+    platform: str = "ios",
+    device_name: str = "",
+) -> None:
+    """Upsert a native_push_tokens row with the same re-activation guard
+    as ``upsert_fcm_token``."""
+    token = (token or "").strip()
+    if not token:
+        return
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        ph = get_sql_placeholder()
+
+        c.execute(f"SELECT username, is_active FROM native_push_tokens WHERE token = {ph}", (token,))
+        existing = c.fetchone()
+
+        if existing is None:
+            if USE_MYSQL:
+                c.execute(
+                    f"""INSERT INTO native_push_tokens
+                        (token, username, platform, environment, bundle_id, device_name, last_seen, is_active)
+                        VALUES ({ph}, {ph}, {ph}, 'production', 'co.cpoint.app', {ph}, NOW(), 1)""",
+                    (token, username, platform, device_name),
+                )
+            else:
+                c.execute(
+                    """INSERT INTO native_push_tokens
+                       (token, username, platform, environment, bundle_id, device_name, last_seen, is_active)
+                       VALUES (?, ?, ?, 'production', 'co.cpoint.app', ?, datetime('now'), 1)""",
+                    (token, username, platform, device_name),
+                )
+        else:
+            existing_username = existing["username"] if hasattr(existing, "keys") else existing[0]
+
+            if username:
+                if USE_MYSQL:
+                    c.execute(
+                        f"""UPDATE native_push_tokens
+                            SET username={ph}, platform={ph}, device_name={ph},
+                                last_seen=NOW(), is_active=1
+                            WHERE token={ph}""",
+                        (username, platform, device_name, token),
+                    )
+                else:
+                    c.execute(
+                        """UPDATE native_push_tokens
+                           SET username=?, platform=?, device_name=?,
+                               last_seen=datetime('now'), is_active=1
+                           WHERE token=?""",
+                        (username, platform, device_name, token),
+                    )
+            elif existing_username:
+                if USE_MYSQL:
+                    c.execute(
+                        f"""UPDATE native_push_tokens
+                            SET platform={ph}, device_name={ph}, last_seen=NOW()
+                            WHERE token={ph}""",
+                        (platform, device_name, token),
+                    )
+                else:
+                    c.execute(
+                        """UPDATE native_push_tokens
+                           SET platform=?, device_name=?, last_seen=datetime('now')
+                           WHERE token=?""",
+                        (platform, device_name, token),
+                    )
+            else:
+                if USE_MYSQL:
+                    c.execute(
+                        f"""UPDATE native_push_tokens
+                            SET platform={ph}, device_name={ph},
+                                last_seen=NOW(), is_active=1
+                            WHERE token={ph}""",
+                        (platform, device_name, token),
+                    )
+                else:
+                    c.execute(
+                        """UPDATE native_push_tokens
+                           SET platform=?, device_name=?,
+                               last_seen=datetime('now'), is_active=1
+                           WHERE token=?""",
+                        (platform, device_name, token),
+                    )
+
+        conn.commit()
+
+
 def deactivate_all_push_for_user(username: Optional[str]) -> dict[str, int]:
     """Deactivate FCM/native rows and remove web push subscriptions for a user (logout)."""
     username = (username or "").strip()
     if not username:
-        return {"native_push_tokens": 0, "fcm_tokens": 0, "push_subscriptions": 0}
+        return {"native_push_tokens": 0, "fcm_tokens": 0, "push_subscriptions": 0, "push_tokens": 0}
 
     with get_db_connection() as conn:
         c = conn.cursor()
@@ -316,19 +516,37 @@ def deactivate_all_push_for_user(username: Optional[str]) -> dict[str, int]:
         except Exception as exc:
             logger.warning("push_subscriptions delete for user %s: %s", username, exc)
 
+        legacy_rows = 0
+        try:
+            if USE_MYSQL:
+                c.execute(
+                    f"UPDATE push_tokens SET is_active = 0 WHERE username = {ph}",
+                    (username,),
+                )
+            else:
+                c.execute(
+                    "UPDATE push_tokens SET is_active = 0 WHERE username = ?",
+                    (username,),
+                )
+            legacy_rows = c.rowcount or 0
+        except Exception as exc:
+            logger.warning("push_tokens (legacy) deactivate for user %s: %s", username, exc)
+
         conn.commit()
 
     logger.info(
-        "native_push.deactivate_all_for_user user=%s native=%d fcm=%d web=%d",
+        "native_push.deactivate_all_for_user user=%s native=%d fcm=%d web=%d legacy=%d",
         username,
         native_rows,
         fcm_rows,
         web_rows,
+        legacy_rows,
     )
     return {
         "native_push_tokens": int(native_rows),
         "fcm_tokens": int(fcm_rows),
         "push_subscriptions": int(web_rows),
+        "push_tokens": int(legacy_rows),
     }
 
 
@@ -340,4 +558,6 @@ __all__ = [
     "associate_fcm_tokens_for_install",
     "deactivate_for_install",
     "deactivate_all_push_for_user",
+    "upsert_fcm_token",
+    "upsert_native_push_token",
 ]

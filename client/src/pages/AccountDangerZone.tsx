@@ -5,12 +5,15 @@ import { useTranslation } from 'react-i18next'
 import { Capacitor } from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
 import { resetAccountScopedState } from '../utils/accountStateReset'
+import { unregisterPushBeforeLogout } from '../utils/logout'
 
 // Comprehensive cache clearing for account deletion
 async function clearAllUserData(): Promise<void> {
   console.log('🗑️ Clearing all user data after account deletion...')
-  
-  // 1. Clear Capacitor Preferences (iOS Keychain / native storage) - CRITICAL for Capacitor apps
+
+  // Deactivate push tokens while session cookie is still valid.
+  await unregisterPushBeforeLogout()
+
   try {
     if (Capacitor.isNativePlatform()) {
       await Preferences.clear()
@@ -28,7 +31,6 @@ async function clearAllUserData(): Promise<void> {
     unregisterServiceWorkers: true,
   })
 
-  // 2. Clear cookies by calling logout endpoint with cache-busting
   try {
     await fetch('/logout?_=' + Date.now(), { 
       credentials: 'include',

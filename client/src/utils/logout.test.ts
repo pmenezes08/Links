@@ -166,4 +166,42 @@ describe('performLogout (Phase G4)', () => {
     await performLogout()
     expect(deletedDbs).toContain('cpoint-offline')
   })
+
+  it('calls FCMNotifications.deleteToken on native platforms before server unregister', async () => {
+    const deleteTokenMock = vi.fn(() => Promise.resolve())
+    const order: string[] = []
+
+    // Mock dynamic imports for Capacitor (native) and FCMNotifications
+    vi.mock('@capacitor/core', () => ({
+      Capacitor: { isNativePlatform: () => true, getPlatform: () => 'ios' },
+    }))
+    vi.mock('../services/fcmNotifications', () => ({
+      FCMNotifications: { deleteToken: deleteTokenMock },
+    }))
+
+    fetchMock.mockImplementation((url: string | Request) => {
+      const u = typeof url === 'string' ? url : ''
+      if (u.includes('/api/push/unregister_fcm')) order.push('unregister_fcm')
+      return Promise.resolve({ ok: true, status: 200 } as Response)
+    })
+    deleteTokenMock.mockImplementation(() => {
+      order.push('deleteToken')
+      return Promise.resolve()
+    })
+
+    // Re-import to pick up mocks
+    const { unregisterPushBeforeLogout } = await import('./logout')
+    await unregisterPushBeforeLogout()
+
+    expect(deleteTokenMock).toHaveBeenCalled()
+    const dtIdx = order.indexOf('deleteToken')
+    const unregIdx = order.indexOf('unregister_fcm')
+    expect(dtIdx).toBeGreaterThanOrEqual(0)
+    if (unregIdx >= 0) {
+      expect(dtIdx).toBeLessThan(unregIdx)
+    }
+
+    vi.unmock('@capacitor/core')
+    vi.unmock('../services/fcmNotifications')
+  })
 })

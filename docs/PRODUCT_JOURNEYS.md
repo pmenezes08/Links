@@ -291,7 +291,18 @@ The legacy orphan `cache.delete(f"post:{reply_post_id}")` in `/delete_reply` was
 
 ---
 
-## 11. Deploy smoke (staging → production)
+## 11. Push token lifecycle and logout
+
+Push tokens are stored in `fcm_tokens` (primary), `native_push_tokens` (direct APNs fallback), `push_subscriptions` (web push), and legacy `push_tokens`.
+
+- **Registration requires an authenticated session.** `PushInit.tsx` caches the device token client-side (`window.__fcmToken`) but never POSTs to the server automatically. The `__reregisterPushToken` helper (called after login in `MobileLogin.tsx` and after profile load in `App.tsx`) is the single path that writes the token to `POST /api/push/register_fcm`. iOS `AppDelegate.swift` hands the APNs token to Firebase and posts to `NotificationCenter` for the JS bridge but does not call the server directly.
+- **Backend upsert guard.** `upsert_fcm_token()` and `upsert_native_push_token()` in `backend/services/native_push.py` enforce a re-activation rule: an unauthenticated request (no session username) can never flip `is_active` back to `1` on a row that already has a `username`. This prevents the logout-then-re-register race where `PushInit` or the native layer would immediately re-activate tokens the logout just deactivated.
+- **Logout path.** `performLogout()` → `unregisterPushBeforeLogout()` (calls `FCMNotifications.deleteToken` on native, then `POST /api/push/unregister_fcm` and web push unsubscribe) → `GET /logout` (server calls `deactivate_all_push_for_user()` which deactivates `fcm_tokens`, `native_push_tokens`, `push_tokens`, and deletes `push_subscriptions`).
+- **Account deletion.** Both `AccountDangerZone.tsx` and `DangerZoneSheet.tsx` call `unregisterPushBeforeLogout()` before clearing user data.
+
+---
+
+## 12. Deploy smoke (staging → production)
 
 1. Merge to **staging** branch / workflow; run **`cloudbuild.yaml`** → **`cpoint-app-staging`**.
 2. Hit **staging** API and **admin-staging** against staging; remember **shared DB** risk (**OPERATIONS**).

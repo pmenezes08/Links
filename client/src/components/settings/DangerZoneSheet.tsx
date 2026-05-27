@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 
 import { resetAccountScopedState } from '../../utils/accountStateReset'
 import { triggerHaptic } from '../../utils/haptics'
+import { unregisterPushBeforeLogout } from '../../utils/logout'
 
 type DangerZoneSheetProps = {
   open: boolean
@@ -12,6 +13,9 @@ type DangerZoneSheetProps = {
 }
 
 async function clearAllUserData(): Promise<void> {
+  // Deactivate push tokens while session cookie is still valid.
+  await unregisterPushBeforeLogout()
+
   try {
     if (Capacitor.isNativePlatform()) await Preferences.clear()
   } catch (e) {

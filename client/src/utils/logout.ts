@@ -21,6 +21,18 @@ async function clearCapacitorStorage(): Promise<void> {
 
 /** Deactivate server-side push mappings and browser subscription before session cookies are cleared. */
 export async function unregisterPushBeforeLogout(): Promise<void> {
+  // Invalidate the FCM token at the Firebase SDK level so the device
+  // stops being addressable even if the server deactivation is delayed.
+  try {
+    const { Capacitor } = await import('@capacitor/core')
+    if (Capacitor.isNativePlatform()) {
+      const { FCMNotifications } = await import('../services/fcmNotifications')
+      await FCMNotifications.deleteToken()
+    }
+  } catch {
+    // Not native or plugin unavailable — continue with server-side cleanup.
+  }
+
   const w = typeof window !== 'undefined' ? (window as unknown as { __fcmToken?: string }) : null
   const fcmToken = w?.__fcmToken?.trim() || ''
 

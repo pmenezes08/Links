@@ -610,6 +610,8 @@ function AppRoutes(){
       if (json?.success && json.profile) {
         const profile = json.profile as Record<string, unknown>
         await applyProfileFromServer(profile)
+        // Session confirmed — register any cached push token with the server.
+        await (window as any).__reregisterPushToken?.()
         return profile as UserProfile
       }
 

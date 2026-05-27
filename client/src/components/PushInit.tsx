@@ -101,8 +101,10 @@ export default function PushInit(){
             PushNotifications.addListener('registration', async (token) => {
               console.log('🔥 Capacitor registration event fired!')
               console.log('🔥 FCM token received: ' + token.value.substring(0, 30) + '...')
-              
-              // Store token globally for re-registration after login
+
+              // Cache token client-side only — never POST automatically.
+              // Server registration happens through __reregisterPushToken,
+              // called after login (MobileLogin) or profile load (App.tsx).
               ;(window as any).__fcmToken = token.value
               ;(window as any).__reregisterPushToken = async () => {
                 const t = (window as any).__fcmToken
@@ -114,29 +116,6 @@ export default function PushInit(){
                     body: JSON.stringify({ token: t, platform: Capacitor.getPlatform() })
                   })
                 } catch {}
-              }
-              
-              // Send token to backend
-              try {
-                const response = await fetch('/api/push/register_fcm', {
-                  method: 'POST',
-                  credentials: 'include',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    token: token.value,
-                    platform: Capacitor.getPlatform()
-                  })
-                })
-                
-                const result = await response.json()
-                
-                if (response.ok) {
-                  console.log('✅ FCM token registered with server')
-                } else {
-                  console.error('❌ Failed to register token:', response.status, result)
-                }
-              } catch (error) {
-                console.error('❌ Network error registering push token:', error)
               }
             })
             
@@ -215,8 +194,11 @@ export default function PushInit(){
 
         async function subscribeAndRegister(){
           try{
-            const vapidRes = await fetch('/api/push/public_key', { credentials:'include', headers: { 'Accept': 'application/json' } })
-            const { publicKey } = await vapidRes.json()
+            // Only subscribe when there is an active session — avoids
+            // registering orphaned subscriptions after logout.
+            const authCheck = await fetch('/api/push/public_key', { credentials:'include', headers: { 'Accept': 'application/json' } })
+            if (authCheck.status === 401) return
+            const { publicKey } = await authCheck.json()
             if (!publicKey) return
             let subscription = await reg.pushManager.getSubscription()
             if (!subscription){
