@@ -356,6 +356,7 @@ export default function ChatThread(){
     loadingOlderRef,
     onLoadOlder: () => loadOlderRef.current?.(),
     loadOlderEnabled: Boolean(otherUserId),
+    surfaceKey: 'dm',
   })
 
   const {

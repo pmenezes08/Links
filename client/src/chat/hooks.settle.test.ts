@@ -127,4 +127,27 @@ describe('chat thread inverted-list invariants', () => {
     expect(src).toMatch(/transition:\s*[\s\S]*padding-bottom\s+250ms/)
     expect(src).toMatch(/prefers-reduced-motion[\s\S]*chat-list-idle-smooth[\s\S]*transition:\s*none/)
   })
+
+  it('useChatComposerChrome caches measured composer height per surface', () => {
+    const src = readFileSync(
+      join(repoRoot, 'client', 'src', 'chat', 'useChatComposerChrome.ts'),
+      'utf8',
+    )
+    expect(src).toMatch(/ChatComposerSurfaceKey/)
+    expect(src).toMatch(/cachedComposerHeightBySurface/)
+    expect(src).toMatch(/--chat-composer-height-\$\{surface\}/)
+    // No legacy single-global cache symbols left behind.
+    expect(src).not.toMatch(/cachedMeasuredComposerHeight\s*=/)
+    expect(src).not.toMatch(/--chat-composer-height['"`)\s]/)
+  })
+
+  it('thread pages pass surfaceKey to useChatThreadChrome (dm + group)', () => {
+    const dm = readFileSync(join(repoRoot, 'client', 'src', 'pages', 'ChatThread.tsx'), 'utf8')
+    const group = readFileSync(
+      join(repoRoot, 'client', 'src', 'pages', 'GroupChatThread.tsx'),
+      'utf8',
+    )
+    expect(dm).toMatch(/surfaceKey:\s*'dm'/)
+    expect(group).toMatch(/surfaceKey:\s*'group'/)
+  })
 })

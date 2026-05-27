@@ -351,6 +351,7 @@ export default function GroupChatThread() {
     hasMoreMessages,
     loadingOlderRef,
     onLoadOlder: () => loadOlderRef.current?.(),
+    surfaceKey: 'group',
   })
 
   const {

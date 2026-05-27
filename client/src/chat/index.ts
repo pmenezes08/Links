@@ -45,7 +45,10 @@ export type { ChatThreadScrollMessage } from './hooks'
 export { useChatThreadChrome } from './useChatThreadChrome'
 export type { UseChatThreadChromeOptions } from './useChatThreadChrome'
 export { useChatComposerChrome, CHAT_COMPOSER_GAP_PX } from './useChatComposerChrome'
-export type { UseChatComposerChromeOptions } from './useChatComposerChrome'
+export type {
+  UseChatComposerChromeOptions,
+  ChatComposerSurfaceKey,
+} from './useChatComposerChrome'
 export { useChatListScrollHandlers } from './useChatListScrollHandlers'
 export type { UseChatListScrollHandlersOptions } from './useChatListScrollHandlers'
 export { useSmoothedPx } from './useSmoothedPx'

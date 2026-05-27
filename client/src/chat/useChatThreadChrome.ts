@@ -1,5 +1,5 @@
 import { useRef, type MutableRefObject, type RefObject } from 'react'
-import { useChatComposerChrome } from './useChatComposerChrome'
+import { useChatComposerChrome, type ChatComposerSurfaceKey } from './useChatComposerChrome'
 import { useChatListScrollHandlers } from './useChatListScrollHandlers'
 import { useChatThreadScroll, type ChatThreadScrollMessage } from './hooks'
 
@@ -14,6 +14,13 @@ export interface UseChatThreadChromeOptions {
   loadingOlderRef: MutableRefObject<boolean>
   onLoadOlder?: () => void
   loadOlderEnabled?: boolean
+  /**
+   * Which chat surface this thread belongs to. Forwarded to
+   * `useChatComposerChrome` so the per-surface composer height cache (and
+   * `--chat-composer-height-${surface}` CSS var) stay separate between DM
+   * and group chat. Required for both pages.
+   */
+  surfaceKey: ChatComposerSurfaceKey
 }
 
 /**
@@ -31,6 +38,7 @@ export function useChatThreadChrome({
   loadingOlderRef,
   onLoadOlder,
   loadOlderEnabled = true,
+  surfaceKey,
 }: UseChatThreadChromeOptions) {
   const layoutNudgeRef = useRef<(() => void) | undefined>(undefined)
 
@@ -38,6 +46,7 @@ export function useChatThreadChrome({
     isMobile,
     textareaRef,
     composerRef,
+    surfaceKey,
     onLayoutNudge: () => layoutNudgeRef.current?.(),
   })
 
