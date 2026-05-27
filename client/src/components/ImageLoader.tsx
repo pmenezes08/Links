@@ -6,11 +6,12 @@ interface ImageLoaderProps {
   className?: string
   onClick?: () => void
   style?: React.CSSProperties
+  /** Reserve space while loading to prevent CLS. Defaults to 4/3 if not provided. */
+  aspectRatio?: string
 }
 
-export default function ImageLoader({ src, alt, className = '', onClick, style }: ImageLoaderProps) {
+export default function ImageLoader({ src, alt, className = '', onClick, style, aspectRatio }: ImageLoaderProps) {
   const [loading, setLoading] = useState(true)
-  // Build candidate sources (ordered)
   const candidates: string[] = (() => {
     const p = (src || '').trim()
     const out: string[] = []
@@ -26,7 +27,6 @@ export default function ImageLoader({ src, alt, className = '', onClick, style }
       out.push(`/static/${nameOnly}`)
       out.push(`/static/uploads/${nameOnly}`)
     }
-    // Deduplicate while preserving order
     return Array.from(new Set(out))
   })()
   const [index, setIndex] = useState(0)
@@ -40,26 +40,21 @@ export default function ImageLoader({ src, alt, className = '', onClick, style }
     setLoading(false)
   }
 
+  const containerStyle: React.CSSProperties = {
+    ...style,
+    aspectRatio: aspectRatio ?? '4 / 3',
+  }
+
   return (
-    <div className={`relative ${className}`} style={style} onClick={onClick}>
-      {/* Loading skeleton */}
+    <div className={`relative overflow-hidden ${className}`} style={containerStyle} onClick={onClick}>
       {loading && (
-        <div className="absolute inset-0 bg-white/10 rounded-md flex items-center justify-center">
-          <div className="flex flex-col items-center gap-2">
-            <div className="w-8 h-8 border-2 border-white/20 border-t-white/60 rounded-full animate-spin"></div>
-            <div className="text-xs text-white/50">Loading...</div>
-          </div>
-        </div>
+        <div className="absolute inset-0 bg-white/5 rounded-md animate-pulse" />
       )}
 
-      {/* Error state removed per request */}
-
-      {/* Actual image */}
       <img
         src={currentSrc}
         alt={alt}
-        className={`transition-opacity duration-300 ${loading ? 'opacity-0' : 'opacity-100'} ${className}`}
-        style={style}
+        className={`w-full h-full object-cover transition-opacity duration-300 ${loading ? 'opacity-0' : 'opacity-100'}`}
         onLoad={handleLoad}
         onError={() => {
           if (index < candidates.length - 1){
