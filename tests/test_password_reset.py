@@ -151,6 +151,21 @@ def test_complete_reset_updates_password(auth_only_app, mysql_db, patch_send):
     assert used
 
 
+def test_reset_password_get_renders_form(monkeypatch):
+    """GET must render HTML (url_for auth.reset_password, not bare reset_password)."""
+    from bodybuilding_app import app as monolith
+
+    monkeypatch.setattr(
+        "backend.services.password_reset.get_token_context",
+        lambda _token: {"token": "test-token-abc", "username": "pwreset_render_user"},
+    )
+    with monolith.test_client() as client:
+        resp = client.get("/reset_password/test-token-abc")
+    assert resp.status_code == 200
+    assert b"Reset Your Password" in resp.data
+    assert b'action="/reset_password/test-token-abc"' in resp.data
+
+
 def test_expired_token_rejected(auth_only_app, mysql_db):
     email = "pwreset-expired@example.com"
     username = "pwreset_expired_user"

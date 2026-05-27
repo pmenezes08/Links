@@ -1411,7 +1411,7 @@ def reset_password(token: str):
     ok, message = pw_reset.complete_reset(token, new_password, confirm_password)
     if not ok:
         flash(message, "error")
-        return redirect(url_for("reset_password", token=token))
+        return redirect(url_for("auth.reset_password", token=token))
     return render_template(
         "verification_result.html",
         success=True,
