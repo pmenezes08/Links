@@ -86,8 +86,6 @@ export default function Signup(){
     e.preventDefault()
     setError('')
 
-    console.log('Signup form submitted with data:', formData)
-
     // Validation
     if (!formData.first_name.trim()) {
       setError(t('auth.signup.validation.first_name_required'))
@@ -130,23 +128,16 @@ export default function Signup(){
     submitData.append('confirm_password', formData.confirm_password)
     if (inviteToken) submitData.append('invite_token', inviteToken)
 
-    console.log('Sending signup request to /signup')
-    console.log('FormData contents:', Array.from(submitData.entries()))
-
     fetch('/signup', {
       method: 'POST',
       credentials: 'include',
       body: submitData
     })
     .then(async r => {
-      console.log('Signup response status:', r.status)
-      console.log('Signup response headers:', r.headers)
-      
       if (r.ok) {
         try {
           const j = await r.json()
-          console.log('Signup JSON response:', j)
-          
+
           if (j?.success) {
             const dest = j.redirect || '/premium_dashboard'
             if (j.needs_email_verification) {

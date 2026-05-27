@@ -436,6 +436,11 @@ export default function MobileLogin() {
       <div className="w-full max-w-xs rounded-xl p-6 relative z-10 bg-black border border-white/10">
         {step !== 'password' && (
           <div className="text-center mb-5">
+            <img
+              src="/api/public/logo"
+              alt="C-Point"
+              className="w-16 h-16 rounded-2xl object-contain mx-auto mb-3"
+            />
             <h1 className="text-lg font-semibold">C-Point</h1>
             {invitationInfo ? (
               <div className="mt-3 p-3 bg-[#4db6ac]/10 border border-[#4db6ac]/30 rounded-lg">
