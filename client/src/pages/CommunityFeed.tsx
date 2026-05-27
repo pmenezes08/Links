@@ -17,8 +17,8 @@ import CommunityOwnerSetupIntro, {
 import MentionTextarea from '../components/MentionTextarea'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import ImageLoader from '../components/ImageLoader'
-import ZoomableImage from '../components/ZoomableImage'
 import BurgerMenuDrawer from '../components/BurgerMenuDrawer'
+import { ChatMediaViewerModal } from '../chat'
 import { useHeader } from '../contexts/HeaderContext'
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
 import { ENTITLEMENTS_REFRESH_EVENT, useEntitlements, type EntitlementsSnapshot } from '../hooks/useEntitlements'
@@ -321,7 +321,7 @@ export default function CommunityFeed() {
     durationSeconds?: number | null
   }
   const [storyEditorOpen, setStoryEditorOpen] = useState(false)
-  const storyChromeActive = !!activeStoryPointer || storyEditorOpen
+  const storyChromeActive = !!activeStoryPointer || storyEditorOpen || !!previewImageSrc
   const [storyEditorFiles, setStoryEditorFiles] = useState<StoryEditorFile[]>([])
   const [storyEditorActiveIndex, setStoryEditorActiveIndex] = useState(0)
   const storyEditorMediaRef = useRef<HTMLDivElement | null>(null)
@@ -2832,17 +2832,12 @@ export default function CommunityFeed() {
 
       {/* Members modal removed: dedicated page now */}
 
-      {/* Image preview overlay for feed/replies */}
-      {previewImageSrc && (
-        <div className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-sm flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setPreviewImageSrc(null)}>
-          <button className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center" onClick={()=> setPreviewImageSrc(null)} aria-label="Close preview">
-            <i className="fa-solid fa-xmark" />
-          </button>
-          <div className="w-[94vw] h-[86vh] max-w-4xl" style={{ touchAction: 'none' }}>
-            <ZoomableImage src={previewImageSrc} alt="preview" className="w-full h-full" onRequestClose={()=> setPreviewImageSrc(null)} />
-          </div>
-        </div>
-      )}
+      {/* Image preview overlay for feed/replies — same shell as chat media viewer */}
+      <ChatMediaViewerModal
+        viewer={previewImageSrc ? { urls: [previewImageSrc], index: 0 } : null}
+        onClose={() => setPreviewImageSrc(null)}
+        onIndexChange={() => {}}
+      />
       {activeStoryPointer && currentStory && (
         <div
           className="fixed inset-0 z-[1100] flex items-center justify-center bg-black lg:bg-black/95 lg:p-6"

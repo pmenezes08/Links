@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import ZoomableImage from '../components/ZoomableImage'
 import { useImmersiveStatusBar } from '../hooks/useNativeStatusBar'
 
@@ -33,7 +34,7 @@ export function ChatMediaViewerModal({
   const { urls, index } = viewer
   const currentUrl = urls[index]
 
-  return (
+  const modal = (
     <div className="fixed inset-0 bg-black z-[9999] flex flex-col" onClick={onClose}>
       <div
         className="flex items-center justify-between px-4 py-3 bg-black/80"
@@ -146,4 +147,7 @@ export function ChatMediaViewerModal({
       {footer}
     </div>
   )
+
+  if (typeof document === 'undefined') return null
+  return createPortal(modal, document.body)
 }
