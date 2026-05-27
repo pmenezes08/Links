@@ -305,6 +305,17 @@ Run after any change to Steve DM rendering, Steve typing indicators, or chat men
 - [ ] In a group chat, post a message containing `@someuser`. Confirm the mention is tappable and opens `/profile/someuser`.
 - [ ] Force a Steve error path or entitlement block. Confirm the typing indicator clears immediately when possible, or expires within 30 seconds.
 
+## §14 — Chat thread open (native UX)
+
+Run after changes to DM/group cache-first open, scroll pin, Virtuoso windowing, or link previews. Test on **iOS Safari or Capacitor** and one **Android** build.
+
+- [ ] Open a DM with **~20 messages**: lands on the latest bubble immediately (no multi-second blank list); Network tab shows no burst of `/check_unread_messages` on open.
+- [ ] Reopen the same DM within 5 minutes: messages visible in under ~100ms from cache; optimistic in-flight sends still visible after reopen.
+- [ ] Open a **group chat** with **~20 messages**: same instant bottom pin; device cache repaints before network completes.
+- [ ] Open a DM or group with **80+ messages** (Virtuoso on web/Android): scroll stays smooth; new message at bottom auto-follows when you are already at bottom.
+- [ ] Open a thread with **200+ messages** on iOS Capacitor: list remains usable (standard map unless `VITE_CHAT_VIRTUOSO=1`); no crash on open.
+- [ ] Open an **image-heavy** or **URL-heavy** thread: list is not stuck invisible while images/previews load; link-preview requests are deferred until the list is visible and do not flood the network when scrolled up.
+
 ## §13 — Steve Platform Manual KB
 
 Run after any change to Steve's platform manual, persona, platform-question routing, or feedback queue.

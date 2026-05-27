@@ -1,7 +1,8 @@
-import { useState, useEffect, memo } from 'react'
+import { useState, useEffect, memo, useRef } from 'react'
 import type { VideoEmbed } from '../utils/videoEmbed'
 import { extractVideoEmbed } from '../utils/videoEmbed'
 import { openExternalInApp } from '../utils/openExternalInApp'
+import { CHAT_LINK_PREVIEW_MAX_INFLIGHT } from '../chat/constants'
 
 export type LinkPreviewData = {
   title: string
@@ -16,6 +17,30 @@ export type LinkPreviewData = {
 type Props = {
   url: string
   sent?: boolean
+  /** When true, skip network until parent clears this (e.g. thread list not revealed yet). */
+  deferFetch?: boolean
+}
+
+let linkPreviewInflight = 0
+const linkPreviewWaiters: Array<() => void> = []
+
+function acquireLinkPreviewSlot(): Promise<void> {
+  if (linkPreviewInflight < CHAT_LINK_PREVIEW_MAX_INFLIGHT) {
+    linkPreviewInflight += 1
+    return Promise.resolve()
+  }
+  return new Promise(resolve => {
+    linkPreviewWaiters.push(() => {
+      linkPreviewInflight += 1
+      resolve()
+    })
+  })
+}
+
+function releaseLinkPreviewSlot() {
+  linkPreviewInflight = Math.max(0, linkPreviewInflight - 1)
+  const next = linkPreviewWaiters.shift()
+  if (next) next()
 }
 
 /**
@@ -43,6 +68,7 @@ async function fetchPreview(url: string): Promise<LinkPreviewData | null> {
   if (inflight) return inflight
 
   const p = (async () => {
+    await acquireLinkPreviewSlot()
     const ctrl = new AbortController()
     const timeoutId = setTimeout(() => ctrl.abort(), PREVIEW_FETCH_TIMEOUT_MS)
     try {
@@ -61,6 +87,7 @@ async function fetchPreview(url: string): Promise<LinkPreviewData | null> {
     } finally {
       clearTimeout(timeoutId)
       _pending.delete(key)
+      releaseLinkPreviewSlot()
     }
   })()
 
@@ -202,14 +229,36 @@ function getDomainColor(domain: string): string {
   return '#4db6ac'
 }
 
-function LinkPreviewCard({ url, sent }: Props) {
+function LinkPreviewCard({ url, sent, deferFetch = false }: Props) {
   const [data, setData] = useState<LinkPreviewData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [imgError, setImgError] = useState(false)
+  const [inView, setInView] = useState(false)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const node = rootRef.current
+    if (!node || typeof IntersectionObserver === 'undefined') {
+      setInView(true)
+      return
+    }
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries.some(e => e.isIntersecting)) {
+          setInView(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '200px 0px' },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [url])
 
   useEffect(() => {
     let cancelled = false
+    if (deferFetch || !inView) return
     setLoading(true)
     setError(false)
     setImgError(false)
@@ -225,11 +274,21 @@ function LinkPreviewCard({ url, sent }: Props) {
     })
 
     return () => { cancelled = true }
-  }, [url])
+  }, [url, deferFetch, inView])
+
+  if (deferFetch || !inView) {
+    return (
+      <div
+        ref={rootRef}
+        className="mt-1.5 rounded-xl overflow-hidden border border-white/10 bg-white/[0.04] min-h-[52px]"
+        aria-hidden
+      />
+    )
+  }
 
   if (loading) {
     return (
-      <div className="mt-1.5 rounded-xl overflow-hidden border border-white/10 bg-white/[0.04] animate-pulse">
+      <div ref={rootRef} className="mt-1.5 rounded-xl overflow-hidden border border-white/10 bg-white/[0.04] animate-pulse min-h-[52px]">
         <div className="flex items-center gap-2 px-3 py-2.5">
           <div className="w-4 h-4 rounded bg-white/10" />
           <div className="flex-1 h-3 rounded bg-white/10" />
@@ -256,28 +315,30 @@ function LinkPreviewCard({ url, sent }: Props) {
     const fIcon = getDomainIcon(fallbackDomain)
     const fColor = getDomainColor(fallbackDomain)
     return (
-      <a
-        href={openUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block mt-1.5 rounded-xl overflow-hidden border border-white/10 hover:border-white/20 transition-colors no-underline"
-        style={{ background: 'rgba(255,255,255,0.04)' }}
-        onClick={(e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          void openExternalInApp(openUrl)
-        }}
-      >
-        <div className="px-3 py-2">
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <i className={`${fIcon} text-[11px]`} style={{ color: fColor }} />
-            <span className="text-[11px] text-white/50 truncate">{fallbackDomain || 'Link'}</span>
+      <div ref={rootRef}>
+        <a
+          href={openUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block mt-1.5 rounded-xl overflow-hidden border border-white/10 hover:border-white/20 transition-colors no-underline"
+          style={{ background: 'rgba(255,255,255,0.04)' }}
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            void openExternalInApp(openUrl)
+          }}
+        >
+          <div className="px-3 py-2">
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <i className={`${fIcon} text-[11px]`} style={{ color: fColor }} />
+              <span className="text-[11px] text-white/50 truncate">{fallbackDomain || 'Link'}</span>
+            </div>
+            <div className={`text-[12px] ${sent ? 'text-white/80' : 'text-white/70'} break-all line-clamp-2`}>
+              {url}
+            </div>
           </div>
-          <div className={`text-[12px] ${sent ? 'text-white/80' : 'text-white/70'} break-all line-clamp-2`}>
-            {url}
-          </div>
-        </div>
-      </a>
+        </a>
+      </div>
     )
   }
 
@@ -289,8 +350,9 @@ function LinkPreviewCard({ url, sent }: Props) {
   const isYouTube = domain.includes('youtube') || domain.includes('youtu.be')
 
   return (
-    <a
-      href={openUrl}
+    <div ref={rootRef}>
+      <a
+        href={openUrl}
       target="_blank"
       rel="noopener noreferrer"
       className="block mt-1.5 rounded-xl overflow-hidden border border-white/10 hover:border-white/20 transition-colors no-underline"
@@ -337,6 +399,7 @@ function LinkPreviewCard({ url, sent }: Props) {
         )}
       </div>
     </a>
+    </div>
   )
 }
 

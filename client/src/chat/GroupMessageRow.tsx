@@ -82,6 +82,8 @@ export type GroupMessageRowProps = {
   onOpenVideo: (path: string) => void
   onRetry?: () => void
   onRemoveMediaItem?: (messageId: number, mediaUrl: string) => void
+  /** When false, defer link-preview network until thread list is revealed. */
+  linkPreviewReady?: boolean
 }
 
 function GroupMessageRowInner(props: GroupMessageRowProps) {
@@ -124,6 +126,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
     onOpenVideo,
     onRetry,
     onRemoveMediaItem,
+    linkPreviewReady = true,
   } = props
 
   const { videoEmbed, bubbleTextWithoutUrls, linkPreviewUrls, replySnippet, replySender } = useMemo(() => {
@@ -309,14 +312,14 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                       )}
                       {linkPreviewUrls.map(u => (
                         <div key={u} className="px-2 pb-2">
-                          <LinkPreview url={u} sent={isSentByMe} />
+                          <LinkPreview url={u} sent={isSentByMe} deferFetch={!linkPreviewReady} />
                         </div>
                       ))}
                     </div>
                   )
                 )}
                 {msg.media_paths && msg.media_paths.length > 0 ? (
-                  <div className="mt-1 max-w-[280px]">
+                  <div className="mt-1 max-w-[280px] min-h-[120px]">
                     <div
                       className="relative cursor-pointer"
                       role="presentation"
@@ -536,17 +539,6 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
               Not delivered — tap to retry
             </button>
           )}
-          {isOptimistic && !sendFailed && isSentByMe && (
-            <div className="flex items-center gap-0.5 mt-0.5 self-end">
-              <i className="fa-solid fa-check text-[9px] text-white/40" aria-hidden />
-            </div>
-          )}
-          {!isOptimistic && !sendFailed && isSentByMe && msg.id > 0 && (
-            <div className="flex items-center gap-0.5 mt-0.5 self-end">
-              <i className="fa-solid fa-check text-[9px] text-[#4db6ac]/80" aria-hidden />
-              <i className="fa-solid fa-check text-[9px] text-[#4db6ac]/80 -ml-1.5" aria-hidden />
-            </div>
-          )}
         </div>
       </SwipeToReply>
     </div>
@@ -575,7 +567,8 @@ function rowPropsAreEqual(a: GroupMessageRowProps, b: GroupMessageRowProps) {
     a.translationForMessage === b.translationForMessage &&
     a.translatingThis === b.translatingThis &&
     a.canEditSummary === b.canEditSummary &&
-    a.onRemoveMediaItem === b.onRemoveMediaItem
+    a.onRemoveMediaItem === b.onRemoveMediaItem &&
+    a.linkPreviewReady === b.linkPreviewReady
   )
 }
 

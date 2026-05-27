@@ -189,6 +189,9 @@ export default function ChatThread(){
   // Optimize polling - track poll count for debouncing auxiliary calls
   const pollCountRef = useRef(0)
   const threadGenerationRef = useRef(0)
+  const cachePaintedGenRef = useRef<number | null>(null)
+  const cacheSnapshotRef = useRef<{ count: number; tailId: string | number | undefined } | null>(null)
+  const [cacheFastOpen, setCacheFastOpen] = useState(false)
   const resolvedPeerRef = useRef<{ username: string; userId: number } | null>(null)
   // Track last known message ID for faster incremental polling
   const lastKnownMessageIdRef = useRef<number>(0)
@@ -289,6 +292,9 @@ export default function ChatThread(){
     setMessages([])
     setHasMoreMessages(false)
     setOtherUserId('')
+    cachePaintedGenRef.current = null
+    cacheSnapshotRef.current = null
+    setCacheFastOpen(false)
   }, [username])
 
   const loadReminderVault = useCallback(async () => {
@@ -351,6 +357,7 @@ export default function ChatThread(){
     loadingOlderRef,
     onLoadOlder: () => loadOlderRef.current?.(),
     loadOlderEnabled: Boolean(otherUserId),
+    fastOpen: cacheFastOpen,
   })
 
   const {
@@ -466,7 +473,7 @@ export default function ChatThread(){
   // Encryption is initialized globally in App.tsx - no need for per-chat init
 
   // Helper to process raw messages (decrypt, parse replies, add metadata)
-  const processRawMessages = useCallback(async (rawMessages: any[]): Promise<Message[]> => {
+  const processRawMessages = useCallback((rawMessages: any[]): Message[] => {
     const decryptedMessages = rawMessages
     
     // Load all reactions from ID-based storage (more reliable than time-based)
@@ -550,11 +557,15 @@ export default function ChatThread(){
     if (cachedChat?.messages?.length && cachedChat.otherUserId) {
       resolvedPeerRef.current = { username, userId: cachedChat.otherUserId }
       setOtherUserId(cachedChat.otherUserId)
-      void processRawMessages(cachedChat.messages).then(processed => {
-        if (gen !== threadGenerationRef.current) return
-        setMessages(prev => mergeHydratedMessages(processed, prev))
-        notifyMessagesSettledRef.current(gen)
-      })
+      const processed = processRawMessages(cachedChat.messages)
+      setMessages(prev => mergeHydratedMessages(processed, prev))
+      cachePaintedGenRef.current = gen
+      cacheSnapshotRef.current = {
+        count: processed.length,
+        tailId: processed[processed.length - 1]?.id,
+      }
+      setCacheFastOpen(true)
+      notifyMessagesSettledRef.current(gen)
       return
     }
 
@@ -572,11 +583,15 @@ export default function ChatThread(){
           setOtherUserId(idbUserId)
         }
         if (idbMsgs?.length) {
-          void processRawMessages(idbMsgs).then(processed => {
-            if (gen !== threadGenerationRef.current) return
-            setMessages(prev => mergeHydratedMessages(processed, prev))
-            notifyMessagesSettledRef.current(gen)
-          })
+          const processed = processRawMessages(idbMsgs)
+          setMessages(prev => mergeHydratedMessages(processed, prev))
+          cachePaintedGenRef.current = gen
+          cacheSnapshotRef.current = {
+            count: processed.length,
+            tailId: processed[processed.length - 1]?.id,
+          }
+          setCacheFastOpen(true)
+          notifyMessagesSettledRef.current(gen)
         }
       }).catch(() => {})
     }
@@ -736,12 +751,20 @@ export default function ChatThread(){
         body: fd 
       })
       .then(r=>r.json())
-      .then(async (msgResponse) => {
+      .then((msgResponse) => {
         if (gen !== threadGenerationRef.current) return
         setSteveIsTyping(Boolean(msgResponse?.steve_is_typing))
         if (msgResponse?.success && Array.isArray(msgResponse.messages)) {
-          const processedMessages = await processRawMessages(msgResponse.messages)
+          const processedMessages = processRawMessages(msgResponse.messages)
           if (gen !== threadGenerationRef.current) return
+          const fromCache = cachePaintedGenRef.current === gen
+          const snap = cacheSnapshotRef.current
+          const unchangedFromCache =
+            fromCache &&
+            snap != null &&
+            processedMessages.length === snap.count &&
+            String(processedMessages[processedMessages.length - 1]?.id) === String(snap.tailId)
+
           setMessages(prev => {
             const serverIds = new Set(processedMessages.map(m => String(m.id)))
             // Keep optimistic messages from state
@@ -755,10 +778,13 @@ export default function ChatThread(){
                 keptKeys.add(key)
               }
             })
+            if (unchangedFromCache) return prev
             if (keptOptimistic.length === 0) return processedMessages
             return [...processedMessages, ...keptOptimistic]
           })
-          notifyMessagesSettledRef.current(gen)
+          if (!unchangedFromCache) {
+            notifyMessagesSettledRef.current(gen)
+          }
           setHasMoreMessages(!!msgResponse.has_more)
           lastFetchTime.current = Date.now()
 
@@ -786,7 +812,9 @@ export default function ChatThread(){
           // Clear the chat threads cache so Messages list shows updated unread counts
           if (viewer) clearDeviceCache(threadsListCacheKey(viewer))
           
-          refreshBadges()
+          if (!unchangedFromCache) {
+            refreshBadges()
+          }
         }
       }).catch(()=>{})
       
@@ -873,13 +901,12 @@ export default function ChatThread(){
         .then(j => {
           setSteveIsTyping(Boolean(j?.steve_is_typing))
           if (j?.success && Array.isArray(j.messages)) {
-            processRawMessages(j.messages).then(processed => {
-              setMessages(prev => {
-                const pendingMsgs = prev.filter(m => m.isOptimistic)
-                const serverIds = new Set(processed.map(m => m.id))
-                const unresolvedPending = pendingMsgs.filter(m => !serverIds.has(m.id))
-                return [...processed, ...unresolvedPending]
-              })
+            const processed = processRawMessages(j.messages)
+            setMessages(prev => {
+              const pendingMsgs = prev.filter(m => m.isOptimistic)
+              const serverIds = new Set(processed.map(m => m.id))
+              const unresolvedPending = pendingMsgs.filter(m => !serverIds.has(m.id))
+              return [...processed, ...unresolvedPending]
             })
           }
         })
@@ -904,7 +931,7 @@ export default function ChatThread(){
       if (j?.success && Array.isArray(j.messages) && j.messages.length > 0) {
         const el = listRef.current
         const prevHeight = el?.scrollHeight || 0
-        const processed = await processRawMessages(j.messages)
+        const processed = processRawMessages(j.messages)
         setMessages(prev => [...processed, ...prev])
         setHasMoreMessages(!!j.has_more)
         // Restore scroll position so it doesn't jump to top
@@ -2397,6 +2424,7 @@ export default function ChatThread(){
           lastMessageRef={lastMessageRef}
           listRef={listRef}
           className="space-y-[9px]"
+          followOutput={!showScrollDown}
           itemKey={(m, idx) => m.clientKey ?? m.id ?? idx}
           footer={
             steveIsTyping ? (
@@ -2583,6 +2611,7 @@ export default function ChatThread(){
                   }}
                   otherUsername={username}
                   onMentionClick={mentionToProfile}
+                  linkPreviewReady={listRevealReady}
                   onRetry={m.clientKey ? () => retryFailedMessage(String(m.clientKey)) : undefined}
                 />
                 </SwipeToReply>

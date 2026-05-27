@@ -86,6 +86,8 @@ export interface MessageBubbleProps {
   otherUsername?: string
   /** Handler for username mentions in rich text */
   onMentionClick?: (username: string) => void
+  /** When false, defer link-preview network until thread list is revealed. */
+  linkPreviewReady?: boolean
 }
 
 function MessageBubbleInner({
@@ -114,6 +116,7 @@ function MessageBubbleInner({
   otherUsername,
   onMentionClick,
   onRetry,
+  linkPreviewReady = true,
 }: MessageBubbleProps) {
   const { t } = useTranslation()
   const textBase = m.text || ''
@@ -207,7 +210,7 @@ function MessageBubbleInner({
           ) : (
             <>
               {m.image_path ? (
-                <div className="mb-1.5">
+                <div className="mb-1.5 min-h-[120px]">
                   <MessageImage
                     src={normalizeMediaPath(m.image_path)}
                     alt={t('chat.shared_image_alt')}
@@ -217,7 +220,7 @@ function MessageBubbleInner({
                 </div>
               ) : null}
               {m.video_path ? (
-                <div className="mb-1.5 rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                <div className="mb-1.5 rounded-lg overflow-hidden min-h-[120px] aspect-video max-h-64" onClick={(e) => e.stopPropagation()}>
                   <MessageVideo
                     src={normalizeMediaPath(m.video_path)}
                     className="max-h-64"
@@ -306,7 +309,9 @@ function MessageBubbleInner({
           {/* Link previews — rendered OUTSIDE the text bubble (they carry their own thin frame) */}
           {showLinkPreviews && (
             <div className="w-full max-w-[320px] min-w-0 mb-1.5 flex flex-col">
-              {previewUrls.map(u => <LinkPreview key={u} url={u} sent={m.sent} />)}
+              {previewUrls.map(u => (
+                <LinkPreview key={u} url={u} sent={m.sent} deferFetch={!linkPreviewReady} />
+              ))}
             </div>
           )}
 
@@ -583,18 +588,6 @@ function MessageBubbleInner({
             <i className="fa-solid fa-circle-exclamation text-[10px]" />
             Not delivered — tap to retry
           </button>
-        )}
-        {m.sent && !m.sendFailed && (
-          <div className="flex items-center gap-0.5 mt-0.5 self-end">
-            {m.isOptimistic ? (
-              <i className="fa-solid fa-check text-[9px] text-white/40" aria-hidden />
-            ) : typeof m.id === 'number' && m.id > 0 ? (
-              <>
-                <i className="fa-solid fa-check text-[9px] text-[#4db6ac]/80" aria-hidden />
-                <i className="fa-solid fa-check text-[9px] text-[#4db6ac]/80 -ml-1.5" aria-hidden />
-              </>
-            ) : null}
-          </div>
         )}
         </div>
       </div>

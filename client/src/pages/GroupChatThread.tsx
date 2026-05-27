@@ -9,7 +9,8 @@ import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { GroupMessageRow } from '../chat/GroupMessageRow'
-import { getDateKey, normalizeMediaPath, useChatThreadChrome, chatHapticSend, ChatAttachMenuRow, useGroupMessagePoll, ChatMediaPreviewModal, ChatMediaViewerModal, ChatSelectionBar, NewMessagesChip, useResumeOutboxDrain, ChatComposerPortal, ChatComposerCard, ChatVirtualMessageList } from '../chat'
+import { getDateKey, normalizeMediaPath, useChatThreadChrome, chatHapticSend, ChatAttachMenuRow, useGroupMessagePoll, ChatMediaPreviewModal, ChatMediaViewerModal, ChatSelectionBar, NewMessagesChip, useResumeOutboxDrain, ChatComposerPortal, ChatComposerCard, ChatVirtualMessageList, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION } from '../chat'
+import { groupChatMessagesDeviceCacheKey } from '../utils/chatThreadsCache'
 import { useNativeStatusBar } from '../hooks/useNativeStatusBar'
 import { useAndroidBackButton } from '../hooks/useAndroidBackButton'
 import { Style } from '@capacitor/status-bar'
@@ -113,9 +114,14 @@ export default function GroupChatThread() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { profile: currentUserProfile } = useUserProfile()
   // Get username from profile context, with localStorage fallback
-  const currentUsername = (currentUserProfile as { username?: string })?.username 
-    || localStorage.getItem('current_username') 
+  const currentUsername = (currentUserProfile as { username?: string })?.username
+    || localStorage.getItem('current_username')
     || ''
+  const [cacheFastOpen, setCacheFastOpen] = useState(false)
+  const groupChatCacheKey = useMemo(
+    () => (group_id && currentUsername ? groupChatMessagesDeviceCacheKey(currentUsername, group_id) : null),
+    [group_id, currentUsername],
+  )
   const entitlementsHandler = useEntitlementsHandler()
   const { entitlements, enforcement_enabled, loading: entitlementsLoading } = useEntitlements()
   const tryBlockSteveIntentSend = useCallback(
@@ -287,6 +293,8 @@ export default function GroupChatThread() {
   const clientKeyServerIdRef = useRef<Map<string, number>>(new Map())
   const lastMessageIdRef = useRef<number>(0)
   const threadGenerationRef = useRef(0)
+  const cachePaintedGenRef = useRef<number | null>(null)
+  const cacheSnapshotRef = useRef<{ count: number; tailId: number | undefined } | null>(null)
   const activeGroupIdRef = useRef<string | undefined>(group_id)
   activeGroupIdRef.current = group_id
   const previewAudioRef = useRef<HTMLAudioElement | null>(null)
@@ -321,6 +329,7 @@ export default function GroupChatThread() {
     hasMoreMessages,
     loadingOlderRef,
     onLoadOlder: () => loadOlderRef.current?.(),
+    fastOpen: cacheFastOpen,
   })
 
   const {
@@ -386,9 +395,30 @@ export default function GroupChatThread() {
     setReactions({})
     setHasMoreMessages(false)
     setError(null)
+    cachePaintedGenRef.current = null
+    cacheSnapshotRef.current = null
+    setCacheFastOpen(false)
   }, [group_id])
 
-  // Cache-first hydrate on thread switch (IndexedDB before network completes)
+  const paintGroupCacheMessages = useCallback((cached: Message[], gen: number) => {
+    setServerMessages(prev => {
+      const optimistic = prev.filter(m => (m as Message & { isOptimistic?: boolean }).isOptimistic)
+      const confirmed = cached
+      if (optimistic.length === 0) return confirmed
+      const confirmedIds = new Set(confirmed.map(m => m.id))
+      const unconfirmed = optimistic.filter(m => !confirmedIds.has(m.id))
+      return [...confirmed, ...unconfirmed]
+    })
+    cachePaintedGenRef.current = gen
+    cacheSnapshotRef.current = {
+      count: cached.length,
+      tailId: cached[cached.length - 1]?.id,
+    }
+    setCacheFastOpen(true)
+    notifyMessagesSettledRef.current(gen)
+  }, [])
+
+  // Cache-first hydrate on thread switch (device cache sync, then IndexedDB)
   useEffect(() => {
     if (!group_id) return
     const gen = threadGenerationRef.current
@@ -398,21 +428,21 @@ export default function GroupChatThread() {
       if (cached) setGroup(prev => prev || cached)
     })
 
+    const cachedDevice = groupChatCacheKey
+      ? readDeviceCache<Message[]>(groupChatCacheKey, CHAT_CACHE_VERSION)
+      : null
+    if (cachedDevice?.length) {
+      paintGroupCacheMessages(cachedDevice, gen)
+      return
+    }
+
     void getCachedMessages(`group:${group_id}`).then(cached => {
       if (gen !== threadGenerationRef.current) return
       if (cached?.length) {
-        setServerMessages(prev => {
-          const optimistic = prev.filter(m => (m as Message & { isOptimistic?: boolean }).isOptimistic)
-          const confirmed = cached as Message[]
-          if (optimistic.length === 0) return confirmed
-          const confirmedIds = new Set(confirmed.map(m => m.id))
-          const unconfirmed = optimistic.filter(m => !confirmedIds.has(m.id))
-          return [...confirmed, ...unconfirmed]
-        })
-        notifyMessagesSettledRef.current(gen)
+        paintGroupCacheMessages(cached as Message[], gen)
       }
     }).catch(() => {})
-  }, [group_id])
+  }, [group_id, groupChatCacheKey, paintGroupCacheMessages])
 
   const focusTextarea = useCallback(() => {
     if (MIC_ENABLED && recording) return
@@ -501,23 +531,37 @@ export default function GroupChatThread() {
 
         if (!silent) setHasMoreMessages(!!data.has_more)
         cacheMessages(`group:${group_id}`, newServerMessages)
+        if (groupChatCacheKey && gen === threadGenerationRef.current) {
+          writeDeviceCache(groupChatCacheKey, newServerMessages, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION)
+        }
 
-        setServerMessages(prev => {
-          if (gen !== threadGenerationRef.current) return prev
-          return mergePolledGroupMessages(prev, newServerMessages, {
-            pendingDeletions: pendingDeletions.current,
-            isDelta: false,
-            silent,
-          }) as Message[]
-        })
-        setReactions(prev => mergeGroupReactionsFromMessages(prev, newServerMessages))
+        const snap = cacheSnapshotRef.current
+        const fromCache = cachePaintedGenRef.current === gen
+        const unchangedFromCache =
+          !silent &&
+          fromCache &&
+          snap != null &&
+          newServerMessages.length === snap.count &&
+          String(newServerMessages[newServerMessages.length - 1]?.id) === String(snap.tailId)
+
+        if (!unchangedFromCache) {
+          setServerMessages(prev => {
+            if (gen !== threadGenerationRef.current) return prev
+            return mergePolledGroupMessages(prev, newServerMessages, {
+              pendingDeletions: pendingDeletions.current,
+              isDelta: false,
+              silent,
+            }) as Message[]
+          })
+          setReactions(prev => mergeGroupReactionsFromMessages(prev, newServerMessages))
+        }
 
         const newMaxId = newServerMessages.length > 0 ? Math.max(...newServerMessages.map(m => m.id)) : 0
         if (newMaxId > 0 && gen === threadGenerationRef.current) {
           lastMessageIdRef.current = Math.max(lastMessageIdRef.current, newMaxId)
         }
 
-        if (!silent) notifyMessagesSettledRef.current(gen)
+        if (!silent && !unchangedFromCache) notifyMessagesSettledRef.current(gen)
       }
     } catch (err) {
       console.error('Error loading messages:', err)
@@ -531,7 +575,7 @@ export default function GroupChatThread() {
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [group_id, t])
+  }, [group_id, groupChatCacheKey, t])
 
   const loadOlderMessages = useCallback(async () => {
     if (loadingOlderRef.current || !hasMoreMessages) return
@@ -2201,6 +2245,7 @@ export default function GroupChatThread() {
                 lastMessageRef={lastMessageRef}
                 listRef={listRef}
                 className="space-y-3 py-3"
+                followOutput={!showScrollDown}
                 itemKey={(msg, idx) => {
                   const mk = msg as Message & { clientKey?: string }
                   return mk.clientKey ?? msg.id ?? idx
@@ -2309,6 +2354,7 @@ export default function GroupChatThread() {
                         msgWithKey.clientKey ? () => retryFailedMessage(msgWithKey.clientKey!) : undefined
                       }
                       onRemoveMediaItem={selectionMode ? undefined : handleRemoveGroupMediaItem}
+                      linkPreviewReady={listRevealReady}
                     />
                   )
                 }}

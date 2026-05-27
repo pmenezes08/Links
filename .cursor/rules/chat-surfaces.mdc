@@ -12,3 +12,10 @@ alwaysApply: false
 - **New messaging features** (reactions, attachments, typing, media pipeline): implement once in **`client/src/chat/`**, wire from both pages.
 - **API paths** pair with **`backend/blueprints/group_chat.py`** and **`dm_chats`** / **`MYSQL_AND_FIRESTORE.md`** — confirm route inventory after backend changes (`python scripts/generate_route_inventory.py`).
 - See **`docs/MONOLITH_REDUCTION_ROADMAP.md`** § Chat UI kernel and **`AGENTS.md`** for AI/voice (Steve) invariants if the change touches summaries or usage.
+
+## Scroll settle + cache invariants (request-storm prevention)
+
+- **`useChatThreadScroll`** callbacks (`notifyMessagesSettled`, `tryRevealList`) must keep **stable identity** — do not depend on `messages.length` in `useCallback` deps; use refs (`messagesLengthRef`).
+- Thread pages must call **`notifyMessagesSettledRef.current(gen)`**, not `notifyMessagesSettled` directly inside `useEffect`, and must **not** include `notifyMessagesSettled` in effect dependency arrays.
+- **Cache-first hydrate** (device cache / IndexedDB) must **`mergeHydratedMessages`** / preserve optimistic rows — never `setMessages(processed)` alone when outbox or in-flight sends may exist.
+- After cache paint, network refresh may run in the background; avoid duplicate **`refreshBadges()`** + full scroll pin when the server payload is unchanged.

@@ -5,6 +5,7 @@ import {
   scrollElementToBottom,
   shouldShowScrollDownAfterOpen,
 } from './scrollPin'
+import { OPEN_PIN_MAX_MS } from './threadReveal'
 
 /**
  * Hook to detect mobile device
@@ -116,10 +117,11 @@ interface UseChatThreadScrollOptions {
   bottomInsetPx?: number
   /** Debounce scroll-down FAB after thread open (ms). */
   openFabDebounceMs?: number
+  /** When true (cache hit), reveal list immediately after first bottom pin. */
+  fastOpen?: boolean
 }
 
-const OPEN_PIN_MAX_MS = 1200
-const STABLE_SCROLL_HEIGHT_FRAMES = 3
+const OPEN_PIN_MAX_MS_EXPORT = OPEN_PIN_MAX_MS
 
 /**
  * Stable scroll-to-bottom for chat threads (DM + group).
@@ -130,6 +132,7 @@ export function useChatThreadScroll({
   messages,
   bottomInsetPx = 0,
   openFabDebounceMs = 300,
+  fastOpen = false,
 }: UseChatThreadScrollOptions) {
   const userHasScrolledRef = useRef(false)
   const lastVisibleMsgKeyRef = useRef<string | number | null>(null)
@@ -139,9 +142,9 @@ export function useChatThreadScroll({
   const threadOpenedAtRef = useRef(0)
   const settleGenerationRef = useRef<number | null>(null)
   const lastBottomInsetRef = useRef(bottomInsetPx)
-  const stableHeightFramesRef = useRef(0)
-  const lastObservedScrollHeightRef = useRef(0)
   const openPinDeadlineRef = useRef(0)
+  const fastOpenRef = useRef(fastOpen)
+  fastOpenRef.current = fastOpen
   const [showScrollDown, setShowScrollDown] = useState(false)
   const [listRevealReady, setListRevealReady] = useState(false)
   const [pendingNewCount, setPendingNewCount] = useState(0)
@@ -150,17 +153,8 @@ export function useChatThreadScroll({
   messagesLengthRef.current = messages.length
 
   const tryRevealList = useCallback(() => {
-    if (messagesLengthRef.current === 0) {
-      setListRevealReady(true)
-      initialPinActiveRef.current = false
-      return
-    }
-    const layoutStable = stableHeightFramesRef.current >= STABLE_SCROLL_HEIGHT_FRAMES
-    const deadlinePassed = Date.now() >= openPinDeadlineRef.current
-    if (layoutStable || deadlinePassed) {
-      initialPinActiveRef.current = false
-      setListRevealReady(true)
-    }
+    initialPinActiveRef.current = false
+    setListRevealReady(true)
   }, [])
 
   const scrollListToBottom = useCallback(
@@ -232,10 +226,8 @@ export function useChatThreadScroll({
     lastVisibleMsgKeyRef.current = null
     userHasScrolledRef.current = false
     initialPinActiveRef.current = true
-    stableHeightFramesRef.current = 0
-    lastObservedScrollHeightRef.current = 0
     threadOpenedAtRef.current = Date.now()
-    openPinDeadlineRef.current = Date.now() + OPEN_PIN_MAX_MS
+    openPinDeadlineRef.current = Date.now() + OPEN_PIN_MAX_MS_EXPORT
     setShowScrollDown(false)
     setListRevealReady(false)
     setPendingNewCount(0)
@@ -244,7 +236,7 @@ export function useChatThreadScroll({
     const revealTimer = window.setTimeout(() => {
       setListRevealReady(true)
       initialPinActiveRef.current = false
-    }, OPEN_PIN_MAX_MS + 50)
+    }, OPEN_PIN_MAX_MS_EXPORT + 50)
 
     return () => window.clearTimeout(revealTimer)
   }, [threadKey])
@@ -253,24 +245,16 @@ export function useChatThreadScroll({
     if (!threadKey) return
     if (messages.length === 0) {
       setListRevealReady(true)
+    } else if (fastOpen) {
+      setListRevealReady(true)
     }
-  }, [threadKey, messages.length])
+  }, [threadKey, messages.length, fastOpen])
 
   const messageTailKey = useMemo(() => {
     if (messages.length === 0) return null
     const last = messages[messages.length - 1]
     return last.clientKey ?? last.id
   }, [messages])
-
-  const recordScrollHeightStability = useCallback((list: HTMLElement) => {
-    const height = list.scrollHeight
-    if (height === lastObservedScrollHeightRef.current) {
-      stableHeightFramesRef.current += 1
-    } else {
-      stableHeightFramesRef.current = 0
-      lastObservedScrollHeightRef.current = height
-    }
-  }, [])
 
   useLayoutEffect(() => {
     if (Math.abs(lastBottomInsetRef.current - bottomInsetPx) < 1) return
@@ -315,26 +299,22 @@ export function useChatThreadScroll({
   }, [messages.length, messageTailKey, ensurePinnedToBottom, listRef, tryRevealList])
 
   useLayoutEffect(() => {
-    const stack = messageStackRef.current
-    if (!stack || typeof ResizeObserver === 'undefined') return
+    const list = listRef.current
+    if (!list || typeof ResizeObserver === 'undefined') return
 
     const onResize = () => {
       if (userHasScrolledRef.current) return
-      const list = listRef.current
-      if (!list) return
-      recordScrollHeightStability(list)
       scrollElementToBottom(list, 'auto')
-      tryRevealList()
     }
 
     const observer = new ResizeObserver(onResize)
-    observer.observe(stack)
+    observer.observe(list)
     const tail = lastMessageRef.current
     if (tail) observer.observe(tail)
     return () => {
       observer.disconnect()
     }
-  }, [threadKey, messages.length, messageTailKey, listRef, tryRevealList, recordScrollHeightStability])
+  }, [threadKey, messages.length, messageTailKey, listRef])
 
   const cancelInitialPin = useCallback(() => {
     initialPinActiveRef.current = false

@@ -92,6 +92,12 @@ flows.
 - Mount `<EntitlementsProvider>` inside `BrowserRouter` in `client/src/App.tsx`
   so `useEntitlementsHandler().showError` / `handleResponse` open `LimitReachedModal`
   (otherwise the context defaults are no-ops).
+- **Chat thread scroll settle callbacks must stay stable.** Callbacks from
+  `useChatThreadScroll` (`notifyMessagesSettled`, internal `tryRevealList`) must
+  not close over `messages.length` — use refs instead. In `ChatThread.tsx` /
+  `GroupChatThread.tsx`, call settle via a ref (`notifyMessagesSettledRef`) and
+  never list `notifyMessagesSettled` in `useEffect` dependency arrays. Cache
+  hydrate must merge optimistic rows, not replace the whole list.
 
 ## Deployment
 

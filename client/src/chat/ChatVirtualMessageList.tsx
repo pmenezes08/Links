@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useState, type ReactNode, type RefObject } from 'react'
 import { Virtuoso } from 'react-virtuoso'
-import { CHAT_VIRTUAL_LIST_THRESHOLD } from './constants'
+import { CHAT_VIRTUAL_LIST_THRESHOLD, CHAT_VIRTUOSO_ENABLED } from './constants'
 
 export type ChatVirtualMessageListProps<T> = {
   messages: T[]
@@ -11,6 +11,9 @@ export type ChatVirtualMessageListProps<T> = {
   itemKey?: (message: T, index: number) => string | number
   footer?: ReactNode
   className?: string
+  /** When true, Virtuoso follows new tail messages (user near bottom). */
+  followOutput?: boolean
+  onAtBottomStateChange?: (atBottom: boolean) => void
 }
 
 function assignRef<T>(ref: RefObject<T | null>, value: T | null) {
@@ -50,6 +53,8 @@ export function ChatVirtualMessageList<T>({
   itemKey,
   footer,
   className = 'space-y-[9px]',
+  followOutput = true,
+  onAtBottomStateChange,
 }: ChatVirtualMessageListProps<T>) {
   const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null)
 
@@ -59,7 +64,12 @@ export function ChatVirtualMessageList<T>({
 
   const resolveKey = (msg: T, index: number) => String(itemKey?.(msg, index) ?? index)
 
-  if (messages.length <= CHAT_VIRTUAL_LIST_THRESHOLD || !scrollParent) {
+  const useVirtuoso =
+    CHAT_VIRTUOSO_ENABLED &&
+    messages.length > CHAT_VIRTUAL_LIST_THRESHOLD &&
+    Boolean(scrollParent)
+
+  if (!useVirtuoso) {
     return (
       <div ref={messageStackRef} className={className}>
         {messages.map((msg, idx) => {
@@ -78,9 +88,11 @@ export function ChatVirtualMessageList<T>({
 
   return (
     <Virtuoso
-      customScrollParent={scrollParent}
+      customScrollParent={scrollParent!}
       totalCount={messages.length}
       increaseViewportBy={{ top: 400, bottom: 200 }}
+      followOutput={followOutput ? 'auto' : false}
+      atBottomStateChange={onAtBottomStateChange}
       computeItemKey={index => resolveKey(messages[index], index)}
       components={{
         List: props => (

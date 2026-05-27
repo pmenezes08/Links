@@ -14,6 +14,7 @@ export interface UseChatThreadChromeOptions {
   loadingOlderRef: MutableRefObject<boolean>
   onLoadOlder?: () => void
   loadOlderEnabled?: boolean
+  fastOpen?: boolean
 }
 
 /**
@@ -31,6 +32,7 @@ export function useChatThreadChrome({
   loadingOlderRef,
   onLoadOlder,
   loadOlderEnabled = true,
+  fastOpen = false,
 }: UseChatThreadChromeOptions) {
   const layoutNudgeRef = useRef<(() => void) | undefined>(undefined)
 
@@ -46,6 +48,7 @@ export function useChatThreadChrome({
     threadKey,
     messages,
     bottomInsetPx: chrome.bottomInsetPx,
+    fastOpen,
   })
 
   layoutNudgeRef.current = scroll.scrollToBottomIfAppropriate

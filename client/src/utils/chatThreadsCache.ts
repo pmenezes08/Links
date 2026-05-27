@@ -9,6 +9,7 @@ export const VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES: readonly string[] = [
   'group-chats-list',
   'chat-communities-tree',
   'chat-messages:',
+  'group-chat-messages:',
   'chat-profile:',
 ]
 
@@ -35,6 +36,10 @@ export function dmUserIdKeyvalKey(viewerUsername: string, peerUsername: string):
 
 export function chatMessagesDeviceCacheKey(viewerUsername: string, peerUsername: string): string {
   return `chat-messages:${viewerUsername}:${peerUsername}`
+}
+
+export function groupChatMessagesDeviceCacheKey(viewerUsername: string, groupId: string): string {
+  return `group-chat-messages:${viewerUsername}:${groupId}`
 }
 
 export function chatProfileDeviceCacheKey(viewerUsername: string, peerUsername: string): string {
