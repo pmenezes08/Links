@@ -339,7 +339,7 @@ def unregister_fcm_token():
         session["_logout_pending_username"] = username
         session.pop("username", None)
         session.modified = True
-        tokens_revoked = remember_tokens.revoke_all_for_logout(username, request)
+        tokens_revoked = remember_tokens.revoke_by_cookie(request)
         resp = jsonify({
             "success": True,
             "deactivated_fcm": fcm_rows,
