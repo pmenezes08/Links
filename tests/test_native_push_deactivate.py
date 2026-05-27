@@ -154,6 +154,47 @@ def test_deactivate_for_install_unknown_id_is_noop(mysql_dsn):
     assert _active_counts() == (1, 1)
 
 
+def test_deactivate_all_push_for_user_kills_both_fcm_and_native_apns(mysql_dsn):
+    """Regression: logout must deactivate BOTH the FCM token and the separate
+    APNs hex token that iOS AppDelegate registers directly.  Previously only
+    the single token passed from JS was deactivated, leaving the native APNs
+    row active → pushes continued after logout."""
+    _ensure_push_tables()
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        # FCM token (registered by Capacitor JS)
+        c.execute(
+            f"""INSERT INTO fcm_tokens (token, username, platform, is_active)
+                VALUES ({ph}, {ph}, 'ios', 1)""",
+            ("fcm-long-token-abc123", "alice"),
+        )
+        # APNs hex token (registered by AppDelegate directly)
+        c.execute(
+            f"""INSERT INTO native_push_tokens (token, username, install_id, platform, environment, bundle_id, is_active)
+                VALUES ({ph}, {ph}, 'install-x', 'ios', 'production', 'co.cpoint.app', 1)""",
+            ("aabbccdd00112233", "alice"),
+        )
+        conn.commit()
+
+    result = native_push.deactivate_all_push_for_user("alice")
+
+    assert result["fcm_tokens"] >= 1
+    assert result["native_push_tokens"] >= 1
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) AS count FROM fcm_tokens WHERE username='alice' AND is_active=1")
+        row = c.fetchone()
+        fcm_active = row["count"] if hasattr(row, "keys") else row[0]
+        c.execute("SELECT COUNT(*) AS count FROM native_push_tokens WHERE username='alice' AND is_active=1")
+        row = c.fetchone()
+        native_active = row["count"] if hasattr(row, "keys") else row[0]
+
+    assert fcm_active == 0, "FCM token must be deactivated after logout"
+    assert native_active == 0, "Native APNs token must be deactivated after logout"
+
+
 def test_associate_fcm_tokens_for_install_updates_null_username(mysql_dsn):
     """Orphan fcm_tokens.username NULL + native_push_tokens.install_id match."""
     _ensure_push_tables()

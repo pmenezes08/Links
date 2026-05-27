@@ -215,10 +215,13 @@ def register_fcm_token():
 
 @public_bp.route("/api/push/unregister_fcm", methods=["POST"])
 def unregister_fcm_token():
-    """Deactivate FCM/native push tokens for the current session user (call on logout).
+    """Deactivate ALL FCM + native push tokens for the current session user (logout).
 
-    Body JSON: { "token": "<optional device token>" }.
-    If token is provided, only that device row is deactivated; otherwise all tokens for the user.
+    Body JSON: { "token": "<optional — used for logging only>" }.
+    Defense-in-depth: always deactivates every token row for the user in both
+    ``fcm_tokens`` and ``native_push_tokens``, regardless of which single token
+    the client passes. This prevents orphan APNs hex-tokens (registered directly
+    by iOS AppDelegate) from continuing to receive pushes after logout.
     """
     from backend.services.database import get_db_connection, get_sql_placeholder, USE_MYSQL
 
@@ -229,70 +232,55 @@ def unregister_fcm_token():
 
     try:
         data = request.get_json(force=True, silent=True) or {}
-        token = (data.get("token") or "").strip()
+        token_hint = (data.get("token") or "").strip()
     except Exception:
-        token = ""
+        token_hint = ""
 
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         ph = get_sql_placeholder()
 
-        if token:
-            if USE_MYSQL:
-                cursor.execute(
-                    f"UPDATE fcm_tokens SET is_active = 0 WHERE token = {ph} AND username = {ph}",
-                    (token, username),
-                )
-            else:
-                cursor.execute(
-                    "UPDATE fcm_tokens SET is_active = 0 WHERE token = ? AND username = ?",
-                    (token, username),
-                )
-            try:
-                if USE_MYSQL:
-                    cursor.execute(
-                        f"UPDATE native_push_tokens SET is_active = 0 WHERE token = {ph} AND username = {ph}",
-                        (token, username),
-                    )
-                else:
-                    cursor.execute(
-                        "UPDATE native_push_tokens SET is_active = 0 WHERE token = ? AND username = ?",
-                        (token, username),
-                    )
-            except Exception as ne:
-                logger.warning("native_push_tokens deactivate on logout: %s", ne)
-            logger.info("📴 Deactivated push token for %s (matched device)", username)
+        if USE_MYSQL:
+            cursor.execute(
+                f"UPDATE fcm_tokens SET is_active = 0 WHERE username = {ph}",
+                (username,),
+            )
         else:
+            cursor.execute(
+                "UPDATE fcm_tokens SET is_active = 0 WHERE username = ?",
+                (username,),
+            )
+        fcm_rows = cursor.rowcount or 0
+
+        native_rows = 0
+        try:
             if USE_MYSQL:
                 cursor.execute(
-                    f"UPDATE fcm_tokens SET is_active = 0 WHERE username = {ph}",
+                    f"UPDATE native_push_tokens SET is_active = 0 WHERE username = {ph}",
                     (username,),
                 )
             else:
                 cursor.execute(
-                    "UPDATE fcm_tokens SET is_active = 0 WHERE username = ?",
+                    "UPDATE native_push_tokens SET is_active = 0 WHERE username = ?",
                     (username,),
                 )
-            try:
-                if USE_MYSQL:
-                    cursor.execute(
-                        f"UPDATE native_push_tokens SET is_active = 0 WHERE username = {ph}",
-                        (username,),
-                    )
-                else:
-                    cursor.execute(
-                        "UPDATE native_push_tokens SET is_active = 0 WHERE username = ?",
-                        (username,),
-                    )
-            except Exception as ne:
-                logger.warning("native_push_tokens bulk deactivate on logout: %s", ne)
-            logger.info("📴 Deactivated all push tokens for %s (no token in body)", username)
+            native_rows = cursor.rowcount or 0
+        except Exception as ne:
+            logger.warning("native_push_tokens deactivate on logout: %s", ne)
 
         conn.commit()
         cursor.close()
         conn.close()
-        return jsonify({"success": True})
+
+        logger.info(
+            "📴 Deactivated ALL push for %s (hint_token=%s fcm=%d native=%d)",
+            username,
+            token_hint[:12] + "…" if len(token_hint) > 12 else token_hint or "none",
+            fcm_rows,
+            native_rows,
+        )
+        return jsonify({"success": True, "deactivated_fcm": fcm_rows, "deactivated_native": native_rows})
     except Exception as e:
         logger.error("unregister_fcm error: %s", e)
         return jsonify({"success": False, "error": str(e)}), 500

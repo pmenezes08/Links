@@ -226,8 +226,13 @@ export function useChatComposerChrome({
   /** Composer + list inset — smoothed on iOS/web; Android visualViewport already tracks IME. */
   const displayKeyboardLift = isAndroid ? keyboardLift : smoothedKeyboardLift
 
-  const bottomChromeInset =
-    displayKeyboardLift > 0 || androidKeyboardOpen ? displayKeyboardLift : safeBottomPx
+  // Android: content wrapper already clamps to visualViewport.height above the IME;
+  // do not add keyboard lift again as list padding (double-counts and hides messages).
+  const bottomChromeInset = androidKeyboardOpen
+    ? 0
+    : displayKeyboardLift > 0
+      ? displayKeyboardLift
+      : safeBottomPx
   const bottomInsetPx = bottomChromeInset + effectiveComposerHeight + CHAT_COMPOSER_GAP_PX
   const listPaddingBottom = `${bottomInsetPx}px`
   const listScrollPaddingBottom = listPaddingBottom
