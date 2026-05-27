@@ -9,6 +9,7 @@ import { useAudioRecorder } from '../components/useAudioRecorder'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
+import { SkeletonPostDetail } from '../components/SkeletonRow'
 import ZoomableImage from '../components/ZoomableImage'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import VideoEmbed from '../components/VideoEmbed'
@@ -1521,7 +1522,7 @@ export default function PostDetail(){
   }
 
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">{t('common.loading')}</div>
+  if (loading) return <SkeletonPostDetail />
   if (error || !post) return (
     <div className="p-4 text-center text-[#9fb0b5]">
       <div className="text-red-400 mb-3">{error || t('errors.generic')}</div>
