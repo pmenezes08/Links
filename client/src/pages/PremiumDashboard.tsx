@@ -20,7 +20,8 @@ import { triggerDashboardServerPull } from '../utils/serverPull'
 import { useLogoutRequest } from '../contexts/LogoutPromptContext'
 import OnboardingChat from './OnboardingChat'
 import OnboardingIntroGate from '../components/onboarding/OnboardingIntroGate'
-import DashboardBottomNav, { isPremiumDashboardPath } from '../components/DashboardBottomNav'
+import { isPremiumDashboardPath } from '../components/DashboardBottomNav'
+import { useDashboardLayout } from '../components/DashboardLayout'
 import { SkeletonCommunityCard } from '../components/SkeletonRow'
 import AboutCPointModal from '../components/about/AboutCPointModal'
 import { setOnboardingFullscreenOverlay } from '../utils/fullscreenOverlay'
@@ -765,6 +766,11 @@ export default function PremiumDashboard() {
   )
   const onboardingOverlayActive =
     showOnboarding || showOnboardingWelcome || onboardingLaunching || onboardingGateRequired
+  const { setNavOverrides, clearNavOverrides } = useDashboardLayout()
+  useEffect(() => {
+    setNavOverrides({ show: !onboardingOverlayActive, searchOpen, onToggleSearch: () => setSearchOpen((v) => !v) })
+    return clearNavOverrides
+  }, [onboardingOverlayActive, searchOpen, setNavOverrides, clearNavOverrides])
   const onboardingRemaining = formatOnboardingRemaining(
     onboardingStateSummary?.profileDeferUntil,
     onboardingStateSummary?.serverTime,
@@ -1108,7 +1114,7 @@ export default function PremiumDashboard() {
           </button>
         )}
 
-        <DashboardBottomNav show={!onboardingOverlayActive} searchOpen={searchOpen} onToggleSearch={() => setSearchOpen((v) => !v)} />
+        {/* DashboardBottomNav is now rendered by DashboardLayout (persistent across tabs) */}
       </div>
 
       {/* Conversational Onboarding — portaled to body so z-index clears dashboard nav (main is z-0). */}

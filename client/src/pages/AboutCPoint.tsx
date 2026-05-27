@@ -3,7 +3,6 @@ import { Capacitor } from '@capacitor/core'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
-import DashboardBottomNav from '../components/DashboardBottomNav'
 import { useHeader } from '../contexts/HeaderContext'
 import {
   ABOUT_CPOINT_VERSION_LABEL,
@@ -336,7 +335,7 @@ export default function AboutCPoint() {
         </button>
       </div>
 
-      <DashboardBottomNav show />
+      {/* DashboardBottomNav rendered by DashboardLayout (persistent across tabs) */}
 
       {manifestoOpen ? (
         <ModalBackdrop onClose={() => setManifestoOpen(false)} wide>

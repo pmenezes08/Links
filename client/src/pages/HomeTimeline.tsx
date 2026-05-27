@@ -12,7 +12,6 @@ import { renderTextWithLinks } from '../utils/linkUtils.tsx'
 import { openExternalInApp } from '../utils/openExternalInApp'
 import EditableAISummary from '../components/EditableAISummary'
 import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
-import DashboardBottomNav from '../components/DashboardBottomNav'
 import { NativeListRow } from '../components/NativeListRow'
 import { PanelCard } from '../components/settings/SettingsSection'
 import { useBadges } from '../contexts/BadgeContext'
@@ -860,7 +859,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
           </div>
         )}
       </div>
-      {mode === 'dashboard_feed' && hasDashboardCommunities ? <DashboardBottomNav show /> : null}
+      {/* DashboardBottomNav rendered by DashboardLayout (persistent across tabs) */}
     </div>
   )
 }

@@ -70,6 +70,7 @@ import AboutCPoint from './pages/AboutCPoint'
 import OnboardingWelcome from './pages/OnboardingWelcome'
 import VerifyOverlay from './components/VerifyOverlay'
 import { isPremiumDashboardPath } from './components/DashboardBottomNav'
+import DashboardLayout from './components/DashboardLayout'
 import { useSafeAreaSync } from './hooks/useSafeAreaSync'
 import EventDetail from './pages/EventDetail'
 import GroupFeed from './pages/GroupFeed'
@@ -759,9 +760,13 @@ function AppRoutes(){
                 <Route path="/signup" element={<Signup />} />
                 <Route path="/signup_react" element={<Signup />} />
                 <Route path="/onboarding" element={<OnboardingWelcome />} />
-                <Route path="/premium" element={<PremiumDashboard />} />
-                <Route path="/premium_dashboard" element={<PremiumDashboard />} />
-                <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
+                <Route element={<DashboardLayout />}>
+                  <Route path="/premium" element={<PremiumDashboard />} />
+                  <Route path="/premium_dashboard" element={<PremiumDashboard />} />
+                  <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
+                  <Route path="/feed" element={<HomeTimeline mode="dashboard_feed" />} />
+                  <Route path="/about_cpoint" element={<AboutCPoint />} />
+                </Route>
                 <Route path="/crossfit" element={<CrossfitExact />} />
                 <Route path="/crossfit_react" element={<CrossfitExact />} />
                 <Route path="/communities" element={<Communities />} />
@@ -784,7 +789,6 @@ function AppRoutes(){
                 <Route path="/account_settings_react" element={<AccountSettings />} />
                 <Route path="/account_settings/security" element={<AccountSecurity />} />
                 <Route path="/account_settings/danger" element={<AccountDangerZone />} />
-                <Route path="/about_cpoint" element={<AboutCPoint />} />
                   <Route path="/subscription_plans" element={<SubscriptionPlans />} />
                 <Route path="/success" element={<Success />} />
                 <Route path="/notifications" element={<Notifications />} />
@@ -793,7 +797,6 @@ function AppRoutes(){
                 <Route path="/admin_dashboard_react" element={<AdminDashboard />} />
                 <Route path="/admin_profile_react" element={<AdminProfile />} />
                 <Route path="/home" element={<HomeTimeline />} />
-                <Route path="/feed" element={<HomeTimeline mode="dashboard_feed" />} />
                 <Route path="/workout_tracking" element={<WorkoutTracking />} />
                 <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
                 <Route path="/community/:community_id/calendar_react" element={<CommunityCalendar />} />
