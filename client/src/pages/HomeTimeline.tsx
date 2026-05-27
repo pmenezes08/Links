@@ -5,6 +5,7 @@ import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import { formatSmartTime } from '../utils/time'
 import ImageLoader from '../components/ImageLoader'
+import { SkeletonFeedList } from '../components/SkeletonRow'
 import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
 import { renderTextWithLinks } from '../utils/linkUtils.tsx'
@@ -684,7 +685,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
           </div>
         ) : null}
         {loading ? (
-          <div className="p-3 text-[#9fb0b5]">{t('common.loading')}</div>
+          <SkeletonFeedList count={4} />
         ) : error ? (
           <div className="p-3 text-red-400">{error}</div>
         ) : posts.length === 0 ? (
