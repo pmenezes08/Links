@@ -1,5 +1,6 @@
 import { useRef, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
+import { chatHapticMenuOpen, chatHapticReaction } from './chatHaptics'
 
 export interface LongPressOptionalAction {
   label: string
@@ -128,6 +129,7 @@ export default function LongPressActionable({
   const openMenu = useCallback(() => {
     setMenuStyle(calculateMenuStyle())
     menuOpenTimeRef.current = Date.now()
+    chatHapticMenuOpen()
     setShowMenu(true)
     setIsPressed(false)
   }, [calculateMenuStyle])
@@ -213,7 +215,7 @@ export default function LongPressActionable({
                 <button 
                   key={e} 
                   className="text-[17px] flex-shrink-0 hover:scale-110 transition-transform" 
-                  onClick={() => safeAction(() => { setShowMenu(false); setShowEmojiPicker(false); onReact(e) })}
+                  onClick={() => safeAction(() => { chatHapticReaction(); setShowMenu(false); setShowEmojiPicker(false); onReact(e) })}
                 >
                   {e}
                 </button>
@@ -335,6 +337,7 @@ export default function LongPressActionable({
                     key={emoji}
                     className="w-9 h-9 flex items-center justify-center text-xl hover:bg-white/10 rounded-lg transition-colors"
                     onClick={() => {
+                      chatHapticReaction()
                       setShowMenu(false)
                       setShowEmojiPicker(false)
                       onReact(emoji)

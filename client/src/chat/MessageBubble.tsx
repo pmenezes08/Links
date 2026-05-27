@@ -368,6 +368,8 @@ function MessageBubbleInner({
                         src={normalizeMediaPath(mediaPath)} 
                         alt={t('chat.story_alt')} 
                         className="w-full h-full object-cover"
+                        loading="lazy"
+                        decoding="async"
                         onError={(e) => {
                           const el = e.currentTarget
                           el.style.display = 'none'
@@ -460,6 +462,8 @@ function MessageBubbleInner({
                         src={normalizeMediaPath(mediaPath)} 
                         alt="" 
                         className="w-full h-full object-cover"
+                        loading="lazy"
+                        decoding="async"
                       />
                     </div>
                   )}
@@ -566,7 +570,7 @@ function MessageBubbleInner({
           {/* WhatsApp-style reaction pill - floats at bottom corner */}
           {m.reaction && (
             <div 
-              className={`absolute -bottom-6 ${m.sent ? 'right-1' : 'left-1'} bg-[#1f1f1f] px-1.5 py-0.5 rounded-full shadow-lg border border-white/10 z-10`}
+              className={`absolute -bottom-6 ${m.sent ? 'right-1' : 'left-1'} bg-[#1f1f1f] px-1.5 py-0.5 rounded-full shadow-lg border border-white/10 z-10 chat-reaction-pop`}
             >
               <span className="text-sm select-none">{m.reaction}</span>
             </div>
@@ -580,10 +584,16 @@ function MessageBubbleInner({
             Not delivered — tap to retry
           </button>
         )}
-        {m.isOptimistic && !m.sendFailed && m.sent && (
-          <div className="flex items-center gap-1 mt-0.5">
-            <i className="fa-solid fa-clock text-[9px] text-white/30" />
-            <span className="text-[10px] text-white/30">Sending…</span>
+        {m.sent && !m.sendFailed && (
+          <div className="flex items-center gap-0.5 mt-0.5 self-end">
+            {m.isOptimistic ? (
+              <i className="fa-solid fa-check text-[9px] text-white/40" aria-hidden />
+            ) : typeof m.id === 'number' && m.id > 0 ? (
+              <>
+                <i className="fa-solid fa-check text-[9px] text-[#4db6ac]/80" aria-hidden />
+                <i className="fa-solid fa-check text-[9px] text-[#4db6ac]/80 -ml-1.5" aria-hidden />
+              </>
+            ) : null}
           </div>
         )}
         </div>

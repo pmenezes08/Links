@@ -73,7 +73,7 @@ export default function MessageImage({ src, alt, onClick, className = '', tile =
         }`}
         onLoad={handleLoad}
         onError={handleError}
-        loading="eager"
+        loading="lazy"
         decoding="async"
         style={{
           display: error ? 'none' : 'block',

@@ -6,7 +6,6 @@ import {
   useState,
   type CSSProperties,
 } from 'react'
-import { createPortal } from 'react-dom'
 import { useEntitlements } from '../hooks/useEntitlements'
 import {
   buildClientPremiumRequiredError,
@@ -53,17 +52,27 @@ import {
   CHAT_CACHE_TTL_MS,
   CHAT_CACHE_VERSION,
   MessageBubble,
-  useChatThreadScroll,
-  useChatComposerChrome,
-  useChatListScrollHandlers,
+  useChatThreadChrome,
+  ChatSelectionBar,
+  NewMessagesChip,
+  SwipeToReply,
+  useResumeOutboxDrain,
   chatHapticSend,
   ChatAttachMenuRow,
   useDmMessagePoll,
+  ChatMediaPreviewModal,
+  ChatMediaViewerModal,
+  ChatComposerPortal,
+  ChatComposerCard,
+  ChatVirtualMessageList,
 } from '../chat'
 import { NativeIconButton } from '../components/NativeIconButton'
 import { mentionsSteve } from '../utils/steveClientGate'
 import SteveTypingIndicator from '../components/chat/SteveTypingIndicator'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
+import { useNativeStatusBar } from '../hooks/useNativeStatusBar'
+import { useAndroidBackButton } from '../hooks/useAndroidBackButton'
+import { Style } from '@capacitor/status-bar'
 import {
   takePendingShareFilesOnce,
   takePendingShareUrlsOnce,
@@ -249,7 +258,20 @@ export default function ChatThread(){
 
   const shareAttachDoneRef = useRef(false)
   const composerRef = useRef<HTMLDivElement | null>(null)
-  const layoutNudgeRef = useRef<(() => void) | undefined>(undefined)
+
+  useNativeStatusBar(Style.Dark)
+  useResumeOutboxDrain()
+
+  useAndroidBackButton({
+    textareaRef,
+    onExitSelection: () => {
+      if (!isMultiSelectMode) return false
+      setIsMultiSelectMode(false)
+      setSelectedMessages(new Set())
+      return true
+    },
+    onNavigateBack: () => navigate(-1),
+  })
 
   // Peer-scoped ref reset when switching DM threads (cache hydrate runs after processRawMessages is defined)
   useEffect(() => {
@@ -318,36 +340,30 @@ export default function ChatThread(){
   // Mic always enabled for audio messages
   const MIC_ENABLED = true
 
-  const chrome = useChatComposerChrome({
+  const chrome = useChatThreadChrome({
     isMobile,
     textareaRef,
     composerRef,
-    onLayoutNudge: () => layoutNudgeRef.current?.(),
+    listRef,
+    threadKey: username,
+    messages,
+    hasMoreMessages,
+    loadingOlderRef,
+    onLoadOlder: () => loadOlderRef.current?.(),
+    loadOlderEnabled: Boolean(otherUserId),
   })
 
   const {
     messageStackRef,
     scrollToBottom,
-    scrollToBottomIfAppropriate,
     ensurePinnedToBottom,
     notifyMessagesSettled,
-    userHasScrolledRef,
     showScrollDown,
-    setShowScrollDown,
-    cancelInitialPin,
     listRevealReady,
     listOpening,
     lastMessageRef,
-  } = useChatThreadScroll({
-    listRef,
-    threadKey: username,
-    messages,
-    bottomInsetPx: chrome.bottomInsetPx,
-  })
-
-  layoutNudgeRef.current = scrollToBottomIfAppropriate
-
-  const {
+    pendingNewCount,
+    clearPendingNew,
     composerCardRef,
     keyboardLift,
     displayKeyboardLift,
@@ -361,19 +377,8 @@ export default function ChatThread(){
     handleContentPointerUp,
     handleContentPointerCancel,
     noteComposerFocus,
-    touchDismissRef,
+    handleListScroll,
   } = chrome
-
-  const { onScroll: handleListScroll } = useChatListScrollHandlers({
-    userHasScrolledRef,
-    cancelInitialPin,
-    setShowScrollDown,
-    touchDismissRef,
-    hasMoreMessages,
-    loadingOlderRef,
-    onLoadOlder: () => loadOlderRef.current?.(),
-    loadOlderEnabled: Boolean(otherUserId),
-  })
 
   const focusTextarea = useCallback(() => {
     if (MIC_ENABLED && recording) return
@@ -605,7 +610,22 @@ export default function ChatThread(){
     )
   }, [username, isSteveDm, prefillParam, setSearchParams])
 
-  // Share handoff must run *after* draft restore above, or saved/cleared draft overwrites shared links.
+  // Deep link ?reply=1 — focus composer on mount
+  const replyParam = searchParams.get('reply')
+  useEffect(() => {
+    if (replyParam !== '1' || !username) return
+    focusTextarea()
+    setSearchParams(
+      p => {
+        const n = new URLSearchParams(p)
+        n.delete('reply')
+        return n
+      },
+      { replace: true },
+    )
+  }, [username, replyParam, setSearchParams, focusTextarea])
+
+  // Share handoff must run *after* draft restore above
   const shareAttach = searchParams.get('share')
   useEffect(() => {
     if (shareAttach !== '1' || !username) return
@@ -2353,14 +2373,27 @@ export default function ChatThread(){
             <div className="text-xs mt-1 opacity-70">{t('chat.offline_go_online')}</div>
           </div>
         )}
-        <div ref={messageStackRef} className="space-y-[9px]">
-        {messages.map((m, index) => {
+        <ChatVirtualMessageList
+          messages={messages}
+          messageStackRef={messageStackRef}
+          lastMessageRef={lastMessageRef}
+          listRef={listRef}
+          className="space-y-[9px]"
+          itemKey={(m, idx) => m.clientKey ?? m.id ?? idx}
+          footer={
+            steveIsTyping ? (
+              <div className="min-h-[36px]">
+                <SteveTypingIndicator active={steveIsTyping} />
+              </div>
+            ) : undefined
+          }
+          renderItem={(m, index) => {
           const messageDate = getDateKey(m.time)
           const prevMessageDate = index > 0 ? getDateKey(messages[index - 1].time) : null
           const showDateSeparator = messageDate !== prevMessageDate
           
           return (
-            <div key={m.clientKey ?? m.id} ref={index === messages.length - 1 ? lastMessageRef : undefined}>
+            <>
               {showDateSeparator && (
                 <div className="flex justify-center my-3">
                   <div className="liquid-glass-chip px-3 py-1 text-xs text-white/80 border">
@@ -2374,7 +2407,6 @@ export default function ChatThread(){
                 className={`flex items-center gap-2 ${isMultiSelectMode ? 'py-1' : ''}`}
                 onClick={isMultiSelectMode ? () => toggleMessageSelection(m.id) : undefined}
               >
-                {/* Selection checkbox in multi-select mode */}
                 {isMultiSelectMode && (
                   <button
                     className={`w-6 h-6 flex-shrink-0 rounded-full flex items-center justify-center border-2 transition-all ${
@@ -2392,7 +2424,21 @@ export default function ChatThread(){
                     )}
                   </button>
                 )}
-                <div className="flex-1 min-w-0">
+                <SwipeToReply
+                  className="flex-1 min-w-0"
+                  disabled={isMultiSelectMode || editingId === m.id}
+                  onReply={() => {
+                    setReplyTo({
+                      text: m.text,
+                      sender: m.sent ? 'You' : (otherProfile?.display_name || username || 'User'),
+                      image_path: m.image_path,
+                      video_path: m.video_path,
+                      audio_path: m.audio_path,
+                      audio_summary: m.audio_summary || undefined,
+                    })
+                    focusTextarea()
+                  }}
+                >
                 <MessageBubble
                   message={m}
                   isEditing={editingId === m.id}
@@ -2521,28 +2567,11 @@ export default function ChatThread(){
                   onMentionClick={mentionToProfile}
                   onRetry={m.clientKey ? () => retryFailedMessage(String(m.clientKey)) : undefined}
                 />
-                </div>
+                </SwipeToReply>
               </div>
-            </div>
+            </>
           )
-        })}
-
-        {steveIsTyping && (
-          <div className="min-h-[36px]">
-            <SteveTypingIndicator active={steveIsTyping} />
-          </div>
-        )}
-        </div>
-        
-        {/* iOS FIX: Scroll anchor/spacer at the very end to ensure last message can scroll fully into view */}
-        <div 
-          className="scroll-anchor" 
-          style={{ 
-            height: '1px',
-            width: '100%',
-            flexShrink: 0,
-          }} 
-          aria-hidden="true"
+        }}
         />
         
       </div>
@@ -2550,6 +2579,18 @@ export default function ChatThread(){
     </div>
     </div>
     {/* End of main container - compositor and scroll button rendered outside to avoid overflow:hidden clipping */}
+
+    {/* New messages chip — above composer when scrolled up */}
+    {pendingNewCount > 0 && !isMultiSelectMode && (
+      <NewMessagesChip
+        count={pendingNewCount}
+        bottom={scrollButtonBottom}
+        onClick={() => {
+          ensurePinnedToBottom()
+          clearPendingNew()
+        }}
+      />
+    )}
 
     {/* Scroll to bottom button - positioned above composer */}
     {showScrollDown && !isMultiSelectMode && (
@@ -2568,64 +2609,22 @@ export default function ChatThread(){
 
     {/* Multi-select action bar */}
     {isMultiSelectMode && (
-      <div 
-        className="fixed left-0 right-0 z-[1001] bg-[#1a1a1a]/95 backdrop-blur-md border-t border-white/10"
-        style={{ bottom: 0 }}
-      >
-        <div className="flex items-center justify-between px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))]">
-          <button
-            className="flex items-center gap-2 text-white/70 hover:text-white transition-colors"
-            onClick={exitMultiSelectMode}
-          >
-            <i className="fa-solid fa-xmark text-lg" />
-            <span className="text-sm">{t('chat.cancel')}</span>
-          </button>
-          
-          <div className="text-white/80 text-sm font-medium">
-            {selectedMessages.size} selected
-          </div>
-          
-          <button
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-              selectedMessages.size > 0
-                ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                : 'bg-white/5 text-white/30'
-            }`}
-            onClick={deleteSelectedMessages}
-            disabled={selectedMessages.size === 0}
-          >
-            <i className="fa-solid fa-trash text-sm" />
-            <span className="text-sm">{t('chat.delete')}</span>
-          </button>
-        </div>
-      </div>
+      <ChatSelectionBar
+        selectedCount={selectedMessages.size}
+        onCancel={exitMultiSelectMode}
+        onDelete={deleteSelectedMessages}
+        deleteDisabled={selectedMessages.size === 0}
+      />
     )}
 
     {/* ====== COMPOSER - FIXED AT BOTTOM (portaled for keyboard lift) ====== */}
-    {!isMultiSelectMode && pendingMedia.length === 0 && typeof document !== 'undefined' && createPortal(
-    <div
-      ref={composerRef}
-      className={`fixed bottom-0 chat-composer-smooth ${isWeb ? 'left-1/2 -translate-x-1/2 max-w-3xl w-full' : 'left-0 right-0'}`}
-      style={{
-        bottom: displayKeyboardLift > 0 ? `${displayKeyboardLift}px` : '0',
-        zIndex: 1000,
-        display: 'flex',
-        flexDirection: 'column',
-        touchAction: 'manipulation',
-        pointerEvents: 'auto',
-      }}
+    <ChatComposerPortal
+      visible={!isMultiSelectMode && pendingMedia.length === 0}
+      composerRef={composerRef}
+      displayKeyboardLift={displayKeyboardLift}
+      isWeb={isWeb}
     >
-      {/* Composer card - sits above the safe area */}
-      <div
-        ref={composerCardRef}
-        className={`relative ${isWeb ? 'w-full mx-auto' : 'w-full'} rounded-[16px] px-2 sm:px-2.5 py-2.5 sm:py-3`}
-        style={{
-          background: '#0a0a0c',
-          marginBottom: 0,
-          paddingLeft: 'max(10px, env(safe-area-inset-left, 0px))',
-          paddingRight: 'max(10px, env(safe-area-inset-right, 0px))',
-        }}
-      >
+      <ChatComposerCard composerCardRef={composerCardRef} isWeb={isWeb}>
           {/* Attachment menu - positioned above the entire composer */}
           {showAttachMenu && (
             <>
@@ -3124,7 +3123,7 @@ export default function ChatThread(){
             </button>
           )}
         </div>
-      </div>
+      </ChatComposerCard>
       {/* Safe area spacer — hidden when keyboard is open to avoid double spacing */}
       <div 
         className="chat-composer-spacer-smooth"
@@ -3134,9 +3133,7 @@ export default function ChatThread(){
           flexShrink: 0,
         }}
       />
-    </div>,
-    document.body
-    )}
+    </ChatComposerPortal>
 
       {/* Permission guide modal */}
       {showPermissionGuide && (
@@ -3705,214 +3702,20 @@ export default function ChatThread(){
         </div>
       )}
 
-      {/* Grouped media viewer */}
-      {viewingMedia && (
-        <div
-          className="fixed inset-0 bg-black z-[9999] flex flex-col"
-          onClick={() => setViewingMedia(null)}
-        >
-          <div
-            className="flex items-center justify-between px-4 py-3 bg-black/80"
-            style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
-          >
-            <button onClick={() => setViewingMedia(null)} className="text-white p-2 -ml-2">
-              <i className="fa-solid fa-arrow-left text-lg" />
-            </button>
-            <span className="text-white font-medium">
-              {viewingMedia.urls.length > 1 ? `${viewingMedia.index + 1} of ${viewingMedia.urls.length}` : 'Media'}
-            </span>
-            <div className="w-10" />
-          </div>
-          <div
-            className="flex-1 flex items-center justify-center overflow-hidden relative"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {viewingMedia.urls.length > 1 && viewingMedia.index > 0 && (
-              <button
-                className="absolute left-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
-                onClick={() => setViewingMedia(prev => prev ? { ...prev, index: prev.index - 1 } : null)}
-              >
-                <i className="fa-solid fa-chevron-left" />
-              </button>
-            )}
-            <div className="w-full h-full flex items-center justify-center" style={{ maxHeight: 'calc(100vh - 10rem)' }}>
-              {viewingMedia.urls[viewingMedia.index]?.match(/\.(mp4|mov|webm|m4v)($|\?)/i) ? (
-                <video
-                  src={viewingMedia.urls[viewingMedia.index]}
-                  controls
-                  playsInline
-                  autoPlay
-                  className="max-w-full max-h-full object-contain"
-                />
-              ) : (
-                <ZoomableImage
-                  src={viewingMedia.urls[viewingMedia.index]}
-                  alt="Media"
-                  className="w-full h-full"
-                  onRequestClose={() => setViewingMedia(null)}
-                  disableTapToClose
-                />
-              )}
-            </div>
-            {viewingMedia.urls.length > 1 && viewingMedia.index < viewingMedia.urls.length - 1 && (
-              <button
-                className="absolute right-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
-                onClick={() => setViewingMedia(prev => prev ? { ...prev, index: prev.index + 1 } : null)}
-              >
-                <i className="fa-solid fa-chevron-right" />
-              </button>
-            )}
-          </div>
-          {viewingMedia.urls.length > 1 && (
-            <div className="flex justify-center gap-2 px-4 py-3 bg-black/80 overflow-x-auto"
-              style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
-            >
-              {viewingMedia.urls.map((url, i) => (
-                <button
-                  key={i}
-                  onClick={(e) => { e.stopPropagation(); setViewingMedia(prev => prev ? { ...prev, index: i } : null) }}
-                  className={`w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border-2 transition ${
-                    i === viewingMedia.index ? 'border-[#4db6ac]' : 'border-transparent opacity-60'
-                  }`}
-                >
-                  {url.match(/\.(mp4|mov|webm|m4v)($|\?)/i) ? (
-                    <div className="w-full h-full bg-black/50 flex items-center justify-center">
-                      <i className="fa-solid fa-video text-white/60 text-xs" />
-                    </div>
-                  ) : (
-                    <img src={url} alt="" className="w-full h-full object-cover" />
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      <ChatMediaViewerModal
+        viewer={viewingMedia}
+        onClose={() => setViewingMedia(null)}
+        onIndexChange={index => setViewingMedia(prev => (prev ? { ...prev, index } : null))}
+      />
 
-      {pendingMedia.length > 0 && typeof document !== 'undefined' && createPortal(
-        <div
-          className="fixed inset-0 bg-black z-[10050] flex flex-col"
-          onClick={cancelMediaPreview}
-        >
-          <div
-            className="flex items-center justify-between px-4 py-3 bg-black/80"
-            style={{ paddingTop: 'calc(var(--sat-px, 0px) + 12px)' }}
-          >
-            <button
-              type="button"
-              onClick={cancelMediaPreview}
-              className="text-white p-2 -ml-2"
-            >
-              <i className="fa-solid fa-xmark text-xl" />
-            </button>
-            <span className="text-white font-medium">
-              {pendingMedia.length > 1 ? `${previewIndex + 1} of ${pendingMedia.length}` : 'Preview'}
-            </span>
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); removeMediaFromPreview(previewIndex) }}
-              className="text-white/60 p-2 -mr-2 hover:text-white"
-            >
-              <i className="fa-solid fa-trash text-sm" />
-            </button>
-          </div>
-
-          <div
-            className="flex-1 flex items-center justify-center overflow-hidden relative"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {pendingMedia.length > 1 && previewIndex > 0 && (
-              <button
-                type="button"
-                className="absolute left-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
-                onClick={() => setPreviewIndex(i => i - 1)}
-              >
-                <i className="fa-solid fa-chevron-left" />
-              </button>
-            )}
-
-            <div className="w-full h-full flex items-center justify-center" style={{ maxHeight: 'calc(100vh - 10rem)' }}>
-              {pendingMedia[previewIndex]?.type === 'video' ? (
-                <video
-                  src={pendingMedia[previewIndex]?.previewUrl}
-                  controls
-                  playsInline
-                  className="max-w-full max-h-full object-contain"
-                />
-              ) : pendingMedia[previewIndex]?.type === 'audio' ? (
-                <audio src={pendingMedia[previewIndex]?.previewUrl} controls className="w-full max-w-md" />
-              ) : (
-                <ZoomableImage
-                  src={pendingMedia[previewIndex]?.previewUrl || ''}
-                  alt="Preview"
-                  className="w-full h-full"
-                  onRequestClose={cancelMediaPreview}
-                  disableTapToClose
-                />
-              )}
-            </div>
-
-            {pendingMedia.length > 1 && previewIndex < pendingMedia.length - 1 && (
-              <button
-                type="button"
-                className="absolute right-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
-                onClick={() => setPreviewIndex(i => i + 1)}
-              >
-                <i className="fa-solid fa-chevron-right" />
-              </button>
-            )}
-          </div>
-
-          {pendingMedia.length > 1 && (
-            <div className="flex justify-center gap-2 px-4 py-2 bg-black/80 overflow-x-auto">
-              {pendingMedia.map((item, i) => (
-                <button
-                  type="button"
-                  key={i}
-                  onClick={(e) => { e.stopPropagation(); setPreviewIndex(i) }}
-                  className={`w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border-2 transition ${
-                    i === previewIndex ? 'border-[#4db6ac]' : 'border-transparent opacity-60'
-                  }`}
-                >
-                  {item.type === 'video' ? (
-                    <div className="w-full h-full bg-black/50 flex items-center justify-center">
-                      <i className="fa-solid fa-video text-white/60 text-xs" />
-                    </div>
-                  ) : item.type === 'audio' ? (
-                    <div className="w-full h-full bg-black/50 flex items-center justify-center">
-                      <i className="fa-solid fa-music text-white/60 text-xs" />
-                    </div>
-                  ) : (
-                    <img src={item.previewUrl} alt="" className="w-full h-full object-cover" />
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div
-            className="flex items-center justify-center gap-4 px-4 py-4 bg-black/80 flex-shrink-0"
-            style={{ paddingBottom: 'calc(var(--sab-px, 0px) + 16px)' }}
-          >
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); cancelMediaPreview() }}
-              className="px-6 py-3 bg-white/10 text-white rounded-full font-medium hover:bg-white/20 transition touch-manipulation"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); confirmSendMedia() }}
-              className="px-8 py-3 bg-[#4db6ac] text-black rounded-full font-medium hover:bg-[#45a89c] transition flex items-center gap-2 touch-manipulation"
-            >
-              <i className="fa-solid fa-paper-plane" />
-              Send {pendingMedia.length > 1 ? `(${pendingMedia.length})` : ''}
-            </button>
-          </div>
-        </div>,
-        document.body
-      )}
+      <ChatMediaPreviewModal
+        items={pendingMedia}
+        previewIndex={previewIndex}
+        onPreviewIndexChange={setPreviewIndex}
+        onCancel={cancelMediaPreview}
+        onRemove={removeMediaFromPreview}
+        onSend={confirmSendMedia}
+      />
     </>
   )
 }

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import type { CSSProperties } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -10,9 +9,16 @@ import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { GroupMessageRow } from '../chat/GroupMessageRow'
-import { getDateKey, normalizeMediaPath, useChatComposerChrome, useChatListScrollHandlers, useChatThreadScroll, chatHapticSend, ChatAttachMenuRow } from '../chat'
+import { getDateKey, normalizeMediaPath, useChatThreadChrome, chatHapticSend, ChatAttachMenuRow, useGroupMessagePoll, ChatMediaPreviewModal, ChatMediaViewerModal, ChatSelectionBar, NewMessagesChip, useResumeOutboxDrain, ChatComposerPortal, ChatComposerCard, ChatVirtualMessageList } from '../chat'
+import { useNativeStatusBar } from '../hooks/useNativeStatusBar'
+import { useAndroidBackButton } from '../hooks/useAndroidBackButton'
+import { Style } from '@capacitor/status-bar'
 import { NativeIconButton } from '../components/NativeIconButton'
-import { retainMessagesIfUnchanged } from '../utils/dmPollMerge'
+import {
+  mergeGroupReactionsFromMessages,
+  mergePolledGroupMessages,
+  GROUP_SEND_CONFIRM_TIMEOUT_MS,
+} from '../utils/groupPollMergeMessages'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
 import { useEntitlements } from '../hooks/useEntitlements'
@@ -21,7 +27,6 @@ import {
   buildClientPremiumRequiredError,
   shouldClientBlockSteveIntent,
 } from '../utils/steveClientGate'
-import ZoomableImage from '../components/ZoomableImage'
 import { sendGroupImageMessage, sendGroupMultiMedia } from '../chat/groupChatMediaSenders'
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
 import { SENDING_MEDIA_LABEL, sendGroupDocumentMessage } from '../chat/mediaSenders'
@@ -74,48 +79,6 @@ type GroupInfo = {
   community_name?: string
 }
 
-const GROUP_SEND_CONFIRM_TIMEOUT_MS = 30000
-const GROUP_POLL_INTERVAL_MS = 1500
-const GROUP_FULL_SYNC_EVERY_N_POLL = 6
-
-function mergeGroupReactionsFromMessages(
-  prev: Record<number, string>,
-  msgs: Message[],
-): Record<number, string> {
-  let changed = false
-  const next: Record<number, string> = { ...prev }
-  for (const msg of msgs) {
-    const id = msg.id
-    if (!id || id <= 0) continue
-    const n = msg.reaction || null
-    const p = prev[id] === undefined ? null : prev[id]
-    if (p !== n) {
-      changed = true
-      if (n) next[id] = n
-      else delete next[id]
-    }
-  }
-  return changed ? next : prev
-}
-
-function isConfirmedGroupMessage(
-  serverMessage: Message,
-  optimisticMessage: Message & { clientKey?: string }
-) {
-  const serverClientKey = (serverMessage.client_key || '').trim()
-  const optimisticClientKey = ((optimisticMessage as any).clientKey || '').trim()
-
-  if (serverClientKey && optimisticClientKey && serverClientKey === optimisticClientKey) {
-    return true
-  }
-
-  return (
-    serverMessage.sender === optimisticMessage.sender &&
-    serverMessage.text === optimisticMessage.text &&
-    Math.abs(new Date(serverMessage.created_at).getTime() - new Date(optimisticMessage.created_at).getTime()) < GROUP_SEND_CONFIRM_TIMEOUT_MS
-  )
-}
-
 function formatGroupThreadTime(dateStr: string) {
   try {
     const date = new Date(dateStr)
@@ -135,23 +98,6 @@ function formatGroupThreadTime(dateStr: string) {
   } catch {
     return ''
   }
-}
-
-function groupMessagePollSignature(m: Message & { isOptimistic?: boolean; clientKey?: string }): string {
-  const mediaPaths = m.media_paths?.join('\u001e') ?? ''
-  return [
-    m.id,
-    m.sender,
-    m.text ?? '',
-    m.reaction ?? '',
-    m.is_edited ? 1 : 0,
-    m.image ?? '',
-    m.video ?? '',
-    m.voice ?? '',
-    mediaPaths,
-    m.isOptimistic ? 1 : 0,
-    m.client_key ?? m.clientKey ?? '',
-  ].join('\u001f')
 }
 
 export default function GroupChatThread() {
@@ -318,11 +264,23 @@ export default function GroupChatThread() {
   const listRef = useRef<HTMLDivElement>(null)
   const loadOlderRef = useRef<(() => void) | null>(null)
   const composerRef = useRef<HTMLDivElement | null>(null)
-  const layoutNudgeRef = useRef<(() => void) | undefined>(undefined)
   const draftSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  useNativeStatusBar(Style.Dark)
+  useResumeOutboxDrain()
+
+  useAndroidBackButton({
+    textareaRef,
+    onExitSelection: () => {
+      if (!selectionMode) return false
+      setSelectionMode(false)
+      setSelectedMessages(new Set())
+      return true
+    },
+    onNavigateBack: () => navigate(-1),
+  })
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
-  const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const pollInFlightRef = useRef(false)
   const skipNextPollsUntil = useRef(0)
   const pollTickRef = useRef(0)
@@ -353,35 +311,28 @@ export default function GroupChatThread() {
   const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
   const MIC_ENABLED = true
 
-  const chrome = useChatComposerChrome({
+  const chrome = useChatThreadChrome({
     isMobile,
     textareaRef,
     composerRef,
-    onLayoutNudge: () => layoutNudgeRef.current?.(),
+    listRef,
+    threadKey: group_id,
+    messages,
+    hasMoreMessages,
+    loadingOlderRef,
+    onLoadOlder: () => loadOlderRef.current?.(),
   })
 
   const {
     messageStackRef,
-    scrollToBottomIfAppropriate,
     ensurePinnedToBottom,
     notifyMessagesSettled,
-    userHasScrolledRef,
     showScrollDown,
-    setShowScrollDown,
-    cancelInitialPin,
     listRevealReady,
     listOpening,
     lastMessageRef,
-  } = useChatThreadScroll({
-    listRef,
-    threadKey: group_id,
-    messages,
-    bottomInsetPx: chrome.bottomInsetPx,
-  })
-
-  layoutNudgeRef.current = scrollToBottomIfAppropriate
-
-  const {
+    pendingNewCount,
+    clearPendingNew,
     composerCardRef,
     keyboardLift,
     displayKeyboardLift,
@@ -395,18 +346,8 @@ export default function GroupChatThread() {
     handleContentPointerUp,
     handleContentPointerCancel,
     noteComposerFocus,
-    touchDismissRef,
+    handleListScroll,
   } = chrome
-
-  const { onScroll: handleListScroll } = useChatListScrollHandlers({
-    userHasScrolledRef,
-    cancelInitialPin,
-    setShowScrollDown,
-    touchDismissRef,
-    hasMoreMessages,
-    loadingOlderRef,
-    onLoadOlder: () => loadOlderRef.current?.(),
-  })
 
   // Format recording time
   const formatRecordingTime = (ms: number) => {
@@ -443,6 +384,25 @@ export default function GroupChatThread() {
     setHasMoreMessages(false)
     setError(null)
   }, [group_id])
+
+  // Cache-first hydrate on thread switch (IndexedDB before network completes)
+  useEffect(() => {
+    if (!group_id) return
+    const gen = threadGenerationRef.current
+
+    void getCachedKeyVal<GroupInfo>(`group-info:${group_id}`).then(cached => {
+      if (gen !== threadGenerationRef.current) return
+      if (cached) setGroup(prev => prev || cached)
+    })
+
+    void getCachedMessages(`group:${group_id}`).then(cached => {
+      if (gen !== threadGenerationRef.current) return
+      if (cached?.length) {
+        setServerMessages(cached as Message[])
+        notifyMessagesSettled(gen)
+      }
+    }).catch(() => {})
+  }, [group_id, notifyMessagesSettled])
 
   const focusTextarea = useCallback(() => {
     if (MIC_ENABLED && recording) return
@@ -501,7 +461,7 @@ export default function GroupChatThread() {
     }
   }, [group_id, t])
 
-  const loadMessages = useCallback(async (silent = false, opts?: { pollTick?: number }) => {
+  const loadMessages = useCallback(async (silent = false) => {
     const gen = threadGenerationRef.current
     const fetchGroupId = group_id
     if (!navigator.onLine) {
@@ -518,16 +478,7 @@ export default function GroupChatThread() {
     }
     if (!silent) setLoading(true)
     try {
-      const useDelta =
-        silent &&
-        lastMessageIdRef.current > 0 &&
-        opts?.pollTick != null &&
-        opts.pollTick % GROUP_FULL_SYNC_EVERY_N_POLL !== 0
-
-      const url = useDelta
-        ? `/api/group_chat/${group_id}/messages?limit=50&since_id=${lastMessageIdRef.current}`
-        : `/api/group_chat/${group_id}/messages?limit=50`
-
+      const url = `/api/group_chat/${group_id}/messages?limit=50`
       const response = await fetch(url, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const data = await response.json()
       if (gen !== threadGenerationRef.current || fetchGroupId !== activeGroupIdRef.current) return
@@ -535,82 +486,28 @@ export default function GroupChatThread() {
         const newServerMessages = (data.messages as Message[]).filter(
           m => !pendingDeletions.current.has(m.id)
         )
-        const isDelta = useDelta && silent
         const typingNext = data.steve_is_typing === true
         setSteveIsTyping(prev => (prev === typingNext ? prev : typingNext))
 
-        if (isDelta && newServerMessages.length === 0) {
-          // Typing already updated; no message changes.
-        } else if (isDelta) {
-          setServerMessages(prev => {
-            if (gen !== threadGenerationRef.current) return prev
-            const optimistic = prev.filter(m => (m as any).isOptimistic)
-            const prevServer = prev.filter(m => !(m as any).isOptimistic)
-            const byId = new Map<number, Message>()
-            for (const m of prevServer) {
-              if (m.id > 0) byId.set(m.id, m)
-            }
-            for (const nm of newServerMessages) {
-              if (pendingDeletions.current.has(nm.id)) continue
-              byId.set(nm.id, nm)
-            }
-            const merged = Array.from(byId.values()).sort((a, b) => a.id - b.id)
-            const unconfirmedOptimistic = optimistic.filter(opt =>
-              !merged.some(nm => isConfirmedGroupMessage(nm, opt))
-            )
-            const next = [...merged, ...unconfirmedOptimistic]
-            return retainMessagesIfUnchanged(prev, next, groupMessagePollSignature)
-          })
-          setReactions(prev => mergeGroupReactionsFromMessages(prev, newServerMessages))
-        } else {
-          if (!silent) setHasMoreMessages(!!data.has_more)
-          if (!isDelta) {
-            cacheMessages(`group:${group_id}`, newServerMessages)
-          }
+        if (!silent) setHasMoreMessages(!!data.has_more)
+        cacheMessages(`group:${group_id}`, newServerMessages)
 
-          setServerMessages(prev => {
-            if (gen !== threadGenerationRef.current) return prev
-            const optimistic = prev.filter(m => (m as any).isOptimistic)
-            const prevServer = prev.filter(m => !(m as any).isOptimistic)
-
-            if (silent) {
-              const minNewId = newServerMessages.length > 0 ? Math.min(...newServerMessages.map(m => m.id)) : Infinity
-              const olderFromPrev = prevServer.filter(m => m.id < minNewId)
-              const mergedIds = [...olderFromPrev, ...newServerMessages].map(m => m.id).join(',')
-              const currentIds = prevServer.map(m => m.id).join(',')
-              if (mergedIds === currentIds) {
-                const changed = newServerMessages.some(nm => {
-                  const pm = prevServer.find(p => p.id === nm.id)
-                  return pm && (pm.text !== nm.text || pm.is_edited !== nm.is_edited)
-                })
-                if (!changed) {
-                  const unconfirmed = optimistic.filter(opt =>
-                    !newServerMessages.some(nm => isConfirmedGroupMessage(nm, opt))
-                  )
-                  if (unconfirmed.length !== optimistic.length) {
-                    return [...prevServer, ...unconfirmed]
-                  }
-                  return prev
-                }
-              }
-            }
-
-            const minNewId = newServerMessages.length > 0 ? Math.min(...newServerMessages.map(m => m.id)) : Infinity
-            const olderMessages = silent ? prevServer.filter(m => m.id < minNewId && !newServerMessages.some(n => n.id === m.id)) : []
-            const unconfirmedOptimistic = optimistic.filter(opt =>
-              !newServerMessages.some(nm => isConfirmedGroupMessage(nm, opt))
-            )
-            return [...olderMessages, ...newServerMessages, ...unconfirmedOptimistic]
-          })
-
-          if (!silent) notifyMessagesSettled(gen)
-          setReactions(prev => mergeGroupReactionsFromMessages(prev, newServerMessages))
-        }
+        setServerMessages(prev => {
+          if (gen !== threadGenerationRef.current) return prev
+          return mergePolledGroupMessages(prev, newServerMessages, {
+            pendingDeletions: pendingDeletions.current,
+            isDelta: false,
+            silent,
+          }) as Message[]
+        })
+        setReactions(prev => mergeGroupReactionsFromMessages(prev, newServerMessages))
 
         const newMaxId = newServerMessages.length > 0 ? Math.max(...newServerMessages.map(m => m.id)) : 0
         if (newMaxId > 0 && gen === threadGenerationRef.current) {
           lastMessageIdRef.current = Math.max(lastMessageIdRef.current, newMaxId)
         }
+
+        if (!silent) notifyMessagesSettled(gen)
       }
     } catch (err) {
       console.error('Error loading messages:', err)
@@ -662,49 +559,24 @@ export default function GroupChatThread() {
 
   loadOlderRef.current = loadOlderMessages
 
-  // Update active presence (so push notifications are suppressed while viewing)
-  const updatePresence = useCallback(() => {
-    fetch(`/api/group_chat/${group_id}/presence`, {
-      method: 'POST',
-      credentials: 'include',
-    }).catch(() => {})  // Ignore errors - this is optional
-  }, [group_id])
+  useGroupMessagePoll<Message>({
+    groupId: group_id,
+    threadGenerationRef,
+    activeGroupIdRef,
+    lastMessageIdRef,
+    skipNextPollsUntil,
+    pollInFlightRef,
+    pollTickRef,
+    pendingDeletions,
+    setServerMessages,
+    setReactions,
+    setSteveIsTyping,
+  })
 
   useEffect(() => {
     loadGroup()
     void loadMessages(false)
-    if (navigator.onLine) updatePresence()
-
-    const tick = () => {
-      if (!navigator.onLine) return
-      if (Date.now() < skipNextPollsUntil.current) return
-      if (pollInFlightRef.current) return
-      pollInFlightRef.current = true
-      pollTickRef.current += 1
-      const pt = pollTickRef.current
-      if (pt % 4 === 0) updatePresence()
-      void loadMessages(true, { pollTick: pt }).finally(() => {
-        pollInFlightRef.current = false
-      })
-    }
-
-    pollingRef.current = setInterval(tick, GROUP_POLL_INTERVAL_MS)
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible' && navigator.onLine && !pollInFlightRef.current) {
-        pollInFlightRef.current = true
-        void loadMessages(true, { pollTick: 0 }).finally(() => {
-          pollInFlightRef.current = false
-        })
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibility)
-
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current)
-      document.removeEventListener('visibilitychange', handleVisibility)
-    }
-  }, [loadGroup, loadMessages, updatePresence])
+  }, [loadGroup, loadMessages])
 
   // Hydrate pending/failed outbox entries so they survive app restarts
   useEffect(() => {
@@ -2313,8 +2185,24 @@ export default function GroupChatThread() {
                 )}
               </div>
             ) : (
-              <div ref={messageStackRef} className="space-y-3 py-3">
-                {messages.map((msg, idx) => {
+              <ChatVirtualMessageList
+                messages={messages}
+                messageStackRef={messageStackRef}
+                lastMessageRef={lastMessageRef}
+                listRef={listRef}
+                className="space-y-3 py-3"
+                itemKey={(msg, idx) => {
+                  const mk = msg as Message & { clientKey?: string }
+                  return mk.clientKey ?? msg.id ?? idx
+                }}
+                footer={
+                  steveIsTyping ? (
+                    <div className="min-h-[36px]">
+                      <SteveTypingIndicator active={steveIsTyping} />
+                    </div>
+                  ) : undefined
+                }
+                renderItem={(msg, idx) => {
                   const msgWithKey = msg as Message & { clientKey?: string; replySnippet?: string; replySender?: string }
                   const showAvatar = idx === 0 || messages[idx - 1].sender !== msg.sender
                   const showTime = showAvatar || (idx > 0 &&
@@ -2331,9 +2219,7 @@ export default function GroupChatThread() {
                   const firstMedia = msg.media_paths?.[0] || ''
                   const isMediaImage = firstMedia.match(/\.(jpg|jpeg|png|gif|webp)$/i)
                   return (
-                    <div ref={idx === messages.length - 1 ? lastMessageRef : undefined}>
                     <GroupMessageRow
-                      key={msgWithKey.clientKey || msg.id}
                       msg={{
                         ...msg,
                         clientKey: msgWithKey.clientKey,
@@ -2414,20 +2300,25 @@ export default function GroupChatThread() {
                       }
                       onRemoveMediaItem={selectionMode ? undefined : handleRemoveGroupMediaItem}
                     />
-                    </div>
                   )
-                })}
-                {steveIsTyping && (
-                  <div className="min-h-[36px]">
-                    <SteveTypingIndicator active={steveIsTyping} />
-                  </div>
-                )}
-                <div className="scroll-anchor h-px w-full flex-shrink-0" aria-hidden="true" />
-              </div>
+                }}
+              />
             )}
           </div>
         </div>
       </div>
+
+      {/* New messages chip — above composer when scrolled up */}
+      {pendingNewCount > 0 && !selectionMode && (
+        <NewMessagesChip
+          count={pendingNewCount}
+          bottom={scrollButtonBottom}
+          onClick={() => {
+            ensurePinnedToBottom()
+            clearPendingNew()
+          }}
+        />
+      )}
 
       {/* Scroll to latest — above composer (matches DM ChatThread) */}
       {showScrollDown && !selectionMode && (
@@ -2448,60 +2339,22 @@ export default function GroupChatThread() {
       )}
 
       {/* ====== COMPOSER - FIXED AT BOTTOM (portaled for keyboard lift) ====== */}
-      {typeof document !== 'undefined' && pendingMedia.length === 0 && createPortal(
-      <div
-        ref={composerRef}
-        className={`fixed bottom-0 chat-composer-smooth ${isWeb ? 'left-1/2 -translate-x-1/2 max-w-3xl w-full' : 'left-0 right-0'}`}
-        style={{
-          bottom: displayKeyboardLift > 0 ? `${displayKeyboardLift}px` : '0',
-          zIndex: 1000,
-          display: 'flex',
-          flexDirection: 'column',
-          touchAction: 'manipulation',
-          pointerEvents: 'auto',
-        }}
+      <ChatComposerPortal
+        visible={pendingMedia.length === 0}
+        composerRef={composerRef}
+        displayKeyboardLift={displayKeyboardLift}
+        isWeb={isWeb}
       >
-        {/* Selection action bar - shown when in selection mode */}
         {selectionMode ? (
-          <div
-            className="w-full rounded-[16px] px-4 py-3 flex items-center justify-between gap-3"
-            style={{
-              background: '#0a0a0c',
-              paddingLeft: 'max(10px, env(safe-area-inset-left, 0px))',
-              paddingRight: 'max(10px, env(safe-area-inset-right, 0px))',
-            }}
-          >
-            <button
-              onClick={exitSelectionMode}
-              className="text-white/60 hover:text-white flex items-center gap-2"
-            >
-              <i className="fa-solid fa-xmark" />
-              <span className="text-sm">{t('chat.cancel')}</span>
-            </button>
-            <span className="text-white/80 text-sm">
-              {selectedMessages.size} selected
-            </span>
-            <button
-              onClick={handleBulkDelete}
-              disabled={selectedMessages.size === 0}
-              className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-400 rounded-full disabled:opacity-40 disabled:cursor-not-allowed hover:bg-red-500/30 transition-colors"
-            >
-              <i className="fa-solid fa-trash text-sm" />
-              <span className="text-sm">{t('chat.delete')}</span>
-            </button>
-          </div>
+          <ChatSelectionBar
+            fixed={false}
+            selectedCount={selectedMessages.size}
+            onCancel={exitSelectionMode}
+            onDelete={handleBulkDelete}
+            deleteDisabled={selectedMessages.size === 0}
+          />
         ) : (
-        /* Composer card */
-        <div
-          ref={composerCardRef}
-          className={`relative ${isWeb ? 'w-full mx-auto' : 'w-full'} rounded-[16px] px-2 sm:px-2.5 py-2.5 sm:py-3`}
-          style={{
-            background: '#0a0a0c',
-            paddingLeft: 'max(10px, env(safe-area-inset-left, 0px))',
-            paddingRight: 'max(10px, env(safe-area-inset-right, 0px))',
-            marginBottom: 0,
-          }}
-        >
+        <ChatComposerCard composerCardRef={composerCardRef} isWeb={isWeb}>
           {/* Attachment menu */}
           {showAttachMenu && (
             <>
@@ -3015,7 +2868,7 @@ export default function GroupChatThread() {
               </button>
             )}
           </div>
-        </div>
+        </ChatComposerCard>
         )}
         {/* Safe area spacer — hidden when keyboard is open to avoid double spacing */}
         <div
@@ -3026,9 +2879,7 @@ export default function GroupChatThread() {
             flexShrink: 0,
           }}
         />
-      </div>,
-      document.body
-      )}
+      </ChatComposerPortal>
 
       {/* GIF Picker */}
       <GifPicker
@@ -3498,150 +3349,14 @@ export default function GroupChatThread() {
         </div>
       )}
 
-      {pendingMedia.length > 0 && typeof document !== 'undefined' && createPortal(
-        <div 
-          className="fixed inset-0 bg-black z-[10050] flex flex-col"
-          onClick={cancelMediaPreview}
-        >
-          {/* Header */}
-          <div 
-            className="flex items-center justify-between px-4 py-3 bg-black/80"
-            style={{ paddingTop: 'calc(var(--sat-px, 0px) + 12px)' }}
-          >
-            <button
-              type="button"
-              onClick={cancelMediaPreview}
-              className="text-white p-2 -ml-2"
-            >
-              <i className="fa-solid fa-xmark text-xl" />
-            </button>
-            <span className="text-white font-medium">
-              {pendingMedia.length > 1 ? `${previewIndex + 1} of ${pendingMedia.length}` : 'Preview'}
-            </span>
-            {/* Remove current media button */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                removeMediaFromPreview(previewIndex)
-              }}
-              className="text-white/60 p-2 -mr-2 hover:text-white"
-            >
-              <i className="fa-solid fa-trash text-sm" />
-            </button>
-          </div>
-
-          {/* Media preview with swipe navigation */}
-          <div 
-            className="flex-1 flex items-center justify-center overflow-hidden relative"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Previous button */}
-            {pendingMedia.length > 1 && previewIndex > 0 && (
-              <button
-                type="button"
-                className="absolute left-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
-                onClick={() => setPreviewIndex(i => i - 1)}
-              >
-                <i className="fa-solid fa-chevron-left" />
-              </button>
-            )}
-            
-            {/* Current media */}
-            <div className="w-full h-full flex items-center justify-center" style={{ maxHeight: 'calc(100vh - 10rem)' }}>
-              {pendingMedia[previewIndex]?.type === 'video' ? (
-                <video
-                  src={pendingMedia[previewIndex]?.previewUrl}
-                  controls
-                  playsInline
-                  className="max-w-full max-h-full object-contain"
-                />
-              ) : pendingMedia[previewIndex]?.type === 'audio' ? (
-                <audio src={pendingMedia[previewIndex]?.previewUrl} controls className="w-full max-w-md" />
-              ) : (
-                <ZoomableImage
-                  src={pendingMedia[previewIndex]?.previewUrl || ''}
-                  alt="Preview"
-                  className="w-full h-full"
-                  onRequestClose={cancelMediaPreview}
-                  disableTapToClose
-                />
-              )}
-            </div>
-            
-            {/* Next button */}
-            {pendingMedia.length > 1 && previewIndex < pendingMedia.length - 1 && (
-              <button
-                type="button"
-                className="absolute right-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
-                onClick={() => setPreviewIndex(i => i + 1)}
-              >
-                <i className="fa-solid fa-chevron-right" />
-              </button>
-            )}
-          </div>
-
-          {/* Thumbnail strip for multiple media */}
-          {pendingMedia.length > 1 && (
-            <div className="flex justify-center gap-2 px-4 py-2 bg-black/80 overflow-x-auto">
-              {pendingMedia.map((item, i) => (
-                <button
-                  type="button"
-                  key={i}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setPreviewIndex(i)
-                  }}
-                  className={`w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border-2 transition ${
-                    i === previewIndex ? 'border-[#4db6ac]' : 'border-transparent opacity-60'
-                  }`}
-                >
-                  {item.type === 'video' ? (
-                    <div className="w-full h-full bg-black/50 flex items-center justify-center">
-                      <i className="fa-solid fa-video text-white/60 text-xs" />
-                    </div>
-                  ) : item.type === 'audio' ? (
-                    <div className="w-full h-full bg-black/50 flex items-center justify-center">
-                      <i className="fa-solid fa-music text-white/60 text-xs" />
-                    </div>
-                  ) : (
-                    <img src={item.previewUrl} alt="" className="w-full h-full object-cover" />
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Send button */}
-          <div 
-            className="flex items-center justify-center gap-4 px-4 py-4 bg-black/80 flex-shrink-0"
-            style={{ paddingBottom: 'calc(var(--sab-px, 0px) + 16px)' }}
-          >
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                cancelMediaPreview()
-              }}
-              className="px-6 py-3 bg-white/10 text-white rounded-full font-medium hover:bg-white/20 transition touch-manipulation"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                confirmSendMedia()
-              }}
-              className="px-8 py-3 bg-[#4db6ac] text-black rounded-full font-medium hover:bg-[#45a89c] transition flex items-center gap-2 touch-manipulation"
-            >
-              <i className="fa-solid fa-paper-plane" />
-              Send {pendingMedia.length > 1 ? `(${pendingMedia.length})` : ''}
-            </button>
-          </div>
-        </div>,
-        document.body
-      )}
+      <ChatMediaPreviewModal
+        items={pendingMedia}
+        previewIndex={previewIndex}
+        onPreviewIndexChange={setPreviewIndex}
+        onCancel={cancelMediaPreview}
+        onRemove={removeMediaFromPreview}
+        onSend={confirmSendMedia}
+      />
 
       {/* Pasted image preview modal */}
       {pastedImagePreview && (
@@ -3764,130 +3479,49 @@ export default function GroupChatThread() {
         </div>
       )}
 
-      {/* Media viewing modal - for viewing sent/received media with navigation */}
-      {viewingMedia && (
-        <div 
-          className="fixed inset-0 bg-black z-[9999] flex flex-col"
-          onClick={() => setViewingMedia(null)}
-        >
-          {/* Header */}
-          <div 
-            className="flex items-center justify-between px-4 py-3 bg-black/80"
-            style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
-          >
-            <button
-              onClick={() => setViewingMedia(null)}
-              className="text-white p-2 -ml-2"
-            >
-              <i className="fa-solid fa-xmark text-xl" />
-            </button>
-            <span className="text-white font-medium">
-              {viewingMedia.urls.length > 1 
-                ? `${viewingMedia.index + 1} of ${viewingMedia.urls.length}` 
-                : 'Photo'}
-            </span>
-            <div className="w-8" />
-          </div>
-
-          {/* Media view with navigation */}
-          <div 
-            className="flex-1 flex items-center justify-center overflow-hidden relative"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Previous button */}
-            {viewingMedia.urls.length > 1 && viewingMedia.index > 0 && (
-              <button
-                className="absolute left-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
-                onClick={() => setViewingMedia(prev => prev ? { ...prev, index: prev.index - 1 } : null)}
-              >
-                <i className="fa-solid fa-chevron-left" />
-              </button>
-            )}
-            
-            <div className="w-full h-full" style={{ maxHeight: 'calc(100vh - 8rem)', touchAction: 'none' }}>
-              {viewingMedia.urls[viewingMedia.index]?.includes('.mp4') || 
-               viewingMedia.urls[viewingMedia.index]?.includes('.mov') ||
-               viewingMedia.urls[viewingMedia.index]?.includes('.webm') ? (
-                <video
-                  src={viewingMedia.urls[viewingMedia.index]}
-                  controls
-                  playsInline
-                  className="max-w-full max-h-full mx-auto"
-                />
-              ) : (
-                <ZoomableImage
-                  src={viewingMedia.urls[viewingMedia.index]}
-                  alt="Photo"
-                  className="w-full h-full"
-                  onRequestClose={() => setViewingMedia(null)}
-                  disableTapToClose
-                />
-              )}
-            </div>
-            
-            {/* Next button */}
-            {viewingMedia.urls.length > 1 && viewingMedia.index < viewingMedia.urls.length - 1 && (
-              <button
-                className="absolute right-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
-                onClick={() => setViewingMedia(prev => prev ? { ...prev, index: prev.index + 1 } : null)}
-              >
-                <i className="fa-solid fa-chevron-right" />
-              </button>
-            )}
-          </div>
-
-          {/* Dots indicator for multiple media */}
-          {viewingMedia.urls.length > 1 && (
-            <div className="flex justify-center gap-1.5 py-3 bg-black/80">
-              {viewingMedia.urls.map((_, i) => (
-                <button
-                  key={i}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setViewingMedia(prev => prev ? { ...prev, index: i } : null)
-                  }}
-                  className={`w-2 h-2 rounded-full transition ${
-                    i === viewingMedia.index ? 'bg-[#4db6ac]' : 'bg-white/30'
-                  }`}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Footer */}
-          <div 
+      <ChatMediaViewerModal
+        viewer={viewingMedia}
+        onClose={() => setViewingMedia(null)}
+        onIndexChange={index => setViewingMedia(prev => (prev ? { ...prev, index } : null))}
+        thumbStrip="dots"
+        footer={
+          <div
             className="flex items-center justify-center gap-4 px-4 py-4 bg-black/80"
             style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
           >
-            {viewingMedia.messageId && (
-              (viewingMedia.senderUsername === currentUsername || group?.members.find(m => m.username === currentUsername)?.is_admin) ? (
-                <button
-                  onClick={async () => {
-                    if (!viewingMedia.messageId || deletingMedia) return
-                    if (!confirm(t('chat.delete_media_message_confirm'))) return
-                    setDeletingMedia(true)
-                    try {
-                      const r = await fetch(`/api/group_chat/${group_id}/message/${viewingMedia.messageId}/delete`, {
-                        method: 'POST', credentials: 'include'
-                      })
-                      const d = await r.json().catch(() => null)
-                      if (d?.success) {
-                        setViewingMedia(null)
-                        loadMessages(true)
-                      } else {
-                        alert(d?.error || t('chat.failed_delete_media'))
-                      }
-                    } catch { alert(t('chat.failed_delete_media')) }
-                    finally { setDeletingMedia(false) }
-                  }}
-                  disabled={deletingMedia}
-                  className="px-6 py-3 bg-red-500/20 text-red-400 rounded-full font-medium hover:bg-red-500/30 transition disabled:opacity-50"
-                >
-                  <i className="fa-solid fa-trash-can mr-2" />
-                  {deletingMedia ? 'Deleting...' : 'Delete'}
-                </button>
-              ) : null
-            )}
+            {viewingMedia?.messageId &&
+            (viewingMedia.senderUsername === currentUsername ||
+              group?.members.find(m => m.username === currentUsername)?.is_admin) ? (
+              <button
+                onClick={async () => {
+                  if (!viewingMedia.messageId || deletingMedia) return
+                  if (!confirm(t('chat.delete_media_message_confirm'))) return
+                  setDeletingMedia(true)
+                  try {
+                    const r = await fetch(`/api/group_chat/${group_id}/message/${viewingMedia.messageId}/delete`, {
+                      method: 'POST',
+                      credentials: 'include',
+                    })
+                    const d = await r.json().catch(() => null)
+                    if (d?.success) {
+                      setViewingMedia(null)
+                      loadMessages(true)
+                    } else {
+                      alert(d?.error || t('chat.failed_delete_media'))
+                    }
+                  } catch {
+                    alert(t('chat.failed_delete_media'))
+                  } finally {
+                    setDeletingMedia(false)
+                  }
+                }}
+                disabled={deletingMedia}
+                className="px-6 py-3 bg-red-500/20 text-red-400 rounded-full font-medium hover:bg-red-500/30 transition disabled:opacity-50"
+              >
+                <i className="fa-solid fa-trash-can mr-2" />
+                {deletingMedia ? 'Deleting...' : 'Delete'}
+              </button>
+            ) : null}
             <button
               onClick={() => setViewingMedia(null)}
               className="px-6 py-3 bg-white/10 text-white rounded-full font-medium hover:bg-white/20 transition"
@@ -3895,8 +3529,8 @@ export default function GroupChatThread() {
               Close
             </button>
           </div>
-        </div>
-      )}
+        }
+      />
 
     </div>
   )

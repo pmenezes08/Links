@@ -6,6 +6,7 @@ import { memo, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import Avatar from '../components/Avatar'
 import LongPressActionable from './LongPressActionable'
+import { SwipeToReply } from './SwipeToReply'
 import { formatDateLabel, normalizeMediaPath, resolveDocUrl } from './index'
 import MessageImage from '../components/MessageImage'
 import VoiceNotePlayer from '../components/VoiceNotePlayer'
@@ -171,7 +172,9 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
           <div className="liquid-glass-chip px-3 py-1 text-xs text-white/80 border">{formatDateLabel(msg.created_at)}</div>
         </div>
       )}
-      <div
+      <SwipeToReply
+        onReply={onReply}
+        disabled={selectionMode || isEditing || (isOptimistic && !sendFailed)}
         className={`flex gap-2 ${showAvatar ? 'mt-4 first:mt-0' : 'mt-0.5'} ${isSentByMe ? 'flex-row-reverse' : ''} ${sendFailed ? 'opacity-60' : isOptimistic ? 'opacity-70' : ''}`}
       >
         <div className="w-8 flex-shrink-0">
@@ -505,7 +508,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                 )}
                 {messageReaction && (
                   <div
-                    className="absolute -bottom-5 left-0 bg-[#1a1a1a] border border-white/10 rounded-full px-1.5 py-0.5 text-sm cursor-pointer hover:bg-white/10"
+                    className="absolute -bottom-5 left-0 bg-[#1a1a1a] border border-white/10 rounded-full px-1.5 py-0.5 text-sm cursor-pointer hover:bg-white/10 chat-reaction-pop"
                     role="presentation"
                     onClick={e => {
                       e.stopPropagation()
@@ -534,13 +537,18 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
             </button>
           )}
           {isOptimistic && !sendFailed && isSentByMe && (
-            <div className="flex items-center gap-1 mt-0.5 self-end">
-              <i className="fa-solid fa-clock text-[9px] text-white/30" />
-              <span className="text-[10px] text-white/30">Sending…</span>
+            <div className="flex items-center gap-0.5 mt-0.5 self-end">
+              <i className="fa-solid fa-check text-[9px] text-white/40" aria-hidden />
+            </div>
+          )}
+          {!isOptimistic && !sendFailed && isSentByMe && msg.id > 0 && (
+            <div className="flex items-center gap-0.5 mt-0.5 self-end">
+              <i className="fa-solid fa-check text-[9px] text-[#4db6ac]/80" aria-hidden />
+              <i className="fa-solid fa-check text-[9px] text-[#4db6ac]/80 -ml-1.5" aria-hidden />
             </div>
           )}
         </div>
-      </div>
+      </SwipeToReply>
     </div>
   )
 }

@@ -22,6 +22,8 @@ import {
 } from '../utils/chatThreadsCache'
 import { cacheConversations, getCachedConversations, cacheKeyVal, getCachedKeyVal, clearConversationMessages, deleteCachedConversationRow } from '../utils/offlineDb'
 import { mergeGroupChatLists, mergeThreadLists } from '../utils/chatThreadListMerge'
+import { triggerHaptic } from '../utils/haptics'
+import { useTouchPullToRefresh } from '../hooks/useTouchPullToRefresh'
 
 type Thread = {
   other_username: string
@@ -108,6 +110,7 @@ export default function Messages(){
   const [dragX, setDragX] = useState(0)
   const startXRef = useRef(0)
   const draggingIdRef = useRef<string|null>(null)
+  const listScrollRef = useRef<HTMLDivElement>(null)
   const [communityTree, setCommunityTree] = useState<CommunityNode[]>([])
   const [communitiesLoading, setCommunitiesLoading] = useState(true)
   const [communityFilter, setCommunityFilter] = useState<'all' | number>('all')
@@ -364,6 +367,27 @@ export default function Messages(){
     return { success: false, error: membersRes?.error || t('chat.failed_load_communities') }
   }, [t])
 
+  const refreshInbox = useCallback(async () => {
+    loadThreads(true)
+    loadGroupChats(true)
+    loadArchivedThreads()
+    refreshBadges()
+    try {
+      const result = await fetchCommunitiesData(true)
+      if (result.success && result.tree && me) {
+        writeDeviceCache(communitiesTreeCacheKey(me), result.tree, CACHE_TTL_MS, CACHE_VERSION)
+        setCommunityTree(result.tree)
+      }
+    } catch {
+      /* keep cached communities */
+    }
+  }, [loadThreads, loadGroupChats, loadArchivedThreads, refreshBadges, fetchCommunitiesData, me])
+
+  const { pullPx, hint } = useTouchPullToRefresh({
+    scrollRef: listScrollRef,
+    onRefresh: refreshInbox,
+  })
+
   // Refresh communities on visibility change (when returning to app)
   useEffect(() => {
     const onVis = async () => {
@@ -593,12 +617,21 @@ export default function Messages(){
       </div>
 
       <div
+        ref={listScrollRef}
         className="app-subnav-offset max-w-3xl mx-auto px-1 sm:px-3 pb-2 overflow-y-auto overscroll-auto"
         style={{
           WebkitOverflowScrolling: 'touch' as any,
           minHeight: 'calc(100vh - var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))))',
         }}
       >
+        {(pullPx > 0 || hint === 'refreshing') && (
+          <div
+            className="flex justify-center py-2 text-xs text-white/60"
+            style={{ transform: `translateY(${Math.min(pullPx, 48)}px)` }}
+          >
+            {hint === 'refreshing' ? t('common.loading') : t('chat.pull_to_refresh', { defaultValue: 'Pull to refresh' })}
+          </div>
+        )}
         {sharePick && (
           <div className="mb-3 px-2 py-2 rounded-xl border border-[#4db6ac]/40 bg-[#4db6ac]/10 text-sm text-white/90">
             {t('chat.share_pick_banner')}
@@ -974,6 +1007,7 @@ export default function Messages(){
                     onTouchEnd={() => {
                       if (draggingIdRef.current !== thread.other_username) return
                       const shouldOpen = dragX <= -80
+                      if (shouldOpen) void triggerHaptic('selection')
                       setSwipeId(shouldOpen ? thread.other_username : null)
                       setDragX(0)
                       draggingIdRef.current = null
@@ -1090,6 +1124,7 @@ export default function Messages(){
                             onTouchEnd={() => {
                               if (draggingIdRef.current !== `archived-${archivedThread.other_username}`) return
                               const shouldOpen = dragX <= -40
+                              if (shouldOpen) void triggerHaptic('selection')
                               setSwipeId(shouldOpen ? `archived-${archivedThread.other_username}` : null)
                               setDragX(0)
                               draggingIdRef.current = null

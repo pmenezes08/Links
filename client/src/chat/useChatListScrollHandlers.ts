@@ -17,6 +17,7 @@ export interface UseChatListScrollHandlersOptions {
   loadingOlderRef: MutableRefObject<boolean>
   onLoadOlder?: () => void
   loadOlderEnabled?: boolean
+  onNearBottom?: () => void
 }
 
 /**
@@ -31,6 +32,7 @@ export function useChatListScrollHandlers({
   loadingOlderRef,
   onLoadOlder,
   loadOlderEnabled = true,
+  onNearBottom,
 }: UseChatListScrollHandlersOptions) {
   const onScroll = useCallback(
     (event: UIEvent<HTMLDivElement>) => {
@@ -45,6 +47,7 @@ export function useChatListScrollHandlers({
       if (nearBottom) {
         userHasScrolledRef.current = false
         setShowScrollDown(false)
+        onNearBottom?.()
       } else if (distFromBottom > 80) {
         userHasScrolledRef.current = true
         cancelInitialPin()
@@ -72,6 +75,7 @@ export function useChatListScrollHandlers({
       setShowScrollDown,
       touchDismissRef,
       userHasScrolledRef,
+      onNearBottom,
     ],
   )
 

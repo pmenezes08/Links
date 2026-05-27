@@ -11,8 +11,23 @@ from backend.services import api_errors, auth_session, session_identity
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services.dm_chat_threads import build_chat_threads_payload
 from backend.services.dm_chats_tables import ensure_deleted_chat_threads_table
+from backend.services.dm_active_chat import record_active_chat
+from backend.services.dm_audio_summary import update_dm_audio_summary
+from backend.services.dm_chat_media_list import list_dm_chat_media
+from backend.services.dm_message_delete import delete_dm_message
+from backend.services.dm_message_edit import edit_dm_message
 from backend.services.dm_message_reactions import apply_dm_message_reaction, parse_reaction_request
 from backend.services.dm_messages_read import fetch_dm_messages
+from backend.services.dm_send_media import (
+    parse_grouped_media_request,
+    send_dm_audio_message,
+    send_dm_grouped_media,
+    send_dm_photo_message,
+    send_dm_video_message,
+)
+from backend.services.dm_send_message import send_dm_text_message
+from backend.services.dm_thread_archive import archive_dm_thread, list_archived_dm_threads, unarchive_dm_thread
+from backend.services.dm_thread_preferences import apply_dm_thread_mute
 from backend.services.dm_unread import count_dm_unread_excluding_cleared, mark_dm_received_before_clear_as_read
 from redis_cache import cache, invalidate_message_cache
 
@@ -24,6 +39,21 @@ dm_chats_bp = Blueprint("dm_chats", __name__)
 @dm_chats_bp.after_request
 def _no_store_user_scoped_responses(response):
     return auth_session.no_store(response)
+
+
+def _handle_broken_pipe(view_func):
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        try:
+            return view_func(*args, **kwargs)
+        except (BrokenPipeError, ConnectionResetError):
+            return "", 499
+        except OSError as exc:
+            if getattr(exc, "errno", None) in (32, 104, 54):
+                return "", 499
+            raise
+
+    return wrapper
 
 
 def _login_required(view_func):
@@ -355,6 +385,88 @@ def get_dm_documents():
     return jsonify(payload), status
 
 
+@dm_chats_bp.route("/send_message", methods=["POST"])
+@_login_required
+def send_message():
+    """Send a message to another user (supports E2E encryption)."""
+    username = session.get("username")
+    payload = send_dm_text_message(
+        username,
+        recipient_id=request.form.get("recipient_id"),
+        message=request.form.get("message", ""),
+        client_key=(request.form.get("client_key", "").strip() or None),
+        is_encrypted=request.form.get("is_encrypted", "0") == "1",
+        encrypted_body=request.form.get("encrypted_body", ""),
+        encrypted_body_for_sender=request.form.get("encrypted_body_for_sender", ""),
+    )
+    return jsonify(payload)
+
+
+@dm_chats_bp.route("/send_photo_message", methods=["POST"])
+@_login_required
+def send_photo_message():
+    """Send a photo message to another user."""
+    username = session.get("username")
+    payload = send_dm_photo_message(
+        username,
+        recipient_id=request.form.get("recipient_id"),
+        message=request.form.get("message", ""),
+        photo=request.files.get("photo"),
+    )
+    return jsonify(payload)
+
+
+@dm_chats_bp.route("/send_dm_media", methods=["POST"])
+@_login_required
+def send_dm_media():
+    """Upload and send one or more photos/videos as a single grouped DM message."""
+    username = session.get("username")
+    files_to_upload, media_urls, upload_only = parse_grouped_media_request(request.form, request.files)
+    payload, status = send_dm_grouped_media(
+        username,
+        recipient_id=request.form.get("recipient_id"),
+        media_files=files_to_upload,
+        media_urls=media_urls,
+        upload_only=upload_only,
+    )
+    return jsonify(payload), status
+
+
+@dm_chats_bp.route("/send_video_message", methods=["POST"])
+@_login_required
+def send_video_message():
+    """Send a video message to another user."""
+    username = session.get("username")
+    payload = send_dm_video_message(
+        username,
+        recipient_id=request.form.get("recipient_id"),
+        message=request.form.get("message", ""),
+        video=request.files.get("video"),
+        video_url=request.form.get("video_url", ""),
+    )
+    return jsonify(payload)
+
+
+@dm_chats_bp.route("/send_audio_message", methods=["POST"])
+@_login_required
+def send_audio_message():
+    """Send a voice message to another user, optionally with AI summary (premium only)."""
+    username = session.get("username")
+    duration_seconds_raw = (request.form.get("duration_seconds") or "").strip()
+    try:
+        duration_seconds = int(duration_seconds_raw) if duration_seconds_raw else None
+    except Exception:
+        duration_seconds = None
+    payload = send_dm_audio_message(
+        username,
+        recipient_id=request.form.get("recipient_id"),
+        audio=request.files.get("audio"),
+        duration_seconds=duration_seconds,
+        include_summary=request.form.get("include_summary", "").lower() == "true",
+    )
+    return jsonify(payload)
+
+
 @dm_chats_bp.route("/get_messages", methods=["POST"])
 @_login_required
 def get_messages():
@@ -367,6 +479,110 @@ def get_messages():
         before_id_param=request.form.get("before_id"),
     )
     return jsonify(payload)
+
+
+@dm_chats_bp.route("/api/chat/mute", methods=["POST"])
+@_login_required
+def mute_chat():
+    """Mute/unmute push notifications for a DM or group chat."""
+    username = session.get("username")
+    data = request.get_json() or {}
+    payload, status = apply_dm_thread_mute(
+        username,
+        other_username=data.get("other_username"),
+        group_id=data.get("group_id"),
+        muted=data.get("muted", True),
+    )
+    return jsonify(payload), status
+
+
+@dm_chats_bp.route("/api/archive_chat", methods=["POST"])
+@_login_required
+def archive_chat():
+    """Archive a chat thread (hide from main list)."""
+    username = session["username"]
+    payload, status = archive_dm_thread(username, other_username=request.form.get("other_username"))
+    return jsonify(payload), status
+
+
+@dm_chats_bp.route("/api/unarchive_chat", methods=["POST"])
+@_login_required
+def unarchive_chat():
+    """Unarchive a chat thread (show in main list again)."""
+    username = session["username"]
+    payload, status = unarchive_dm_thread(username, other_username=request.form.get("other_username"))
+    return jsonify(payload), status
+
+
+@dm_chats_bp.route("/api/archived_chats")
+@_login_required
+def api_archived_chats():
+    """Return list of archived chat threads for the current user."""
+    from flask import url_for
+
+    username = session.get("username")
+    payload, status = list_archived_dm_threads(username, static_url_for=url_for)
+    return jsonify(payload), status
+
+
+@dm_chats_bp.route("/api/active_chat", methods=["POST"])
+@_login_required
+@_handle_broken_pipe
+def api_active_chat():
+    """Record that the current user is actively viewing a chat with peer."""
+    username = session.get("username")
+    data = request.get_json(force=True, silent=True) or {}
+    peer = (data.get("peer") or "").strip()
+    payload, status = record_active_chat(username, peer=peer)
+    return jsonify(payload), status
+
+
+@dm_chats_bp.route("/delete_message", methods=["POST"])
+@_login_required
+def delete_message():
+    username = session["username"]
+    payload, status = delete_dm_message(username, message_id=request.form.get("message_id"))
+    return jsonify(payload), status
+
+
+@dm_chats_bp.route("/api/chat/edit_message", methods=["POST"])
+@_login_required
+def edit_message_api():
+    """Edit an existing message's text. Only the sender can edit. Records edited_at."""
+    username = session.get("username")
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+        message_id = data.get("message_id")
+        new_text = (data.get("text") or "").strip()
+    else:
+        message_id = request.form.get("message_id")
+        new_text = (request.form.get("text") or "").strip()
+    payload, status = edit_dm_message(username, message_id=message_id, new_text=new_text)
+    return jsonify(payload), status
+
+
+@dm_chats_bp.route("/api/chat/update_audio_summary", methods=["POST"])
+@_login_required
+def update_dm_audio_summary_route():
+    """Update the AI summary for a DM voice message. Only the sender can edit."""
+    username = session.get("username")
+    data = request.get_json() or {}
+    payload, status = update_dm_audio_summary(
+        username,
+        message_id=data.get("message_id"),
+        new_summary=(data.get("summary") or "").strip(),
+    )
+    return jsonify(payload), status
+
+
+@dm_chats_bp.route("/api/chat/media", methods=["GET"])
+@_login_required
+def get_chat_media():
+    """Get all media (images/videos) from a DM conversation."""
+    username = session.get("username")
+    peer = request.args.get("peer", "").strip()
+    payload, status = list_dm_chat_media(username, peer=peer)
+    return jsonify(payload), status
 
 
 @dm_chats_bp.route("/api/chat/react_to_message", methods=["POST"])

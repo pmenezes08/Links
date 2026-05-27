@@ -14,3 +14,13 @@ export function chatHapticAttachToggle() {
 export function chatHapticComposerTap() {
   void triggerHaptic('light')
 }
+
+/** Long-press action menu opened. */
+export function chatHapticMenuOpen() {
+  void triggerHaptic('selection')
+}
+
+/** Reaction picked from menu or picker. */
+export function chatHapticReaction() {
+  void triggerHaptic('light')
+}

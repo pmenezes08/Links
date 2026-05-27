@@ -37,20 +37,30 @@ export type { MessageBubbleProps } from './MessageBubble'
 
 // Hooks
 export {
-  useKeyboardLayout,
   useIsMobile,
   useTouchDismiss,
   useChatThreadScroll,
 } from './hooks'
 export type { ChatThreadScrollMessage } from './hooks'
+export { useChatThreadChrome } from './useChatThreadChrome'
+export type { UseChatThreadChromeOptions } from './useChatThreadChrome'
 export { useChatComposerChrome, CHAT_COMPOSER_GAP_PX } from './useChatComposerChrome'
 export type { UseChatComposerChromeOptions } from './useChatComposerChrome'
 export { useChatListScrollHandlers } from './useChatListScrollHandlers'
 export type { UseChatListScrollHandlersOptions } from './useChatListScrollHandlers'
 export { useSmoothedPx } from './useSmoothedPx'
-export { CHAT_KEYBOARD_ANIMATION_MS, easeChatKeyboard, DM_POLL_INTERVAL_MS, DM_FULL_SYNC_EVERY_N_POLL } from './constants'
+export { useResumeOutboxDrain } from './useResumeOutboxDrain'
+export { ChatSelectionBar } from './ChatSelectionBar'
+export type { ChatSelectionBarProps } from './ChatSelectionBar'
+export { NewMessagesChip } from './NewMessagesChip'
+export type { NewMessagesChipProps } from './NewMessagesChip'
+export { SwipeToReply } from './SwipeToReply'
+export type { SwipeToReplyProps } from './SwipeToReply'
+export { CHAT_KEYBOARD_ANIMATION_MS, easeChatKeyboard, DM_POLL_INTERVAL_MS, DM_FULL_SYNC_EVERY_N_POLL, GROUP_POLL_INTERVAL_MS, GROUP_FULL_SYNC_EVERY_N_POLL } from './constants'
 export { useDmMessagePoll } from './useDmMessagePoll'
 export type { UseDmMessagePollOptions } from './useDmMessagePoll'
+export { useGroupMessagePoll } from './useGroupMessagePoll'
+export type { UseGroupMessagePollOptions } from './useGroupMessagePoll'
 export {
   DEFAULT_NEAR_BOTTOM_PX,
   isNearBottom,
@@ -61,5 +71,18 @@ export {
 
 // Media senders (already existed)
 export { sendImageMessage, sendVideoMessage } from './mediaSenders'
-export { chatHapticSend, chatHapticAttachToggle, chatHapticComposerTap } from './chatHaptics'
+export { chatHapticSend, chatHapticAttachToggle, chatHapticComposerTap, chatHapticMenuOpen, chatHapticReaction } from './chatHaptics'
 export { ChatAttachMenuRow } from './ChatAttachMenuRow'
+export { ChatMediaPreviewModal } from './ChatMediaPreviewModal'
+export type { ChatMediaPreviewModalProps, PendingMediaItem } from './ChatMediaPreviewModal'
+export { ChatMediaViewerModal } from './ChatMediaViewerModal'
+export type { ChatMediaViewerModalProps, ChatMediaViewerState } from './ChatMediaViewerModal'
+export { useChatDraft } from './useChatDraft'
+export type { UseChatDraftOptions } from './useChatDraft'
+export { ChatThreadShell } from './ChatThreadShell'
+export type { ChatThreadShellProps } from './ChatThreadShell'
+export { ChatComposerPortal, ChatComposerCard } from './ChatComposer'
+export type { ChatComposerPortalProps, ChatComposerCardProps } from './ChatComposer'
+export { ChatVirtualMessageList } from './ChatVirtualMessageList'
+export type { ChatVirtualMessageListProps } from './ChatVirtualMessageList'
+export { CHAT_VIRTUAL_LIST_THRESHOLD } from './constants'
