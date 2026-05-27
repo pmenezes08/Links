@@ -77,6 +77,8 @@ def test_auth_and_webhook_routes_still_exist():
     assert "/api/dashboard_unread_feed" in rules
     assert "/api/community_group_feed/<int:parent_id>" in rules
     assert "/api/about/tutorial_videos" in rules
+    assert "/request_password_reset" in rules
+    assert "/reset_password/<token>" in rules
 
 
 def test_legacy_encryption_routes_removed():

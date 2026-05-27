@@ -1373,3 +1373,47 @@ def apple_sign_in():
     except Exception as e:
         logger.error("Apple sign-in error: %s", e)
         return jsonify({'success': False, 'error': 'Authentication failed'}), 500
+
+
+@auth_bp.route("/request_password_reset", methods=["POST"])
+def request_password_reset():
+    """Public endpoint: email a password reset link when account exists."""
+    from backend.services import password_reset as pw_reset
+
+    data = request.get_json(silent=True) or {}
+    email = (
+        (data.get("email") if isinstance(data, dict) else None)
+        or request.form.get("email")
+        or request.args.get("email")
+    )
+    payload = pw_reset.request_reset(email or "")
+    return jsonify(payload)
+
+
+@auth_bp.route("/reset_password/<token>", methods=["GET", "POST"], endpoint="reset_password")
+def reset_password(token: str):
+    """Show reset form (GET) or apply new password (POST)."""
+    from backend.services import password_reset as pw_reset
+
+    if request.method == "GET":
+        ctx = pw_reset.get_token_context(token)
+        if not ctx:
+            flash("Invalid or expired reset link.", "error")
+            return redirect(url_for("public.index"))
+        return render_template(
+            "reset_password.html",
+            token=ctx["token"],
+            username=ctx["username"],
+        )
+
+    new_password = request.form.get("password") or ""
+    confirm_password = request.form.get("confirm_password") or ""
+    ok, message = pw_reset.complete_reset(token, new_password, confirm_password)
+    if not ok:
+        flash(message, "error")
+        return redirect(url_for("reset_password", token=token))
+    return render_template(
+        "verification_result.html",
+        success=True,
+        message=message,
+    )

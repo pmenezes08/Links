@@ -777,7 +777,9 @@ def _block_unverified_users():
         path = request.path or ''
         if path.startswith('/static') or path.startswith('/assets'):
             return None
-        if path in ('/', '/welcome', '/login', '/login_password', '/signup', '/signup_react', '/verify_email', '/resend_verification', '/logout', '/verify_required', '/onboarding', '/resend_verification_pending'):
+        if path in ('/', '/welcome', '/login', '/login_password', '/signup', '/signup_react', '/verify_email', '/resend_verification', '/logout', '/verify_required', '/onboarding', '/resend_verification_pending', '/request_password_reset'):
+            return None
+        if path.startswith('/reset_password/'):
             return None
         # Allow login flow API endpoints (no auth required)
         if path in ('/api/check_pending_login', '/api/invitation/verify', '/api/clear_stale_session'):
@@ -911,60 +913,15 @@ def _build_verify_url(token: str) -> str:
     return f"{scheme}://{host}/verify_email?token={token}"
 
 def _send_email_via_resend(to_email: str, subject: str, html: str, text: str = None):
-    if not RESEND_API_KEY:
-        logger.error('RESEND_API_KEY not set; skipping email send')
-        return False
-    try:
-        payload = {
-            'from': EMAIL_FROM,
-            'to': [to_email],
-            'subject': subject,
-            'html': html
-        }
-        if text:
-            payload['text'] = text
-        # Use requests to call Resend API (JSON body)
-        r = requests.post(
-            'https://api.resend.com/emails',
-            headers={'Authorization': f'Bearer {RESEND_API_KEY}'},
-            json=payload,
-            timeout=15,
-        )
-        if r.status_code in (200, 201):
-            logger.info('Resend email queued successfully')
-            return True
-        try:
-            logger.error(f'Resend send failed: {r.status_code} {r.text}')
-        except Exception:
-            logger.error(f'Resend send failed with status {r.status_code}')
-        return False
-    except Exception as e:
-        logger.error(f'Resend send exception: {e}')
-        return False
+    from backend.services import transactional_email as _tx_email
+
+    return _tx_email.send(to_email, subject, html, text=text)
+
 
 def ensure_password_reset_table(c):
-    try:
-        if USE_MYSQL:
-            c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens (
-                          id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username VARCHAR(191) NOT NULL,
-                          email VARCHAR(191) NOT NULL,
-                          token VARCHAR(191) NOT NULL UNIQUE,
-                          created_at TEXT NOT NULL,
-                          used TINYINT(1) DEFAULT 0
-                        )''')
-        else:
-            c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens (
-                          id INTEGER PRIMARY KEY AUTOINCREMENT,
-                          username VARCHAR(191) NOT NULL,
-                          email TEXT NOT NULL,
-                          token TEXT NOT NULL UNIQUE,
-                          created_at TEXT NOT NULL,
-                          used INTEGER DEFAULT 0,
-                          FOREIGN KEY (username) REFERENCES users (username)
-                        )''')
-    except Exception as e:
-        logger.error(f"Failed ensuring password_reset_tokens table: {e}")
+    from backend.services.password_reset import ensure_table
+
+    ensure_table(c)
 
 def ensure_pending_signups_table(c):
     try:
