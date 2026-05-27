@@ -83,7 +83,6 @@ def _finalize_session_response(resp, username: str) -> None:
     auth_session.clear_session_cookie(resp)
     session.permanent = True
     session["username"] = username
-    session.pop("_logout_pending_username", None)
     session.modified = True
     try:
         current_app.session_interface.save_session(current_app, session, resp)
@@ -119,9 +118,6 @@ def auto_login_from_remember_token():
             return
         if "pending_username" in session:
             current_app.logger.info("auth.auto_login_skipped reason=pending_username")
-            return
-        if session.get("_logout_pending_username"):
-            current_app.logger.info("auth.auto_login_skipped reason=logout_pending")
             return
         token_hash = remember_tokens.cookie_hash(request)
         username = remember_tokens.restore_session(request, session)
@@ -585,7 +581,7 @@ def signup():
 def logout():
     """Clear session and remember-me cookies."""
     logger = current_app.logger
-    username = session.get("username") or session.pop("_logout_pending_username", None)
+    username = session.get("username")
     install_id = (request.cookies.get(auth_session.INSTALL_COOKIE_NAME) or "").strip()
     push_counts = deactivate_all_push_for_user(username) if username else {
         "native_push_tokens": 0,
@@ -596,7 +592,7 @@ def logout():
         install_counts = deactivate_for_install(install_id)
         for key in ("native_push_tokens", "fcm_tokens"):
             push_counts[key] = max(push_counts.get(key, 0), install_counts.get(key, 0))
-    tokens_revoked = remember_tokens.revoke_all_for_logout(username, request)
+    tokens_revoked = remember_tokens.revoke_by_cookie(request)
 
     session.clear()
     session.permanent = False

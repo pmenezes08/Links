@@ -13,7 +13,6 @@ import {
   initializeGoogleIdentityOnce,
   renderGoogleSignInButton,
 } from '../utils/googleIdentityWeb'
-import { clearPushRegistrationBlocked } from '../utils/pushRegistration'
 import { useUserProfile } from '../contexts/UserProfileContext'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
@@ -154,7 +153,6 @@ export default function MobileLogin() {
           /* ignore */
         }
       }
-      clearPushRegistrationBlocked()
       await (window as any).__reregisterPushToken?.()
       await triggerDashboardServerPull()
       try {
@@ -519,7 +517,6 @@ export default function MobileLogin() {
                   
                   // Successful login - re-register push token, clear stored username, redirect
                   try { sessionStorage.removeItem('cpoint_pending_username') } catch {}
-                  clearPushRegistrationBlocked()
                   await (window as any).__reregisterPushToken?.()
                   window.location.href = url.pathname + url.search
                   return
@@ -535,7 +532,6 @@ export default function MobileLogin() {
                     setError('Incorrect password. Please try again.')
                   }
                 } else if (response.ok) {
-                  clearPushRegistrationBlocked()
                   await (window as any).__reregisterPushToken?.()
                   window.location.href = '/premium_dashboard'
                 } else {

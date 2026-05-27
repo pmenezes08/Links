@@ -205,38 +205,3 @@ def test_pending_username_blocks_auto_login_restore(mysql_dsn):
         session["pending_username"] = "eve"
         auto_login_from_remember_token()
         assert session.get("username") is None
-
-
-def test_logout_pending_username_blocks_auto_login_restore(mysql_dsn):
-    from backend.blueprints.auth import auth_bp, auto_login_from_remember_token
-
-    make_user("alice")
-    raw = secrets.token_urlsafe(16)
-    _insert_token("alice", raw)
-
-    app = Flask(__name__)
-    app.secret_key = "test-secret-auth-guard"
-    app.config.setdefault("AUTH_SESSION_LIFETIME_DAYS", 30)
-    app.register_blueprint(auth_bp)
-
-    with app.test_request_context("/", environ_overrides={"HTTP_COOKIE": f"remember_token={raw}"}):
-        session["_logout_pending_username"] = "alice"
-        auto_login_from_remember_token()
-        assert session.get("username") is None
-
-
-def test_revoke_all_for_logout_wipes_user_and_cookie(mysql_dsn):
-    _insert_token("alice", "a1")
-    _insert_token("alice", "a2")
-    _insert_token("bob", "b1")
-
-    app = _app()
-    with app.test_request_context("/", environ_overrides={"HTTP_COOKIE": "remember_token=a1"}):
-        deleted = remember_tokens.revoke_all_for_logout("alice", request)
-        assert deleted >= 2
-
-    with get_db_connection() as conn:
-        c = conn.cursor()
-        c.execute("SELECT username FROM remember_tokens ORDER BY username")
-        rows = c.fetchall()
-    assert [row["username"] if hasattr(row, "keys") else row[0] for row in rows] == ["bob"]

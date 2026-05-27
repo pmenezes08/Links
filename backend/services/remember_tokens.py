@@ -214,21 +214,8 @@ def revoke_for_user(username: Optional[str]) -> int:
 
 
 def clear_cookie(response) -> None:
-    """Expire remember-token on all domain variants (mirrors session cookie hygiene)."""
-    attrs = _cookie_attrs()
-    response.set_cookie(COOKIE_NAME, "", max_age=0, expires=0, **attrs)
-    for legacy_domain in (".c-point.co", "app.c-point.co"):
-        legacy = {**attrs, "domain": legacy_domain}
-        response.set_cookie(COOKIE_NAME, "", max_age=0, expires=0, **legacy)
-    host_only = {k: v for k, v in attrs.items() if k != "domain" and v is not None}
-    response.set_cookie(COOKIE_NAME, "", max_age=0, expires=0, **host_only)
-
-
-def revoke_all_for_logout(username: Optional[str], request) -> int:
-    """Revoke every remember-me row for the user plus the incoming cookie hash."""
-    total = revoke_for_user(username) if username else 0
-    total += revoke_by_cookie(request)
-    return total
+    """Expire the remember-token cookie with the same attrs used by issue()."""
+    response.set_cookie(COOKIE_NAME, "", max_age=0, expires=0, **_cookie_attrs())
 
 
 __all__ = [
@@ -241,5 +228,4 @@ __all__ = [
     "revoke_by_cookie",
     "revoke_by_token_hash",
     "revoke_for_user",
-    "revoke_all_for_logout",
 ]
