@@ -25,16 +25,26 @@ export function useIsMobile(): boolean {
   return isMobile
 }
 
+/** Movement beyond this on the message list is treated as scroll, not tap. */
+export const CHAT_TOUCH_DISMISS_MOVE_PX = 10
+
 interface UseTouchDismissOptions {
   showKeyboard: boolean
   composerRef: React.RefObject<HTMLDivElement | null>
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
+  /** Called when a scroll gesture should hide the composer keyboard. */
+  dismissComposerKeyboard?: () => void
 }
 
 /**
  * Hook for touch-to-dismiss keyboard on mobile
  */
-export function useTouchDismiss({ showKeyboard, composerRef, textareaRef }: UseTouchDismissOptions) {
+export function useTouchDismiss({
+  showKeyboard,
+  composerRef,
+  textareaRef,
+  dismissComposerKeyboard,
+}: UseTouchDismissOptions) {
   const touchDismissRef = useRef<{
     active: boolean
     x: number
@@ -72,32 +82,51 @@ export function useTouchDismiss({ showKeyboard, composerRef, textareaRef }: UseT
     [showKeyboard, composerRef]
   )
 
-  const handleContentPointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const start = touchDismissRef.current
-    if (!start.active) return
-    if (start.pointerId !== null && event.pointerId !== start.pointerId) return
-    touchDismissRef.current.active = false
-    const deltaX = event.clientX - start.x
-    const deltaY = event.clientY - start.y
-    if (Math.hypot(deltaX, deltaY) > 10) return
+  const dismissFromGesture = useCallback(() => {
+    if (dismissComposerKeyboard) {
+      dismissComposerKeyboard()
+      return
+    }
     textareaRef.current?.blur()
-  }, [textareaRef])
+  }, [dismissComposerKeyboard, textareaRef])
+
+  const handleContentPointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const start = touchDismissRef.current
+      if (!start.active) return
+      if (start.pointerId !== null && event.pointerId !== start.pointerId) return
+      const deltaX = event.clientX - start.x
+      const deltaY = event.clientY - start.y
+      if (Math.hypot(deltaX, deltaY) <= CHAT_TOUCH_DISMISS_MOVE_PX) return
+      touchDismissRef.current.active = false
+      dismissFromGesture()
+    },
+    [dismissFromGesture],
+  )
+
+  const handleContentPointerUp = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const start = touchDismissRef.current
+      if (!start.active) return
+      if (start.pointerId !== null && event.pointerId !== start.pointerId) return
+      touchDismissRef.current.active = false
+      const deltaX = event.clientX - start.x
+      const deltaY = event.clientY - start.y
+      if (Math.hypot(deltaX, deltaY) > CHAT_TOUCH_DISMISS_MOVE_PX) return
+      dismissFromGesture()
+    },
+    [dismissFromGesture],
+  )
 
   const handleContentPointerCancel = useCallback(() => {
     touchDismissRef.current.active = false
   }, [])
 
-  const handleScroll = useCallback(() => {
-    if (touchDismissRef.current.active) {
-      touchDismissRef.current.active = false
-    }
-  }, [])
-
   return {
     handleContentPointerDown,
+    handleContentPointerMove,
     handleContentPointerUp,
     handleContentPointerCancel,
-    handleScroll,
     touchDismissRef,
   }
 }

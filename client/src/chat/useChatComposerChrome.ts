@@ -337,10 +337,20 @@ export function useChatComposerChrome({
     }
   }, [])
 
+  const dismissComposerKeyboard = useCallback(() => {
+    if (textareaRef.current && document.activeElement === textareaRef.current) {
+      textareaRef.current.blur()
+    }
+    if (Capacitor.isNativePlatform()) {
+      Keyboard.hide().catch(() => {})
+    }
+  }, [textareaRef])
+
   const touchDismiss = useTouchDismiss({
     showKeyboard: keyboardIsOpen,
     composerRef,
     textareaRef,
+    dismissComposerKeyboard,
   })
 
   const handleContentPointerUp = useCallback(
@@ -357,9 +367,9 @@ export function useChatComposerChrome({
       if (document.activeElement === textareaRef.current) {
         if (Date.now() - lastFocusTimeRef.current < 1000) return
       }
-      textareaRef.current?.blur()
+      dismissComposerKeyboard()
     },
-    [composerRef, textareaRef, touchDismiss.touchDismissRef],
+    [composerRef, textareaRef, touchDismiss.touchDismissRef, dismissComposerKeyboard],
   )
 
   const noteComposerFocus = useCallback(() => {
@@ -383,8 +393,10 @@ export function useChatComposerChrome({
     bottomChromeInset,
     insetMotionIdle,
     handleContentPointerDown: touchDismiss.handleContentPointerDown,
+    handleContentPointerMove: touchDismiss.handleContentPointerMove,
     handleContentPointerUp,
     handleContentPointerCancel: touchDismiss.handleContentPointerCancel,
+    dismissComposerKeyboard,
     noteComposerFocus,
     touchDismissRef: touchDismiss.touchDismissRef,
   }

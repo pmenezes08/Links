@@ -373,6 +373,7 @@ export default function GroupChatThread() {
     scrollButtonBottom,
     insetMotionIdle,
     handleContentPointerDown,
+    handleContentPointerMove,
     handleContentPointerUp,
     handleContentPointerCancel,
     noteComposerFocus,
@@ -2219,6 +2220,7 @@ export default function GroupChatThread() {
               flexDirection: 'column-reverse',
             } as CSSProperties}
             onPointerDown={handleContentPointerDown}
+            onPointerMove={handleContentPointerMove}
             onPointerUp={handleContentPointerUp}
             onPointerCancel={handleContentPointerCancel}
             onScroll={handleListScroll}

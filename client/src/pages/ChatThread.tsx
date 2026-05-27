@@ -370,6 +370,7 @@ export default function ChatThread(){
     scrollButtonBottom,
     insetMotionIdle,
     handleContentPointerDown,
+    handleContentPointerMove,
     handleContentPointerUp,
     handleContentPointerCancel,
     noteComposerFocus,
@@ -2410,6 +2411,7 @@ export default function ChatThread(){
           flexDirection: 'column-reverse',
         } as CSSProperties}
         onPointerDown={handleContentPointerDown}
+        onPointerMove={handleContentPointerMove}
         onPointerUp={handleContentPointerUp}
         onPointerCancel={handleContentPointerCancel}
         onScroll={handleListScroll}

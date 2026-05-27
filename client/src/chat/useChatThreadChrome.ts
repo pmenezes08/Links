@@ -67,6 +67,8 @@ export function useChatThreadChrome({
     userHasScrolledRef: scroll.userHasScrolledRef,
     setShowScrollDown: scroll.setShowScrollDown,
     touchDismissRef: chrome.touchDismissRef,
+    textareaRef,
+    dismissComposerKeyboard: chrome.dismissComposerKeyboard,
     hasMoreMessages,
     loadingOlderRef,
     onLoadOlder,

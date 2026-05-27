@@ -1,4 +1,4 @@
-import { useCallback, type MutableRefObject, type UIEvent } from 'react'
+import { useCallback, type MutableRefObject, type RefObject, type UIEvent } from 'react'
 import {
   DEFAULT_NEAR_BOTTOM_PX,
   LOAD_OLDER_TRIGGER_PX,
@@ -17,6 +17,8 @@ export interface UseChatListScrollHandlersOptions {
   userHasScrolledRef: MutableRefObject<boolean>
   setShowScrollDown: (show: boolean) => void
   touchDismissRef?: MutableRefObject<TouchDismissState>
+  textareaRef?: RefObject<HTMLTextAreaElement | null>
+  dismissComposerKeyboard?: () => void
   hasMoreMessages: boolean
   loadingOlderRef: MutableRefObject<boolean>
   onLoadOlder?: () => void
@@ -37,6 +39,8 @@ export function useChatListScrollHandlers({
   userHasScrolledRef,
   setShowScrollDown,
   touchDismissRef,
+  textareaRef,
+  dismissComposerKeyboard,
   hasMoreMessages,
   loadingOlderRef,
   onLoadOlder,
@@ -61,6 +65,14 @@ export function useChatListScrollHandlers({
       } else {
         userHasScrolledRef.current = true
         setShowScrollDown(true)
+        // Scroll-to-dismiss: reading history should reclaim vertical space.
+        if (
+          dismissComposerKeyboard &&
+          textareaRef?.current &&
+          document.activeElement === textareaRef.current
+        ) {
+          dismissComposerKeyboard()
+        }
       }
 
       if (
@@ -80,6 +92,8 @@ export function useChatListScrollHandlers({
       onLoadOlder,
       setShowScrollDown,
       touchDismissRef,
+      textareaRef,
+      dismissComposerKeyboard,
       userHasScrolledRef,
       onNearBottom,
     ],

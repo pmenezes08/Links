@@ -60,6 +60,22 @@ describe('chat thread inverted-list invariants', () => {
     // Uses inverted helpers.
     expect(src).toMatch(/distanceFromInvertedBottom/)
     expect(src).toMatch(/distanceFromInvertedTop/)
+    // Scroll-to-dismiss when reading history.
+    expect(src).toMatch(/dismissComposerKeyboard/)
+  })
+
+  it('useTouchDismiss exposes pointer-move scroll dismiss', () => {
+    const src = readFileSync(join(repoRoot, 'client', 'src', 'chat', 'hooks.ts'), 'utf8')
+    expect(src).toMatch(/CHAT_TOUCH_DISMISS_MOVE_PX/)
+    expect(src).toMatch(/handleContentPointerMove/)
+  })
+
+  it('thread pages wire scroll-to-dismiss pointer move on the list', () => {
+    for (const page of ['ChatThread.tsx', 'GroupChatThread.tsx']) {
+      const src = readFileSync(join(repoRoot, 'client', 'src', 'pages', page), 'utf8')
+      expect(src).toContain('handleContentPointerMove')
+      expect(src).toContain('onPointerMove={handleContentPointerMove}')
+    }
   })
 
   it('ChatThreadShell scroll container is column-reverse with no opacity/visibility reveal', () => {
