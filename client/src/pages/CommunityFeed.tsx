@@ -7,6 +7,7 @@ import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSe
 import type { DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, horizontalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import Avatar from '../components/Avatar'
 import { prefetchPostDetail } from '../utils/pilotRoutePrefetch'
 import ContentGenerationModal from '../components/ContentGenerationModal'
 import FrozenCommunityModal from '../components/FrozenCommunityModal'
