@@ -4,6 +4,8 @@ import { CHAT_KEYBOARD_ANIMATION_MS, easeChatKeyboard } from './constants'
 interface UseSmoothedPxOptions {
   durationMs?: number
   onTick?: () => void
+  /** When true, jump to target immediately (used during thread open inset settle). */
+  snap?: boolean
 }
 
 /**
@@ -11,7 +13,7 @@ interface UseSmoothedPxOptions {
  */
 export function useSmoothedPx(
   target: number,
-  { durationMs = CHAT_KEYBOARD_ANIMATION_MS, onTick }: UseSmoothedPxOptions = {},
+  { durationMs = CHAT_KEYBOARD_ANIMATION_MS, onTick, snap = false }: UseSmoothedPxOptions = {},
 ) {
   const [smoothed, setSmoothed] = useState(target)
   const smoothedRef = useRef(target)
@@ -26,7 +28,7 @@ export function useSmoothedPx(
     }
 
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (reduceMotion || Math.abs(smoothedRef.current - target) < 0.5) {
+    if (snap || reduceMotion || Math.abs(smoothedRef.current - target) < 0.5) {
       smoothedRef.current = target
       setSmoothed(target)
       if (Math.abs(smoothedRef.current - target) >= 0.5) {
@@ -52,7 +54,7 @@ export function useSmoothedPx(
 
     rafId = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(rafId)
-  }, [target, durationMs])
+  }, [target, durationMs, snap])
 
   return smoothed
 }

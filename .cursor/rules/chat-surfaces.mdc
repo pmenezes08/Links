@@ -19,3 +19,4 @@ alwaysApply: false
 - Thread pages must call **`notifyMessagesSettledRef.current(gen)`**, not `notifyMessagesSettled` directly inside `useEffect`, and must **not** include `notifyMessagesSettled` in effect dependency arrays.
 - **Cache-first hydrate** (device cache / IndexedDB) must **`mergeHydratedMessages`** / preserve optimistic rows — never `setMessages(processed)` alone when outbox or in-flight sends may exist.
 - After cache paint, network refresh may run in the background; avoid duplicate **`refreshBadges()`** + full scroll pin when the server payload is unchanged.
+- **iOS open pin lock:** While `initialPinActiveRef` is active (~2.2s on iOS), list `onScroll` must not set `userHasScrolledRef` or show the scroll-down FAB — WKWebView fires spurious scroll events during programmatic pin and inset settle.

@@ -1,6 +1,13 @@
 /** Safety deadline when a thread opens with no messages yet (ms). */
 export const OPEN_PIN_MAX_MS = 1200
 
+/** iOS WKWebView needs longer open-pin lock (layout + inset + media). */
+export const OPEN_PIN_IOS_MS = 2200
+
+export function resolveOpenPinLockMs(platform: string): number {
+  return platform === 'ios' ? OPEN_PIN_IOS_MS : OPEN_PIN_MAX_MS
+}
+
 /**
  * Whether the message list should become visible after scroll settle.
  * Phase A: reveal immediately once messages exist (media/link layout shifts

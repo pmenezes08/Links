@@ -27,6 +27,8 @@ export interface UseChatComposerChromeOptions {
   textareaRef: RefObject<HTMLTextAreaElement | null>
   composerRef: RefObject<HTMLDivElement | null>
   onLayoutNudge?: () => void
+  /** Snap list inset (no 250ms ease) while thread is opening — avoids iOS false scroll-up. */
+  snapListInset?: boolean
 }
 
 export function useChatComposerChrome({
@@ -34,6 +36,7 @@ export function useChatComposerChrome({
   textareaRef,
   composerRef,
   onLayoutNudge,
+  snapListInset = false,
 }: UseChatComposerChromeOptions) {
   const onLayoutNudgeRef = useRef(onLayoutNudge)
   onLayoutNudgeRef.current = onLayoutNudge
@@ -112,6 +115,7 @@ export function useChatComposerChrome({
 
   const smoothedKeyboardLift = useSmoothedPx(keyboardLift, {
     onTick: () => onLayoutNudgeRef.current?.(),
+    snap: snapListInset,
   })
   /** Composer + list inset — smoothed on iOS/web; Android visualViewport already tracks IME. */
   const displayKeyboardLift = isAndroid ? keyboardLift : smoothedKeyboardLift

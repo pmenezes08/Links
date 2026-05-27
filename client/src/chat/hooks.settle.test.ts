@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { chatMessageTailUnchanged, evaluateThreadListReveal } from './threadReveal'
+import { chatMessageTailUnchanged, evaluateThreadListReveal, resolveOpenPinLockMs } from './threadReveal'
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
 
@@ -11,6 +11,12 @@ describe('evaluateThreadListReveal', () => {
     expect(evaluateThreadListReveal(0)).toBe(true)
     expect(evaluateThreadListReveal(1)).toBe(true)
     expect(evaluateThreadListReveal(42)).toBe(true)
+  })
+})
+
+describe('resolveOpenPinLockMs', () => {
+  it('uses longer lock on iOS', () => {
+    expect(resolveOpenPinLockMs('ios')).toBeGreaterThan(resolveOpenPinLockMs('web'))
   })
 })
 
@@ -47,5 +53,24 @@ describe('chat thread settle callback contract', () => {
         expect(initialLoadEffect[1]).not.toMatch(/\bnotifyMessagesSettled\b/)
       }
     }
+  })
+
+  it('useChatListScrollHandlers ignores user scroll during open pin lock', () => {
+    const src = readFileSync(
+      join(repoRoot, 'client', 'src', 'chat', 'useChatListScrollHandlers.ts'),
+      'utf8',
+    )
+    expect(src).toContain('initialPinActiveRef')
+    expect(src).toContain('programmaticScrollRef')
+    expect(src).toMatch(/openPinLocked/)
+  })
+
+  it('tryRevealList does not clear initialPinActiveRef', () => {
+    const hooksSrc = readFileSync(join(repoRoot, 'client', 'src', 'chat', 'hooks.ts'), 'utf8')
+    const tryRevealBlock = hooksSrc.match(
+      /const tryRevealList = useCallback\(\(\) => \{[\s\S]*?\n  \}, \[\]\)/,
+    )
+    expect(tryRevealBlock, 'tryRevealList useCallback').toBeTruthy()
+    expect(tryRevealBlock![0]).not.toContain('initialPinActiveRef.current = false')
   })
 })

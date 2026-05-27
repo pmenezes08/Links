@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Capacitor } from '@capacitor/core'
 import {
   DEFAULT_NEAR_BOTTOM_PX,
   isNearBottom,
-  scrollElementToBottom,
+  scrollElementToBottomProgrammatic,
   shouldShowScrollDownAfterOpen,
 } from './scrollPin'
-import { OPEN_PIN_MAX_MS } from './threadReveal'
+import { OPEN_PIN_MAX_MS, resolveOpenPinLockMs } from './threadReveal'
 
 /**
  * Hook to detect mobile device
@@ -121,7 +122,15 @@ interface UseChatThreadScrollOptions {
   fastOpen?: boolean
 }
 
-const OPEN_PIN_MAX_MS_EXPORT = OPEN_PIN_MAX_MS
+
+function readOpenPinLockMs(): number {
+  if (typeof window === 'undefined') return OPEN_PIN_MAX_MS
+  try {
+    return resolveOpenPinLockMs(Capacitor.getPlatform())
+  } catch {
+    return OPEN_PIN_MAX_MS
+  }
+}
 
 /**
  * Stable scroll-to-bottom for chat threads (DM + group).
@@ -145,6 +154,7 @@ export function useChatThreadScroll({
   const openPinDeadlineRef = useRef(0)
   const fastOpenRef = useRef(fastOpen)
   fastOpenRef.current = fastOpen
+  const programmaticScrollRef = useRef(false)
   const [showScrollDown, setShowScrollDown] = useState(false)
   const [listRevealReady, setListRevealReady] = useState(false)
   const [pendingNewCount, setPendingNewCount] = useState(0)
@@ -153,17 +163,25 @@ export function useChatThreadScroll({
   messagesLengthRef.current = messages.length
 
   const tryRevealList = useCallback(() => {
-    initialPinActiveRef.current = false
     setListRevealReady(true)
   }, [])
 
-  const scrollListToBottom = useCallback(
+  const runProgrammaticScroll = useCallback(
     (behavior: ScrollBehavior) => {
       const el = listRef.current
       if (!el) return
-      scrollElementToBottom(el, behavior)
+      scrollElementToBottomProgrammatic(el, behavior, active => {
+        programmaticScrollRef.current = active
+      })
     },
     [listRef],
+  )
+
+  const scrollListToBottom = useCallback(
+    (behavior: ScrollBehavior) => {
+      runProgrammaticScroll(behavior)
+    },
+    [runProgrammaticScroll],
   )
 
   const scrollToBottom = useCallback(() => {
@@ -195,7 +213,7 @@ export function useChatThreadScroll({
   const notifyMessagesSettled = useCallback(
     (generation: number) => {
       settleGenerationRef.current = generation
-      if (!userHasScrolledRef.current) {
+      if (!userHasScrolledRef.current || initialPinActiveRef.current) {
         ensurePinnedToBottom()
         tryRevealList()
       }
@@ -205,6 +223,9 @@ export function useChatThreadScroll({
 
   const maybeShowScrollDown = useCallback(
     (nearBottom: boolean) => {
+      if (initialPinActiveRef.current || programmaticScrollRef.current) {
+        return
+      }
       if (nearBottom) {
         setShowScrollDown(false)
         return
@@ -223,11 +244,13 @@ export function useChatThreadScroll({
 
   useLayoutEffect(() => {
     if (!threadKey) return
+    const openPinLockMs = readOpenPinLockMs()
     lastVisibleMsgKeyRef.current = null
     userHasScrolledRef.current = false
     initialPinActiveRef.current = true
+    programmaticScrollRef.current = false
     threadOpenedAtRef.current = Date.now()
-    openPinDeadlineRef.current = Date.now() + OPEN_PIN_MAX_MS_EXPORT
+    openPinDeadlineRef.current = Date.now() + openPinLockMs
     setShowScrollDown(false)
     setListRevealReady(false)
     setPendingNewCount(0)
@@ -235,10 +258,16 @@ export function useChatThreadScroll({
 
     const revealTimer = window.setTimeout(() => {
       setListRevealReady(true)
-      initialPinActiveRef.current = false
-    }, OPEN_PIN_MAX_MS_EXPORT + 50)
+    }, openPinLockMs + 50)
 
-    return () => window.clearTimeout(revealTimer)
+    const pinUnlockTimer = window.setTimeout(() => {
+      initialPinActiveRef.current = false
+    }, openPinLockMs + 50)
+
+    return () => {
+      window.clearTimeout(revealTimer)
+      window.clearTimeout(pinUnlockTimer)
+    }
   }, [threadKey])
 
   useLayoutEffect(() => {
@@ -261,7 +290,11 @@ export function useChatThreadScroll({
     lastBottomInsetRef.current = bottomInsetPx
     const el = listRef.current
     if (!el) return
-    if (userHasScrolledRef.current && !isNearBottom(el, DEFAULT_NEAR_BOTTOM_PX)) return
+    const mayPin =
+      initialPinActiveRef.current ||
+      !userHasScrolledRef.current ||
+      isNearBottom(el, DEFAULT_NEAR_BOTTOM_PX)
+    if (!mayPin) return
     scrollListToBottom('auto')
     if (messages.length > 0) tryRevealList()
   }, [bottomInsetPx, listRef, scrollListToBottom, messages.length, tryRevealList])
@@ -279,7 +312,7 @@ export function useChatThreadScroll({
     if (messageTailKey === lastVisibleMsgKeyRef.current) return
     lastVisibleMsgKeyRef.current = messageTailKey
     const nearBottom = isNearBottom(el, DEFAULT_NEAR_BOTTOM_PX)
-    if (nearBottom || !userHasScrolledRef.current) {
+    if (initialPinActiveRef.current || nearBottom || !userHasScrolledRef.current) {
       scrollListToBottom('auto')
       setShowScrollDown(false)
       clearPendingNew()
@@ -292,7 +325,8 @@ export function useChatThreadScroll({
   useLayoutEffect(() => {
     if (settleGenerationRef.current == null) return
     const el = listRef.current
-    if (!el || userHasScrolledRef.current) return
+    if (!el) return
+    if (userHasScrolledRef.current && !initialPinActiveRef.current) return
     ensurePinnedToBottom()
     tryRevealList()
     settleGenerationRef.current = null
@@ -303,8 +337,10 @@ export function useChatThreadScroll({
     if (!list || typeof ResizeObserver === 'undefined') return
 
     const onResize = () => {
-      if (userHasScrolledRef.current) return
-      scrollElementToBottom(list, 'auto')
+      if (userHasScrolledRef.current && !initialPinActiveRef.current) return
+      scrollElementToBottomProgrammatic(list, 'auto', active => {
+        programmaticScrollRef.current = active
+      })
     }
 
     const observer = new ResizeObserver(onResize)
@@ -331,6 +367,8 @@ export function useChatThreadScroll({
     ensurePinnedToBottom,
     notifyMessagesSettled,
     userHasScrolledRef,
+    initialPinActiveRef,
+    programmaticScrollRef,
     showScrollDown,
     setShowScrollDown,
     cancelInitialPin,

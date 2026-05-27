@@ -32,6 +32,25 @@ export function scrollElementToBottom(el: HTMLElement, behavior: ScrollBehavior 
   }
 }
 
+/** Run scroll-to-bottom while ignoring spurious iOS scroll events. */
+export function scrollElementToBottomProgrammatic(
+  el: HTMLElement,
+  behavior: ScrollBehavior = 'auto',
+  onProgrammaticScroll?: (active: boolean) => void,
+): void {
+  onProgrammaticScroll?.(true)
+  scrollElementToBottom(el, behavior)
+  if (typeof requestAnimationFrame === 'undefined') {
+    onProgrammaticScroll?.(false)
+    return
+  }
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      onProgrammaticScroll?.(false)
+    })
+  })
+}
+
 /** Maximum scrollTop for a scroll container (for tests). */
 export function maxScrollTop(el: Pick<HTMLElement, 'scrollHeight' | 'clientHeight'>): number {
   return Math.max(0, el.scrollHeight - el.clientHeight)

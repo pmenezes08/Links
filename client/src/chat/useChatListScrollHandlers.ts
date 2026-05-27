@@ -10,6 +10,8 @@ interface TouchDismissState {
 
 export interface UseChatListScrollHandlersOptions {
   userHasScrolledRef: MutableRefObject<boolean>
+  initialPinActiveRef: MutableRefObject<boolean>
+  programmaticScrollRef: MutableRefObject<boolean>
   cancelInitialPin: () => void
   setShowScrollDown: (show: boolean) => void
   touchDismissRef?: MutableRefObject<TouchDismissState>
@@ -25,6 +27,8 @@ export interface UseChatListScrollHandlersOptions {
  */
 export function useChatListScrollHandlers({
   userHasScrolledRef,
+  initialPinActiveRef,
+  programmaticScrollRef,
   cancelInitialPin,
   setShowScrollDown,
   touchDismissRef,
@@ -44,7 +48,15 @@ export function useChatListScrollHandlers({
       const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
       const nearBottom = distFromBottom < DEFAULT_NEAR_BOTTOM_PX
 
-      if (nearBottom) {
+      const openPinLocked =
+        initialPinActiveRef.current || programmaticScrollRef.current
+
+      if (openPinLocked) {
+        if (nearBottom) {
+          setShowScrollDown(false)
+          onNearBottom?.()
+        }
+      } else if (nearBottom) {
         userHasScrolledRef.current = false
         setShowScrollDown(false)
         onNearBottom?.()
@@ -69,9 +81,11 @@ export function useChatListScrollHandlers({
     [
       cancelInitialPin,
       hasMoreMessages,
+      initialPinActiveRef,
       loadOlderEnabled,
       loadingOlderRef,
       onLoadOlder,
+      programmaticScrollRef,
       setShowScrollDown,
       touchDismissRef,
       userHasScrolledRef,
