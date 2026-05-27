@@ -581,7 +581,7 @@ def signup():
 def logout():
     """Clear session and remember-me cookies."""
     logger = current_app.logger
-    username = session.get("username")
+    username = session.get("username") or session.pop("_logout_pending_username", None)
     install_id = (request.cookies.get(auth_session.INSTALL_COOKIE_NAME) or "").strip()
     push_counts = deactivate_all_push_for_user(username) if username else {
         "native_push_tokens": 0,

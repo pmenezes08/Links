@@ -157,3 +157,37 @@ def test_authenticated_register_fcm_activates_token(mysql_dsn):
     assert fcm_user == "Paulo"
     assert native_active == 1
     assert native_user == "Paulo"
+
+
+def test_unregister_fcm_clears_session_username_so_register_stays_inactive(mysql_dsn):
+    """After unregister, in-flight register_fcm must not see session username."""
+    from bodybuilding_app import app as monolith
+
+    _ensure_push_tables()
+    apns_hex = "ccddeeff00112233445566778899aabbccddeeff00112233445566778899aabb"
+    _seed_deactivated_apns(apns_hex, "Paulo")
+
+    with monolith.test_client() as client:
+        with client.session_transaction() as sess:
+            sess["username"] = "Paulo"
+        unreg = client.post(
+            "/api/push/unregister_fcm",
+            json={},
+        )
+        assert unreg.status_code == 200
+
+        reg = client.post(
+            "/api/push/register_fcm",
+            json={"token": apns_hex, "platform": "ios"},
+        )
+        assert reg.status_code == 200
+
+        with client.session_transaction() as sess:
+            assert sess.get("username") is None
+            assert sess.get("_logout_pending_username") == "Paulo"
+
+    fcm_active, fcm_user, native_active, native_user = _counts(apns_hex)
+    assert fcm_active == 0
+    assert fcm_user in (None, "")
+    assert native_active == 0
+    assert native_user in (None, "")

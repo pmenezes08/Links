@@ -329,7 +329,14 @@ def unregister_fcm_token():
             fcm_rows,
             native_rows,
         )
-        return jsonify({"success": True, "deactivated_fcm": fcm_rows, "deactivated_native": native_rows})
+        # Drop session auth immediately so any in-flight register_fcm during logout
+        # sees anonymous and cannot reactivate rows (no persistent session block flag).
+        session["_logout_pending_username"] = username
+        session.pop("username", None)
+        session.modified = True
+        resp = jsonify({"success": True, "deactivated_fcm": fcm_rows, "deactivated_native": native_rows})
+        current_app.session_interface.save_session(current_app, session, resp)
+        return resp
     except Exception as e:
         logger.error("unregister_fcm error: %s", e)
         return jsonify({"success": False, "error": str(e)}), 500

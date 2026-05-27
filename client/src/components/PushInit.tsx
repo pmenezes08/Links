@@ -6,6 +6,7 @@ import {
   clearPushRegistrationBlocked,
   isPushRegistrationBlocked,
   registerFcmTokenWithServer,
+  syncPushRegistrationWithSession,
 } from '../utils/pushRegistration'
 
 function urlBase64ToUint8Array(base64String: string) {
@@ -100,6 +101,7 @@ export default function PushInit(){
             // Register for push notifications
             await PushNotifications.register()
             console.log('🔔 Registration initiated')
+            void syncPushRegistrationWithSession(Capacitor.getPlatform())
             
             // Listen for registration token from Capacitor
             // When Firebase generates FCM token, Capacitor catches it and fires this event

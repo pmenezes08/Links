@@ -3,7 +3,7 @@
  */
 
 import { resetAccountScopedState } from './accountStateReset'
-import { setPushRegistrationBlocked } from './pushRegistration'
+import { setPushLogoutInProgress, setPushRegistrationBlocked } from './pushRegistration'
 
 // Dynamic import for Capacitor to avoid issues on web
 async function clearCapacitorStorage(): Promise<void> {
@@ -33,6 +33,8 @@ export async function unregisterPushBeforeLogout(): Promise<void> {
       console.warn('unregister_fcm response:', res.status)
     } else {
       console.log('📴 All push tokens deactivated on server')
+      // Only block after server confirmed deactivation (not on failed/aborted logout).
+      setPushRegistrationBlocked()
     }
   } catch (e) {
     console.warn('unregister_fcm failed:', e)
@@ -79,12 +81,11 @@ export async function unregisterPushBeforeLogout(): Promise<void> {
     /* ignore */
   }
 
-  // Survives account-scoped localStorage wipe — blocks PushInit/AppDelegate follow-ups on Welcome.
-  setPushRegistrationBlocked()
 }
 
 export async function performLogout(): Promise<void> {
   console.log('🚪 Starting logout process...')
+  setPushLogoutInProgress(true)
 
   try {
     const { Capacitor } = await import('@capacitor/core')
