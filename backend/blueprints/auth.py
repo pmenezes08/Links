@@ -83,6 +83,7 @@ def _finalize_session_response(resp, username: str) -> None:
     auth_session.clear_session_cookie(resp)
     session.permanent = True
     session["username"] = username
+    session.pop("_logout_pending_username", None)
     session.modified = True
     try:
         current_app.session_interface.save_session(current_app, session, resp)

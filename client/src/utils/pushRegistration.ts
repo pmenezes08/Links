@@ -68,6 +68,8 @@ export async function registerFcmTokenWithServer(
 
 /** Clear stale post-logout block and re-register when the session is still authenticated. */
 export async function syncPushRegistrationWithSession(platform: string): Promise<void> {
+  if (isPushRegistrationBlocked() || isPushLogoutInProgress()) return
+
   try {
     const response = await fetch('/api/profile_me', {
       credentials: 'include',

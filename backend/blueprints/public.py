@@ -91,9 +91,13 @@ def register_fcm_token():
         if not token:
             return jsonify({"error": "Token required"}), 400
         
-        # Get username if logged in
-        username = (session.get("username") or "").strip() or None
-        is_authenticated = username is not None
+        # Get username if logged in; never activate while logout unregister is in flight.
+        if session.get("_logout_pending_username"):
+            username = None
+            is_authenticated = False
+        else:
+            username = (session.get("username") or "").strip() or None
+            is_authenticated = username is not None
 
         # Detect token type
         is_native_apns = is_apns_token(token)
@@ -273,6 +277,7 @@ def unregister_fcm_token():
     by iOS AppDelegate) from continuing to receive pushes after logout.
     """
     from backend.services.database import get_db_connection, get_sql_placeholder, USE_MYSQL
+    from backend.services import remember_tokens
 
     logger = current_app.logger
     username = session.get("username")
@@ -334,7 +339,14 @@ def unregister_fcm_token():
         session["_logout_pending_username"] = username
         session.pop("username", None)
         session.modified = True
-        resp = jsonify({"success": True, "deactivated_fcm": fcm_rows, "deactivated_native": native_rows})
+        tokens_revoked = remember_tokens.revoke_by_cookie(request)
+        resp = jsonify({
+            "success": True,
+            "deactivated_fcm": fcm_rows,
+            "deactivated_native": native_rows,
+            "remember_tokens_revoked": tokens_revoked,
+        })
+        remember_tokens.clear_cookie(resp)
         current_app.session_interface.save_session(current_app, session, resp)
         return resp
     except Exception as e:
