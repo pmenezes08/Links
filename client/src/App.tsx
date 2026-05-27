@@ -69,7 +69,7 @@ import KeyPosts from './pages/KeyPosts'
 import AboutCPoint from './pages/AboutCPoint'
 import OnboardingWelcome from './pages/OnboardingWelcome'
 import VerifyOverlay from './components/VerifyOverlay'
-import { isPremiumDashboardPath } from './components/DashboardBottomNav'
+import { isPremiumDashboardPath, isAboutCPointPath } from './components/DashboardBottomNav'
 import DashboardLayout from './components/DashboardLayout'
 import { useSafeAreaSync } from './hooks/useSafeAreaSync'
 import EventDetail from './pages/EventDetail'
@@ -646,8 +646,13 @@ function AppRoutes(){
     loadProfile()
   }, [loadProfile])
 
+  const prevPathnameRef = useRef(location.pathname)
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return
+    const prev = prevPathnameRef.current
+    prevPathnameRef.current = location.pathname
+    const isDashboardTab = (p: string) => isPremiumDashboardPath(p) || p === '/feed' || isAboutCPointPath(p)
+    if (isDashboardTab(prev) && isDashboardTab(location.pathname)) return
     const raf = window.requestAnimationFrame(() => {
       resetScrollPosition()
     })
