@@ -70,8 +70,11 @@ import AboutCPoint from './pages/AboutCPoint'
 import OnboardingWelcome from './pages/OnboardingWelcome'
 import VerifyOverlay from './components/VerifyOverlay'
 import { isPremiumDashboardPath, isAboutCPointPath } from './components/DashboardBottomNav'
+import { isDashboardTabPath } from './components/pageTransitionUtils'
 import DashboardLayout from './components/DashboardLayout'
 import PageTransitionStack from './components/PageTransitionStack'
+
+const TRANSITIONS_ENABLED = import.meta.env.VITE_PAGE_TRANSITIONS === 'true'
 import { useSafeAreaSync } from './hooks/useSafeAreaSync'
 import EventDetail from './pages/EventDetail'
 import GroupFeed from './pages/GroupFeed'
@@ -648,17 +651,27 @@ function AppRoutes(){
   }, [loadProfile])
 
   const prevPathnameRef = useRef(location.pathname)
+  const pendingScrollResetRef = useRef(false)
+
+  const flushDeferredScrollReset = useCallback(() => {
+    if (!pendingScrollResetRef.current) return
+    pendingScrollResetRef.current = false
+    resetScrollPosition()
+  }, [resetScrollPosition])
+
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return
     const prev = prevPathnameRef.current
     prevPathnameRef.current = location.pathname
-    const isDashboardTab = (p: string) => isPremiumDashboardPath(p) || p === '/feed' || isAboutCPointPath(p)
-    if (isDashboardTab(prev) && isDashboardTab(location.pathname)) return
-    const raf = window.requestAnimationFrame(() => {
-      resetScrollPosition()
-    })
-    return () => window.cancelAnimationFrame(raf)
-  }, [location.pathname, location.search, resetScrollPosition])
+    if (isDashboardTabPath(prev) && isDashboardTabPath(location.pathname)) return
+    pendingScrollResetRef.current = true
+    if (!TRANSITIONS_ENABLED) {
+      const raf = window.requestAnimationFrame(() => {
+        flushDeferredScrollReset()
+      })
+      return () => window.cancelAnimationFrame(raf)
+    }
+  }, [location.pathname, location.search, flushDeferredScrollReset])
 
   useEffect(() => {
     if (profileData) {
@@ -759,7 +772,7 @@ function AppRoutes(){
           style={mainStyle}
         >
             <ErrorBoundary>
-              <PageTransitionStack>
+              <PageTransitionStack onTransitionEnd={flushDeferredScrollReset}>
               <Routes>
                 <Route path="/" element={rootRouteElement} />
                 <Route path="/welcome" element={<OnboardingWelcome />} />

@@ -411,3 +411,10 @@
   from { opacity: 1; }
   to { opacity: 0; }
 }
+
+/* Reduce blur cost on stacked pages during pilot transitions */
+html.page-transition-active .page-transition-outgoing .liquid-glass-surface,
+html.page-transition-active .page-transition-incoming .liquid-glass-surface {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}

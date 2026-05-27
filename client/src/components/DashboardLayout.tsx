@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
-import { Outlet } from 'react-router-dom'
+import { createContext, useContext, useState, useCallback } from 'react'
+import KeepAliveOutlet from './KeepAliveOutlet'
 import DashboardBottomNav from './DashboardBottomNav'
 
 type DashboardNavOverrides = {
@@ -40,7 +40,7 @@ export default function DashboardLayout() {
 
   return (
     <DashboardLayoutContext.Provider value={{ setNavOverrides, clearNavOverrides }}>
-      <Outlet />
+      <KeepAliveOutlet />
       <DashboardBottomNav
         show={overrides.show ?? true}
         searchOpen={overrides.searchOpen}

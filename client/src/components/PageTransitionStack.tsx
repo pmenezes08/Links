@@ -1,29 +1,19 @@
-import { useRef, useState, useEffect, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useLocation, useNavigationType } from 'react-router-dom'
 import { PAGE_TRANSITION_MS, TAB_CROSSFADE_MS, CPOINT_EASE_OUT, REDUCED_MOTION_FADE_MS } from '../design/motion'
-import { isPremiumDashboardPath, isAboutCPointPath } from './DashboardBottomNav'
+import { detectTransitionType } from './pageTransitionUtils'
 
 const TRANSITIONS_ENABLED = import.meta.env.VITE_PAGE_TRANSITIONS === 'true'
 
 type TransitionType = 'push' | 'pop' | 'tab' | 'none'
-
-function isDashboardTab(path: string) {
-  return isPremiumDashboardPath(path) || path === '/feed' || isAboutCPointPath(path)
-}
-
-function detectTransitionType(prev: string, next: string, navType: 'POP' | 'PUSH' | 'REPLACE'): TransitionType {
-  if (!TRANSITIONS_ENABLED) return 'none'
-  if (prev === next) return 'none'
-  if (isDashboardTab(prev) && isDashboardTab(next)) return 'tab'
-  if (navType === 'POP') return 'pop'
-  return 'push'
-}
 
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 interface PageTransitionStackProps {
   children: ReactNode
+  /** Called when a push/pop/tab animation finishes (for deferred scroll reset). */
+  onTransitionEnd?: () => void
 }
 
 /**
@@ -31,29 +21,43 @@ interface PageTransitionStackProps {
  * Only active when VITE_PAGE_TRANSITIONS=true.
  * When disabled, renders children directly with no wrapper overhead.
  */
-export default function PageTransitionStack({ children }: PageTransitionStackProps) {
+export default function PageTransitionStack({ children, onTransitionEnd }: PageTransitionStackProps) {
   const location = useLocation()
   const navigationType = useNavigationType()
   const prevPathRef = useRef(location.pathname)
+  const snapshotRef = useRef<{ path: string; content: ReactNode }>({
+    path: location.pathname,
+    content: children,
+  })
   const [transitioning, setTransitioning] = useState(false)
   const [transitionType, setTransitionType] = useState<TransitionType>('none')
   const [outgoing, setOutgoing] = useState<ReactNode>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const childRef = useRef<ReactNode>(children)
 
-  useEffect(() => {
-    childRef.current = children
-  })
+  useLayoutEffect(() => {
+    const prevPath = prevPathRef.current
+    const nextPath = location.pathname
+    if (prevPath === nextPath) {
+      snapshotRef.current = { path: nextPath, content: children }
+      return
+    }
 
-  useEffect(() => {
-    const prev = prevPathRef.current
-    prevPathRef.current = location.pathname
-    const type = detectTransitionType(prev, location.pathname, navigationType)
-    if (type === 'none') return
+    const type = detectTransitionType(prevPath, nextPath, navigationType, TRANSITIONS_ENABLED)
+    prevPathRef.current = nextPath
 
-    setOutgoing(childRef.current)
+    if (type === 'none') {
+      snapshotRef.current = { path: nextPath, content: children }
+      queueMicrotask(() => onTransitionEnd?.())
+      return
+    }
+
+    setOutgoing(snapshotRef.current.content)
     setTransitionType(type)
     setTransitioning(true)
+    snapshotRef.current = { path: nextPath, content: children }
+
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.add('page-transition-active')
+    }
 
     const duration = prefersReducedMotion()
       ? REDUCED_MOTION_FADE_MS
@@ -61,13 +65,17 @@ export default function PageTransitionStack({ children }: PageTransitionStackPro
         ? TAB_CROSSFADE_MS
         : PAGE_TRANSITION_MS
 
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
       setTransitioning(false)
       setOutgoing(null)
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.remove('page-transition-active')
+      }
+      onTransitionEnd?.()
     }, duration)
 
-    return () => clearTimeout(timer)
-  }, [location.pathname])
+    return () => window.clearTimeout(timer)
+  }, [location.pathname, navigationType, children, onTransitionEnd])
 
   if (!TRANSITIONS_ENABLED) {
     return <>{children}</>
@@ -78,7 +86,7 @@ export default function PageTransitionStack({ children }: PageTransitionStackPro
   const durationMs = reduced ? REDUCED_MOTION_FADE_MS : duration
 
   return (
-    <div ref={containerRef} className="page-transition-container" style={{ position: 'relative', overflow: 'hidden' }}>
+    <div className="page-transition-container" style={{ position: 'relative', overflow: 'hidden' }}>
       {transitioning && outgoing && (
         <div
           className="page-transition-outgoing"
@@ -86,6 +94,7 @@ export default function PageTransitionStack({ children }: PageTransitionStackPro
             position: 'absolute',
             inset: 0,
             zIndex: 1,
+            pointerEvents: 'none',
             animation: reduced
               ? `ptFadeOut ${durationMs}ms linear forwards`
               : transitionType === 'tab'

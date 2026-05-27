@@ -2159,6 +2159,15 @@ def _seed_pages() -> List[Dict[str, Any]]:
                             "last_run_at": "", "last_run_by": "", "last_run_notes": "",
                         },
                         {
+                            "id": "manual:page_transitions_pilot",
+                            "feature": "Page transitions (pilot)",
+                            "behaviour": "Dashboard/Feed/Community/Post: frame-0 skeletons, push/pop 250ms, tab cross-fade 120ms on staging (VITE_PAGE_TRANSITIONS). Non-pilot routes unchanged.",
+                            "runner": "manual",
+                            "target": "QA_CHECKLIST.md §15",
+                            "status": "not_run",
+                            "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                        {
                             "id": "manual:voice_note_ui",
                             "feature": "Voice-note DM / group / feed",
                             "behaviour": "Uploading a voice note adds whisper minutes AND a voice_summary row (verified via Manage Membership modal).",

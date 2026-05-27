@@ -929,7 +929,13 @@ export default function PremiumDashboard() {
               )}
             </span>
           </div>
-            {communities.length === 0 ? (
+            {!communitiesLoaded ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <SkeletonCommunityCard />
+                <SkeletonCommunityCard />
+                <SkeletonCommunityCard />
+              </div>
+            ) : communities.length === 0 ? (
               <div className="px-3 py-6">
                 <div className="mx-auto max-w-xl space-y-4">
                   <div className="liquid-glass-surface overflow-hidden rounded-3xl border border-white/10 p-5 text-center shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
