@@ -413,14 +413,22 @@ export default function MobileLogin() {
 
   async function submitReset(e: React.FormEvent) {
     e.preventDefault()
+    setError(null)
     try {
-      await fetch('/request_password_reset', {
+      const res = await fetch('/request_password_reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: resetEmail })
       })
-    } catch {}
-    setResetSent(true)
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.success !== false) {
+        setResetSent(true)
+        return
+      }
+      setError(t('auth.login.reset_error', { defaultValue: 'Could not send reset email. Please try again.' }))
+    } catch {
+      setError(t('auth.login.reset_error', { defaultValue: 'Could not send reset email. Please try again.' }))
+    }
   }
 
   return (
@@ -669,7 +677,7 @@ export default function MobileLogin() {
           </form>
         )}
         <div className="text-center mt-3">
-          <button onClick={() => { setShowForgot(true); setResetSent(false) }} className="text-teal-300 text-sm">{t('auth.login.forgot')}</button>
+          <button onClick={() => { setShowForgot(true); setResetSent(false); setError(null) }} className="text-teal-300 text-sm">{t('auth.login.forgot')}</button>
         </div>
 
         {step !== 'password' && (
@@ -917,6 +925,9 @@ export default function MobileLogin() {
               {!resetSent ? (
                 <>
                   <p className="text-white/70 text-sm mb-4">{t('auth.login.reset_helper')}</p>
+                  {error && (
+                    <p className="text-red-400 text-sm mb-3" role="alert">{error}</p>
+                  )}
                   <form onSubmit={submitReset} className="space-y-3">
                     <input
                       type="email"
