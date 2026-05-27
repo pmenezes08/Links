@@ -176,10 +176,10 @@ function MessageBubbleInner({
                 }}
               >
                 {m.media_paths[0].match(/\.(mp4|mov|webm|m4v)$/i) ? (
-                  <div className="relative aspect-video w-full overflow-hidden rounded-lg">
+                  <div className="relative">
                     <video
                       src={normalizeMediaPath(m.media_paths[0]) + '#t=0.1'}
-                      className="h-full w-full object-cover"
+                      className="w-full rounded-lg"
                       muted
                       preload="metadata"
                       playsInline
@@ -210,11 +210,11 @@ function MessageBubbleInner({
           ) : (
             <>
               {m.image_path ? (
-                <div className="mb-1.5">
+                <div className="mb-1.5 min-h-[120px]">
                   <MessageImage
                     src={normalizeMediaPath(m.image_path)}
                     alt={t('chat.shared_image_alt')}
-                    className="max-w-full cursor-pointer rounded-lg"
+                    className="max-w-full max-h-64 cursor-pointer rounded-lg"
                     onClick={() => onImageClick(normalizeMediaPath(m.image_path!))}
                   />
                 </div>

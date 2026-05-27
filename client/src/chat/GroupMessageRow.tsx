@@ -319,7 +319,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                   )
                 )}
                 {msg.media_paths && msg.media_paths.length > 0 ? (
-                  <div className="mt-1 max-w-[280px]">
+                  <div className="mt-1 max-w-[280px] min-h-[120px]">
                     <div
                       className="relative cursor-pointer"
                       role="presentation"
@@ -329,10 +329,10 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                       }}
                     >
                       {msg.media_paths[0].match(/\.(mp4|mov|webm|m4v)$/i) ? (
-                        <div className="relative aspect-video w-full overflow-hidden rounded-lg">
+                        <div className="relative">
                           <video
                             src={normalizeMediaPath(msg.media_paths[0]) + '#t=0.1'}
-                            className="h-full w-full object-cover"
+                            className="w-full rounded-lg"
                             muted
                             preload="metadata"
                             playsInline
@@ -377,7 +377,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                     )}
                     {msg.video && (
                       <div
-                        className="relative mt-1 max-w-[280px] aspect-video cursor-pointer overflow-hidden rounded-lg"
+                        className="relative mt-1 max-w-[280px] cursor-pointer"
                         role="presentation"
                         onClick={e => {
                           e.stopPropagation()
@@ -389,7 +389,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                           preload="metadata"
                           playsInline
                           muted
-                          className="h-full w-full object-cover"
+                          className="w-full rounded-lg"
                         />
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                           <div className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center">
