@@ -182,7 +182,7 @@ export default function Signup(){
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold mb-2">{t('auth.signup.title')}</h1>
           {invitationInfo ? (
-            <div className="bg-[#4db6ac]/10 border border-[#4db6ac]/30 rounded-lg p-3 mt-3">
+            <div className="bg-cpoint-turquoise/10 border border-cpoint-turquoise/30 rounded-lg p-3 mt-3">
               <p className="text-white text-sm font-medium">
                 {t('auth.signup.invited_to_join', { community: invitationInfo.community_name })}
               </p>
@@ -197,7 +197,10 @@ export default function Signup(){
 
         {/* Error Message */}
         {error && (
-          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+          <div
+            role="alert"
+            className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm"
+          >
             {error}
           </div>
         )}
@@ -214,7 +217,7 @@ export default function Signup(){
               onChange={e => handleInputChange('username', e.target.value)}
               placeholder={t('auth.signup.username_placeholder')}
               required
-              className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
+              className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
             />
           </div>
             <div>
@@ -225,7 +228,7 @@ export default function Signup(){
                 onChange={e => handleInputChange('first_name', e.target.value)}
                 placeholder={t('auth.signup.first_name_placeholder')}
                 required
-                className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
+                className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
               />
             </div>
             <div>
@@ -236,7 +239,7 @@ export default function Signup(){
                 onChange={e => handleInputChange('last_name', e.target.value)}
                 placeholder={t('auth.signup.last_name_placeholder')}
                 required
-                className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
+                className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
               />
             </div>
           </div>
@@ -251,7 +254,7 @@ export default function Signup(){
               placeholder={t('auth.signup.email_placeholder')}
               required
               disabled={emailLocked}
-              className={`w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors ${emailLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+              className={`w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors ${emailLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
             />
             {emailLocked && (
               <p className="text-xs text-white/50 mt-1">{t('auth.signup.email_locked')}</p>
@@ -266,7 +269,7 @@ export default function Signup(){
               value={formData.mobile}
               onChange={e => handleInputChange('mobile', e.target.value)}
               placeholder="+1 (555) 123-4567"
-              className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
+              className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
             />
           </div>
 
@@ -279,7 +282,7 @@ export default function Signup(){
               onChange={e => handleInputChange('password', e.target.value)}
               placeholder="********"
               required
-              className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
+              className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
             />
           </div>
 
@@ -292,7 +295,7 @@ export default function Signup(){
               onChange={e => handleInputChange('confirm_password', e.target.value)}
               placeholder="********"
               required
-              className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
+              className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
             />
           </div>
 
@@ -300,10 +303,10 @@ export default function Signup(){
           <button
             type="submit"
             disabled={loading}
-            className={`w-full py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            className={`w-full py-3 rounded-xl text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 ${
               loading
                 ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
-                : 'bg-[#4db6ac] text-black hover:bg-[#45a99c]'
+                : 'bg-cpoint-turquoise text-black hover:brightness-110'
             }`}
           >
             {loading ? (
@@ -321,8 +324,8 @@ export default function Signup(){
         <div className="mt-4 text-center">
           <p className="text-white/60 text-xs">
             {t('auth.signup.have_account')}{' '}
-            <button 
-              className="text-[#4db6ac] hover:text-[#45a99c] transition-colors text-xs"
+            <button
+              className="text-cpoint-turquoise hover:brightness-110 transition-colors text-xs rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
               onClick={async () => {
                 // Clear any stale session before navigating to login
                 try {
@@ -340,20 +343,20 @@ export default function Signup(){
         <div className="mt-4 text-center">
           <p className="text-white/40 text-xs">
             {t('auth.signup.terms_prefix')}{' '}
-            <a 
-              href="https://www.c-point.co/terms" 
-              target="_blank" 
+            <a
+              href="https://www.c-point.co/terms"
+              target="_blank"
               rel="noopener noreferrer"
-              className="text-[#4db6ac] hover:underline"
+              className="text-cpoint-turquoise hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
             >
               {t('auth.signup.terms')}
             </a>{' '}
             {t('auth.signup.and')}{' '}
-            <a 
-              href="https://www.c-point.co/privacy" 
-              target="_blank" 
+            <a
+              href="https://www.c-point.co/privacy"
+              target="_blank"
               rel="noopener noreferrer"
-              className="text-[#4db6ac] hover:underline"
+              className="text-cpoint-turquoise hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
             >
               {t('auth.signup.privacy')}
             </a>
@@ -362,35 +365,55 @@ export default function Signup(){
 
         {/* Verify Email Modal */}
         {showVerify && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" aria-modal="true" role="dialog">
-            <div className="w-[90%] max-w-md rounded-xl border border-white/10 bg-[#0b0b0b] p-4">
-              <div className="text-lg font-semibold mb-1">{t('auth.signup.verify.title')}</div>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" aria-modal="true" role="dialog" aria-labelledby="signup-verify-title">
+            <div className="w-[90%] max-w-md rounded-xl border border-white/10 bg-black p-4">
+              <div id="signup-verify-title" className="text-lg font-semibold mb-1">{t('auth.signup.verify.title')}</div>
               <div className="text-sm text-white/80">
                 {t('auth.signup.verify.body', { email: pendingEmail || formData.email || t('auth.signup.verify.fallback_email') })}
               </div>
               <div className="mt-4 grid grid-cols-2 gap-2">
-                <button className="px-3 py-2 rounded-md border border-white/10" onClick={async ()=>{
-                  try{
-                    const r = await fetch('/resend_verification_pending', { method:'POST', credentials:'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: pendingEmail || formData.email }) })
-                    const j = await r.json().catch(()=>null)
-                    if (!j?.success) alert(j?.error || t('auth.signup.verify.resend_failed'))
-                    else alert(t('auth.signup.verify.resent'))
-                  }catch{ alert(t('account.messages.network_error')) }
-                }}>{t('auth.signup.verify.resend')}</button>
-                <button className="px-3 py-2 rounded-md border border-white/10" onClick={()=> { setShowVerify(false) }}>{t('auth.signup.verify.edit_email')}</button>
-                <button className="px-3 py-2 rounded-md border border-white/10" onClick={()=> { setShowVerify(false); navigate('/') }}>{t('auth.signup.verify.go_start')}</button>
-                <button className="col-span-2 px-3 py-2 rounded-md bg-[#4db6ac] text-black" onClick={async ()=>{
-                  try{
-                    const r = await fetch('/api/email_verified_status', { method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email: pendingEmail || formData.email }) })
-                    const j = await r.json().catch(()=>null)
-                    if (j?.success && j?.verified){
-                      alert(t('auth.signup.verify.verified_alert'))
-                      navigate('/login', { replace: true })
-                    } else {
-                      alert(t('auth.signup.verify.not_verified'))
-                    }
-                  }catch{ alert(t('auth.signup.verify.network_try_again')) }
-                }}>{t('auth.signup.verify.verified')}</button>
+                <button
+                  className="px-3 py-2 rounded-md border border-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                  onClick={async ()=>{
+                    try{
+                      const r = await fetch('/resend_verification_pending', { method:'POST', credentials:'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: pendingEmail || formData.email }) })
+                      const j = await r.json().catch(()=>null)
+                      if (!j?.success) alert(j?.error || t('auth.signup.verify.resend_failed'))
+                      else alert(t('auth.signup.verify.resent'))
+                    }catch{ alert(t('account.messages.network_error')) }
+                  }}
+                >
+                  {t('auth.signup.verify.resend')}
+                </button>
+                <button
+                  className="px-3 py-2 rounded-md border border-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                  onClick={()=> { setShowVerify(false) }}
+                >
+                  {t('auth.signup.verify.edit_email')}
+                </button>
+                <button
+                  className="px-3 py-2 rounded-md border border-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                  onClick={()=> { setShowVerify(false); navigate('/') }}
+                >
+                  {t('auth.signup.verify.go_start')}
+                </button>
+                <button
+                  className="col-span-2 px-3 py-3 rounded-xl bg-cpoint-turquoise text-black font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                  onClick={async ()=>{
+                    try{
+                      const r = await fetch('/api/email_verified_status', { method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email: pendingEmail || formData.email }) })
+                      const j = await r.json().catch(()=>null)
+                      if (j?.success && j?.verified){
+                        alert(t('auth.signup.verify.verified_alert'))
+                        navigate('/login', { replace: true })
+                      } else {
+                        alert(t('auth.signup.verify.not_verified'))
+                      }
+                    }catch{ alert(t('auth.signup.verify.network_try_again')) }
+                  }}
+                >
+                  {t('auth.signup.verify.verified')}
+                </button>
               </div>
             </div>
           </div>

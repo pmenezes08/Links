@@ -443,11 +443,11 @@ export default function MobileLogin() {
             />
             <h1 className="text-lg font-semibold">C-Point</h1>
             {invitationInfo ? (
-              <div className="mt-3 p-3 bg-[#4db6ac]/10 border border-[#4db6ac]/30 rounded-lg">
+              <div className="mt-3 p-3 bg-cpoint-turquoise/10 border border-cpoint-turquoise/30 rounded-lg">
                 <p className="text-xs text-white font-medium">
                   You've been invited to join
                 </p>
-                <p className="text-sm text-[#4db6ac] font-semibold mt-1">
+                <p className="text-sm text-cpoint-turquoise font-semibold mt-1">
                   {invitationInfo.community_name}
                 </p>
                 <p className="text-xs text-white/60 mt-1">
@@ -461,7 +461,10 @@ export default function MobileLogin() {
         )}
 
         {error && (
-          <div className="mb-4 rounded-md border border-red-500 text-red-400 bg-red-500/10 px-3 py-2 text-sm text-center">
+          <div
+            role="alert"
+            className="mb-4 rounded-md border border-red-500 text-red-400 bg-red-500/10 px-3 py-2 text-sm text-center"
+          >
             {error}
           </div>
         )}
@@ -553,33 +556,41 @@ export default function MobileLogin() {
                 placeholder={t('auth.login.password_placeholder')}
                 required
                 autoFocus
-                className="w-full rounded-md bg-black border border-white/10 px-3 py-2.5 text-sm text-white outline-none pr-10"
+                className="w-full rounded-md bg-black border border-white/10 px-3 py-2.5 text-sm text-white outline-none pr-10 focus:border-cpoint-turquoise/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-white"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 rounded"
               >
                 {showPassword ? (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
                   </svg>
                 ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                   </svg>
                 )}
               </button>
             </div>
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               disabled={isSubmitting}
-              className="w-full rounded-lg bg-teal-400 text-white py-2.5 text-sm font-medium active:opacity-90 disabled:opacity-50"
+              className="w-full rounded-xl bg-cpoint-turquoise text-black py-3 text-sm font-semibold active:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
             >
               {isSubmitting ? t('auth.login.login_submitting') : t('auth.login.login_submit')}
             </button>
-            <button type="button" onClick={() => navigate('/login')} className="w-full rounded-lg border border-white/10 bg-white/5 text-white py-2.5 text-sm font-medium active:opacity-90">{t('auth.login.back')}</button>
+            <button
+              type="button"
+              onClick={() => navigate('/login')}
+              className="w-full rounded-xl border border-white/10 bg-white/5 text-white py-3 text-sm font-medium active:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+            >
+              {t('auth.login.back')}
+            </button>
           </form>
         ) : (
           <form 
@@ -669,20 +680,25 @@ export default function MobileLogin() {
                 placeholder={t('auth.login.username_placeholder')}
                 required
                 autoComplete="username"
-                className="w-full rounded-md border border-white/10 bg-white/10 px-3 py-3 text-base outline-none focus:border-teal-400/70"
+                className="w-full rounded-md border border-white/10 bg-white/10 px-3 py-3 text-base outline-none focus:border-cpoint-turquoise/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
               />
             </div>
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               disabled={isSubmitting}
-              className="w-full rounded-lg bg-teal-400 text-white py-2 text-sm font-medium active:opacity-90 disabled:opacity-50"
+              className="w-full rounded-xl bg-cpoint-turquoise text-black py-3 text-sm font-semibold active:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
             >
               {isSubmitting ? t('auth.login.submitting') : t('auth.login.submit')}
             </button>
           </form>
         )}
         <div className="text-center mt-3">
-          <button onClick={() => { setShowForgot(true); setResetSent(false); setError(null) }} className="text-teal-300 text-sm">{t('auth.login.forgot')}</button>
+          <button
+            onClick={() => { setShowForgot(true); setResetSent(false); setError(null) }}
+            className="text-cpoint-turquoise text-sm rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+          >
+            {t('auth.login.forgot')}
+          </button>
         </div>
 
         {step !== 'password' && (
@@ -855,20 +871,20 @@ export default function MobileLogin() {
         <div className="mt-4 text-center">
           <p className="text-white/40 text-xs">
             By signing in, you agree to our{' '}
-            <a 
-              href="https://www.c-point.co/terms" 
-              target="_blank" 
+            <a
+              href="https://www.c-point.co/terms"
+              target="_blank"
               rel="noopener noreferrer"
-              className="text-teal-300 hover:underline"
+              className="text-cpoint-turquoise hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
             >
               Terms of Service
             </a>{' '}
             and{' '}
-            <a 
-              href="https://www.c-point.co/privacy" 
-              target="_blank" 
+            <a
+              href="https://www.c-point.co/privacy"
+              target="_blank"
               rel="noopener noreferrer"
-              className="text-teal-300 hover:underline"
+              className="text-cpoint-turquoise hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
             >
               Privacy Policy
             </a>
@@ -885,14 +901,17 @@ export default function MobileLogin() {
         >
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
           <div
-            className="relative w-full max-w-[360px] rounded-2xl border border-white/10 bg-[#111] p-5 text-white shadow-[0_20px_60px_rgba(0,0,0,0.5)]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invite-clipboard-title"
+            className="relative w-full max-w-[360px] rounded-2xl border border-white/10 bg-black p-5 text-white shadow-[0_20px_60px_rgba(0,0,0,0.5)]"
             onClick={e => e.stopPropagation()}
           >
             <div className="text-center mb-4">
-              <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-[#4db6ac]/10 flex items-center justify-center">
-                <i className="fa-solid fa-link text-[#4db6ac] text-xl" />
+              <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-cpoint-turquoise/10 flex items-center justify-center">
+                <i className="fa-solid fa-link text-cpoint-turquoise text-xl" aria-hidden="true" />
               </div>
-              <h3 className="text-lg font-semibold m-0">{t('auth.login.use_invite_title')}</h3>
+              <h3 id="invite-clipboard-title" className="text-lg font-semibold m-0">{t('auth.login.use_invite_title')}</h3>
             </div>
             <p className="text-sm text-white/70 text-center mb-4 leading-relaxed">
               We&apos;ll read your clipboard once to find your community invite. On the next step, iOS may ask you to allow paste — that&apos;s expected.
@@ -902,7 +921,7 @@ export default function MobileLogin() {
                 type="button"
                 disabled={inviteFromInstallBusy}
                 onClick={() => void tryInviteFromInstallTap()}
-                className="w-full rounded-xl bg-[#4db6ac] text-black font-semibold text-sm py-3 active:opacity-90 disabled:opacity-50"
+                className="w-full rounded-xl bg-cpoint-turquoise text-black font-semibold text-sm py-3 active:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
               >
                 {inviteFromInstallBusy ? 'Checking…' : 'Continue'}
               </button>
@@ -910,7 +929,7 @@ export default function MobileLogin() {
                 type="button"
                 disabled={inviteFromInstallBusy}
                 onClick={() => setShowInviteClipboardModal(false)}
-                className="w-full rounded-xl bg-white/5 text-white/60 text-sm py-3 border-0 active:opacity-90 disabled:opacity-50"
+                className="w-full rounded-xl bg-white/5 text-white/60 text-sm py-3 border-0 active:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
               >
                 Not now
               </button>
@@ -921,10 +940,21 @@ export default function MobileLogin() {
 
       {showForgot && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="w-[90%] max-w-sm bg-[#1a1a1a] border border-[#333] rounded-xl">
-            <div className="flex items-center justify-between p-4 border-b border-[#333]">
-              <h2 className="text-white text-base font-semibold">{t('auth.login.reset_title')}</h2>
-              <button className="text-[#999] text-2xl" onClick={() => setShowForgot(false)}>&times;</button>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="forgot-password-title"
+            className="w-[90%] max-w-sm bg-black border border-white/10 rounded-xl"
+          >
+            <div className="flex items-center justify-between p-4 border-b border-white/10">
+              <h2 id="forgot-password-title" className="text-white text-base font-semibold">{t('auth.login.reset_title')}</h2>
+              <button
+                aria-label={t('common.close')}
+                className="text-white/60 hover:text-white text-2xl rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                onClick={() => setShowForgot(false)}
+              >
+                &times;
+              </button>
             </div>
             <div className="p-4">
               {!resetSent ? (
@@ -940,20 +970,28 @@ export default function MobileLogin() {
                       value={resetEmail}
                       onChange={e => setResetEmail(e.target.value)}
                       required
-                      className="w-full rounded-md border border-white/10 bg-white/10 px-3 py-2 text-sm outline-none focus:border-teal-400/70"
+                      className="w-full rounded-md border border-white/10 bg-white/10 px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
                     />
-                    <button type="submit" className="w-full rounded-lg bg-teal-400 text-white py-2 text-sm font-medium active:opacity-90">{t('auth.login.reset_submit')}</button>
+                    <button
+                      type="submit"
+                      className="w-full rounded-xl bg-cpoint-turquoise text-black py-3 text-sm font-semibold active:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                    >
+                      {t('auth.login.reset_submit')}
+                    </button>
                   </form>
                 </>
               ) : (
                 <>
-                  <div className="w-full rounded-md border border-teal-500 text-teal-400 bg-teal-500/10 px-3 py-2 text-sm text-center">{t('auth.login.reset_sent_short')}</div>
+                  <div className="w-full rounded-md border border-cpoint-turquoise text-cpoint-turquoise bg-cpoint-turquoise/10 px-3 py-2 text-sm text-center">{t('auth.login.reset_sent_short')}</div>
                   <p className="text-white/70 text-sm mt-4 text-center">{t('auth.login.reset_sent_helper')}</p>
-                  <button className="w-full mt-4 rounded-lg border border-white/10 bg-white/5 py-2 text-sm" onClick={() => setShowForgot(false)}>{t('common.close')}</button>
+                  <button
+                    className="w-full mt-4 rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                    onClick={() => setShowForgot(false)}
+                  >
+                    {t('common.close')}
+                  </button>
                 </>
               )}
-
-  
             </div>
           </div>
         </div>

@@ -93,17 +93,18 @@
 :root {
   /* C-Point brand tokens (see docs/DESIGN.md § Color).
      These mirror the canonical hex values used in marketing + product.
-     The product accent is currently the legacy Material teal (#4db6ac)
-     exposed via --cpoint-accent-rgb so glass/accent surfaces can be
-     flipped to brand turquoise (#00CEC8) in a single edit later without
-     a visual change in this PR. */
+     The product accent is brand turquoise (#00CEC8) exposed via
+     --cpoint-accent-rgb so every glass/accent surface app-wide reads
+     from a single source of truth. */
   --cpoint-turquoise: #00CEC8;
   --cpoint-bg-app: #000000;
   --cpoint-white: #FFFFFF;
   --cpoint-black-marketing: #0F172A;
-  /* Legacy accent triplet — kept at #4db6ac (77, 182, 172) until the brand
-     accent flip ships in a follow-up phase. Do NOT change to turquoise here. */
-  --cpoint-accent-rgb: 77, 182, 172;
+  /* Brand accent triplet — canonical turquoise (#00CEC8 → 0, 206, 200).
+     Glass/accent surfaces (liquid-glass-bubble--sent, glass-highlight,
+     --glass-gradient, etc.) all consume this var. Do not duplicate the
+     hex value inline; edit here to retint the app. */
+  --cpoint-accent-rgb: 0, 206, 200;
 
   --glass-base: rgba(12, 12, 16, 0.68);
   --glass-tint: rgba(var(--cpoint-accent-rgb), 0.22);
