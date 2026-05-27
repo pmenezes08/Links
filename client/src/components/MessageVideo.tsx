@@ -73,12 +73,11 @@ export default function MessageVideo({ src, className = '' }: MessageVideoProps)
   }
 
   return (
-    <div className={`relative inline-block rounded overflow-hidden ${className}`}>
+    <div className={`relative w-full rounded-lg overflow-hidden bg-black ${className}`}>
       {/* Video element */}
       <video
         ref={videoRef}
-        className="max-w-full"
-        style={{ maxHeight: '320px' }}
+        className="block w-full max-h-64 object-contain"
         controls={!showOverlay}
         playsInline
         preload="auto"

@@ -176,10 +176,10 @@ function MessageBubbleInner({
                 }}
               >
                 {m.media_paths[0].match(/\.(mp4|mov|webm|m4v)$/i) ? (
-                  <div className="relative">
+                  <div className="relative bg-black rounded-lg">
                     <video
                       src={normalizeMediaPath(m.media_paths[0]) + '#t=0.1'}
-                      className="w-full rounded-lg"
+                      className="block w-full max-h-64 object-contain rounded-lg"
                       muted
                       preload="metadata"
                       playsInline
@@ -220,10 +220,9 @@ function MessageBubbleInner({
                 </div>
               ) : null}
               {m.video_path ? (
-                <div className="mb-1.5 rounded-lg overflow-hidden min-h-[120px] aspect-video max-h-64" onClick={(e) => e.stopPropagation()}>
+                <div className="mb-1.5 w-full max-w-[280px]" onClick={(e) => e.stopPropagation()}>
                   <MessageVideo
                     src={normalizeMediaPath(m.video_path)}
-                    className="max-h-64"
                   />
                 </div>
               ) : null}
