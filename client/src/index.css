@@ -385,3 +385,21 @@
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: auto;
 }
+
+/* Page transition keyframes (used by PageTransitionStack) */
+@keyframes ptSlideInRight {
+  from { transform: translate3d(100%, 0, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+@keyframes ptSlideOutLeft {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-30%, 0, 0); opacity: 0.6; }
+}
+@keyframes ptFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes ptFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
