@@ -246,10 +246,6 @@
   /* scroll-padding-bottom set inline from composer hook */
 }
 
-.chat-list-inset.chat-list-opening {
-  overflow-anchor: none;
-}
-
 @keyframes chatReactionPop {
   from {
     opacity: 0;

@@ -63,10 +63,12 @@ export { useGroupMessagePoll } from './useGroupMessagePoll'
 export type { UseGroupMessagePollOptions } from './useGroupMessagePoll'
 export {
   DEFAULT_NEAR_BOTTOM_PX,
-  isNearBottom,
-  scrollElementToBottom,
-  shouldShowScrollDownAfterOpen,
-  maxScrollTop,
+  LOAD_OLDER_TRIGGER_PX,
+  isInvertedAtBottom,
+  pinInvertedToBottom,
+  smoothPinInvertedToBottom,
+  distanceFromInvertedBottom,
+  distanceFromInvertedTop,
 } from './scrollPin'
 
 // Media senders (already existed)

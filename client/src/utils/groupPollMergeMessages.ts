@@ -46,26 +46,6 @@ export function groupMessagePollSignature(
   ].join('\u001f')
 }
 
-export function mergeGroupReactionsFromMessages(
-  prev: Record<number, string>,
-  msgs: GroupPollMessage[],
-): Record<number, string> {
-  let changed = false
-  const next: Record<number, string> = { ...prev }
-  for (const msg of msgs) {
-    const id = msg.id
-    if (!id || id <= 0) continue
-    const n = msg.reaction || null
-    const p = prev[id] === undefined ? null : prev[id]
-    if (p !== n) {
-      changed = true
-      if (n) next[id] = n
-      else delete next[id]
-    }
-  }
-  return changed ? next : prev
-}
-
 export function isConfirmedGroupMessage(
   serverMessage: GroupPollMessage,
   optimisticMessage: GroupPollMessage & { clientKey?: string },

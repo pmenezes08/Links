@@ -16,6 +16,17 @@ import { computeKeyboardLift, readCssPxVar } from '../utils/keyboardLift'
 import { useTouchDismiss } from './hooks'
 import { useSmoothedPx } from './useSmoothedPx'
 
+/**
+ * Synchronous read of the live `--sab-px` CSS variable so first-render state
+ * already reflects the safe-area inset. `useSafeAreaSync` (mounted in App)
+ * populates the variable in a `useLayoutEffect`, so by the time any chat
+ * page mounts the value is correct on the document root.
+ */
+function readSafeBottomPxOnce(): number {
+  if (typeof document === 'undefined') return 0
+  return readCssPxVar('--sab-px')
+}
+
 const DEFAULT_COMPOSER_PADDING = 64
 const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48
 const NATIVE_KEYBOARD_MIN_HEIGHT = 60
@@ -27,8 +38,6 @@ export interface UseChatComposerChromeOptions {
   textareaRef: RefObject<HTMLTextAreaElement | null>
   composerRef: RefObject<HTMLDivElement | null>
   onLayoutNudge?: () => void
-  /** Snap list inset (no 250ms ease) while thread is opening — avoids iOS false scroll-up. */
-  snapListInset?: boolean
 }
 
 export function useChatComposerChrome({
@@ -36,14 +45,16 @@ export function useChatComposerChrome({
   textareaRef,
   composerRef,
   onLayoutNudge,
-  snapListInset = false,
 }: UseChatComposerChromeOptions) {
   const onLayoutNudgeRef = useRef(onLayoutNudge)
   onLayoutNudgeRef.current = onLayoutNudge
 
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const [composerHeight, setComposerHeight] = useState(DEFAULT_COMPOSER_PADDING)
-  const [safeBottomPx, setSafeBottomPx] = useState(0)
+  // Seed from the live CSS var so the first paint already includes the
+  // bottom safe-area inset (prevents a post-paint vertical shift in the
+  // inverted chat list on iOS notch devices).
+  const [safeBottomPx, setSafeBottomPx] = useState(readSafeBottomPxOnce)
   const [viewportLift, setViewportLift] = useState(0)
 
   const composerCardRef = useRef<HTMLDivElement | null>(null)
@@ -75,7 +86,7 @@ export function useChatComposerChrome({
     }
   }, [])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof window === 'undefined') return
 
     const syncSafeBottom = () => {
@@ -115,7 +126,6 @@ export function useChatComposerChrome({
 
   const smoothedKeyboardLift = useSmoothedPx(keyboardLift, {
     onTick: () => onLayoutNudgeRef.current?.(),
-    snap: snapListInset,
   })
   /** Composer + list inset — smoothed on iOS/web; Android visualViewport already tracks IME. */
   const displayKeyboardLift = isAndroid ? keyboardLift : smoothedKeyboardLift

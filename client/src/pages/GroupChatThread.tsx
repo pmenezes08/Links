@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -10,13 +10,12 @@ import { gifSelectionToFile } from '../utils/gif'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { GroupMessageRow } from '../chat/GroupMessageRow'
 import { getDateKey, normalizeMediaPath, useChatThreadChrome, chatHapticSend, ChatAttachMenuRow, useGroupMessagePoll, ChatMediaPreviewModal, ChatMediaViewerModal, ChatSelectionBar, NewMessagesChip, useResumeOutboxDrain, ChatComposerPortal, ChatComposerCard, ChatVirtualMessageList, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION } from '../chat'
-import { groupChatMessagesDeviceCacheKey } from '../utils/chatThreadsCache'
+import { groupChatInfoDeviceCacheKey, groupChatMessagesDeviceCacheKey } from '../utils/chatThreadsCache'
 import { useNativeStatusBar } from '../hooks/useNativeStatusBar'
 import { useAndroidBackButton } from '../hooks/useAndroidBackButton'
 import { Style } from '@capacitor/status-bar'
 import { NativeIconButton } from '../components/NativeIconButton'
 import {
-  mergeGroupReactionsFromMessages,
   mergePolledGroupMessages,
   GROUP_SEND_CONFIRM_TIMEOUT_MS,
 } from '../utils/groupPollMergeMessages'
@@ -117,9 +116,12 @@ export default function GroupChatThread() {
   const currentUsername = (currentUserProfile as { username?: string })?.username
     || localStorage.getItem('current_username')
     || ''
-  const [cacheFastOpen, setCacheFastOpen] = useState(false)
   const groupChatCacheKey = useMemo(
     () => (group_id && currentUsername ? groupChatMessagesDeviceCacheKey(currentUsername, group_id) : null),
+    [group_id, currentUsername],
+  )
+  const groupInfoCacheKey = useMemo(
+    () => (group_id && currentUsername ? groupChatInfoDeviceCacheKey(currentUsername, group_id) : null),
     [group_id, currentUsername],
   )
   const entitlementsHandler = useEntitlementsHandler()
@@ -142,9 +144,30 @@ export default function GroupChatThread() {
     },
     [enforcement_enabled, entitlementsLoading, entitlements, entitlementsHandler],
   )
-  const [group, setGroup] = useState<GroupInfo | null>(null)
-  const [serverMessages, setServerMessages] = useState<Message[]>([])
-  const [loading, setLoading] = useState(true)
+  // Seed group + messages synchronously from device cache so the chat shell
+  // (header + bubbles + reactions) paints on the first frame, matching DM
+  // parity. No more loading-screen swap on open. The async IndexedDB +
+  // network paths still reconcile in the background.
+  const [group, setGroup] = useState<GroupInfo | null>(() => {
+    if (typeof window === 'undefined') return null
+    if (!group_id || !currentUsername) return null
+    return readDeviceCache<GroupInfo>(
+      groupChatInfoDeviceCacheKey(currentUsername, group_id),
+      CHAT_CACHE_VERSION,
+    )
+  })
+  const [serverMessages, setServerMessages] = useState<Message[]>(() => {
+    if (typeof window === 'undefined') return []
+    if (!group_id || !currentUsername) return []
+    const cached = readDeviceCache<Message[]>(
+      groupChatMessagesDeviceCacheKey(currentUsername, group_id),
+      CHAT_CACHE_VERSION,
+    )
+    return cached?.length ? cached : []
+  })
+  // `loading` only gates the inline spinner inside the chat shell; we no
+  // longer return a separate full-screen loading view.
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
   // Server messages are already in chronological order from the API; just append optimistic at the end
@@ -200,7 +223,6 @@ export default function GroupChatThread() {
   const [stevePersonality, setStevePersonality] = useState('default')
   const [removingMember, setRemovingMember] = useState<string | null>(null)
   const [deletingMedia, setDeletingMedia] = useState(false)
-  const [reactions, setReactions] = useState<Record<number, string>>({})
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editText, setEditText] = useState('')
   const [editingSaving, setEditingSaving] = useState(false)
@@ -329,16 +351,14 @@ export default function GroupChatThread() {
     hasMoreMessages,
     loadingOlderRef,
     onLoadOlder: () => loadOlderRef.current?.(),
-    fastOpen: cacheFastOpen,
   })
 
   const {
     messageStackRef,
     ensurePinnedToBottom,
+    scrollToBottomSmooth,
     notifyMessagesSettled,
     showScrollDown,
-    listRevealReady,
-    listOpening,
     lastMessageRef,
     pendingNewCount,
     clearPendingNew,
@@ -381,7 +401,10 @@ export default function GroupChatThread() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [headerMenuOpen])
 
-  useEffect(() => {
+  // Run as useLayoutEffect so re-seeding from device cache happens before
+  // the next paint when navigating between threads. Avoids a "null group +
+  // empty list" flash between thread A and thread B.
+  useLayoutEffect(() => {
     if (!group_id) return
     threadGenerationRef.current += 1
     pollTickRef.current = 0
@@ -389,16 +412,34 @@ export default function GroupChatThread() {
     clientKeyServerIdRef.current.clear()
     lastMessageIdRef.current = 0
     pendingDeletions.current.clear()
-    setServerMessages([])
-    setGroup(null)
+
+    const cachedGroup = groupInfoCacheKey
+      ? readDeviceCache<GroupInfo>(groupInfoCacheKey, CHAT_CACHE_VERSION)
+      : null
+    const cachedMessages = groupChatCacheKey
+      ? readDeviceCache<Message[]>(groupChatCacheKey, CHAT_CACHE_VERSION)
+      : null
+
+    setGroup(cachedGroup)
+    setServerMessages(cachedMessages?.length ? cachedMessages : [])
     setSteveIsTyping(false)
-    setReactions({})
     setHasMoreMessages(false)
     setError(null)
-    cachePaintedGenRef.current = null
-    cacheSnapshotRef.current = null
-    setCacheFastOpen(false)
-  }, [group_id])
+
+    const gen = threadGenerationRef.current
+    if (cachedMessages?.length) {
+      cachePaintedGenRef.current = gen
+      cacheSnapshotRef.current = {
+        count: cachedMessages.length,
+        tailId: cachedMessages[cachedMessages.length - 1]?.id,
+      }
+      const newMaxId = Math.max(...cachedMessages.map(m => m.id))
+      if (newMaxId > 0) lastMessageIdRef.current = newMaxId
+    } else {
+      cachePaintedGenRef.current = null
+      cacheSnapshotRef.current = null
+    }
+  }, [group_id, groupChatCacheKey, groupInfoCacheKey])
 
   const paintGroupCacheMessages = useCallback((cached: Message[], gen: number) => {
     setServerMessages(prev => {
@@ -414,27 +455,25 @@ export default function GroupChatThread() {
       count: cached.length,
       tailId: cached[cached.length - 1]?.id,
     }
-    setCacheFastOpen(true)
     notifyMessagesSettledRef.current(gen)
   }, [])
 
-  // Cache-first hydrate on thread switch (device cache sync, then IndexedDB)
+  // Async fallback: if device cache was empty above, try IndexedDB for
+  // group info and messages. Device cache is already seeded synchronously
+  // in the thread-switch useLayoutEffect, so this only fires on first
+  // visit / cache miss.
   useEffect(() => {
     if (!group_id) return
     const gen = threadGenerationRef.current
 
-    void getCachedKeyVal<GroupInfo>(`group-info:${group_id}`).then(cached => {
-      if (gen !== threadGenerationRef.current) return
-      if (cached) setGroup(prev => prev || cached)
-    })
-
-    const cachedDevice = groupChatCacheKey
-      ? readDeviceCache<Message[]>(groupChatCacheKey, CHAT_CACHE_VERSION)
-      : null
-    if (cachedDevice?.length) {
-      paintGroupCacheMessages(cachedDevice, gen)
-      return
+    if (!group) {
+      void getCachedKeyVal<GroupInfo>(`group-info:${group_id}`).then(cached => {
+        if (gen !== threadGenerationRef.current) return
+        if (cached) setGroup(prev => prev || cached)
+      })
     }
+
+    if (cachePaintedGenRef.current === gen) return
 
     void getCachedMessages(`group:${group_id}`).then(cached => {
       if (gen !== threadGenerationRef.current) return
@@ -442,7 +481,7 @@ export default function GroupChatThread() {
         paintGroupCacheMessages(cached as Message[], gen)
       }
     }).catch(() => {})
-  }, [group_id, groupChatCacheKey, paintGroupCacheMessages])
+  }, [group_id, group, paintGroupCacheMessages])
 
   const focusTextarea = useCallback(() => {
     if (MIC_ENABLED && recording) return
@@ -489,6 +528,11 @@ export default function GroupChatThread() {
       if (data.success) {
         setGroup(data.group)
         cacheKeyVal(`group-info:${group_id}`, data.group)
+        // Mirror to device cache so the next open paints the header on the
+        // first frame (matches the message-cache pattern above).
+        if (groupInfoCacheKey) {
+          writeDeviceCache(groupInfoCacheKey, data.group, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION)
+        }
       } else {
         setError(data.error || t('chat.failed_load_group'))
       }
@@ -499,7 +543,7 @@ export default function GroupChatThread() {
       if (cached) setGroup(prev => prev || cached)
       else setError(t('chat.failed_load_group'))
     }
-  }, [group_id, t])
+  }, [group_id, groupInfoCacheKey, t])
 
   const loadMessages = useCallback(async (silent = false) => {
     const gen = threadGenerationRef.current
@@ -516,7 +560,11 @@ export default function GroupChatThread() {
       }
       return
     }
-    if (!silent) setLoading(true)
+    // Only show the inline spinner when the chat shell has no cached
+    // content to paint yet. With a warm cache the network refresh is
+    // silent (no extra render hop).
+    const hasPaintedFromCache = cachePaintedGenRef.current === gen
+    if (!silent && !hasPaintedFromCache) setLoading(true)
     try {
       const url = `/api/group_chat/${group_id}/messages?limit=50`
       const response = await fetch(url, { credentials: 'include', headers: { 'Accept': 'application/json' } })
@@ -545,6 +593,10 @@ export default function GroupChatThread() {
           String(newServerMessages[newServerMessages.length - 1]?.id) === String(snap.tailId)
 
         if (!unchangedFromCache) {
+          // Reactions ride along on each message row (`msg.reaction`) —
+          // no separate state map. `mergePolledGroupMessages` already
+          // replaces matching rows with the new server payload, so any
+          // emoji change is part of the same render as the bubble.
           setServerMessages(prev => {
             if (gen !== threadGenerationRef.current) return prev
             return mergePolledGroupMessages(prev, newServerMessages, {
@@ -553,7 +605,6 @@ export default function GroupChatThread() {
               silent,
             }) as Message[]
           })
-          setReactions(prev => mergeGroupReactionsFromMessages(prev, newServerMessages))
         }
 
         const newMaxId = newServerMessages.length > 0 ? Math.max(...newServerMessages.map(m => m.id)) : 0
@@ -591,16 +642,15 @@ export default function GroupChatThread() {
       const j = await r.json()
       if (gen !== threadGenerationRef.current || fetchGroupId !== activeGroupIdRef.current) return
       if (j?.success && Array.isArray(j.messages) && j.messages.length > 0) {
-        const el = listRef.current
-        const prevHeight = el?.scrollHeight || 0
         setServerMessages(prev => {
           const older = (j.messages as Message[]).filter(m => !prev.some(p => p.id === m.id))
           return [...older, ...prev]
         })
         setHasMoreMessages(!!j.has_more)
-        requestAnimationFrame(() => {
-          if (el) el.scrollTop = el.scrollHeight - prevHeight
-        })
+        // Inverted list invariant: column-reverse anchors layout at the
+        // visual bottom, so prepending older content preserves the user's
+        // visual position automatically. Do NOT touch scrollTop here.
+        // See .cursor/rules/chat-surfaces.mdc.
       } else {
         setHasMoreMessages(false)
       }
@@ -623,7 +673,6 @@ export default function GroupChatThread() {
     pollTickRef,
     pendingDeletions,
     setServerMessages,
-    setReactions,
     setSteveIsTyping,
   })
 
@@ -681,10 +730,13 @@ export default function GroupChatThread() {
     return () => window.removeEventListener('outbox-drained', handler)
   }, [loadMessages])
 
-  // Restore draft when entering group chat
-  // Restore draft when entering group chat (only if there's an actual saved draft)
-  // Added extra protection for iOS navigation - clear any stale content first
-  useEffect(() => {
+  // Restore draft when entering group chat (only if there's an actual saved draft).
+  // Added extra protection for iOS navigation - clear any stale content first.
+  // Runs in useLayoutEffect so the textarea auto-height (and resulting
+  // composer card height) is committed in the same paint as the chat shell.
+  // Without this, the post-paint adjustment grows `listPaddingBottom` and
+  // visibly shifts the inverted message list upward by a few pixels on open.
+  useLayoutEffect(() => {
     if (!group_id || !textareaRef.current) return
     
     // Force clear any stale content before checking for saved draft (fixes iOS navigation issue)
@@ -699,7 +751,6 @@ export default function GroupChatThread() {
       setDraftDisplay(savedDraft)
       adjustTextareaHeight()
     } else {
-      // Ensure clean state if no draft
       draftRef.current = ''
       setDraftDisplay('')
       adjustTextareaHeight()
@@ -1631,19 +1682,17 @@ export default function GroupChatThread() {
 
   // Message action handlers
   const handleReaction = async (messageId: number, emoji: string) => {
-    const currentReaction = reactions[messageId]
+    const target = serverMessages.find(m => m.id === messageId)
+    const currentReaction = (target?.reaction ?? null) || null
     const newReaction = currentReaction === emoji ? null : emoji
-    
-    // Optimistic update
-    setReactions(prev => {
-      if (newReaction === null) {
-        const { [messageId]: _, ...rest } = prev
-        return rest
-      }
-      return { ...prev, [messageId]: newReaction }
-    })
-    
-    // Save to backend
+
+    // Optimistic update: reactions live on the message row itself
+    // (DM parity), so the bubble renders the new state in the same
+    // frame as any subsequent server reconcile.
+    setServerMessages(prev =>
+      prev.map(m => (m.id === messageId ? { ...m, reaction: newReaction } : m)),
+    )
+
     try {
       const response = await fetch(`/api/group_chat/${group_id}/message/${messageId}/react`, {
         method: 'POST',
@@ -1653,25 +1702,15 @@ export default function GroupChatThread() {
       })
       const data = await response.json()
       if (!data.success) {
-        // Revert on failure
-        setReactions(prev => {
-          if (currentReaction) {
-            return { ...prev, [messageId]: currentReaction }
-          }
-          const { [messageId]: _, ...rest } = prev
-          return rest
-        })
+        setServerMessages(prev =>
+          prev.map(m => (m.id === messageId ? { ...m, reaction: currentReaction } : m)),
+        )
       }
     } catch (err) {
       console.error('Failed to save reaction:', err)
-      // Revert on error
-      setReactions(prev => {
-        if (currentReaction) {
-          return { ...prev, [messageId]: currentReaction }
-        }
-        const { [messageId]: _, ...rest } = prev
-        return rest
-      })
+      setServerMessages(prev =>
+        prev.map(m => (m.id === messageId ? { ...m, reaction: currentReaction } : m)),
+      )
     }
   }
 
@@ -1966,26 +2005,6 @@ export default function GroupChatThread() {
   const mediaUploadBanner: UploadProgress | null =
     uploadProgress ?? (uploadingMedia ? { stage: 'uploading', progress: 0 } : null)
 
-  if (loading && !group) {
-    return (
-      <div className="min-h-screen chat-thread-bg text-white flex flex-col">
-        <div style={{ paddingTop: 'env(safe-area-inset-top, 0px)', background: '#000' }}>
-          <div className="h-12 flex items-center px-3">
-            <button className="p-2 rounded-full hover:bg-white/10" onClick={() => navigate('/user_chat')} aria-label={t('common.back')}>
-              <i className="fa-solid fa-arrow-left text-white" />
-            </button>
-          </div>
-        </div>
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-[#9fb0b5]">
-            <i className="fa-solid fa-spinner fa-spin mr-2" />
-            Loading...
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   if (error) {
     return (
       <div className="min-h-screen chat-thread-bg text-white flex flex-col">
@@ -2191,78 +2210,49 @@ export default function GroupChatThread() {
         }}
       >
         <div className="mx-auto flex max-w-3xl w-full flex-1 flex-col min-h-0">
-          {/* Messages List */}
+          {/* Messages List (inverted: column-reverse) */}
           <div
             ref={listRef}
             data-preserve-scroll="true"
-            className={`flex-1 space-y-[9px] overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-list-inset${listOpening ? ' chat-list-opening' : ''}`}
+            className="flex-1 overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-list-inset"
             style={{
               WebkitOverflowScrolling: 'touch',
               overscrollBehaviorY: 'auto',
               paddingBottom: listPaddingBottom,
               scrollPaddingBottom: listScrollPaddingBottom,
               minHeight: 0,
-              opacity: listRevealReady ? 1 : 0,
+              display: 'flex',
+              flexDirection: 'column-reverse',
             } as CSSProperties}
             onPointerDown={handleContentPointerDown}
             onPointerUp={handleContentPointerUp}
             onPointerCancel={handleContentPointerCancel}
             onScroll={handleListScroll}
           >
-            {/* Load older messages */}
-            {loadingOlder && (
-              <div className="flex justify-center py-3">
-                <i className="fa-solid fa-spinner fa-spin text-[#4db6ac] text-sm" />
-              </div>
-            )}
-            {hasMoreMessages && !loadingOlder && (
-              <div className="flex justify-center py-2">
-                <button onClick={loadOlderMessages} className="text-xs text-[#4db6ac] hover:text-[#4db6ac]/80">
-                  Load older messages
-                </button>
-              </div>
-            )}
-            {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 text-[#9fb0b5]">
-                {!navigator.onLine ? (
-                  <>
-                    <i className="fa-solid fa-wifi-slash text-3xl mb-3 opacity-50" />
-                    <div className="text-sm">{t('chat.offline_unavailable')}</div>
-                    <div className="text-xs mt-1 opacity-70">{t('chat.offline_go_online')}</div>
-                  </>
-                ) : (
-                  <>
-                    <i className="fa-solid fa-comments text-4xl mb-3 opacity-50" />
-                    <div className="text-sm">{t('chat.empty_state')}</div>
-                    <div className="text-xs mt-1">{t('chat.empty_group_helper')}</div>
-                  </>
-                )}
-              </div>
-            ) : (
-              <ChatVirtualMessageList
-                messages={messages}
-                messageStackRef={messageStackRef}
-                lastMessageRef={lastMessageRef}
-                listRef={listRef}
-                className="space-y-3 py-3"
-                followOutput={!showScrollDown}
-                itemKey={(msg, idx) => {
-                  const mk = msg as Message & { clientKey?: string }
-                  return mk.clientKey ?? msg.id ?? idx
-                }}
-                footer={
-                  steveIsTyping ? (
-                    <div className="min-h-[36px]">
-                      <SteveTypingIndicator active={steveIsTyping} />
-                    </div>
-                  ) : undefined
-                }
-                renderItem={(msg, idx) => {
+            {/* DOM order under column-reverse: first child = visual bottom, last child = visual top. */}
+            <ChatVirtualMessageList
+              messages={messages}
+              messageStackRef={messageStackRef}
+              lastMessageRef={lastMessageRef}
+              listRef={listRef}
+              className="space-y-3 py-3"
+              itemKey={(msg, idx) => {
+                const mk = msg as Message & { clientKey?: string }
+                return mk.clientKey ?? msg.id ?? idx
+              }}
+              footer={
+                steveIsTyping ? (
+                  <div className="min-h-[36px]">
+                    <SteveTypingIndicator active={steveIsTyping} />
+                  </div>
+                ) : undefined
+              }
+              renderItem={(msg, idx) => {
                   const msgWithKey = msg as Message & { clientKey?: string; replySnippet?: string; replySender?: string }
                   const showAvatar = idx === 0 || messages[idx - 1].sender !== msg.sender
                   const showTime = showAvatar || (idx > 0 &&
                     new Date(msg.created_at).getTime() - new Date(messages[idx - 1].created_at).getTime() > 60000)
-                  const messageReaction = reactions[msg.id]
+                  const messageReaction = msg.reaction || undefined
                   const isOptimistic = !!(msgWithKey as any).isOptimistic || msgWithKey.clientKey?.startsWith('temp_') || msg.id < 0
                   const sendFailed = !!(msgWithKey as any).sendFailed
                   const senderNormalized = (msg.sender || '').toLowerCase().trim()
@@ -2354,11 +2344,46 @@ export default function GroupChatThread() {
                         msgWithKey.clientKey ? () => retryFailedMessage(msgWithKey.clientKey!) : undefined
                       }
                       onRemoveMediaItem={selectionMode ? undefined : handleRemoveGroupMediaItem}
-                      linkPreviewReady={listRevealReady}
+                      linkPreviewReady={true}
                     />
                   )
                 }}
               />
+
+            {/* Load older / empty state — visually at the top of the inverted list. */}
+            {loadingOlder && (
+              <div className="flex justify-center py-3">
+                <i className="fa-solid fa-spinner fa-spin text-[#4db6ac] text-sm" />
+              </div>
+            )}
+            {hasMoreMessages && !loadingOlder && (
+              <div className="flex justify-center py-2">
+                <button onClick={loadOlderMessages} className="text-xs text-[#4db6ac] hover:text-[#4db6ac]/80">
+                  Load older messages
+                </button>
+              </div>
+            )}
+            {messages.length === 0 && loading && (
+              <div className="flex flex-col items-center justify-center py-20 text-[#9fb0b5]">
+                <i className="fa-solid fa-spinner fa-spin text-2xl mb-3 opacity-70" />
+              </div>
+            )}
+            {messages.length === 0 && !loading && (
+              <div className="flex flex-col items-center justify-center py-20 text-[#9fb0b5]">
+                {!navigator.onLine ? (
+                  <>
+                    <i className="fa-solid fa-wifi-slash text-3xl mb-3 opacity-50" />
+                    <div className="text-sm">{t('chat.offline_unavailable')}</div>
+                    <div className="text-xs mt-1 opacity-70">{t('chat.offline_go_online')}</div>
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-comments text-4xl mb-3 opacity-50" />
+                    <div className="text-sm">{t('chat.empty_state')}</div>
+                    <div className="text-xs mt-1">{t('chat.empty_group_helper')}</div>
+                  </>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -2370,7 +2395,7 @@ export default function GroupChatThread() {
           count={pendingNewCount}
           bottom={scrollButtonBottom}
           onClick={() => {
-            ensurePinnedToBottom()
+            scrollToBottomSmooth()
             clearPendingNew()
           }}
         />
@@ -2386,7 +2411,7 @@ export default function GroupChatThread() {
             right: '22px',
           }}
           onClick={() => {
-            ensurePinnedToBottom()
+            scrollToBottomSmooth()
           }}
           aria-label={t('chat.scroll_latest')}
         >

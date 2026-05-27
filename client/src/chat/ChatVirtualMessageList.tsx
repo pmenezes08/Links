@@ -1,122 +1,58 @@
-import { forwardRef, useEffect, useState, type ReactNode, type RefObject } from 'react'
-import { Virtuoso } from 'react-virtuoso'
-import { CHAT_VIRTUAL_LIST_THRESHOLD, CHAT_VIRTUOSO_ENABLED } from './constants'
+import type { ReactNode, RefObject } from 'react'
 
 export type ChatVirtualMessageListProps<T> = {
   messages: T[]
   messageStackRef: RefObject<HTMLDivElement | null>
   lastMessageRef: (node: HTMLDivElement | null) => void
-  listRef: RefObject<HTMLDivElement | null>
+  /** Kept for API symmetry with previous Virtuoso-aware implementation. */
+  listRef?: RefObject<HTMLDivElement | null>
   renderItem: (message: T, index: number, isLast: boolean) => ReactNode
   itemKey?: (message: T, index: number) => string | number
   footer?: ReactNode
   className?: string
-  /** When true, Virtuoso follows new tail messages (user near bottom). */
+  /** Reserved for future use; the inverted layout follows new tail automatically. */
   followOutput?: boolean
+  /** Reserved for future use; native scroll events on the inverted container drive this. */
   onAtBottomStateChange?: (atBottom: boolean) => void
 }
 
-function assignRef<T>(ref: RefObject<T | null>, value: T | null) {
-  ;(ref as { current: T | null }).current = value
-}
-
-type VirtualListProps = React.HTMLAttributes<HTMLDivElement> & {
-  messageStackRef: RefObject<HTMLDivElement | null>
-  className?: string
-}
-
-const VirtualList = forwardRef<HTMLDivElement, VirtualListProps>(
-  ({ messageStackRef, className, style, children, ...props }, ref) => (
-    <div
-      {...props}
-      ref={node => {
-        if (typeof ref === 'function') ref(node)
-        else if (ref) ref.current = node
-        assignRef(messageStackRef, node)
-      }}
-      className={className}
-      style={style}
-    >
-      {children}
-    </div>
-  ),
-)
-VirtualList.displayName = 'ChatVirtualList'
-
-/** Standard map below threshold; Virtuoso window above threshold (same scroll parent). */
+/**
+ * Chat message stack rendered inside the inverted (column-reverse) scroll container.
+ *
+ * Messages are rendered in their natural (oldest → newest) DOM order. The
+ * parent scroll container uses `flex-direction: column-reverse`, which makes
+ * `scrollTop = 0` correspond to the visual bottom (newest message above the
+ * composer). No virtualization is used — chat threads cap at the loaded
+ * pagination set and the column-reverse layout is self-correcting under media
+ * reflow without any JS pinning.
+ *
+ * Layout in the parent container (DOM order, with column-reverse applied):
+ *   [ this stack (newest at bottom, oldest at top), loadOlder slot, empty state ]
+ * resulting in visual top-to-bottom:
+ *   [ empty state, loadOlder slot, oldest ... newest, footer (typing) ]
+ */
 export function ChatVirtualMessageList<T>({
   messages,
   messageStackRef,
   lastMessageRef,
-  listRef,
   renderItem,
   itemKey,
   footer,
   className = 'space-y-[9px]',
-  followOutput = true,
-  onAtBottomStateChange,
 }: ChatVirtualMessageListProps<T>) {
-  const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null)
-
-  useEffect(() => {
-    setScrollParent(listRef.current)
-  }, [listRef])
-
   const resolveKey = (msg: T, index: number) => String(itemKey?.(msg, index) ?? index)
 
-  const useVirtuoso =
-    CHAT_VIRTUOSO_ENABLED &&
-    messages.length > CHAT_VIRTUAL_LIST_THRESHOLD &&
-    Boolean(scrollParent)
-
-  if (!useVirtuoso) {
-    return (
-      <div ref={messageStackRef} className={className}>
-        {messages.map((msg, idx) => {
-          const isLast = idx === messages.length - 1
-          return (
-            <div key={resolveKey(msg, idx)} ref={isLast ? lastMessageRef : undefined}>
-              {renderItem(msg, idx, isLast)}
-            </div>
-          )
-        })}
-        {footer}
-        <div className="scroll-anchor h-px w-full flex-shrink-0" aria-hidden="true" />
-      </div>
-    )
-  }
-
   return (
-    <Virtuoso
-      customScrollParent={scrollParent!}
-      totalCount={messages.length}
-      increaseViewportBy={{ top: 400, bottom: 200 }}
-      followOutput={followOutput ? 'auto' : false}
-      atBottomStateChange={onAtBottomStateChange}
-      computeItemKey={index => resolveKey(messages[index], index)}
-      components={{
-        List: props => (
-          <VirtualList
-            {...props}
-            messageStackRef={messageStackRef}
-            className={className}
-          />
-        ),
-        Footer: () => (
-          <>
-            {footer}
-            <div className="scroll-anchor h-px w-full flex-shrink-0" aria-hidden="true" />
-          </>
-        ),
-      }}
-      itemContent={index => {
-        const isLast = index === messages.length - 1
+    <div ref={messageStackRef} className={className}>
+      {messages.map((msg, idx) => {
+        const isLast = idx === messages.length - 1
         return (
-          <div ref={isLast ? lastMessageRef : undefined} className="pb-[9px]">
-            {renderItem(messages[index], index, isLast)}
+          <div key={resolveKey(msg, idx)} ref={isLast ? lastMessageRef : undefined}>
+            {renderItem(msg, idx, isLast)}
           </div>
         )
-      }}
-    />
+      })}
+      {footer}
+    </div>
   )
 }

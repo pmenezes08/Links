@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MutableRefObject, type RefObject } from 'react'
+import { useRef, type MutableRefObject, type RefObject } from 'react'
 import { useChatComposerChrome } from './useChatComposerChrome'
 import { useChatListScrollHandlers } from './useChatListScrollHandlers'
 import { useChatThreadScroll, type ChatThreadScrollMessage } from './hooks'
@@ -14,12 +14,11 @@ export interface UseChatThreadChromeOptions {
   loadingOlderRef: MutableRefObject<boolean>
   onLoadOlder?: () => void
   loadOlderEnabled?: boolean
-  fastOpen?: boolean
 }
 
 /**
- * Composes composer keyboard chrome, thread scroll pin, and list scroll handlers
- * for DM + group chat threads.
+ * Composes composer keyboard chrome, inverted-list scroll state, and list
+ * scroll handlers for DM + group chat threads.
  */
 export function useChatThreadChrome({
   isMobile,
@@ -32,44 +31,31 @@ export function useChatThreadChrome({
   loadingOlderRef,
   onLoadOlder,
   loadOlderEnabled = true,
-  fastOpen = false,
 }: UseChatThreadChromeOptions) {
   const layoutNudgeRef = useRef<(() => void) | undefined>(undefined)
-  const [snapListInset, setSnapListInset] = useState(true)
-
-  useEffect(() => {
-    setSnapListInset(true)
-  }, [threadKey])
 
   const chrome = useChatComposerChrome({
     isMobile,
     textareaRef,
     composerRef,
     onLayoutNudge: () => layoutNudgeRef.current?.(),
-    snapListInset,
   })
 
   const scroll = useChatThreadScroll({
     listRef,
     threadKey,
     messages,
-    bottomInsetPx: chrome.bottomInsetPx,
-    fastOpen,
   })
 
-  layoutNudgeRef.current = scroll.scrollToBottomIfAppropriate
-
-  useEffect(() => {
-    if (!scroll.listOpening && snapListInset) {
-      setSnapListInset(false)
-    }
-  }, [scroll.listOpening, snapListInset])
+  // Keyboard / inset changes do not need to pin — the inverted layout keeps
+  // the newest message anchored at scrollTop = 0 automatically. We only need
+  // to clear pending count if the user happens to be at the bottom.
+  layoutNudgeRef.current = () => {
+    scroll.notifyMessagesSettled(0)
+  }
 
   const { onScroll: handleListScroll } = useChatListScrollHandlers({
     userHasScrolledRef: scroll.userHasScrolledRef,
-    initialPinActiveRef: scroll.initialPinActiveRef,
-    programmaticScrollRef: scroll.programmaticScrollRef,
-    cancelInitialPin: scroll.cancelInitialPin,
     setShowScrollDown: scroll.setShowScrollDown,
     touchDismissRef: chrome.touchDismissRef,
     hasMoreMessages,

@@ -10,6 +10,7 @@ export const VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES: readonly string[] = [
   'chat-communities-tree',
   'chat-messages:',
   'group-chat-messages:',
+  'group-chat-info:',
   'chat-profile:',
 ]
 
@@ -40,6 +41,11 @@ export function chatMessagesDeviceCacheKey(viewerUsername: string, peerUsername:
 
 export function groupChatMessagesDeviceCacheKey(viewerUsername: string, groupId: string): string {
   return `group-chat-messages:${viewerUsername}:${groupId}`
+}
+
+/** Synchronous device-cache mirror of GroupInfo (header chrome) so first paint can render the title/member count. */
+export function groupChatInfoDeviceCacheKey(viewerUsername: string, groupId: string): string {
+  return `group-chat-info:${viewerUsername}:${groupId}`
 }
 
 export function chatProfileDeviceCacheKey(viewerUsername: string, peerUsername: string): string {

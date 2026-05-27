@@ -1,9 +1,18 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
 import { computeKeyboardLift, readCssPxVar, readVisualViewportImeInset } from '../utils/keyboardLift'
+
+/**
+ * Synchronous read of the live `--sab-px` CSS variable so first-render state
+ * already reflects the safe-area inset (no post-paint shift on iOS notch).
+ */
+function readSafeBottomPxOnce(): number {
+  if (typeof document === 'undefined') return 0
+  return readCssPxVar('--sab-px')
+}
 
 const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48
 const NATIVE_KEYBOARD_MIN_HEIGHT = 60
@@ -24,11 +33,11 @@ export function useFixedComposerKeyboard(options: UseFixedComposerKeyboardOption
   const viewportBaseRef = useRef<number | null>(null)
   const [viewportLift, setViewportLift] = useState(0)
   const [androidImeInset, setAndroidImeInset] = useState(0)
-  const [safeBottomPx, setSafeBottomPx] = useState(0)
+  const [safeBottomPx, setSafeBottomPx] = useState(readSafeBottomPxOnce)
 
   const isAndroid = Capacitor.getPlatform() === 'android'
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof window === 'undefined') return
 
     const syncSafeBottom = () => {

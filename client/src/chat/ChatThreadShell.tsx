@@ -3,8 +3,6 @@ import type { CSSProperties, ReactNode, RefObject } from 'react'
 export type ChatThreadShellProps = {
   header: ReactNode
   listRef: RefObject<HTMLDivElement | null>
-  listOpening?: boolean
-  listRevealReady?: boolean
   listPaddingBottom: string | number
   listScrollPaddingBottom?: string | number
   onScroll?: React.UIEventHandler<HTMLDivElement>
@@ -18,12 +16,21 @@ export type ChatThreadShellProps = {
   children: ReactNode
 }
 
-/** Fixed viewport shell: header slot + scrollable message list with composer inset. */
+/**
+ * Fixed viewport shell: header slot + inverted (column-reverse) scrollable
+ * message list with composer inset.
+ *
+ * The scroll container uses `flex-direction: column-reverse` so the newest
+ * message renders at the visual bottom in `scrollTop = 0` coordinates, with
+ * no JS pinning required on open.
+ *
+ * DOM child order is reversed visually:
+ *   first DOM child  -> visual bottom (newest)
+ *   last DOM child   -> visual top    (oldest / load-older trigger)
+ */
 export function ChatThreadShell({
   header,
   listRef,
-  listOpening = false,
-  listRevealReady = true,
   listPaddingBottom,
   listScrollPaddingBottom,
   onScroll,
@@ -32,7 +39,7 @@ export function ChatThreadShell({
   onPointerCancel,
   androidKeyboardOpen = false,
   maxWidthClass = 'max-w-3xl',
-  listClassName = 'flex-1 space-y-[9px] overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-list-inset',
+  listClassName = 'flex-1 overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-list-inset',
   loadOlderSlot,
   children,
 }: ChatThreadShellProps) {
@@ -66,22 +73,23 @@ export function ChatThreadShell({
           <div
             ref={listRef}
             data-preserve-scroll="true"
-            className={`${listClassName}${listOpening ? ' chat-list-opening' : ''}`}
+            className={listClassName}
             style={{
               WebkitOverflowScrolling: 'touch',
               overscrollBehaviorY: 'auto',
               paddingBottom: listPaddingBottom,
               scrollPaddingBottom: listScrollPaddingBottom,
               minHeight: 0,
-              visibility: listRevealReady ? 'visible' : 'hidden',
+              display: 'flex',
+              flexDirection: 'column-reverse',
             } as CSSProperties}
             onPointerDown={onPointerDown}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerCancel}
             onScroll={onScroll}
           >
-            {loadOlderSlot}
             {children}
+            {loadOlderSlot}
           </div>
         </div>
       </div>

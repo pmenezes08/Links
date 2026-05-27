@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -191,7 +192,6 @@ export default function ChatThread(){
   const threadGenerationRef = useRef(0)
   const cachePaintedGenRef = useRef<number | null>(null)
   const cacheSnapshotRef = useRef<{ count: number; tailId: string | number | undefined } | null>(null)
-  const [cacheFastOpen, setCacheFastOpen] = useState(false)
   const resolvedPeerRef = useRef<{ username: string; userId: number } | null>(null)
   // Track last known message ID for faster incremental polling
   const lastKnownMessageIdRef = useRef<number>(0)
@@ -294,7 +294,6 @@ export default function ChatThread(){
     setOtherUserId('')
     cachePaintedGenRef.current = null
     cacheSnapshotRef.current = null
-    setCacheFastOpen(false)
   }, [username])
 
   const loadReminderVault = useCallback(async () => {
@@ -357,17 +356,15 @@ export default function ChatThread(){
     loadingOlderRef,
     onLoadOlder: () => loadOlderRef.current?.(),
     loadOlderEnabled: Boolean(otherUserId),
-    fastOpen: cacheFastOpen,
   })
 
   const {
     messageStackRef,
     scrollToBottom,
+    scrollToBottomSmooth,
     ensurePinnedToBottom,
     notifyMessagesSettled,
     showScrollDown,
-    listRevealReady,
-    listOpening,
     lastMessageRef,
     pendingNewCount,
     clearPendingNew,
@@ -564,7 +561,6 @@ export default function ChatThread(){
         count: processed.length,
         tailId: processed[processed.length - 1]?.id,
       }
-      setCacheFastOpen(true)
       notifyMessagesSettledRef.current(gen)
       return
     }
@@ -590,7 +586,6 @@ export default function ChatThread(){
             count: processed.length,
             tailId: processed[processed.length - 1]?.id,
           }
-          setCacheFastOpen(true)
           notifyMessagesSettledRef.current(gen)
         }
       }).catch(() => {})
@@ -598,8 +593,12 @@ export default function ChatThread(){
   }, [username, chatCacheKey, profileCacheKey, dmOfflineKey, viewer, processRawMessages, mergeHydratedMessages])
 
   // Restore draft when entering chat (only if there's an actual saved draft)
-  // Added extra protection for iOS navigation - clear any stale content first
-  useEffect(() => {
+  // Added extra protection for iOS navigation - clear any stale content first.
+  // Runs in useLayoutEffect so the textarea auto-height (and resulting
+  // composer card height) is committed in the same paint as the chat shell.
+  // Without this, the post-paint adjustment grows `listPaddingBottom` and
+  // visibly shifts the inverted message list upward by a few pixels on open.
+  useLayoutEffect(() => {
     if (!username || !textareaRef.current) return
     
     // Force clear any stale content before checking for saved draft (fixes iOS navigation issue)
@@ -615,7 +614,6 @@ export default function ChatThread(){
       setDraftDisplay(savedDraft)
       adjustTextareaHeight()
     } else {
-      // Ensure clean state if no draft
       draftRef.current = ''
       setDraftDisplay('')
       adjustTextareaHeight()
@@ -929,18 +927,13 @@ export default function ChatThread(){
       const j = await r.json()
       setSteveIsTyping(Boolean(j?.steve_is_typing))
       if (j?.success && Array.isArray(j.messages) && j.messages.length > 0) {
-        const el = listRef.current
-        const prevHeight = el?.scrollHeight || 0
         const processed = processRawMessages(j.messages)
         setMessages(prev => [...processed, ...prev])
         setHasMoreMessages(!!j.has_more)
-        // Restore scroll position so it doesn't jump to top
-        requestAnimationFrame(() => {
-          if (el) {
-            const newHeight = el.scrollHeight
-            el.scrollTop = newHeight - prevHeight
-          }
-        })
+        // Inverted list invariant: column-reverse anchors layout at the
+        // visual bottom, so prepending older content preserves the user's
+        // visual position automatically. Do NOT touch scrollTop here.
+        // See .cursor/rules/chat-surfaces.mdc.
       } else {
         setHasMoreMessages(false)
       }
@@ -988,7 +981,7 @@ export default function ChatThread(){
     ta.style.height = Math.min(ta.scrollHeight, maxPx) + 'px'
   }
   
-  useEffect(() => { adjustTextareaHeight() }, [])
+  useLayoutEffect(() => { adjustTextareaHeight() }, [])
 
   async function send(){
     const messageText = (textareaRef.current?.value || '').trim()
@@ -2381,50 +2374,31 @@ export default function ChatThread(){
       >
         <div className="mx-auto flex max-w-3xl w-full flex-1 flex-col min-h-0">
       
-      {/* ====== MESSAGES LIST - SCROLLABLE ====== */}
+      {/* ====== MESSAGES LIST - SCROLLABLE (inverted: column-reverse) ====== */}
       <div
         ref={listRef}
-        className={`flex-1 space-y-[9px] overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-list-inset${listOpening ? ' chat-list-opening' : ''}`}
+        className="flex-1 overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-list-inset"
         style={{
           WebkitOverflowScrolling: 'touch',
           overscrollBehaviorY: 'auto',
           paddingBottom: listPaddingBottom,
           scrollPaddingBottom: listScrollPaddingBottom,
           minHeight: 0,
-          opacity: listRevealReady ? 1 : 0,
+          display: 'flex',
+          flexDirection: 'column-reverse',
         } as CSSProperties}
         onPointerDown={handleContentPointerDown}
         onPointerUp={handleContentPointerUp}
         onPointerCancel={handleContentPointerCancel}
         onScroll={handleListScroll}
       >
-        {/* Load older messages indicator */}
-        {loadingOlder && (
-          <div className="flex justify-center py-3">
-            <i className="fa-solid fa-spinner fa-spin text-[#4db6ac] text-sm" />
-          </div>
-        )}
-        {hasMoreMessages && !loadingOlder && (
-          <div className="flex justify-center py-2">
-            <button onClick={loadOlderMessages} className="text-xs text-[#4db6ac] hover:text-[#4db6ac]/80">
-              Load older messages
-            </button>
-          </div>
-        )}
-        {messages.length === 0 && !navigator.onLine && (
-          <div className="flex flex-col items-center justify-center py-20 text-[#9fb0b5]">
-            <i className="fa-solid fa-wifi-slash text-3xl mb-3 opacity-50" />
-            <div className="text-sm">{t('chat.offline_unavailable')}</div>
-            <div className="text-xs mt-1 opacity-70">{t('chat.offline_go_online')}</div>
-          </div>
-        )}
+        {/* DOM order under column-reverse: first = visual bottom, last = visual top. */}
         <ChatVirtualMessageList
           messages={messages}
           messageStackRef={messageStackRef}
           lastMessageRef={lastMessageRef}
           listRef={listRef}
           className="space-y-[9px]"
-          followOutput={!showScrollDown}
           itemKey={(m, idx) => m.clientKey ?? m.id ?? idx}
           footer={
             steveIsTyping ? (
@@ -2611,7 +2585,7 @@ export default function ChatThread(){
                   }}
                   otherUsername={username}
                   onMentionClick={mentionToProfile}
-                  linkPreviewReady={listRevealReady}
+                  linkPreviewReady={true}
                   onRetry={m.clientKey ? () => retryFailedMessage(String(m.clientKey)) : undefined}
                 />
                 </SwipeToReply>
@@ -2620,7 +2594,28 @@ export default function ChatThread(){
           )
         }}
         />
-        
+
+        {/* Load older spinner / button — visually at the top of the inverted list. */}
+        {loadingOlder && (
+          <div className="flex justify-center py-3">
+            <i className="fa-solid fa-spinner fa-spin text-[#4db6ac] text-sm" />
+          </div>
+        )}
+        {hasMoreMessages && !loadingOlder && (
+          <div className="flex justify-center py-2">
+            <button onClick={loadOlderMessages} className="text-xs text-[#4db6ac] hover:text-[#4db6ac]/80">
+              Load older messages
+            </button>
+          </div>
+        )}
+        {messages.length === 0 && !navigator.onLine && (
+          <div className="flex flex-col items-center justify-center py-20 text-[#9fb0b5]">
+            <i className="fa-solid fa-wifi-slash text-3xl mb-3 opacity-50" />
+            <div className="text-sm">{t('chat.offline_unavailable')}</div>
+            <div className="text-xs mt-1 opacity-70">{t('chat.offline_go_online')}</div>
+          </div>
+        )}
+
       </div>
       </div>
     </div>
@@ -2633,7 +2628,7 @@ export default function ChatThread(){
         count={pendingNewCount}
         bottom={scrollButtonBottom}
         onClick={() => {
-          ensurePinnedToBottom()
+          scrollToBottomSmooth()
           clearPendingNew()
         }}
       />
@@ -2647,7 +2642,7 @@ export default function ChatThread(){
           bottom: scrollButtonBottom,
           right: '22px'
         }}
-        onClick={() => { ensurePinnedToBottom() }}
+        onClick={() => { scrollToBottomSmooth() }}
         aria-label={t('chat.scroll_latest')}
       >
         <i className="fa-solid fa-arrow-down" />

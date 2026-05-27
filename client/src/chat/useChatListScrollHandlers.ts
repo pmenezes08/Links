@@ -1,5 +1,10 @@
 import { useCallback, type MutableRefObject, type UIEvent } from 'react'
-import { DEFAULT_NEAR_BOTTOM_PX } from './scrollPin'
+import {
+  DEFAULT_NEAR_BOTTOM_PX,
+  LOAD_OLDER_TRIGGER_PX,
+  distanceFromInvertedBottom,
+  distanceFromInvertedTop,
+} from './scrollPin'
 
 interface TouchDismissState {
   active: boolean
@@ -10,9 +15,6 @@ interface TouchDismissState {
 
 export interface UseChatListScrollHandlersOptions {
   userHasScrolledRef: MutableRefObject<boolean>
-  initialPinActiveRef: MutableRefObject<boolean>
-  programmaticScrollRef: MutableRefObject<boolean>
-  cancelInitialPin: () => void
   setShowScrollDown: (show: boolean) => void
   touchDismissRef?: MutableRefObject<TouchDismissState>
   hasMoreMessages: boolean
@@ -23,13 +25,16 @@ export interface UseChatListScrollHandlersOptions {
 }
 
 /**
- * Shared list scroll behaviour for DM + group threads (load older, FAB, manual scroll).
+ * Shared scroll handler for the inverted chat message list.
+ *
+ * In an inverted (column-reverse) list:
+ * - `scrollTop = 0` is the visual bottom (newest message above the composer).
+ * - `scrollTop > 0` means the user scrolled upward into older history.
+ * - The "load older" trigger lives at the visual top, i.e. close to
+ *   `scrollHeight - scrollTop - clientHeight ≈ 0`.
  */
 export function useChatListScrollHandlers({
   userHasScrolledRef,
-  initialPinActiveRef,
-  programmaticScrollRef,
-  cancelInitialPin,
   setShowScrollDown,
   touchDismissRef,
   hasMoreMessages,
@@ -45,33 +50,23 @@ export function useChatListScrollHandlers({
       }
 
       const el = event.currentTarget
-      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+      const distFromBottom = distanceFromInvertedBottom(el)
+      const distFromTop = distanceFromInvertedTop(el)
       const nearBottom = distFromBottom < DEFAULT_NEAR_BOTTOM_PX
 
-      const openPinLocked =
-        initialPinActiveRef.current || programmaticScrollRef.current
-
-      if (openPinLocked) {
-        if (nearBottom) {
-          setShowScrollDown(false)
-          onNearBottom?.()
-        }
-      } else if (nearBottom) {
+      if (nearBottom) {
         userHasScrolledRef.current = false
         setShowScrollDown(false)
         onNearBottom?.()
-      } else if (distFromBottom > 80) {
+      } else {
         userHasScrolledRef.current = true
-        cancelInitialPin()
-        if (distFromBottom > DEFAULT_NEAR_BOTTOM_PX) {
-          setShowScrollDown(true)
-        }
+        setShowScrollDown(true)
       }
 
       if (
         loadOlderEnabled &&
         onLoadOlder &&
-        el.scrollTop < 100 &&
+        distFromTop < LOAD_OLDER_TRIGGER_PX &&
         !loadingOlderRef.current &&
         hasMoreMessages
       ) {
@@ -79,13 +74,10 @@ export function useChatListScrollHandlers({
       }
     },
     [
-      cancelInitialPin,
       hasMoreMessages,
-      initialPinActiveRef,
       loadOlderEnabled,
       loadingOlderRef,
       onLoadOlder,
-      programmaticScrollRef,
       setShowScrollDown,
       touchDismissRef,
       userHasScrolledRef,

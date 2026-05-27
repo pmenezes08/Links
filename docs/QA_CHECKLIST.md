@@ -305,16 +305,26 @@ Run after any change to Steve DM rendering, Steve typing indicators, or chat men
 - [ ] In a group chat, post a message containing `@someuser`. Confirm the mention is tappable and opens `/profile/someuser`.
 - [ ] Force a Steve error path or entitlement block. Confirm the typing indicator clears immediately when possible, or expires within 30 seconds.
 
-## §14 — Chat thread open (native UX)
+## §14 — Chat thread open (inverted list)
 
-Run after changes to DM/group cache-first open, scroll pin, Virtuoso windowing, or link previews. Test on **iOS Safari or Capacitor** and one **Android** build.
+Run after any change to the chat list layout, scroll pin, FAB, or composer inset. Test on **iOS Capacitor** (the platform where any regression is most visible) plus one **web** and one **Android** build.
 
-- [ ] Open a DM with **~20 messages**: lands on the latest bubble immediately (no multi-second blank list); Network tab shows no burst of `/check_unread_messages` on open.
-- [ ] Reopen the same DM within 5 minutes: messages visible in under ~100ms from cache; optimistic in-flight sends still visible after reopen.
-- [ ] Open a **group chat** with **~20 messages**: same instant bottom pin; device cache repaints before network completes.
-- [ ] Open a DM or group with **80+ messages** (Virtuoso on web/Android): scroll stays smooth; new message at bottom auto-follows when you are already at bottom.
-- [ ] Open a thread with **200+ messages** on iOS Capacitor: list remains usable (standard map unless `VITE_CHAT_VIRTUOSO=1`); no crash on open.
-- [ ] Open an **image-heavy** or **URL-heavy** thread: list is not stuck invisible while images/previews load; link-preview requests are deferred until the list is visible and do not flood the network when scrolled up.
+The chat list is rendered with `flex-direction: column-reverse`, so `scrollTop = 0` IS the visual bottom. The newest message must be visible above the composer from the very first paint frame, with **zero visible vertical scroll motion** on open.
+
+- [ ] **Open at bottom — short thread**: open a DM/group with <20 messages. Newest bubble is visible just above the composer immediately; no scroll-up flash, no FAB flash, no opacity fade-in.
+- [ ] **Open at bottom — long thread**: open a DM/group with 200+ messages. Same: newest visible immediately, no scroll motion. Older messages reachable by scrolling up.
+- [ ] **Photo-heavy thread**: open a thread whose tail has multiple images. Newest bubble stays anchored at the bottom; as images higher up decode, they reflow **upward** without moving the latest bubble.
+- [ ] **URL-heavy thread**: open a thread whose tail has link previews. Previews load progressively; latest bubble position does not jitter.
+- [ ] **Reopen from cache**: open the same thread again within a few minutes. Cached messages paint immediately at the bottom; no blank frame.
+- [ ] **No post-paint drift (iOS notch)**: open a thread on an iPhone with home indicator (or Capacitor iOS simulator with notch). The latest bubble must land at its final position on the first frame — no upward shift of even a few pixels after open. (Regression test for the `safeBottomPx` / composer-height inset stabilisation.)
+- [ ] **Open group from cache — full first paint**: open a previously visited group chat. Header title + member count, every bubble, and any reaction emoji must all be present on the first frame. No "Loading..." placeholder, no late-arriving reaction pop-in.
+- [ ] **Open group cold (cache miss)**: open a group you've never visited on this device. An inline spinner inside the chat shell may appear briefly while the network resolves; there must NOT be a separate full-screen loading screen that swaps to the chat UI.
+- [ ] **Group reaction parity**: react to a group message with an emoji. The reaction renders instantly on the bubble; refresh the page — the reaction is still present on the first paint (cached on the message row, not in a separate state map).
+- [ ] **Send a message**: while at the bottom, send a message. New bubble appears at the visual bottom; no scroll movement; FAB does not appear.
+- [ ] **Scroll up to read older**: scroll up. The scroll-to-latest FAB appears (at roughly `scrollTop > 150`). Tap it — list smoothly scrolls back to the bottom.
+- [ ] **New message while scrolled up**: send/receive a new message while scrolled up. The new-messages chip appears with the correct count; tapping it scrolls smoothly back to the bottom and clears the chip.
+- [ ] **Load older trigger**: scroll up to the visual top of the loaded set. A "Load older messages" affordance appears and auto-loads when within ~100px of the top; the visible position does **not** jump after older messages prepend. (The page must not adjust `scrollTop` manually after the prepend — column-reverse preserves the anchor.)
+- [ ] **Keyboard open/close**: tap the composer, then dismiss the keyboard. Composer + inset transition smoothly; newest bubble remains visible above the composer at both states.
 
 ## §13 — Steve Platform Manual KB
 

@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   groupMessagePollSignature,
   isConfirmedGroupMessage,
-  mergeGroupReactionsFromMessages,
   mergePolledGroupMessages,
 } from './groupPollMergeMessages'
 
@@ -39,10 +38,17 @@ describe('groupPollMergeMessages', () => {
     expect(next).toBe(prev)
   })
 
-  it('mergeGroupReactionsFromMessages returns same ref when unchanged', () => {
-    const prev = { 10: '👍' }
-    const next = mergeGroupReactionsFromMessages(prev, [{ ...baseMsg, reaction: '👍' }])
-    expect(next).toBe(prev)
+  it('delta merge surfaces reaction edit on existing message', () => {
+    // Reactions are stored on the message row (DM parity), so a poll that
+    // changes only the reaction must replace the row in the merge output.
+    const prev = [{ ...baseMsg, reaction: null }]
+    const server = [{ ...baseMsg, reaction: '🎉' }]
+    const next = mergePolledGroupMessages(prev, server, {
+      pendingDeletions: new Set(),
+      isDelta: true,
+      silent: true,
+    })
+    expect(next[0].reaction).toBe('🎉')
   })
 
   it('isConfirmedGroupMessage matches client_key', () => {

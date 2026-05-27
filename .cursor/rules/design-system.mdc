@@ -1,0 +1,35 @@
+---
+description: C-Point design tokens, motion, and navigation — read docs/DESIGN.md before UI work.
+globs: client/src/**/*.{tsx,ts,css}, docs/DESIGN.md
+alwaysApply: false
+---
+
+# Design system
+
+Read **[docs/DESIGN.md](../../docs/DESIGN.md)** for brand narrative, colors, motion, and navigation.
+
+## Colors (new work)
+
+- App canvas: **`#000`** / `bg-cpoint-bg-app` / `var(--cpoint-bg-app)` — do not switch to `#0F172A` for in-app backgrounds.
+- Primary accent: **`#00CEC8`** / `text-cpoint-turquoise` / `bg-cpoint-turquoise` — do **not** introduce new `#4db6ac` surfaces.
+- Marketing black `#0F172A` is for external/logo contexts only (`cpoint-black-marketing`).
+
+## Motion
+
+- Page stack push/pop: **`PAGE_TRANSITION_MS` (250ms)** from `client/src/design/motion.ts`.
+- Composer/inset: **`CHAT_KEYBOARD_ANIMATION_MS` (250ms)** — align with chat kernel.
+- Easing: **`CPOINT_EASE_OUT`** — no bouncy or linear page transitions.
+
+## Navigation
+
+- Detail routes (chat threads): push **right → left**, pop **left → right**.
+- Prefer `navigate(-1)` for back; avoid `navigate('/user_chat')` when history exists (breaks pop animation).
+- Chat open: the message list is inverted (column-reverse); the newest message is at the visual bottom from the first paint frame. No JS pinning on open. See [.cursor/rules/chat-surfaces.mdc](./chat-surfaces.mdc).
+
+## Chat
+
+Follow **[.cursor/rules/chat-surfaces.mdc](./chat-surfaces.mdc)** — no delivery ticks, no bubble entrance animations.
+
+## Out of scope here
+
+- **Light mode** — separate epic; do not add theme toggles or light palettes in drive-by changes.

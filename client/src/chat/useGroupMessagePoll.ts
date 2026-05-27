@@ -1,7 +1,6 @@
 import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { GROUP_FULL_SYNC_EVERY_N_POLL, GROUP_POLL_INTERVAL_MS } from './constants'
 import {
-  mergeGroupReactionsFromMessages,
   mergePolledGroupMessages,
   type GroupPollMessage,
 } from '../utils/groupPollMergeMessages'
@@ -17,12 +16,14 @@ export interface UseGroupMessagePollOptions<T extends GroupPollMessage = GroupPo
   pollTickRef?: MutableRefObject<number>
   pendingDeletions: MutableRefObject<Set<number>>
   setServerMessages: Dispatch<SetStateAction<T[]>>
-  setReactions: Dispatch<SetStateAction<Record<number, string>>>
   setSteveIsTyping: Dispatch<SetStateAction<boolean>>
 }
 
 /**
- * Poll group messages with delta + periodic full sync for metadata (reactions, edits).
+ * Poll group messages with delta + periodic full sync for metadata (edits, reactions).
+ * Reactions ride along on each message row (`msg.reaction`); the merge in
+ * `mergePolledGroupMessages` already picks up reaction changes via the row
+ * signature, so we do not need a separate reactions state map.
  */
 export function useGroupMessagePoll<T extends GroupPollMessage = GroupPollMessage>({
   groupId,
@@ -34,7 +35,6 @@ export function useGroupMessagePoll<T extends GroupPollMessage = GroupPollMessag
   pollTickRef: pollTickExternal,
   pendingDeletions,
   setServerMessages,
-  setReactions,
   setSteveIsTyping,
 }: UseGroupMessagePollOptions) {
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -100,10 +100,6 @@ export function useGroupMessagePoll<T extends GroupPollMessage = GroupPollMessag
                 silent: true,
               }) as T[]
             })
-
-            setReactions(prev =>
-              mergeGroupReactionsFromMessages(prev, newServerMessages),
-            )
           }
 
           const newMaxId =
@@ -152,7 +148,6 @@ export function useGroupMessagePoll<T extends GroupPollMessage = GroupPollMessag
     pollTickRef,
     pendingDeletions,
     setServerMessages,
-    setReactions,
     setSteveIsTyping,
   ])
 }
