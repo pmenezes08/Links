@@ -32,7 +32,7 @@ import type { UploadProgress } from '../chat/groupChatMediaSenders'
 import { SENDING_MEDIA_LABEL, sendGroupDocumentMessage } from '../chat/mediaSenders'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
 import { openExternalNativeLink } from '../utils/openExternalInApp'
-import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
+import { readDeviceCache, readDeviceCacheStale, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
 import { requestTranslateSummary } from '../utils/translateSummary'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
 import {
@@ -151,15 +151,16 @@ export default function GroupChatThread() {
   const [group, setGroup] = useState<GroupInfo | null>(() => {
     if (typeof window === 'undefined') return null
     if (!group_id || !currentUsername) return null
-    return readDeviceCache<GroupInfo>(
+    const { data } = readDeviceCacheStale<GroupInfo>(
       groupChatInfoDeviceCacheKey(currentUsername, group_id),
       CHAT_CACHE_VERSION,
     )
+    return data
   })
   const [serverMessages, setServerMessages] = useState<Message[]>(() => {
     if (typeof window === 'undefined') return []
     if (!group_id || !currentUsername) return []
-    const cached = readDeviceCache<Message[]>(
+    const { data: cached } = readDeviceCacheStale<Message[]>(
       groupChatMessagesDeviceCacheKey(currentUsername, group_id),
       CHAT_CACHE_VERSION,
     )
@@ -415,14 +416,14 @@ export default function GroupChatThread() {
     lastMessageIdRef.current = 0
     pendingDeletions.current.clear()
 
-    const cachedGroup = groupInfoCacheKey
-      ? readDeviceCache<GroupInfo>(groupInfoCacheKey, CHAT_CACHE_VERSION)
-      : null
-    const cachedMessages = groupChatCacheKey
-      ? readDeviceCache<Message[]>(groupChatCacheKey, CHAT_CACHE_VERSION)
-      : null
+    const { data: cachedGroup } = groupInfoCacheKey
+      ? readDeviceCacheStale<GroupInfo>(groupInfoCacheKey, CHAT_CACHE_VERSION)
+      : { data: null, expired: false }
+    const { data: cachedMessages } = groupChatCacheKey
+      ? readDeviceCacheStale<Message[]>(groupChatCacheKey, CHAT_CACHE_VERSION)
+      : { data: null, expired: false }
 
-    setGroup(cachedGroup)
+    setGroup(cachedGroup ?? null)
     setServerMessages(cachedMessages?.length ? cachedMessages : [])
     setSteveIsTyping(false)
     setHasMoreMessages(false)

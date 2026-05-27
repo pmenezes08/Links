@@ -27,7 +27,7 @@ import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { requestTranslateSummary } from '../utils/translateSummary'
-import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
+import { readDeviceCache, readDeviceCacheStale, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
 import {
   threadsListCacheKey,
   dmConversationOfflineKey,
@@ -544,14 +544,14 @@ export default function ChatThread(){
     if (!username) return
     const gen = threadGenerationRef.current
 
-    const cachedProfile = profileCacheKey
-      ? readDeviceCache<{ display_name: string; profile_picture?: string | null }>(profileCacheKey, CHAT_CACHE_VERSION)
-      : null
-    setOtherProfile(cachedProfile)
+    const { data: cachedProfile } = profileCacheKey
+      ? readDeviceCacheStale<{ display_name: string; profile_picture?: string | null }>(profileCacheKey, CHAT_CACHE_VERSION)
+      : { data: null, expired: false }
+    if (cachedProfile) setOtherProfile(cachedProfile)
 
-    const cachedChat = chatCacheKey
-      ? readDeviceCache<{ messages: any[]; otherUserId: number }>(chatCacheKey, CHAT_CACHE_VERSION)
-      : null
+    const { data: cachedChat } = chatCacheKey
+      ? readDeviceCacheStale<{ messages: any[]; otherUserId: number }>(chatCacheKey, CHAT_CACHE_VERSION)
+      : { data: null, expired: false }
 
     if (cachedChat?.messages?.length && cachedChat.otherUserId) {
       resolvedPeerRef.current = { username, userId: cachedChat.otherUserId }
@@ -567,15 +567,13 @@ export default function ChatThread(){
       return
     }
 
-    setOtherUserId('')
-    setMessages([])
-
     if (dmOfflineKey && viewer) {
       Promise.all([
         getCachedMessages(dmOfflineKey),
         getCachedKeyVal<number>(dmUserIdKeyvalKey(viewer, username)),
       ]).then(([idbMsgs, idbUserId]) => {
         if (gen !== threadGenerationRef.current) return
+        let painted = false
         if (idbUserId) {
           resolvedPeerRef.current = { username, userId: idbUserId }
           setOtherUserId(idbUserId)
@@ -589,8 +587,22 @@ export default function ChatThread(){
             tailId: processed[processed.length - 1]?.id,
           }
           notifyMessagesSettledRef.current(gen)
+          painted = true
         }
-      }).catch(() => {})
+        if (!painted && !cachedChat?.messages?.length) {
+          setOtherUserId('')
+          setMessages([])
+        }
+      }).catch(() => {
+        if (gen !== threadGenerationRef.current) return
+        if (!cachedChat?.messages?.length) {
+          setOtherUserId('')
+          setMessages([])
+        }
+      })
+    } else if (!cachedChat?.messages?.length) {
+      setOtherUserId('')
+      setMessages([])
     }
   }, [username, chatCacheKey, profileCacheKey, dmOfflineKey, viewer, processRawMessages, mergeHydratedMessages])
 
@@ -838,7 +850,9 @@ export default function ChatThread(){
     }
     
     // Check if we have cached user ID - skip the lookup API call if so
-    const cached = chatCacheKey ? readDeviceCache<{ messages: any[]; otherUserId: number }>(chatCacheKey, CHAT_CACHE_VERSION) : null
+    const { data: cached } = chatCacheKey
+      ? readDeviceCacheStale<{ messages: any[]; otherUserId: number }>(chatCacheKey, CHAT_CACHE_VERSION)
+      : { data: null, expired: false }
     if (cached?.otherUserId) {
       // Use cached user ID immediately, fetch messages in parallel
       resolvedPeerRef.current = { username, userId: cached.otherUserId }
