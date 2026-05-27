@@ -120,6 +120,9 @@ def auto_login_from_remember_token():
         if "pending_username" in session:
             current_app.logger.info("auth.auto_login_skipped reason=pending_username")
             return
+        if session.get("_logout_pending_username"):
+            current_app.logger.info("auth.auto_login_skipped reason=logout_pending")
+            return
         token_hash = remember_tokens.cookie_hash(request)
         username = remember_tokens.restore_session(request, session)
         if not username or not token_hash:
@@ -593,7 +596,7 @@ def logout():
         install_counts = deactivate_for_install(install_id)
         for key in ("native_push_tokens", "fcm_tokens"):
             push_counts[key] = max(push_counts.get(key, 0), install_counts.get(key, 0))
-    tokens_revoked = remember_tokens.revoke_by_cookie(request)
+    tokens_revoked = remember_tokens.revoke_all_for_logout(username, request)
 
     session.clear()
     session.permanent = False

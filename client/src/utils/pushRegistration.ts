@@ -68,7 +68,7 @@ export async function registerFcmTokenWithServer(
 
 /** Clear stale post-logout block and re-register when the session is still authenticated. */
 export async function syncPushRegistrationWithSession(platform: string): Promise<void> {
-  if (isPushRegistrationBlocked() || isPushLogoutInProgress()) return
+  if (isPushLogoutInProgress()) return
 
   try {
     const response = await fetch('/api/profile_me', {
@@ -79,6 +79,7 @@ export async function syncPushRegistrationWithSession(platform: string): Promise
     const profile = (await response.json()) as { username?: string }
     if (!profile?.username?.trim()) return
 
+    // Session is valid — clear post-logout push block (push-only flag, not auth).
     clearPushRegistrationBlocked()
     const win = window as unknown as {
       __fcmToken?: string
