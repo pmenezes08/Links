@@ -118,6 +118,8 @@ describe('chat thread inverted-list invariants', () => {
     expect(src).toMatch(/displayKeyboardLift/)
     expect(src).not.toMatch(/useFixedComposerKeyboard/)
     expect(src).toMatch(/isIosNative/)
+    expect(src).toMatch(/keyboardDidHide/)
+    expect(src).toMatch(/iosKeyboardClosing/)
   })
 
   it('thread pages align composer spacer with keyboardChromeActive', () => {

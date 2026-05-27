@@ -136,6 +136,8 @@ export function useChatComposerChrome({
   const keyboardOffsetRef = useRef(0)
   const viewportBaseRef = useRef<number | null>(null)
   const lastFocusTimeRef = useRef(0)
+  const iosKeyboardClosingRef = useRef(false)
+  const [iosKeyboardClosing, setIosKeyboardClosing] = useState(false)
 
   useLayoutEffect(() => {
     if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return
@@ -236,7 +238,8 @@ export function useChatComposerChrome({
    */
   const displayKeyboardLift =
     isAndroid || isIosNative ? keyboardLift : smoothedKeyboardLift
-  const keyboardChromeActive = displayKeyboardLift > 0 || androidKeyboardOpen
+  const keyboardChromeActive =
+    displayKeyboardLift > 0 || androidKeyboardOpen || iosKeyboardClosing
 
   // Android: content wrapper already clamps to visualViewport.height above the IME;
   // do not add keyboard lift again as list padding (double-counts and hides messages).
@@ -249,7 +252,7 @@ export function useChatComposerChrome({
   const listPaddingBottom = `${bottomInsetPx}px`
   const listScrollPaddingBottom = listPaddingBottom
   const scrollButtonBottom = `${bottomChromeInset + effectiveComposerHeight + 12}px`
-  const keyboardIsOpen = keyboardLift > 0 || androidKeyboardOpen
+  const keyboardIsOpen = keyboardLift > 0 || androidKeyboardOpen || iosKeyboardClosing
   /**
    * True when the keyboard system is fully at rest (closed, not animating).
    * Thread pages toggle `chat-list-idle-smooth` on the inverted list with this
@@ -340,9 +343,19 @@ export function useChatComposerChrome({
   useEffect(() => {
     if (!isIosNative) return
     let showSub: PluginListenerHandle | undefined
-    let hideSub: PluginListenerHandle | undefined
+    let willHideSub: PluginListenerHandle | undefined
+    let didHideSub: PluginListenerHandle | undefined
+    let closeRafId: number | null = null
+    let closeViewport: VisualViewport | null = null
 
     const normalizeHeight = (raw: number) => (raw < NATIVE_KEYBOARD_MIN_HEIGHT ? 0 : raw)
+
+    const readIosViewportLift = () => {
+      const viewport = window.visualViewport
+      if (!viewport) return 0
+      const inset = Math.max(0, window.innerHeight - viewport.offsetTop - viewport.height)
+      return inset < VISUAL_VIEWPORT_KEYBOARD_THRESHOLD ? 0 : inset
+    }
 
     const applyLift = (height: number) => {
       if (Math.abs(keyboardOffsetRef.current - height) < KEYBOARD_OFFSET_EPSILON) return
@@ -352,26 +365,75 @@ export function useChatComposerChrome({
       requestAnimationFrame(() => onLayoutNudgeRef.current?.())
     }
 
+    const syncCloseLift = () => {
+      if (!iosKeyboardClosingRef.current) return
+      const lift = readIosViewportLift()
+      if (Math.abs(keyboardOffsetRef.current - lift) < 1) return
+      keyboardOffsetRef.current = lift
+      setKeyboardOffset(lift)
+      requestAnimationFrame(() => onLayoutNudgeRef.current?.())
+    }
+
+    const onCloseViewportChange = () => {
+      if (closeRafId !== null) cancelAnimationFrame(closeRafId)
+      closeRafId = requestAnimationFrame(syncCloseLift)
+    }
+
+    const stopCloseTracking = () => {
+      iosKeyboardClosingRef.current = false
+      setIosKeyboardClosing(false)
+      if (closeRafId !== null) {
+        cancelAnimationFrame(closeRafId)
+        closeRafId = null
+      }
+      if (closeViewport) {
+        closeViewport.removeEventListener('resize', onCloseViewportChange)
+        closeViewport.removeEventListener('scroll', onCloseViewportChange)
+        closeViewport = null
+      }
+    }
+
+    const startCloseTracking = () => {
+      stopCloseTracking()
+      iosKeyboardClosingRef.current = true
+      setIosKeyboardClosing(true)
+      closeViewport = window.visualViewport
+      closeViewport?.addEventListener('resize', onCloseViewportChange)
+      closeViewport?.addEventListener('scroll', onCloseViewportChange)
+      syncCloseLift()
+    }
+
     const handleShow = (info: KeyboardInfo) => {
+      stopCloseTracking()
       const height = normalizeHeight(info?.keyboardHeight ?? 0)
       if (height === 0) return
       applyLift(height)
     }
 
-    const handleHide = () => {
+    const handleWillHide = () => {
+      startCloseTracking()
+    }
+
+    const handleDidHide = () => {
+      stopCloseTracking()
       applyLift(0)
     }
 
     Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
       showSub = handle
     })
-    Keyboard.addListener('keyboardWillHide', handleHide).then(handle => {
-      hideSub = handle
+    Keyboard.addListener('keyboardWillHide', handleWillHide).then(handle => {
+      willHideSub = handle
+    })
+    Keyboard.addListener('keyboardDidHide', handleDidHide).then(handle => {
+      didHideSub = handle
     })
 
     return () => {
+      stopCloseTracking()
       showSub?.remove()
-      hideSub?.remove()
+      willHideSub?.remove()
+      didHideSub?.remove()
     }
   }, [isIosNative])
 
