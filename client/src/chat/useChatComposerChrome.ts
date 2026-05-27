@@ -11,7 +11,6 @@ import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
-import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
 import { computeKeyboardLift, readCssPxVar } from '../utils/keyboardLift'
 import { useTouchDismiss } from './hooks'
 import { useSmoothedPx } from './useSmoothedPx'
@@ -42,6 +41,8 @@ const DEFAULT_COMPOSER_PADDING = 96
 const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48
 const NATIVE_KEYBOARD_MIN_HEIGHT = 60
 const KEYBOARD_OFFSET_EPSILON = 6
+/** Ignore sub-pixel composer remeasure jitter while the keyboard is open. */
+const COMPOSER_REMEASURE_DURING_KEYBOARD_PX = 8
 export const CHAT_COMPOSER_GAP_PX = 10
 
 /**
@@ -136,10 +137,6 @@ export function useChatComposerChrome({
   const viewportBaseRef = useRef<number | null>(null)
   const lastFocusTimeRef = useRef(0)
 
-  useFixedComposerKeyboard({
-    onLayoutNudge: () => onLayoutNudgeRef.current?.(),
-  })
-
   useLayoutEffect(() => {
     if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return
 
@@ -150,8 +147,15 @@ export function useChatComposerChrome({
     const measureAndCache = (node: HTMLDivElement) => {
       const height = node.getBoundingClientRect().height
       if (!height) return
-      writeMeasuredComposerHeight(surfaceKey, height)
-      setComposerHeight(prev => (Math.abs(prev - height) < 1 ? prev : height))
+      setComposerHeight(prev => {
+        if (Math.abs(prev - height) < 1) return prev
+        if (keyboardOffsetRef.current > 0) {
+          if (height < prev) return prev
+          if (Math.abs(prev - height) < COMPOSER_REMEASURE_DURING_KEYBOARD_PX) return prev
+        }
+        writeMeasuredComposerHeight(surfaceKey, height)
+        return height
+      })
     }
 
     const attach = () => {
@@ -205,9 +209,12 @@ export function useChatComposerChrome({
   }, [])
 
   const effectiveComposerHeight = Math.max(composerHeight, DEFAULT_COMPOSER_PADDING)
-  const liftSource = Math.max(keyboardOffset, viewportLift)
-  const isWeb = Capacitor.getPlatform() === 'web'
+  const platform = Capacitor.getPlatform()
+  const isWeb = platform === 'web'
+  const isIosNative = platform === 'ios'
   const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent)
+  // iOS Capacitor: Capacitor keyboard height only — visualViewport fights the plugin and flickers.
+  const liftSource = isIosNative ? keyboardOffset : Math.max(keyboardOffset, viewportLift)
   const androidKeyboardOpen = isAndroid && liftSource > 0
 
   const androidComposerBottom = androidKeyboardOpen
@@ -223,8 +230,13 @@ export function useChatComposerChrome({
   const smoothedKeyboardLift = useSmoothedPx(keyboardLift, {
     onTick: () => onLayoutNudgeRef.current?.(),
   })
-  /** Composer + list inset — smoothed on iOS/web; Android visualViewport already tracks IME. */
-  const displayKeyboardLift = isAndroid ? keyboardLift : smoothedKeyboardLift
+  /**
+   * Native iOS + Android follow the OS keyboard directly (no extra JS easing).
+   * Mobile web keeps JS smoothing where visualViewport is the only signal.
+   */
+  const displayKeyboardLift =
+    isAndroid || isIosNative ? keyboardLift : smoothedKeyboardLift
+  const keyboardChromeActive = displayKeyboardLift > 0 || androidKeyboardOpen
 
   // Android: content wrapper already clamps to visualViewport.height above the IME;
   // do not add keyboard lift again as list padding (double-counts and hides messages).
@@ -239,25 +251,49 @@ export function useChatComposerChrome({
   const scrollButtonBottom = `${bottomChromeInset + effectiveComposerHeight + 12}px`
   const keyboardIsOpen = keyboardLift > 0 || androidKeyboardOpen
   /**
-   * True when the keyboard system is fully at rest (closed, not animating
-   * open, not in iOS smoothing tail). Thread pages toggle the
-   * `chat-list-idle-smooth` CSS class on the inverted list with this flag so
-   * post-paint inset settles (composer remeasure, safe-area sync, active-use
-   * chrome growth) ease over the same 250ms curve as `chat-composer-spacer-
-   * smooth`, while keyboard motion (JS-smoothed in `useSmoothedPx`) stays
-   * tick-precise — gating the transition off whenever the keyboard is at all
-   * engaged prevents the CSS interpolation from lagging behind the JS-driven
-   * composer card position.
+   * True when the keyboard system is fully at rest (closed, not animating).
+   * Thread pages toggle `chat-list-idle-smooth` on the inverted list with this
+   * flag so idle inset settles ease via CSS; keyboard motion stays unpadded by
+   * that transition.
    */
   const insetMotionIdle =
-    !androidKeyboardOpen &&
+    !keyboardChromeActive &&
     keyboardLift === 0 &&
     Math.abs(displayKeyboardLift) < 0.5
 
   useEffect(() => {
+    const nudgeLayout = () => {
+      keyboardOffsetRef.current = 0
+      setKeyboardOffset(0)
+      setViewportLift(0)
+      viewportBaseRef.current = null
+      requestAnimationFrame(() => onLayoutNudgeRef.current?.())
+    }
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') nudgeLayout()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    let resumeHandle: PluginListenerHandle | undefined
+    const setupResume = async () => {
+      if (!Capacitor.isNativePlatform()) return
+      const { App } = await import('@capacitor/app')
+      resumeHandle = await App.addListener('resume', nudgeLayout)
+    }
+    void setupResume()
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      void resumeHandle?.remove()
+    }
+  }, [])
+
+  useEffect(() => {
     if (!isMobile) return
-    const platform = Capacitor.getPlatform()
-    if (platform !== 'web' && platform !== 'android' && platform !== 'ios') return
+    // iOS Capacitor uses plugin height only (see keyboardWillShow effect below).
+    if (isIosNative) return
+    if (platform !== 'web' && platform !== 'android') return
     if (typeof window === 'undefined') return
     const viewport = window.visualViewport
     if (!viewport) return
@@ -299,29 +335,31 @@ export function useChatComposerChrome({
       viewport.removeEventListener('resize', handleChange)
       viewport.removeEventListener('scroll', handleChange)
     }
-  }, [isMobile, textareaRef])
+  }, [isMobile, isIosNative, platform, textareaRef])
 
   useEffect(() => {
-    if (Capacitor.getPlatform() !== 'ios') return
+    if (!isIosNative) return
     let showSub: PluginListenerHandle | undefined
     let hideSub: PluginListenerHandle | undefined
 
     const normalizeHeight = (raw: number) => (raw < NATIVE_KEYBOARD_MIN_HEIGHT ? 0 : raw)
 
-    const handleShow = (info: KeyboardInfo) => {
-      const height = normalizeHeight(info?.keyboardHeight ?? 0)
-      if (height === 0) return
+    const applyLift = (height: number) => {
       if (Math.abs(keyboardOffsetRef.current - height) < KEYBOARD_OFFSET_EPSILON) return
       keyboardOffsetRef.current = height
       setKeyboardOffset(height)
+      setViewportLift(0)
       requestAnimationFrame(() => onLayoutNudgeRef.current?.())
     }
 
+    const handleShow = (info: KeyboardInfo) => {
+      const height = normalizeHeight(info?.keyboardHeight ?? 0)
+      if (height === 0) return
+      applyLift(height)
+    }
+
     const handleHide = () => {
-      if (Math.abs(keyboardOffsetRef.current) < KEYBOARD_OFFSET_EPSILON) return
-      keyboardOffsetRef.current = 0
-      setKeyboardOffset(0)
-      requestAnimationFrame(() => onLayoutNudgeRef.current?.())
+      applyLift(0)
     }
 
     Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
@@ -335,7 +373,7 @@ export function useChatComposerChrome({
       showSub?.remove()
       hideSub?.remove()
     }
-  }, [])
+  }, [isIosNative])
 
   const dismissComposerKeyboard = useCallback(() => {
     if (textareaRef.current && document.activeElement === textareaRef.current) {
@@ -383,6 +421,7 @@ export function useChatComposerChrome({
     displayKeyboardLift,
     safeBottomPx,
     keyboardIsOpen,
+    keyboardChromeActive,
     isWeb,
     androidKeyboardOpen,
     bottomInsetPx,

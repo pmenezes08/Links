@@ -255,11 +255,15 @@
 }
 
 .chat-composer-smooth {
-  /* Bottom lift is JS-smoothed in useChatComposerChrome (displayKeyboardLift). */
+  /* Bottom lift follows displayKeyboardLift (native iOS/Android: direct; mobile web: JS-smoothed). */
 }
 
 .chat-composer-spacer-smooth {
   transition: height 250ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.chat-composer-spacer-keyboard {
+  transition: none;
 }
 
 .chat-list-inset {

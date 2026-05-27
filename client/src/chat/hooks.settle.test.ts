@@ -113,11 +113,19 @@ describe('chat thread inverted-list invariants', () => {
       'utf8',
     )
     expect(src).toMatch(/insetMotionIdle/)
-    // Gate must reference all three signals: no Android keyboard, no native
-    // keyboardLift, and no iOS smoothing tail (displayKeyboardLift ~ 0).
-    expect(src).toMatch(/!androidKeyboardOpen/)
+    expect(src).toMatch(/keyboardChromeActive/)
     expect(src).toMatch(/keyboardLift === 0/)
     expect(src).toMatch(/displayKeyboardLift/)
+    expect(src).not.toMatch(/useFixedComposerKeyboard/)
+    expect(src).toMatch(/isIosNative/)
+  })
+
+  it('thread pages align composer spacer with keyboardChromeActive', () => {
+    for (const page of ['ChatThread.tsx', 'GroupChatThread.tsx']) {
+      const src = readFileSync(join(repoRoot, 'client', 'src', 'pages', page), 'utf8')
+      expect(src).toContain('keyboardChromeActive')
+      expect(src).toContain('chat-composer-spacer-keyboard')
+    }
   })
 
   it('ChatThreadShell applies chat-list-idle-smooth when insetMotionIdle is true', () => {

@@ -372,6 +372,7 @@ export default function GroupChatThread() {
     listScrollPaddingBottom,
     scrollButtonBottom,
     insetMotionIdle,
+    keyboardChromeActive,
     handleContentPointerDown,
     handleContentPointerMove,
     handleContentPointerUp,
@@ -2949,9 +2950,9 @@ export default function GroupChatThread() {
         )}
         {/* Safe area spacer — hidden when keyboard is open to avoid double spacing */}
         <div
-          className="chat-composer-spacer-smooth"
+          className={`chat-composer-spacer-smooth${keyboardChromeActive ? ' chat-composer-spacer-keyboard' : ''}`}
           style={{
-            height: (keyboardLift > 0 || androidKeyboardOpen) ? '0px' : `${safeBottomPx}px`,
+            height: keyboardChromeActive ? '0px' : `${safeBottomPx}px`,
             background: '#000',
             flexShrink: 0,
           }}
