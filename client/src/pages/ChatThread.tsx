@@ -546,12 +546,12 @@ export default function ChatThread(){
 
     const { data: cachedProfile } = profileCacheKey
       ? readDeviceCacheStale<{ display_name: string; profile_picture?: string | null }>(profileCacheKey, CHAT_CACHE_VERSION)
-      : { data: null, expired: false }
+      : { data: null }
     if (cachedProfile) setOtherProfile(cachedProfile)
 
     const { data: cachedChat } = chatCacheKey
       ? readDeviceCacheStale<{ messages: any[]; otherUserId: number }>(chatCacheKey, CHAT_CACHE_VERSION)
-      : { data: null, expired: false }
+      : { data: null }
 
     if (cachedChat?.messages?.length && cachedChat.otherUserId) {
       resolvedPeerRef.current = { username, userId: cachedChat.otherUserId }
@@ -852,7 +852,7 @@ export default function ChatThread(){
     // Check if we have cached user ID - skip the lookup API call if so
     const { data: cached } = chatCacheKey
       ? readDeviceCacheStale<{ messages: any[]; otherUserId: number }>(chatCacheKey, CHAT_CACHE_VERSION)
-      : { data: null, expired: false }
+      : { data: null }
     if (cached?.otherUserId) {
       // Use cached user ID immediately, fetch messages in parallel
       resolvedPeerRef.current = { username, userId: cached.otherUserId }

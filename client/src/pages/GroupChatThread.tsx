@@ -418,10 +418,10 @@ export default function GroupChatThread() {
 
     const { data: cachedGroup } = groupInfoCacheKey
       ? readDeviceCacheStale<GroupInfo>(groupInfoCacheKey, CHAT_CACHE_VERSION)
-      : { data: null, expired: false }
+      : { data: null }
     const { data: cachedMessages } = groupChatCacheKey
       ? readDeviceCacheStale<Message[]>(groupChatCacheKey, CHAT_CACHE_VERSION)
-      : { data: null, expired: false }
+      : { data: null }
 
     setGroup(cachedGroup ?? null)
     setServerMessages(cachedMessages?.length ? cachedMessages : [])
