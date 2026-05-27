@@ -79,11 +79,6 @@ def register_fcm_token():
     """Register a push notification token (FCM or native APNs)."""
     from backend.services.database import get_db_connection, get_sql_placeholder, USE_MYSQL
     from backend.services.firebase_notifications import is_apns_token
-    from backend.services.native_push import (
-        push_registration_may_activate,
-        upsert_fcm_token_row,
-        upsert_native_push_token_row,
-    )
     
     logger = current_app.logger
     
@@ -96,53 +91,127 @@ def register_fcm_token():
         if not token:
             return jsonify({"error": "Token required"}), 400
         
-        # Get username if logged in; block activation during logout window.
+        # Get username if logged in
         username = (session.get("username") or "").strip() or None
-        activate = push_registration_may_activate(session, username)
-        log_user = username if activate else "anonymous"
+        is_authenticated = username is not None
 
         # Detect token type
         is_native_apns = is_apns_token(token)
         token_type = "APNs" if is_native_apns else "FCM"
 
-        logger.info(f"📱 Registering {token_type} token for {log_user}")
+        logger.info(f"📱 Registering {token_type} token for {username or 'anonymous'}")
         logger.info(f"   Token: {token[:20]}... ({len(token)} chars)")
 
         conn = get_db_connection()
         cursor = conn.cursor()
         ph = get_sql_placeholder()
 
-        upsert_fcm_token_row(
-            cursor,
-            token,
-            username if activate else None,
-            platform,
-            device_name,
-            activate=activate,
-        )
+        # Authenticated: bind token to user and activate.
+        # Anonymous (AppDelegate / Welcome): store inactive with no username — must NOT
+        # reactivate rows deactivated on logout (IFNULL/COALESCE used to preserve username).
+        if USE_MYSQL:
+            if is_authenticated:
+                cursor.execute(f"""
+                    INSERT INTO fcm_tokens (token, username, platform, device_name, last_seen, is_active)
+                    VALUES ({ph}, {ph}, {ph}, {ph}, NOW(), 1)
+                    ON DUPLICATE KEY UPDATE
+                        username=VALUES(username),
+                        platform=VALUES(platform),
+                        device_name=VALUES(device_name),
+                        last_seen=NOW(),
+                        is_active=1
+                """, (token, username, platform, device_name))
+            else:
+                cursor.execute(f"""
+                    INSERT INTO fcm_tokens (token, username, platform, device_name, last_seen, is_active)
+                    VALUES ({ph}, NULL, {ph}, {ph}, NOW(), 0)
+                    ON DUPLICATE KEY UPDATE
+                        username=NULL,
+                        platform=VALUES(platform),
+                        device_name=VALUES(device_name),
+                        last_seen=NOW(),
+                        is_active=0
+                """, (token, platform, device_name))
+        else:
+            if is_authenticated:
+                cursor.execute("""
+                    INSERT INTO fcm_tokens (token, username, platform, device_name, last_seen, is_active)
+                    VALUES (?, ?, ?, ?, datetime('now'), 1)
+                    ON CONFLICT(token) DO UPDATE SET
+                        username=excluded.username,
+                        platform=excluded.platform,
+                        device_name=excluded.device_name,
+                        last_seen=excluded.last_seen,
+                        is_active=1
+                """, (token, username, platform, device_name))
+            else:
+                cursor.execute("""
+                    INSERT INTO fcm_tokens (token, username, platform, device_name, last_seen, is_active)
+                    VALUES (?, NULL, ?, ?, datetime('now'), 0)
+                    ON CONFLICT(token) DO UPDATE SET
+                        username=NULL,
+                        platform=excluded.platform,
+                        device_name=excluded.device_name,
+                        last_seen=excluded.last_seen,
+                        is_active=0
+                """, (token, platform, device_name))
 
+        # If it's an APNs token, also store in native_push_tokens for direct APNs sending
         if is_native_apns and platform == 'ios':
             logger.info(f"   Also storing in native_push_tokens for direct APNs")
             try:
-                upsert_native_push_token_row(
-                    cursor,
-                    token,
-                    username if activate else None,
-                    None,
-                    platform,
-                    "production",
-                    "co.cpoint.app",
-                    device_name,
-                    activate=activate,
-                )
+                if USE_MYSQL:
+                    if is_authenticated:
+                        cursor.execute(f"""
+                            INSERT INTO native_push_tokens (token, username, platform, environment, bundle_id, device_name, last_seen, is_active)
+                            VALUES ({ph}, {ph}, {ph}, 'production', 'co.cpoint.app', {ph}, NOW(), 1)
+                            ON DUPLICATE KEY UPDATE
+                                username=VALUES(username),
+                                device_name=VALUES(device_name),
+                                last_seen=NOW(),
+                                is_active=1
+                        """, (token, username, platform, device_name))
+                    else:
+                        cursor.execute(f"""
+                            INSERT INTO native_push_tokens (token, username, platform, environment, bundle_id, device_name, last_seen, is_active)
+                            VALUES ({ph}, NULL, {ph}, 'production', 'co.cpoint.app', {ph}, NOW(), 0)
+                            ON DUPLICATE KEY UPDATE
+                                username=NULL,
+                                device_name=VALUES(device_name),
+                                last_seen=NOW(),
+                                is_active=0
+                        """, (token, platform, device_name))
+                else:
+                    if is_authenticated:
+                        cursor.execute("""
+                            INSERT INTO native_push_tokens (token, username, platform, environment, bundle_id, device_name, last_seen, is_active)
+                            VALUES (?, ?, ?, 'production', 'co.cpoint.app', ?, datetime('now'), 1)
+                            ON CONFLICT(token) DO UPDATE SET
+                                username=excluded.username,
+                                device_name=excluded.device_name,
+                                last_seen=excluded.last_seen,
+                                is_active=1
+                        """, (token, username, platform, device_name))
+                    else:
+                        cursor.execute("""
+                            INSERT INTO native_push_tokens (token, username, platform, environment, bundle_id, device_name, last_seen, is_active)
+                            VALUES (?, NULL, ?, 'production', 'co.cpoint.app', ?, datetime('now'), 0)
+                            ON CONFLICT(token) DO UPDATE SET
+                                username=NULL,
+                                device_name=excluded.device_name,
+                                last_seen=excluded.last_seen,
+                                is_active=0
+                        """, (token, platform, device_name))
             except Exception as e:
                 logger.warning(f"Could not store in native_push_tokens: {e}")
-
+        
         # Deactivate OLD tokens for the same user/platform to prevent duplicates
-        if activate and username:
+        # This ensures only the most recent token per user/platform is active
+        if username:
             try:
                 logger.info(f"   Deactivating old {platform} tokens for {username} (keeping only current)")
                 if USE_MYSQL:
+                    # Deactivate all other tokens for this user/platform
                     cursor.execute(f"""
                         UPDATE fcm_tokens 
                         SET is_active = 0 
@@ -156,8 +225,10 @@ def register_fcm_token():
                     """, (username, platform, token))
             except Exception as e:
                 logger.warning(f"Could not deactivate old tokens: {e}")
-
-        if not is_native_apns and platform == 'ios' and activate and username:
+        
+        # If it's an FCM token, also deactivate APNs tokens in native_push_tokens
+        # FCM handles APNs delivery internally, so we don't need both
+        if not is_native_apns and platform == 'ios' and username:
             try:
                 logger.info(f"   Deactivating APNs tokens for {username} (FCM will handle delivery)")
                 if USE_MYSQL:
@@ -179,7 +250,7 @@ def register_fcm_token():
         cursor.close()
         conn.close()
         
-        logger.info(f"✅ {token_type} token registered for {log_user}")
+        logger.info(f"✅ {token_type} token registered for {username or 'anonymous'}")
         return jsonify({
             "success": True, 
             "message": f"{token_type} token registered",
@@ -202,15 +273,11 @@ def unregister_fcm_token():
     by iOS AppDelegate) from continuing to receive pushes after logout.
     """
     from backend.services.database import get_db_connection, get_sql_placeholder, USE_MYSQL
-    from backend.services.native_push import block_push_registration_in_session
 
     logger = current_app.logger
     username = session.get("username")
     if not username:
         return jsonify({"success": False, "error": "not logged in"}), 401
-
-    # Block any in-flight register_fcm while session cookie is still present.
-    block_push_registration_in_session(session)
 
     try:
         data = request.get_json(force=True, silent=True) or {}
@@ -262,9 +329,7 @@ def unregister_fcm_token():
             fcm_rows,
             native_rows,
         )
-        resp = jsonify({"success": True, "deactivated_fcm": fcm_rows, "deactivated_native": native_rows})
-        current_app.session_interface.save_session(current_app, session, resp)
-        return resp
+        return jsonify({"success": True, "deactivated_fcm": fcm_rows, "deactivated_native": native_rows})
     except Exception as e:
         logger.error("unregister_fcm error: %s", e)
         return jsonify({"success": False, "error": str(e)}), 500

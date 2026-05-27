@@ -95,10 +95,8 @@ from backend.services.chat_message_preview import format_chat_message_preview, p
 from backend.services.native_push import (
     DEFAULT_APNS_ENVIRONMENT,
     associate_install_tokens_with_user,
-    push_registration_may_activate,
     register_native_push_token,
     unregister_native_push_token,
-    upsert_fcm_token_row,
 )
 from backend.services.media import (
     DEFAULT_ALLOWED_EXTENSIONS,
@@ -31684,39 +31682,53 @@ def api_native_push_register():
     bundle_id = (data.get('bundle_id') or '').strip() or None
     device_name = (data.get('device_name') or '').strip() or None
     username = session.get('username')
-    activate = push_registration_may_activate(session, username)
 
     try:
         # Register in native_push_tokens table
         register_native_push_token(
             token=token,
-            username=username if activate else None,
+            username=username,
             install_id=install_id,
             platform=platform,
             environment=environment,
             bundle_id=bundle_id,
             device_name=device_name,
-            activate=activate,
         )
         
         # ALSO register in fcm_tokens table (used by Firebase notification sending)
+        # This ensures notifications work via both FCM and direct APNs
         try:
             with get_db_connection() as conn:
                 c = conn.cursor()
-                upsert_fcm_token_row(
-                    c,
-                    token,
-                    username if activate else None,
-                    platform,
-                    device_name,
-                    activate=activate,
-                )
+                ph = get_sql_placeholder()
+                if USE_MYSQL:
+                    c.execute(f"""
+                        INSERT INTO fcm_tokens (token, username, platform, device_name, last_seen, is_active)
+                        VALUES ({ph}, {ph}, {ph}, {ph}, NOW(), 1)
+                        ON DUPLICATE KEY UPDATE
+                            username=IFNULL(VALUES(username), username),
+                            platform=VALUES(platform),
+                            device_name=VALUES(device_name),
+                            last_seen=NOW(),
+                            is_active=1
+                    """, (token, username, platform, device_name))
+                else:
+                    c.execute("""
+                        INSERT INTO fcm_tokens (token, username, platform, device_name, last_seen, is_active)
+                        VALUES (?, ?, ?, ?, datetime('now'), 1)
+                        ON CONFLICT(token) DO UPDATE SET
+                            username=COALESCE(excluded.username, username),
+                            platform=excluded.platform,
+                            device_name=excluded.device_name,
+                            last_seen=datetime('now'),
+                            is_active=1
+                    """, (token, username, platform, device_name))
                 conn.commit()
-                app.logger.info(f"📱 Token also stored in fcm_tokens for {username if activate else 'anonymous'}")
+                app.logger.info(f"📱 Token also stored in fcm_tokens for {username or 'anonymous'}")
         except Exception as fcm_err:
             app.logger.warning(f"Could not store in fcm_tokens (non-critical): {fcm_err}")
         
-        if activate and username:
+        if username:
             associate_install_tokens_with_user(install_id, username)
         resp = jsonify({ 'success': True, 'install_id': install_id, 'linked': bool(username) })
         _set_native_push_cookie(resp, install_id)

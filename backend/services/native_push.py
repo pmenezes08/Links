@@ -20,195 +20,6 @@ APNS_USE_SANDBOX = os.getenv("APNS_USE_SANDBOX", "false").lower() in {"1", "true
 DEFAULT_APNS_ENVIRONMENT = "sandbox" if APNS_USE_SANDBOX else "production"
 APNS_BUNDLE_ID = os.getenv("APNS_BUNDLE_ID", "co.cpoint.app")
 
-PUSH_REGISTRATION_BLOCKED_KEY = "push_registration_blocked"
-
-
-def block_push_registration_in_session(session_obj) -> None:
-    """Set after logout unregister so in-flight register_fcm cannot reactivate rows."""
-    session_obj[PUSH_REGISTRATION_BLOCKED_KEY] = True
-    session_obj.modified = True
-
-
-def clear_push_registration_block(session_obj) -> None:
-    session_obj.pop(PUSH_REGISTRATION_BLOCKED_KEY, None)
-    session_obj.modified = True
-
-
-def push_registration_may_activate(session_obj, username: Optional[str]) -> bool:
-    return bool((username or "").strip()) and not session_obj.get(PUSH_REGISTRATION_BLOCKED_KEY)
-
-
-def upsert_fcm_token_row(
-    cursor,
-    token: str,
-    username: Optional[str],
-    platform: str,
-    device_name: Optional[str],
-    *,
-    activate: bool,
-) -> None:
-    ph = get_sql_placeholder()
-    if activate and username:
-        if USE_MYSQL:
-            cursor.execute(
-                f"""
-                INSERT INTO fcm_tokens (token, username, platform, device_name, last_seen, is_active)
-                VALUES ({ph}, {ph}, {ph}, {ph}, NOW(), 1)
-                ON DUPLICATE KEY UPDATE
-                    username=VALUES(username),
-                    platform=VALUES(platform),
-                    device_name=VALUES(device_name),
-                    last_seen=NOW(),
-                    is_active=1
-                """,
-                (token, username, platform, device_name),
-            )
-        else:
-            cursor.execute(
-                """
-                INSERT INTO fcm_tokens (token, username, platform, device_name, last_seen, is_active)
-                VALUES (?, ?, ?, ?, datetime('now'), 1)
-                ON CONFLICT(token) DO UPDATE SET
-                    username=excluded.username,
-                    platform=excluded.platform,
-                    device_name=excluded.device_name,
-                    last_seen=excluded.last_seen,
-                    is_active=1
-                """,
-                (token, username, platform, device_name),
-            )
-    else:
-        if USE_MYSQL:
-            cursor.execute(
-                f"""
-                INSERT INTO fcm_tokens (token, username, platform, device_name, last_seen, is_active)
-                VALUES ({ph}, NULL, {ph}, {ph}, NOW(), 0)
-                ON DUPLICATE KEY UPDATE
-                    username=NULL,
-                    platform=VALUES(platform),
-                    device_name=VALUES(device_name),
-                    last_seen=NOW(),
-                    is_active=0
-                """,
-                (token, platform, device_name),
-            )
-        else:
-            cursor.execute(
-                """
-                INSERT INTO fcm_tokens (token, username, platform, device_name, last_seen, is_active)
-                VALUES (?, NULL, ?, ?, datetime('now'), 0)
-                ON CONFLICT(token) DO UPDATE SET
-                    username=NULL,
-                    platform=excluded.platform,
-                    device_name=excluded.device_name,
-                    last_seen=excluded.last_seen,
-                    is_active=0
-                """,
-                (token, platform, device_name),
-            )
-
-
-def upsert_native_push_token_row(
-    cursor,
-    token: str,
-    username: Optional[str],
-    install_id: Optional[str],
-    platform: str,
-    environment: str,
-    bundle_id: str,
-    device_name: Optional[str],
-    *,
-    activate: bool,
-) -> None:
-    ph = get_sql_placeholder()
-    params_active = (
-        token,
-        username,
-        install_id,
-        platform,
-        environment,
-        bundle_id,
-        device_name,
-    )
-    if activate and username:
-        if USE_MYSQL:
-            cursor.execute(
-                f"""
-                INSERT INTO native_push_tokens (token, username, install_id, platform, environment, bundle_id, device_name, last_seen, is_active)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, NOW(), 1)
-                ON DUPLICATE KEY UPDATE
-                    username=VALUES(username),
-                    install_id=IFNULL(VALUES(install_id), install_id),
-                    platform=VALUES(platform),
-                    environment=VALUES(environment),
-                    bundle_id=VALUES(bundle_id),
-                    device_name=VALUES(device_name),
-                    last_seen=NOW(),
-                    is_active=1
-                """,
-                params_active,
-            )
-        else:
-            cursor.execute(
-                """
-                INSERT INTO native_push_tokens (token, username, install_id, platform, environment, bundle_id, device_name, last_seen, is_active)
-                VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), 1)
-                ON CONFLICT(token) DO UPDATE SET
-                    username=excluded.username,
-                    install_id=COALESCE(excluded.install_id, install_id),
-                    platform=excluded.platform,
-                    environment=excluded.environment,
-                    bundle_id=excluded.bundle_id,
-                    device_name=excluded.device_name,
-                    last_seen=excluded.last_seen,
-                    is_active=1
-                """,
-                params_active,
-            )
-    else:
-        params_inactive = (
-            token,
-            install_id,
-            platform,
-            environment,
-            bundle_id,
-            device_name,
-        )
-        if USE_MYSQL:
-            cursor.execute(
-                f"""
-                INSERT INTO native_push_tokens (token, username, install_id, platform, environment, bundle_id, device_name, last_seen, is_active)
-                VALUES ({ph}, NULL, {ph}, {ph}, {ph}, {ph}, {ph}, NOW(), 0)
-                ON DUPLICATE KEY UPDATE
-                    username=NULL,
-                    install_id=IFNULL(VALUES(install_id), install_id),
-                    platform=VALUES(platform),
-                    environment=VALUES(environment),
-                    bundle_id=VALUES(bundle_id),
-                    device_name=VALUES(device_name),
-                    last_seen=NOW(),
-                    is_active=0
-                """,
-                params_inactive,
-            )
-        else:
-            cursor.execute(
-                """
-                INSERT INTO native_push_tokens (token, username, install_id, platform, environment, bundle_id, device_name, last_seen, is_active)
-                VALUES (?, NULL, ?, ?, ?, ?, ?, datetime('now'), 0)
-                ON CONFLICT(token) DO UPDATE SET
-                    username=NULL,
-                    install_id=COALESCE(excluded.install_id, install_id),
-                    platform=excluded.platform,
-                    environment=excluded.environment,
-                    bundle_id=excluded.bundle_id,
-                    device_name=excluded.device_name,
-                    last_seen=excluded.last_seen,
-                    is_active=0
-                """,
-                params_inactive,
-            )
-
 
 def register_native_push_token(
     token: str,
@@ -218,8 +29,6 @@ def register_native_push_token(
     environment: str = DEFAULT_APNS_ENVIRONMENT,
     bundle_id: Optional[str] = None,
     device_name: Optional[str] = None,
-    *,
-    activate: bool = True,
 ) -> None:
     """Upsert a native push token for the given user or anonymous install."""
     normalized_token = (token or "").strip()
@@ -230,31 +39,60 @@ def register_native_push_token(
     if environment not in {"production", "sandbox"}:
         environment = DEFAULT_APNS_ENVIRONMENT
 
-    platform_norm = (platform or "ios").lower()
-    bind_user = username if activate and username else None
-
     with get_db_connection() as conn:
         c = conn.cursor()
-        upsert_native_push_token_row(
-            c,
+        ph = get_sql_placeholder()
+        params = (
             normalized_token,
-            bind_user,
+            username,
             install_id,
-            platform_norm,
+            (platform or "ios").lower(),
             environment,
             bundle_id or APNS_BUNDLE_ID,
             device_name,
-            activate=activate and bool(bind_user),
         )
+        if USE_MYSQL:
+            c.execute(
+                f"""
+                INSERT INTO native_push_tokens (token, username, install_id, platform, environment, bundle_id, device_name, last_seen, is_active)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, NOW(), 1)
+                ON DUPLICATE KEY UPDATE
+                    username=IFNULL(VALUES(username), username),
+                    install_id=IFNULL(VALUES(install_id), install_id),
+                    platform=VALUES(platform),
+                    environment=VALUES(environment),
+                    bundle_id=VALUES(bundle_id),
+                    device_name=VALUES(device_name),
+                    last_seen=NOW(),
+                    is_active=1
+                """,
+                params,
+            )
+        else:
+            c.execute(
+                """
+                INSERT INTO native_push_tokens (token, username, install_id, platform, environment, bundle_id, device_name, last_seen, is_active)
+                VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), 1)
+                ON CONFLICT(token) DO UPDATE SET
+                    username=COALESCE(excluded.username, username),
+                    install_id=COALESCE(excluded.install_id, install_id),
+                    platform=excluded.platform,
+                    environment=excluded.environment,
+                    bundle_id=excluded.bundle_id,
+                    device_name=excluded.device_name,
+                    last_seen=excluded.last_seen,
+                    is_active=1
+                """,
+                params,
+            )
         conn.commit()
 
     logger.info(
-        "Registered native push token (user=%s install=%s platform=%s env=%s active=%s)",
-        bind_user or "anonymous",
+        "Registered native push token (user=%s install=%s platform=%s env=%s)",
+        username or "anonymous",
         install_id or "none",
-        platform_norm,
+        platform,
         environment,
-        activate and bool(bind_user),
     )
 
 
@@ -374,7 +212,7 @@ def deactivate_for_install(install_id: Optional[str]) -> dict[str, int]:
             c.execute(
                 f"""
                 UPDATE fcm_tokens
-                SET is_active = 0, username = NULL
+                SET is_active = 0
                 WHERE token IN (
                     SELECT token FROM native_push_tokens WHERE install_id = {ph}
                 )
@@ -385,7 +223,7 @@ def deactivate_for_install(install_id: Optional[str]) -> dict[str, int]:
             c.execute(
                 f"""
                 UPDATE native_push_tokens
-                SET is_active = 0, username = NULL
+                SET is_active = 0
                 WHERE install_id = {ph}
                 """,
                 (install_id,),
@@ -395,7 +233,7 @@ def deactivate_for_install(install_id: Optional[str]) -> dict[str, int]:
             c.execute(
                 """
                 UPDATE fcm_tokens
-                SET is_active = 0, username = NULL
+                SET is_active = 0
                 WHERE token IN (
                     SELECT token FROM native_push_tokens WHERE install_id = ?
                 )
@@ -406,7 +244,7 @@ def deactivate_for_install(install_id: Optional[str]) -> dict[str, int]:
             c.execute(
                 """
                 UPDATE native_push_tokens
-                SET is_active = 0, username = NULL
+                SET is_active = 0
                 WHERE install_id = ?
                 """,
                 (install_id,),
@@ -496,12 +334,6 @@ def deactivate_all_push_for_user(username: Optional[str]) -> dict[str, int]:
 
 __all__ = [
     "DEFAULT_APNS_ENVIRONMENT",
-    "PUSH_REGISTRATION_BLOCKED_KEY",
-    "block_push_registration_in_session",
-    "clear_push_registration_block",
-    "push_registration_may_activate",
-    "upsert_fcm_token_row",
-    "upsert_native_push_token_row",
     "register_native_push_token",
     "unregister_native_push_token",
     "associate_install_tokens_with_user",
