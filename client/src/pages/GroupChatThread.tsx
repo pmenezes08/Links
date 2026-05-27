@@ -371,6 +371,7 @@ export default function GroupChatThread() {
     listPaddingBottom,
     listScrollPaddingBottom,
     scrollButtonBottom,
+    insetMotionIdle,
     handleContentPointerDown,
     handleContentPointerUp,
     handleContentPointerCancel,
@@ -2214,7 +2215,7 @@ export default function GroupChatThread() {
           <div
             ref={listRef}
             data-preserve-scroll="true"
-            className="flex-1 overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-list-inset"
+            className={`flex-1 overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-list-inset${insetMotionIdle ? ' chat-list-idle-smooth' : ''}`}
             style={{
               WebkitOverflowScrolling: 'touch',
               overscrollBehaviorY: 'auto',

@@ -197,6 +197,21 @@ export function useChatComposerChrome({
   const listScrollPaddingBottom = listPaddingBottom
   const scrollButtonBottom = `${bottomChromeInset + effectiveComposerHeight + 12}px`
   const keyboardIsOpen = keyboardLift > 0 || androidKeyboardOpen
+  /**
+   * True when the keyboard system is fully at rest (closed, not animating
+   * open, not in iOS smoothing tail). Thread pages toggle the
+   * `chat-list-idle-smooth` CSS class on the inverted list with this flag so
+   * post-paint inset settles (composer remeasure, safe-area sync, active-use
+   * chrome growth) ease over the same 250ms curve as `chat-composer-spacer-
+   * smooth`, while keyboard motion (JS-smoothed in `useSmoothedPx`) stays
+   * tick-precise — gating the transition off whenever the keyboard is at all
+   * engaged prevents the CSS interpolation from lagging behind the JS-driven
+   * composer card position.
+   */
+  const insetMotionIdle =
+    !androidKeyboardOpen &&
+    keyboardLift === 0 &&
+    Math.abs(displayKeyboardLift) < 0.5
 
   useEffect(() => {
     if (!isMobile) return
@@ -325,6 +340,7 @@ export function useChatComposerChrome({
     scrollButtonBottom,
     effectiveComposerHeight,
     bottomChromeInset,
+    insetMotionIdle,
     handleContentPointerDown: touchDismiss.handleContentPointerDown,
     handleContentPointerUp,
     handleContentPointerCancel: touchDismiss.handleContentPointerCancel,

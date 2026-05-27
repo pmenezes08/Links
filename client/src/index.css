@@ -251,6 +251,37 @@
   /* scroll-padding-bottom set inline from composer hook */
 }
 
+/*
+ * Idle-only smoothing for the inverted chat list inset.
+ *
+ * Applied (and only applied) by ChatThread.tsx / GroupChatThread.tsx /
+ * ChatThreadShell.tsx when `useChatComposerChrome().insetMotionIdle` is true
+ * — i.e. the keyboard is fully closed and not animating (neither
+ * `keyboardLift > 0` nor the iOS `useSmoothedPx` tail are still running).
+ *
+ * Purpose: post-paint inset settles (composer card remeasure on the very
+ * first surface open, late safe-area sync, mention dropdown / upload banner
+ * mount inside the composer, etc.) ease over the same 250ms cubic curve as
+ * `chat-composer-spacer-smooth` instead of snapping by a few pixels.
+ *
+ * Why gated: keyboard motion drives `listPaddingBottom` frame-by-frame via
+ * `useSmoothedPx`. A CSS transition on those ticks would lag the list inset
+ * 250ms behind the JS-driven composer card position, visibly disconnecting
+ * the two during open/close. The gate keeps keyboard motion tick-precise and
+ * the idle settle native-smooth.
+ */
+.chat-list-idle-smooth {
+  transition:
+    padding-bottom 250ms cubic-bezier(0.32, 0.72, 0, 1),
+    scroll-padding-bottom 250ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-list-idle-smooth {
+    transition: none !important;
+  }
+}
+
 @keyframes chatReactionPop {
   from {
     opacity: 0;

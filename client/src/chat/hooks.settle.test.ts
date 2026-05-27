@@ -90,4 +90,41 @@ describe('chat thread inverted-list invariants', () => {
       expect(src).toMatch(/scrollToBottomSmooth\(\)/)
     }
   })
+
+  it('useChatComposerChrome exposes insetMotionIdle gated on keyboard fully closed', () => {
+    const src = readFileSync(
+      join(repoRoot, 'client', 'src', 'chat', 'useChatComposerChrome.ts'),
+      'utf8',
+    )
+    expect(src).toMatch(/insetMotionIdle/)
+    // Gate must reference all three signals: no Android keyboard, no native
+    // keyboardLift, and no iOS smoothing tail (displayKeyboardLift ~ 0).
+    expect(src).toMatch(/!androidKeyboardOpen/)
+    expect(src).toMatch(/keyboardLift === 0/)
+    expect(src).toMatch(/displayKeyboardLift/)
+  })
+
+  it('ChatThreadShell applies chat-list-idle-smooth when insetMotionIdle is true', () => {
+    const src = readFileSync(
+      join(repoRoot, 'client', 'src', 'chat', 'ChatThreadShell.tsx'),
+      'utf8',
+    )
+    expect(src).toMatch(/insetMotionIdle/)
+    expect(src).toMatch(/chat-list-idle-smooth/)
+  })
+
+  it('thread pages wire chat-list-idle-smooth from insetMotionIdle', () => {
+    for (const page of ['ChatThread.tsx', 'GroupChatThread.tsx']) {
+      const src = readFileSync(join(repoRoot, 'client', 'src', 'pages', page), 'utf8')
+      expect(src).toContain('insetMotionIdle')
+      expect(src).toContain('chat-list-idle-smooth')
+    }
+  })
+
+  it('chat-list-idle-smooth CSS is gated by prefers-reduced-motion', () => {
+    const src = readFileSync(join(repoRoot, 'client', 'src', 'index.css'), 'utf8')
+    expect(src).toMatch(/\.chat-list-idle-smooth\s*\{/)
+    expect(src).toMatch(/transition:\s*[\s\S]*padding-bottom\s+250ms/)
+    expect(src).toMatch(/prefers-reduced-motion[\s\S]*chat-list-idle-smooth[\s\S]*transition:\s*none/)
+  })
 })

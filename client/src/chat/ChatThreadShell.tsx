@@ -10,6 +10,14 @@ export type ChatThreadShellProps = {
   onPointerUp?: React.PointerEventHandler<HTMLDivElement>
   onPointerCancel?: React.PointerEventHandler<HTMLDivElement>
   androidKeyboardOpen?: boolean
+  /**
+   * When true (keyboard fully closed and not animating), the list element gets
+   * the `chat-list-idle-smooth` class so post-paint inset settles ease over
+   * the shared 250ms curve instead of snapping. Drive from
+   * `useChatComposerChrome().insetMotionIdle`. Defaults to `false` so callers
+   * that don't wire it preserve today's tick-precise behaviour.
+   */
+  insetMotionIdle?: boolean
   maxWidthClass?: string
   listClassName?: string
   loadOlderSlot?: ReactNode
@@ -38,11 +46,15 @@ export function ChatThreadShell({
   onPointerUp,
   onPointerCancel,
   androidKeyboardOpen = false,
+  insetMotionIdle = false,
   maxWidthClass = 'max-w-3xl',
   listClassName = 'flex-1 overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-list-inset',
   loadOlderSlot,
   children,
 }: ChatThreadShellProps) {
+  const composedListClassName = insetMotionIdle
+    ? `${listClassName} chat-list-idle-smooth`
+    : listClassName
   return (
     <div
       className="glass-page text-white chat-thread-bg"
@@ -73,7 +85,7 @@ export function ChatThreadShell({
           <div
             ref={listRef}
             data-preserve-scroll="true"
-            className={listClassName}
+            className={composedListClassName}
             style={{
               WebkitOverflowScrolling: 'touch',
               overscrollBehaviorY: 'auto',

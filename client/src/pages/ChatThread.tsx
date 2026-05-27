@@ -377,6 +377,7 @@ export default function ChatThread(){
     listPaddingBottom,
     listScrollPaddingBottom,
     scrollButtonBottom,
+    insetMotionIdle,
     handleContentPointerDown,
     handleContentPointerUp,
     handleContentPointerCancel,
@@ -2377,7 +2378,7 @@ export default function ChatThread(){
       {/* ====== MESSAGES LIST - SCROLLABLE (inverted: column-reverse) ====== */}
       <div
         ref={listRef}
-        className="flex-1 overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-list-inset"
+        className={`flex-1 overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-list-inset${insetMotionIdle ? ' chat-list-idle-smooth' : ''}`}
         style={{
           WebkitOverflowScrolling: 'touch',
           overscrollBehaviorY: 'auto',
