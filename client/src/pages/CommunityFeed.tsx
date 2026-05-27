@@ -35,6 +35,7 @@ import {
 import EditableAISummary from '../components/EditableAISummary'
 import GifPicker from '../components/GifPicker'
 import FeedBottomNav from '../components/FeedBottomNav'
+import { SkeletonFeedList } from '../components/SkeletonRow'
 import { resolveCommunityBackgroundUrl } from '../utils/communityBackgroundUrl'
 import { NativeActionButton } from '../components/NativeActionButton'
 import type { GifSelection } from '../components/GifPicker'
@@ -2407,15 +2408,15 @@ export default function CommunityFeed() {
   if (loading) return (
     <div className="min-h-screen bg-black text-white flex flex-col">
       {feedBackButton}
-      <div className="flex-1 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="relative">
-            <div className="w-12 h-12 border-4 border-white/10 rounded-full" />
-            <div className="absolute inset-0 w-12 h-12 border-4 border-transparent border-t-cpoint-turquoise rounded-full animate-spin" />
-          </div>
-          <div className="text-sm text-[#9fb0b5]">{t('feed.loading_feed')}</div>
-        </div>
+      <div className="flex-1">
+        <SkeletonFeedList count={4} />
       </div>
+      <FeedBottomNav
+        onHome={() => {}}
+        onMembers={() => {}}
+        onAnnouncements={() => {}}
+        onMore={() => {}}
+      />
     </div>
   )
   if (error) return (
