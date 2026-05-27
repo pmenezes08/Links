@@ -513,3 +513,42 @@ catalog convention and namespaces.
       `docs/I18N_ROADMAP.md` § 1, KB overrides remain English-only;
       PT users get JSON catalog content even when an English override
       exists in the KB).
+
+## §15 — Page transitions (pilot)
+
+Run after any change to page navigation, skeleton loading, layout shell, `PageTransitionStack`, route splitting, or `DashboardBottomNav` hoisting. Test on **iOS Capacitor**, **Android Capacitor**, and **mobile web** (Chrome). Minimum devices: iPhone 13-class + mid-tier Android.
+
+Pilot routes: `/premium_dashboard`, `/feed`, `/about_cpoint`, `/community_feed_react/:id`, `/post/:id`.
+
+### Instant paint (Phase 1)
+
+- [ ] **Dashboard cold start**: navigate to `/premium_dashboard` with cleared cache. A layout-matching skeleton (community card shapes, bottom nav, FAB position) is visible on the first frame — no full-screen spinner, no blank white/black frame.
+- [ ] **Dashboard warm cache**: navigate to `/premium_dashboard` with device cache populated. Real content paints on frame 0 from cache; background refresh does not blank the shell.
+- [ ] **Feed skeleton**: navigate to `/feed`. Feed skeleton rows (matching post-card height) are visible immediately — no "Loading…" text swap.
+- [ ] **Community feed shell**: open a community feed from the dashboard. Feed header + `FeedBottomNav` + post-shaped skeletons render on frame 0 — no blocking spinner, no bottom nav appearing late.
+- [ ] **Post detail skeleton**: tap a post from a feed. Post-shaped skeleton (header, body area, action bar) is visible immediately — no minimal loading line or blank content area.
+- [ ] **ImageLoader reserved space**: scroll a feed with images. Image placeholders reserve correct aspect-ratio — no height-0 → natural-height jumps as images decode.
+
+### Layout shell (Phase 2)
+
+- [ ] **Bottom nav persistence**: navigate between Dashboard, Feed, and About using the bottom nav. `DashboardBottomNav` never unmounts/flashes — active tab indicator updates without a repaint gap.
+- [ ] **Tab scroll preservation**: switch from Dashboard to Feed and back. Scroll position is preserved on both tabs (content stays where you left it).
+- [ ] **Header title sync**: navigate to any pilot route. Header title is correct on the first frame — no empty header followed by a title appearing a frame later.
+- [ ] **Android hardware back**: from Community Feed, press the Android back button. Navigation goes back to the previous route (not app exit).
+
+### Transitions (Phase 3)
+
+- [ ] **Push animation (drill-down)**: tap a community card on the Dashboard. The Community Feed slides in from the right over 250ms with `cubic-bezier(0.32, 0.72, 0, 1)` easing — the outgoing page slides left simultaneously.
+- [ ] **Pop animation (back)**: from Community Feed, tap back. The page slides out to the right (reverse of push) — Dashboard slides in from the left.
+- [ ] **Tab cross-fade**: tap between Dashboard, Feed, and About in the bottom nav. Transition is a 120ms opacity cross-fade — no horizontal slide.
+- [ ] **Mid-transition content**: during the push/pop slide, both the outgoing and incoming pages show real content or layout-matched skeletons — never a spinner or blank frame.
+- [ ] **No scroll snap during transition**: the outgoing page's scroll position does not visibly jump to top during the animation.
+- [ ] **60fps on device**: record a push/pop transition on an iPhone 13-class device. The animation must be visually smooth with no dropped frames (use Instruments or Safari Web Inspector timeline to confirm ~60fps).
+- [ ] **Glass blur performance**: during a push/pop, if both pages have `backdrop-filter: blur()`, confirm no visible frame drops or stuttering on iOS.
+- [ ] **Reduced motion**: enable `prefers-reduced-motion: reduce` in system settings. Transitions must either be an instant cut or a subtle 80ms opacity fade — no slide animation.
+- [ ] **Deep-link to post**: open a direct URL to `/post/:id`. The page loads with its skeleton (no transition animation on deep link — only navigations within the app animate).
+
+### Regression (mandatory every loop)
+
+- [ ] **§14 chat unaffected**: open a DM thread and a group thread. Verify inverted-list open-at-bottom, send, scroll, keyboard open/close — all per §14 checks unchanged.
+- [ ] **Non-pilot routes unaffected**: navigate to Settings, Profile, Messages, Networking. These routes must behave exactly as before (no transition animation, no layout regression).
