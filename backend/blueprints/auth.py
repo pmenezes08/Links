@@ -67,6 +67,9 @@ def _session_required_api(view_func):
 
 def _apply_login_persistence(resp, username: str) -> int:
     """Revoke any prior remember-me row for this browser, then issue a fresh token + install id."""
+    from backend.services.native_push import clear_push_registration_block
+
+    clear_push_registration_block(session)
     stale = remember_tokens.revoke_by_cookie(request)
     remember_tokens.issue(resp, username)
     auth_session.set_install_cookie(resp, secrets.token_urlsafe(24))

@@ -79,12 +79,15 @@ export async function unregisterPushBeforeLogout(): Promise<void> {
     /* ignore */
   }
 
-  // Survives account-scoped localStorage wipe — blocks PushInit/AppDelegate follow-ups on Welcome.
+  // Survives account-scoped localStorage wipe — blocks PushInit follow-ups on Welcome.
   setPushRegistrationBlocked()
 }
 
 export async function performLogout(): Promise<void> {
   console.log('🚪 Starting logout process...')
+
+  // Block push server registration before any async work (race with Capacitor registration).
+  setPushRegistrationBlocked()
 
   try {
     const { Capacitor } = await import('@capacitor/core')
