@@ -363,7 +363,6 @@ export default function GroupChatThread() {
     pendingNewCount,
     clearPendingNew,
     composerCardRef,
-    keyboardLift,
     displayKeyboardLift,
     safeBottomPx,
     isWeb,

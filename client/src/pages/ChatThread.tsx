@@ -360,7 +360,6 @@ export default function ChatThread(){
     pendingNewCount,
     clearPendingNew,
     composerCardRef,
-    keyboardLift,
     displayKeyboardLift,
     safeBottomPx,
     isWeb,
