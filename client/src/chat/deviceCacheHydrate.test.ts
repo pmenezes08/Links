@@ -10,38 +10,34 @@ function readPage(name: string): string {
 }
 
 describe('chat thread stale device cache hydrate contract', () => {
-  it('ChatThread imports readDeviceCacheStale and uses it for message hydrate', () => {
+  it('ChatThread uses shared threadDeviceCache kernel and useLayoutEffect thread switch', () => {
     const src = readPage('ChatThread.tsx')
-    expect(src).toMatch(/readDeviceCacheStale/)
-    expect(src).toMatch(/readDeviceCacheStale<\{ display_name: string; profile_picture\?: string \| null \}>\(profileCacheKey/)
-    expect(src).toMatch(/readDeviceCacheStale<\{ messages: any\[]; otherUserId: number \}>\(chatCacheKey/)
+    expect(src).toMatch(/readStaleDeviceCache/)
+    expect(src).toMatch(/paintDmCacheMessages/)
+    expect(src).toMatch(/hydrateThreadFromIndexedDb/)
+    expect(src).toMatch(/useLayoutEffect\(\(\) => \{[\s\S]*threadGenerationRef\.current \+= 1/)
     expect(src).toMatch(/mergeHydratedMessages/)
-    expect(src).not.toMatch(
-      /readDeviceCache<\{ messages: any\[]; otherUserId: number \}>\(chatCacheKey/,
-    )
+    expect(src).not.toMatch(/readDeviceCacheStale/)
   })
 
-  it('ChatThread network shortcut uses readDeviceCacheStale for cached otherUserId', () => {
+  it('ChatThread network shortcut uses readStaleDeviceCache for cached otherUserId', () => {
     const src = readPage('ChatThread.tsx')
     const networkBlock = src.slice(src.indexOf('// Check if we have cached user ID'))
-    expect(networkBlock).toMatch(/readDeviceCacheStale/)
-    expect(networkBlock).not.toMatch(
-      /readDeviceCache<\{ messages: any\[]; otherUserId: number \}>\(chatCacheKey/,
-    )
+    expect(networkBlock).toMatch(/readStaleDeviceCache/)
   })
 
-  it('GroupChatThread imports readDeviceCacheStale for sync seed and thread switch', () => {
+  it('GroupChatThread uses shared threadDeviceCache kernel for sync seed and thread switch', () => {
     const src = readPage('GroupChatThread.tsx')
-    expect(src).toMatch(/readDeviceCacheStale/)
-    expect(src).toMatch(/readDeviceCacheStale<GroupInfo>/)
-    expect(src).toMatch(/readDeviceCacheStale<Message\[]>/)
-    expect(src).not.toMatch(/readDeviceCache<GroupInfo>\(groupInfoCacheKey/)
-    expect(src).not.toMatch(/readDeviceCache<Message\[]>\(groupChatCacheKey/)
+    expect(src).toMatch(/readStaleDeviceCache/)
+    expect(src).toMatch(/markThreadCachePainted/)
+    expect(src).toMatch(/hydrateThreadFromIndexedDb/)
+    expect(src).not.toMatch(/readDeviceCacheStale/)
   })
 
   it('thread pages defer empty clears until IDB miss when device cache is empty', () => {
     const dm = readPage('ChatThread.tsx')
-    expect(dm).toMatch(/if \(!painted && !cachedChat\?\.messages\?\.length\)/)
+    expect(dm).toMatch(/hydrateThreadFromIndexedDb/)
+    expect(dm).toMatch(/onEmpty:/)
     expect(dm).toContain('notifyMessagesSettledRef.current')
     expect(dm).not.toMatch(/notifyMessagesSettled,\s*\]/)
   })

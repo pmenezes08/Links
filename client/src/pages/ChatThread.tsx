@@ -27,7 +27,7 @@ import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { requestTranslateSummary } from '../utils/translateSummary'
-import { readDeviceCache, readDeviceCacheStale, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
+import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
 import {
   threadsListCacheKey,
   dmConversationOfflineKey,
@@ -52,6 +52,11 @@ import {
   getAllMessageReactions,
   CHAT_CACHE_TTL_MS,
   CHAT_CACHE_VERSION,
+  readStaleDeviceCache,
+  markThreadCachePainted,
+  isCachePaintedForGen,
+  isUnchangedFromCacheSnapshot,
+  hydrateThreadFromIndexedDb,
   MessageBubble,
   useChatThreadChrome,
   ChatSelectionBar,
@@ -137,8 +142,9 @@ export default function ChatThread(){
   }, [])
 
 
-  const [otherUserId, setOtherUserId] = useState<number|''>('')
+  const [otherUserId, setOtherUserId] = useState<number | ''>('')
   const [messages, setMessages] = useState<Message[]>([])
+  const [loading, setLoading] = useState(false)
   const [steveIsTyping, setSteveIsTyping] = useState(false)
   const [editingId, setEditingId] = useState<number|string| null>(null)
   const [editText, setEditText] = useState('')
@@ -179,8 +185,12 @@ export default function ChatThread(){
     () => (username && viewer ? dmConversationOfflineKey(viewer, username) : null),
     [username, viewer],
   )
+  const [otherProfile, setOtherProfile] = useState<{ display_name: string; profile_picture?: string | null } | null>(
+    () => readStaleDeviceCache<{ display_name: string; profile_picture?: string | null }>(
+      username && viewer ? chatProfileDeviceCacheKey(viewer, username) : null,
+    ),
+  )
   const metaRef = useRef<Record<string, { reaction?: string; replySnippet?: string }>>({})
-  const [otherProfile, setOtherProfile] = useState<{ display_name:string; profile_picture?:string|null }|null>(null)
   const [, setTyping] = useState(false) // keep setter for API calls; UI label removed
   const typingTimer = useRef<any>(null)
   const isTypingRef = useRef(false) // Track if we've already sent typing indicator
@@ -275,26 +285,6 @@ export default function ChatThread(){
     },
     onNavigateBack: () => navigate(-1),
   })
-
-  // Peer-scoped ref reset when switching DM threads (cache hydrate runs after processRawMessages is defined)
-  useEffect(() => {
-    if (!username) return
-    threadGenerationRef.current += 1
-    resolvedPeerRef.current = null
-    lastKnownMessageIdRef.current = 0
-    pollCountRef.current = 0
-    idBridgeRef.current.tempToServer.clear()
-    idBridgeRef.current.serverToTemp.clear()
-    recentOptimisticRef.current.clear()
-    pendingDeletions.current.clear()
-    shareAttachDoneRef.current = false
-    setSteveIsTyping(false)
-    setMessages([])
-    setHasMoreMessages(false)
-    setOtherUserId('')
-    cachePaintedGenRef.current = null
-    cacheSnapshotRef.current = null
-  }, [username])
 
   const loadReminderVault = useCallback(async () => {
     setReminderVaultLoading(true)
@@ -539,72 +529,87 @@ export default function ChatThread(){
     })
   }, [username])
 
-  // Sync hydrate on thread switch — device cache first, then IndexedDB fallback (no blank flash)
-  useEffect(() => {
+  const paintDmCacheMessages = useCallback((rawMessages: any[], peerUserId: number | undefined, gen: number) => {
     if (!username) return
+    if (peerUserId) {
+      resolvedPeerRef.current = { username, userId: peerUserId }
+      setOtherUserId(peerUserId)
+    }
+    const processed = processRawMessages(rawMessages)
+    setMessages(prev => mergeHydratedMessages(processed, prev))
+    markThreadCachePainted(cachePaintedGenRef, cacheSnapshotRef, gen, processed)
+    const numericIds = processed
+      .map(m => (typeof m.id === 'number' ? m.id : parseInt(String(m.id), 10)))
+      .filter(n => !Number.isNaN(n))
+    if (numericIds.length) {
+      lastKnownMessageIdRef.current = Math.max(...numericIds)
+    }
+    notifyMessagesSettledRef.current(gen)
+  }, [username, processRawMessages, mergeHydratedMessages])
+
+  // Thread switch: bump generation and seed stale device cache before paint (group parity).
+  useLayoutEffect(() => {
+    if (!username) return
+    threadGenerationRef.current += 1
+    resolvedPeerRef.current = null
+    lastKnownMessageIdRef.current = 0
+    pollCountRef.current = 0
+    idBridgeRef.current.tempToServer.clear()
+    idBridgeRef.current.serverToTemp.clear()
+    recentOptimisticRef.current.clear()
+    pendingDeletions.current.clear()
+    shareAttachDoneRef.current = false
+    setSteveIsTyping(false)
+    setHasMoreMessages(false)
+
     const gen = threadGenerationRef.current
+    const cachedProfile = readStaleDeviceCache<{ display_name: string; profile_picture?: string | null }>(
+      profileCacheKey,
+    )
+    setOtherProfile(cachedProfile)
 
-    const { data: cachedProfile } = profileCacheKey
-      ? readDeviceCacheStale<{ display_name: string; profile_picture?: string | null }>(profileCacheKey, CHAT_CACHE_VERSION)
-      : { data: null }
-    if (cachedProfile) setOtherProfile(cachedProfile)
-
-    const { data: cachedChat } = chatCacheKey
-      ? readDeviceCacheStale<{ messages: any[]; otherUserId: number }>(chatCacheKey, CHAT_CACHE_VERSION)
-      : { data: null }
+    const cachedChat = readStaleDeviceCache<{ messages: any[]; otherUserId: number }>(chatCacheKey)
 
     if (cachedChat?.messages?.length && cachedChat.otherUserId) {
-      resolvedPeerRef.current = { username, userId: cachedChat.otherUserId }
-      setOtherUserId(cachedChat.otherUserId)
-      const processed = processRawMessages(cachedChat.messages)
-      setMessages(prev => mergeHydratedMessages(processed, prev))
-      cachePaintedGenRef.current = gen
-      cacheSnapshotRef.current = {
-        count: processed.length,
-        tailId: processed[processed.length - 1]?.id,
-      }
-      notifyMessagesSettledRef.current(gen)
-      return
-    }
-
-    if (dmOfflineKey && viewer) {
-      Promise.all([
-        getCachedMessages(dmOfflineKey),
-        getCachedKeyVal<number>(dmUserIdKeyvalKey(viewer, username)),
-      ]).then(([idbMsgs, idbUserId]) => {
-        if (gen !== threadGenerationRef.current) return
-        let painted = false
-        if (idbUserId) {
-          resolvedPeerRef.current = { username, userId: idbUserId }
-          setOtherUserId(idbUserId)
-        }
-        if (idbMsgs?.length) {
-          const processed = processRawMessages(idbMsgs)
-          setMessages(prev => mergeHydratedMessages(processed, prev))
-          cachePaintedGenRef.current = gen
-          cacheSnapshotRef.current = {
-            count: processed.length,
-            tailId: processed[processed.length - 1]?.id,
-          }
-          notifyMessagesSettledRef.current(gen)
-          painted = true
-        }
-        if (!painted && !cachedChat?.messages?.length) {
-          setOtherUserId('')
-          setMessages([])
-        }
-      }).catch(() => {
-        if (gen !== threadGenerationRef.current) return
-        if (!cachedChat?.messages?.length) {
-          setOtherUserId('')
-          setMessages([])
-        }
-      })
-    } else if (!cachedChat?.messages?.length) {
-      setOtherUserId('')
+      paintDmCacheMessages(cachedChat.messages, cachedChat.otherUserId, gen)
+    } else {
+      cachePaintedGenRef.current = null
+      cacheSnapshotRef.current = null
       setMessages([])
+      setOtherUserId('')
     }
-  }, [username, chatCacheKey, profileCacheKey, dmOfflineKey, viewer, processRawMessages, mergeHydratedMessages])
+  }, [username, chatCacheKey, profileCacheKey, paintDmCacheMessages])
+
+  // IndexedDB fallback when stale localStorage did not paint.
+  useEffect(() => {
+    if (!username || !dmOfflineKey || !viewer) return
+    const gen = threadGenerationRef.current
+    if (isCachePaintedForGen(cachePaintedGenRef, gen)) return
+
+    const cachedChat = readStaleDeviceCache<{ messages: any[] }>(chatCacheKey)
+
+    void hydrateThreadFromIndexedDb({
+      gen,
+      isGenerationCurrent: (g) => g === threadGenerationRef.current,
+      fetchMessages: () => getCachedMessages(dmOfflineKey),
+      fetchMeta: () => getCachedKeyVal<number>(dmUserIdKeyvalKey(viewer, username)),
+      hasLocalStaleMessages: Boolean(cachedChat?.messages?.length),
+      onMeta: (userId) => {
+        resolvedPeerRef.current = { username, userId }
+        setOtherUserId(userId)
+      },
+      onMessages: (idbMsgs) => {
+        const userId =
+          resolvedPeerRef.current?.userId ??
+          readStaleDeviceCache<{ otherUserId: number }>(chatCacheKey)?.otherUserId
+        paintDmCacheMessages(idbMsgs as any[], userId, gen)
+      },
+      onEmpty: () => {
+        setOtherUserId('')
+        setMessages([])
+      },
+    })
+  }, [username, chatCacheKey, dmOfflineKey, viewer, paintDmCacheMessages])
 
   // Restore draft when entering chat (only if there's an actual saved draft)
   // Added extra protection for iOS navigation - clear any stale content first.
@@ -748,6 +753,8 @@ export default function ChatThread(){
     // Skip network fetches when offline — navigator.onLine is synchronous and reliable on first render
     if (!navigator.onLine) return
     const gen = threadGenerationRef.current
+    const hasPaintedFromCache = isCachePaintedForGen(cachePaintedGenRef, gen)
+    if (!hasPaintedFromCache) setLoading(true)
     
     // Helper to fetch messages and profile once we have user ID
     const fetchMessagesAndProfile = (userId: number) => {
@@ -769,13 +776,11 @@ export default function ChatThread(){
         if (msgResponse?.success && Array.isArray(msgResponse.messages)) {
           const processedMessages = processRawMessages(msgResponse.messages)
           if (gen !== threadGenerationRef.current) return
-          const fromCache = cachePaintedGenRef.current === gen
-          const snap = cacheSnapshotRef.current
-          const unchangedFromCache =
-            fromCache &&
-            snap != null &&
-            processedMessages.length === snap.count &&
-            String(processedMessages[processedMessages.length - 1]?.id) === String(snap.tailId)
+          const unchangedFromCache = isUnchangedFromCacheSnapshot(
+            cacheSnapshotRef.current,
+            isCachePaintedForGen(cachePaintedGenRef, gen),
+            processedMessages,
+          )
 
           setMessages(prev => {
             const serverIds = new Set(processedMessages.map(m => String(m.id)))
@@ -828,7 +833,8 @@ export default function ChatThread(){
             refreshBadges()
           }
         }
-      }).catch(()=>{})
+        setLoading(false)
+      }).catch(() => { setLoading(false) })
       
       // Load user profile (in parallel)
       fetch(`/api/get_user_profile_brief?username=${encodeURIComponent(fetchUsername)}`, { credentials:'include', headers: { 'Accept': 'application/json' } })
@@ -850,9 +856,7 @@ export default function ChatThread(){
     }
     
     // Check if we have cached user ID - skip the lookup API call if so
-    const { data: cached } = chatCacheKey
-      ? readDeviceCacheStale<{ messages: any[]; otherUserId: number }>(chatCacheKey, CHAT_CACHE_VERSION)
-      : { data: null }
+    const cached = readStaleDeviceCache<{ messages: any[]; otherUserId: number }>(chatCacheKey)
     if (cached?.otherUserId) {
       // Use cached user ID immediately, fetch messages in parallel
       resolvedPeerRef.current = { username, userId: cached.otherUserId }
@@ -873,8 +877,10 @@ export default function ChatThread(){
           resolvedPeerRef.current = { username, userId: j.user_id }
           setOtherUserId(j.user_id)
           fetchMessagesAndProfile(j.user_id)
+        } else {
+          setLoading(false)
         }
-      }).catch(()=>{})
+      }).catch(() => { setLoading(false) })
     }
   }, [username, chatCacheKey, profileCacheKey, processRawMessages, viewer, dmOfflineKey, refreshBadges])
 
@@ -2624,7 +2630,12 @@ export default function ChatThread(){
             </button>
           </div>
         )}
-        {messages.length === 0 && !navigator.onLine && (
+        {messages.length === 0 && loading && navigator.onLine && (
+          <div className="flex flex-col items-center justify-center py-20 text-[#9fb0b5]">
+            <i className="fa-solid fa-spinner fa-spin text-2xl mb-3 opacity-70" />
+          </div>
+        )}
+        {messages.length === 0 && !loading && !navigator.onLine && (
           <div className="flex flex-col items-center justify-center py-20 text-[#9fb0b5]">
             <i className="fa-solid fa-wifi-slash text-3xl mb-3 opacity-50" />
             <div className="text-sm">{t('chat.offline_unavailable')}</div>

@@ -28,6 +28,16 @@ export {
   type MessageMeta,
 } from './utils'
 
+export {
+  readStaleDeviceCache,
+  markThreadCachePainted,
+  isCachePaintedForGen,
+  isUnchangedFromCacheSnapshot,
+  hydrateThreadFromIndexedDb,
+  snapshotFromMessages,
+  type ThreadCacheSnapshot,
+} from './threadDeviceCache'
+
 // Components
 export { default as AudioMessage } from './AudioMessage'
 export { default as LongPressActionable } from './LongPressActionable'

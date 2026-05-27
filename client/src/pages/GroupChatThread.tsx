@@ -9,7 +9,7 @@ import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { GroupMessageRow } from '../chat/GroupMessageRow'
-import { getDateKey, normalizeMediaPath, useChatThreadChrome, chatHapticSend, ChatAttachMenuRow, useGroupMessagePoll, ChatMediaPreviewModal, ChatMediaViewerModal, ChatSelectionBar, NewMessagesChip, useResumeOutboxDrain, ChatComposerPortal, ChatComposerCard, ChatVirtualMessageList, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION } from '../chat'
+import { getDateKey, normalizeMediaPath, useChatThreadChrome, chatHapticSend, ChatAttachMenuRow, useGroupMessagePoll, ChatMediaPreviewModal, ChatMediaViewerModal, ChatSelectionBar, NewMessagesChip, useResumeOutboxDrain, ChatComposerPortal, ChatComposerCard, ChatVirtualMessageList, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION, readStaleDeviceCache, markThreadCachePainted, isCachePaintedForGen, isUnchangedFromCacheSnapshot, hydrateThreadFromIndexedDb } from '../chat'
 import { groupChatInfoDeviceCacheKey, groupChatMessagesDeviceCacheKey } from '../utils/chatThreadsCache'
 import { useNativeStatusBar } from '../hooks/useNativeStatusBar'
 import { useAndroidBackButton } from '../hooks/useAndroidBackButton'
@@ -32,7 +32,7 @@ import type { UploadProgress } from '../chat/groupChatMediaSenders'
 import { SENDING_MEDIA_LABEL, sendGroupDocumentMessage } from '../chat/mediaSenders'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
 import { openExternalNativeLink } from '../utils/openExternalInApp'
-import { readDeviceCache, readDeviceCacheStale, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
+import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
 import { requestTranslateSummary } from '../utils/translateSummary'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
 import {
@@ -151,18 +151,16 @@ export default function GroupChatThread() {
   const [group, setGroup] = useState<GroupInfo | null>(() => {
     if (typeof window === 'undefined') return null
     if (!group_id || !currentUsername) return null
-    const { data } = readDeviceCacheStale<GroupInfo>(
+    const data = readStaleDeviceCache<GroupInfo>(
       groupChatInfoDeviceCacheKey(currentUsername, group_id),
-      CHAT_CACHE_VERSION,
     )
     return data
   })
   const [serverMessages, setServerMessages] = useState<Message[]>(() => {
     if (typeof window === 'undefined') return []
     if (!group_id || !currentUsername) return []
-    const { data: cached } = readDeviceCacheStale<Message[]>(
+    const cached = readStaleDeviceCache<Message[]>(
       groupChatMessagesDeviceCacheKey(currentUsername, group_id),
-      CHAT_CACHE_VERSION,
     )
     return cached?.length ? cached : []
   })
@@ -416,12 +414,8 @@ export default function GroupChatThread() {
     lastMessageIdRef.current = 0
     pendingDeletions.current.clear()
 
-    const { data: cachedGroup } = groupInfoCacheKey
-      ? readDeviceCacheStale<GroupInfo>(groupInfoCacheKey, CHAT_CACHE_VERSION)
-      : { data: null }
-    const { data: cachedMessages } = groupChatCacheKey
-      ? readDeviceCacheStale<Message[]>(groupChatCacheKey, CHAT_CACHE_VERSION)
-      : { data: null }
+    const cachedGroup = readStaleDeviceCache<GroupInfo>(groupInfoCacheKey)
+    const cachedMessages = readStaleDeviceCache<Message[]>(groupChatCacheKey)
 
     setGroup(cachedGroup ?? null)
     setServerMessages(cachedMessages?.length ? cachedMessages : [])
@@ -431,11 +425,7 @@ export default function GroupChatThread() {
 
     const gen = threadGenerationRef.current
     if (cachedMessages?.length) {
-      cachePaintedGenRef.current = gen
-      cacheSnapshotRef.current = {
-        count: cachedMessages.length,
-        tailId: cachedMessages[cachedMessages.length - 1]?.id,
-      }
+      markThreadCachePainted(cachePaintedGenRef, cacheSnapshotRef, gen, cachedMessages)
       const newMaxId = Math.max(...cachedMessages.map(m => m.id))
       if (newMaxId > 0) lastMessageIdRef.current = newMaxId
     } else {
@@ -453,11 +443,7 @@ export default function GroupChatThread() {
       const unconfirmed = optimistic.filter(m => !confirmedIds.has(m.id))
       return [...confirmed, ...unconfirmed]
     })
-    cachePaintedGenRef.current = gen
-    cacheSnapshotRef.current = {
-      count: cached.length,
-      tailId: cached[cached.length - 1]?.id,
-    }
+    markThreadCachePainted(cachePaintedGenRef, cacheSnapshotRef, gen, cached)
     notifyMessagesSettledRef.current(gen)
   }, [])
 
@@ -476,15 +462,20 @@ export default function GroupChatThread() {
       })
     }
 
-    if (cachePaintedGenRef.current === gen) return
+    if (isCachePaintedForGen(cachePaintedGenRef, gen)) return
 
-    void getCachedMessages(`group:${group_id}`).then(cached => {
-      if (gen !== threadGenerationRef.current) return
-      if (cached?.length) {
+    const cachedMessages = readStaleDeviceCache<Message[]>(groupChatCacheKey)
+
+    void hydrateThreadFromIndexedDb({
+      gen,
+      isGenerationCurrent: (g) => g === threadGenerationRef.current,
+      fetchMessages: () => getCachedMessages(`group:${group_id}`),
+      hasLocalStaleMessages: Boolean(cachedMessages?.length),
+      onMessages: (cached) => {
         paintGroupCacheMessages(cached as Message[], gen)
-      }
-    }).catch(() => {})
-  }, [group_id, group, paintGroupCacheMessages])
+      },
+    })
+  }, [group_id, group, groupChatCacheKey, paintGroupCacheMessages])
 
   const focusTextarea = useCallback(() => {
     if (MIC_ENABLED && recording) return
@@ -566,7 +557,7 @@ export default function GroupChatThread() {
     // Only show the inline spinner when the chat shell has no cached
     // content to paint yet. With a warm cache the network refresh is
     // silent (no extra render hop).
-    const hasPaintedFromCache = cachePaintedGenRef.current === gen
+    const hasPaintedFromCache = isCachePaintedForGen(cachePaintedGenRef, gen)
     if (!silent && !hasPaintedFromCache) setLoading(true)
     try {
       const url = `/api/group_chat/${group_id}/messages?limit=50`
@@ -587,13 +578,13 @@ export default function GroupChatThread() {
         }
 
         const snap = cacheSnapshotRef.current
-        const fromCache = cachePaintedGenRef.current === gen
         const unchangedFromCache =
           !silent &&
-          fromCache &&
-          snap != null &&
-          newServerMessages.length === snap.count &&
-          String(newServerMessages[newServerMessages.length - 1]?.id) === String(snap.tailId)
+          isUnchangedFromCacheSnapshot(
+            snap,
+            isCachePaintedForGen(cachePaintedGenRef, gen),
+            newServerMessages,
+          )
 
         if (!unchangedFromCache) {
           // Reactions ride along on each message row (`msg.reaction`) —
