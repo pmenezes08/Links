@@ -108,10 +108,15 @@
     ),
     #020202;
   --keyboard-offset: 0px;
-  --sab-px: 0px;
-  --sat-px: 0px;
-  --sal-px: 0px;
-  --sar-px: 0px;
+  /* Default to env() so CSS consumers (calc/var) already reflect the device
+     safe area on first paint. The inline probe in index.html also writes
+     resolved pixel values so JS getComputedStyle() readers (chat composer
+     hooks) see a real number, not the env() token, eliminating a 0→inset
+     first-paint drift in chat threads. */
+  --sab-px: env(safe-area-inset-bottom, 0px);
+  --sat-px: env(safe-area-inset-top, 0px);
+  --sal-px: env(safe-area-inset-left, 0px);
+  --sar-px: env(safe-area-inset-right, 0px);
   --app-dashboard-bottom-nav-height: calc(3.5rem + var(--sab-px));
   --app-dashboard-content-pad-bottom: calc(var(--app-dashboard-bottom-nav-height) + 12px);
   --app-feed-nav-float-gap: 20px;

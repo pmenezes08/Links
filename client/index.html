@@ -21,10 +21,13 @@
     <style>
       :root {
         color-scheme: dark;
-        --sat-px: 0px;
-        --sab-px: 0px;
-        --sal-px: 0px;
-        --sar-px: 0px;
+        /* Default to env() so first paint already reflects the device safe area.
+           The inline probe script below also writes resolved pixel values so
+           getComputedStyle() based JS readers see a real number, not the env() token. */
+        --sat-px: env(safe-area-inset-top, 0px);
+        --sab-px: env(safe-area-inset-bottom, 0px);
+        --sal-px: env(safe-area-inset-left, 0px);
+        --sar-px: env(safe-area-inset-right, 0px);
       }
       
       html, body {
@@ -82,6 +85,64 @@
       </style>
     </div>
     <div id="root" style="background-color: #000000;"></div>
+    <script>
+      /*
+       * Safe-area probe — runs synchronously before the React bundle loads.
+       *
+       * Some browsers (notably WebKit) preserve env() as an unresolved token
+       * inside an unregistered CSS custom property, so getComputedStyle().
+       * getPropertyValue('--sab-px') returns the literal "env(...)" string and
+       * parseFloat yields NaN. Chat composer hooks read these vars via JS
+       * (readCssPxVar) during their useState initializer, so we must seed real
+       * pixel values BEFORE React mounts. Otherwise safeBottomPx starts at 0,
+       * the message list paints with the wrong inset, and a later resize /
+       * visualViewport event re-syncs it — visible as messages drifting upward
+       * after first paint in DM and group chat threads.
+       *
+       * This block is intentionally inline + IIFE so it cannot defer or fail
+       * the rest of the boot. useSafeAreaSync() still runs after mount and
+       * keeps the vars in sync on orientation / Capacitor resume.
+       */
+      (function () {
+        try {
+          var probe = document.createElement('div');
+          probe.style.cssText =
+            'position:fixed;top:0;right:0;bottom:0;left:0;width:0;height:0;' +
+            'margin:0;border:0;visibility:hidden;pointer-events:none;z-index:-1;' +
+            'padding-top:env(safe-area-inset-top,0px);' +
+            'padding-right:env(safe-area-inset-right,0px);' +
+            'padding-bottom:env(safe-area-inset-bottom,0px);' +
+            'padding-left:env(safe-area-inset-left,0px);';
+          document.body.appendChild(probe);
+          var cs = getComputedStyle(probe);
+          var top = parseFloat(cs.paddingTop) || 0;
+          var right = parseFloat(cs.paddingRight) || 0;
+          var bottom = parseFloat(cs.paddingBottom) || 0;
+          var left = parseFloat(cs.paddingLeft) || 0;
+          probe.remove();
+
+          var ua = navigator.userAgent || '';
+          var isIosDevice = /iPhone|iPod|iPad/i.test(ua);
+          if (isIosDevice) {
+            var maxSide = Math.max(screen.width, screen.height);
+            var minSide = Math.min(screen.width, screen.height);
+            var hasHomeIndicator = maxSide >= 812 && minSide >= 375;
+            if (bottom < 1 && hasHomeIndicator) bottom = 34;
+            if (top < 1 && hasHomeIndicator) {
+              top = window.innerHeight >= 812 ? 47 : 20;
+            }
+          }
+
+          var root = document.documentElement;
+          root.style.setProperty('--sat-px', top + 'px');
+          root.style.setProperty('--sab-px', bottom + 'px');
+          root.style.setProperty('--sal-px', left + 'px');
+          root.style.setProperty('--sar-px', right + 'px');
+          root.style.setProperty('--sab', bottom + 'px');
+          root.style.setProperty('--sat', top + 'px');
+        } catch (e) { /* best-effort: useSafeAreaSync() will retry post-mount */ }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
