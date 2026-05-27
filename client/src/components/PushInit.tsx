@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { PushNotifications } from '@capacitor/push-notifications'
+import {
+  clearPushRegistrationBlocked,
+  isPushRegistrationBlocked,
+  registerFcmTokenWithServer,
+} from '../utils/pushRegistration'
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
@@ -101,43 +106,21 @@ export default function PushInit(){
             PushNotifications.addListener('registration', async (token) => {
               console.log('🔥 Capacitor registration event fired!')
               console.log('🔥 FCM token received: ' + token.value.substring(0, 30) + '...')
-              
-              // Store token globally for re-registration after login
+
               ;(window as any).__fcmToken = token.value
               ;(window as any).__reregisterPushToken = async () => {
+                clearPushRegistrationBlocked()
                 const t = (window as any).__fcmToken
                 if (!t) return
-                try {
-                  await fetch('/api/push/register_fcm', {
-                    method: 'POST', credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: t, platform: Capacitor.getPlatform() })
-                  })
-                } catch {}
+                await registerFcmTokenWithServer(t, Capacitor.getPlatform())
               }
-              
-              // Send token to backend
-              try {
-                const response = await fetch('/api/push/register_fcm', {
-                  method: 'POST',
-                  credentials: 'include',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    token: token.value,
-                    platform: Capacitor.getPlatform()
-                  })
-                })
-                
-                const result = await response.json()
-                
-                if (response.ok) {
-                  console.log('✅ FCM token registered with server')
-                } else {
-                  console.error('❌ Failed to register token:', response.status, result)
-                }
-              } catch (error) {
-                console.error('❌ Network error registering push token:', error)
+
+              if (isPushRegistrationBlocked()) {
+                console.log('📴 Push server registration deferred until login')
+                return
               }
+
+              await registerFcmTokenWithServer(token.value, Capacitor.getPlatform())
             })
             
             // Listen for registration errors

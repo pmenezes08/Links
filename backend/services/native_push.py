@@ -274,12 +274,12 @@ def deactivate_all_push_for_user(username: Optional[str]) -> dict[str, int]:
 
         if USE_MYSQL:
             c.execute(
-                f"UPDATE fcm_tokens SET is_active = 0 WHERE username = {ph}",
+                f"UPDATE fcm_tokens SET is_active = 0, username = NULL WHERE username = {ph}",
                 (username,),
             )
         else:
             c.execute(
-                "UPDATE fcm_tokens SET is_active = 0 WHERE username = ?",
+                "UPDATE fcm_tokens SET is_active = 0, username = NULL WHERE username = ?",
                 (username,),
             )
         fcm_rows = c.rowcount or 0
@@ -287,12 +287,12 @@ def deactivate_all_push_for_user(username: Optional[str]) -> dict[str, int]:
         try:
             if USE_MYSQL:
                 c.execute(
-                    f"UPDATE native_push_tokens SET is_active = 0 WHERE username = {ph}",
+                    f"UPDATE native_push_tokens SET is_active = 0, username = NULL WHERE username = {ph}",
                     (username,),
                 )
             else:
                 c.execute(
-                    "UPDATE native_push_tokens SET is_active = 0 WHERE username = ?",
+                    "UPDATE native_push_tokens SET is_active = 0, username = NULL WHERE username = ?",
                     (username,),
                 )
             native_rows = c.rowcount or 0

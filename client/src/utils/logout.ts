@@ -3,6 +3,7 @@
  */
 
 import { resetAccountScopedState } from './accountStateReset'
+import { setPushRegistrationBlocked } from './pushRegistration'
 
 // Dynamic import for Capacitor to avoid issues on web
 async function clearCapacitorStorage(): Promise<void> {
@@ -77,6 +78,9 @@ export async function unregisterPushBeforeLogout(): Promise<void> {
   } catch {
     /* ignore */
   }
+
+  // Survives account-scoped localStorage wipe — blocks PushInit/AppDelegate follow-ups on Welcome.
+  setPushRegistrationBlocked()
 }
 
 export async function performLogout(): Promise<void> {

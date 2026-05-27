@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { performLogout } from './logout'
+import { PUSH_BLOCK_UNTIL_LOGIN_KEY } from './pushRegistration'
 
 describe('performLogout (Phase G4)', () => {
   const originalFetch = globalThis.fetch
@@ -180,6 +181,11 @@ describe('performLogout (Phase G4)', () => {
     expect(capturedBody).toBeDefined()
     const parsed = JSON.parse(capturedBody!)
     expect(parsed).toEqual({})
+  })
+
+  it('sets push_block_until_login so Welcome does not re-register tokens', async () => {
+    await performLogout()
+    expect(window.localStorage.getItem(PUSH_BLOCK_UNTIL_LOGIN_KEY)).toBe('1')
   })
 
   it('deletes the offline account database during logout', async () => {
