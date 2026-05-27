@@ -78,6 +78,7 @@ import CommentReply from './pages/CommentReply'
 import ShareIncomingRouteRedirect from './pages/ShareIncomingRouteRedirect'
 import { isOnboardingFullscreenOverlayActive } from './utils/fullscreenOverlay'
 import { ensureAccountIsolationForUsername } from './utils/accountStateReset'
+import { isPushRegistrationBlocked } from './utils/pushRegistration'
 import {
   GOOGLE_ANDROID_CLIENT_ID,
   GOOGLE_IOS_CLIENT_ID,
@@ -608,6 +609,11 @@ function AppRoutes(){
       }
       const json = await response.json().catch(() => null)
       if (json?.success && json.profile) {
+        if (isPushRegistrationBlocked()) {
+          setProfileData(null)
+          setIsVerified(null)
+          return null
+        }
         const profile = json.profile as Record<string, unknown>
         await applyProfileFromServer(profile)
         return profile as UserProfile

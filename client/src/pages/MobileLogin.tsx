@@ -13,6 +13,7 @@ import {
   initializeGoogleIdentityOnce,
   renderGoogleSignInButton,
 } from '../utils/googleIdentityWeb'
+import { isPushRegistrationBlocked } from '../utils/pushRegistration'
 import { useUserProfile } from '../contexts/UserProfileContext'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
@@ -287,6 +288,11 @@ export default function MobileLogin() {
     
     async function check(){
       try{
+        if (isPushRegistrationBlocked()) {
+          setAuthCheckDone(true)
+          return
+        }
+
         // CRITICAL: First clear any stale sessions (from deleted accounts)
         await fetch('/api/clear_stale_session', { 
           method: 'POST', 
