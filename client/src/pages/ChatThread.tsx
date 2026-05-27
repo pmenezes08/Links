@@ -380,6 +380,24 @@ export default function ChatThread(){
     handleListScroll,
   } = chrome
 
+  const notifyMessagesSettledRef = useRef(notifyMessagesSettled)
+  notifyMessagesSettledRef.current = notifyMessagesSettled
+
+  const mergeHydratedMessages = useCallback((processed: Message[], prev: Message[]) => {
+    const serverIds = new Set(processed.map(m => String(m.id)))
+    const keptOptimistic = prev.filter(m => m.isOptimistic && !serverIds.has(String(m.id)))
+    const keptKeys = new Set(keptOptimistic.map(m => m.clientKey || String(m.id)))
+    recentOptimisticRef.current.forEach(entry => {
+      const key = entry.message.clientKey || String(entry.message.id)
+      if (!serverIds.has(String(entry.message.id)) && !keptKeys.has(key)) {
+        keptOptimistic.push(entry.message)
+        keptKeys.add(key)
+      }
+    })
+    if (keptOptimistic.length === 0) return processed
+    return [...processed, ...keptOptimistic]
+  }, [])
+
   const focusTextarea = useCallback(() => {
     if (MIC_ENABLED && recording) return
     const el = textareaRef.current
@@ -534,8 +552,8 @@ export default function ChatThread(){
       setOtherUserId(cachedChat.otherUserId)
       void processRawMessages(cachedChat.messages).then(processed => {
         if (gen !== threadGenerationRef.current) return
-        setMessages(processed)
-        notifyMessagesSettled(gen)
+        setMessages(prev => mergeHydratedMessages(processed, prev))
+        notifyMessagesSettledRef.current(gen)
       })
       return
     }
@@ -556,13 +574,13 @@ export default function ChatThread(){
         if (idbMsgs?.length) {
           void processRawMessages(idbMsgs).then(processed => {
             if (gen !== threadGenerationRef.current) return
-            setMessages(processed)
-            notifyMessagesSettled(gen)
+            setMessages(prev => mergeHydratedMessages(processed, prev))
+            notifyMessagesSettledRef.current(gen)
           })
         }
       }).catch(() => {})
     }
-  }, [username, chatCacheKey, profileCacheKey, dmOfflineKey, viewer, processRawMessages, notifyMessagesSettled])
+  }, [username, chatCacheKey, profileCacheKey, dmOfflineKey, viewer, processRawMessages, mergeHydratedMessages])
 
   // Restore draft when entering chat (only if there's an actual saved draft)
   // Added extra protection for iOS navigation - clear any stale content first
@@ -740,7 +758,7 @@ export default function ChatThread(){
             if (keptOptimistic.length === 0) return processedMessages
             return [...processedMessages, ...keptOptimistic]
           })
-          notifyMessagesSettled(gen)
+          notifyMessagesSettledRef.current(gen)
           setHasMoreMessages(!!msgResponse.has_more)
           lastFetchTime.current = Date.now()
 
@@ -816,7 +834,7 @@ export default function ChatThread(){
         }
       }).catch(()=>{})
     }
-  }, [username, chatCacheKey, profileCacheKey, processRawMessages, viewer, dmOfflineKey, notifyMessagesSettled])
+  }, [username, chatCacheKey, profileCacheKey, processRawMessages, viewer, dmOfflineKey, refreshBadges])
 
   // Hydrate pending/failed outbox entries so they survive app restarts
   useEffect(() => {
@@ -2346,7 +2364,7 @@ export default function ChatThread(){
           paddingBottom: listPaddingBottom,
           scrollPaddingBottom: listScrollPaddingBottom,
           minHeight: 0,
-          visibility: listRevealReady ? 'visible' : 'hidden',
+          opacity: listRevealReady ? 1 : 0,
         } as CSSProperties}
         onPointerDown={handleContentPointerDown}
         onPointerUp={handleContentPointerUp}

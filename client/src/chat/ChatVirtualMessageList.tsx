@@ -17,6 +17,29 @@ function assignRef<T>(ref: RefObject<T | null>, value: T | null) {
   ;(ref as { current: T | null }).current = value
 }
 
+type VirtualListProps = React.HTMLAttributes<HTMLDivElement> & {
+  messageStackRef: RefObject<HTMLDivElement | null>
+  className?: string
+}
+
+const VirtualList = forwardRef<HTMLDivElement, VirtualListProps>(
+  ({ messageStackRef, className, style, children, ...props }, ref) => (
+    <div
+      {...props}
+      ref={node => {
+        if (typeof ref === 'function') ref(node)
+        else if (ref) ref.current = node
+        assignRef(messageStackRef, node)
+      }}
+      className={className}
+      style={style}
+    >
+      {children}
+    </div>
+  ),
+)
+VirtualList.displayName = 'ChatVirtualList'
+
 /** Standard map below threshold; Virtuoso window above threshold (same scroll parent). */
 export function ChatVirtualMessageList<T>({
   messages,
@@ -53,24 +76,6 @@ export function ChatVirtualMessageList<T>({
     )
   }
 
-  const ListComponent = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-    ({ style, children, ...props }, ref) => (
-      <div
-        {...props}
-        ref={node => {
-          if (typeof ref === 'function') ref(node)
-          else if (ref) ref.current = node
-          assignRef(messageStackRef, node)
-        }}
-        className={className}
-        style={style}
-      >
-        {children}
-      </div>
-    ),
-  )
-  ListComponent.displayName = 'ChatVirtualList'
-
   return (
     <Virtuoso
       customScrollParent={scrollParent}
@@ -78,7 +83,13 @@ export function ChatVirtualMessageList<T>({
       increaseViewportBy={{ top: 400, bottom: 200 }}
       computeItemKey={index => resolveKey(messages[index], index)}
       components={{
-        List: ListComponent,
+        List: props => (
+          <VirtualList
+            {...props}
+            messageStackRef={messageStackRef}
+            className={className}
+          />
+        ),
         Footer: () => (
           <>
             {footer}

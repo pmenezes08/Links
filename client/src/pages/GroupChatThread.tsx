@@ -349,6 +349,9 @@ export default function GroupChatThread() {
     handleListScroll,
   } = chrome
 
+  const notifyMessagesSettledRef = useRef(notifyMessagesSettled)
+  notifyMessagesSettledRef.current = notifyMessagesSettled
+
   // Format recording time
   const formatRecordingTime = (ms: number) => {
     const totalSeconds = Math.floor(ms / 1000)
@@ -398,11 +401,18 @@ export default function GroupChatThread() {
     void getCachedMessages(`group:${group_id}`).then(cached => {
       if (gen !== threadGenerationRef.current) return
       if (cached?.length) {
-        setServerMessages(cached as Message[])
-        notifyMessagesSettled(gen)
+        setServerMessages(prev => {
+          const optimistic = prev.filter(m => (m as Message & { isOptimistic?: boolean }).isOptimistic)
+          const confirmed = cached as Message[]
+          if (optimistic.length === 0) return confirmed
+          const confirmedIds = new Set(confirmed.map(m => m.id))
+          const unconfirmed = optimistic.filter(m => !confirmedIds.has(m.id))
+          return [...confirmed, ...unconfirmed]
+        })
+        notifyMessagesSettledRef.current(gen)
       }
     }).catch(() => {})
-  }, [group_id, notifyMessagesSettled])
+  }, [group_id])
 
   const focusTextarea = useCallback(() => {
     if (MIC_ENABLED && recording) return
@@ -470,7 +480,7 @@ export default function GroupChatThread() {
         if (gen !== threadGenerationRef.current || fetchGroupId !== activeGroupIdRef.current) return
         if (cached?.length) {
           setServerMessages(cached as Message[])
-          notifyMessagesSettled(gen)
+          notifyMessagesSettledRef.current(gen)
         }
         setLoading(false)
       }
@@ -507,7 +517,7 @@ export default function GroupChatThread() {
           lastMessageIdRef.current = Math.max(lastMessageIdRef.current, newMaxId)
         }
 
-        if (!silent) notifyMessagesSettled(gen)
+        if (!silent) notifyMessagesSettledRef.current(gen)
       }
     } catch (err) {
       console.error('Error loading messages:', err)
@@ -521,7 +531,7 @@ export default function GroupChatThread() {
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [group_id, notifyMessagesSettled, t])
+  }, [group_id, t])
 
   const loadOlderMessages = useCallback(async () => {
     if (loadingOlderRef.current || !hasMoreMessages) return
@@ -2148,7 +2158,7 @@ export default function GroupChatThread() {
               paddingBottom: listPaddingBottom,
               scrollPaddingBottom: listScrollPaddingBottom,
               minHeight: 0,
-              visibility: listRevealReady ? 'visible' : 'hidden',
+              opacity: listRevealReady ? 1 : 0,
             } as CSSProperties}
             onPointerDown={handleContentPointerDown}
             onPointerUp={handleContentPointerUp}

@@ -146,9 +146,11 @@ export function useChatThreadScroll({
   const [listRevealReady, setListRevealReady] = useState(false)
   const [pendingNewCount, setPendingNewCount] = useState(0)
   const prevMessageCountRef = useRef(0)
+  const messagesLengthRef = useRef(messages.length)
+  messagesLengthRef.current = messages.length
 
   const tryRevealList = useCallback(() => {
-    if (messages.length === 0) {
+    if (messagesLengthRef.current === 0) {
       setListRevealReady(true)
       initialPinActiveRef.current = false
       return
@@ -159,7 +161,7 @@ export function useChatThreadScroll({
       initialPinActiveRef.current = false
       setListRevealReady(true)
     }
-  }, [messages.length])
+  }, [])
 
   const scrollListToBottom = useCallback(
     (behavior: ScrollBehavior) => {
@@ -238,6 +240,13 @@ export function useChatThreadScroll({
     setListRevealReady(false)
     setPendingNewCount(0)
     prevMessageCountRef.current = 0
+
+    const revealTimer = window.setTimeout(() => {
+      setListRevealReady(true)
+      initialPinActiveRef.current = false
+    }, OPEN_PIN_MAX_MS + 50)
+
+    return () => window.clearTimeout(revealTimer)
   }, [threadKey])
 
   useLayoutEffect(() => {
