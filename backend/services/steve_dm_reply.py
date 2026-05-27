@@ -13,7 +13,7 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from backend.services.content_generation.llm import XAI_API_KEY
 from backend.services.database import USE_MYSQL, get_db_connection
@@ -49,6 +49,68 @@ def _premium_subscription_dm_cta() -> str:
         "Steve is a **Premium** feature — I need an active subscription to chat here.\n\n"
         f"[Manage membership]({url}) · Settings → Manage Membership · upgrade to unlock me."
     )
+
+
+def start_steve_dm_reply_if_allowed(
+    sender_username: str,
+    user_message: str,
+    recipient_username: str,
+    *,
+    is_encrypted: bool = False,
+) -> Tuple[bool, Optional[dict]]:
+    """Start background Steve DM thread when messaging Steve or @Steve in a human DM."""
+    mentions_steve = bool(user_message and re.search(r"@steve\b", user_message, re.IGNORECASE))
+    is_steve_dm = recipient_username.lower() == "steve"
+    if not ((is_steve_dm or mentions_steve) and sender_username.lower() != "steve" and not is_encrypted):
+        return False, None
+
+    entitlements_error: Optional[dict] = None
+    start_thread = True
+    try:
+        from backend.services.entitlements_gate import check_steve_access as _check_dm_ste_access
+
+        if _enforce():
+            _allowed_dm, _dm_ent_payload, _, _ = _check_dm_ste_access(
+                sender_username, ai_usage.SURFACE_DM
+            )
+            if not _allowed_dm:
+                entitlements_error = _dm_ent_payload
+                start_thread = False
+                logger.info(
+                    "Steve DM reply skipped (entitlements): user=%s reason=%s",
+                    sender_username,
+                    (_dm_ent_payload or {}).get("reason"),
+                )
+    except Exception as dm_gate_err:
+        logger.warning("Steve DM entitlement preflight failed (non-fatal): %s", dm_gate_err)
+
+    if start_thread:
+        try:
+            import threading
+
+            try:
+                from backend.services.steve_dm_typing import mark_dm_typing
+
+                mark_dm_typing(sender_username, recipient_username if not is_steve_dm else "steve")
+            except Exception as typing_err:
+                logger.warning("Failed to mark Steve DM typing: %s", typing_err)
+
+            thread = threading.Thread(
+                target=run_steve_dm_reply,
+                args=(sender_username, user_message, recipient_username if not is_steve_dm else None),
+            )
+            thread.daemon = True
+            thread.start()
+            logger.info(
+                "Triggered Steve DM reply for %s (in chat with %s)",
+                sender_username,
+                recipient_username,
+            )
+        except Exception as steve_err:
+            logger.warning("Failed to trigger Steve DM reply: %s", steve_err)
+            start_thread = False
+
+    return start_thread, entitlements_error
 
 
 def run_steve_dm_reply(
