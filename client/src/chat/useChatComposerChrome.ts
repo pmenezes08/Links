@@ -27,11 +27,46 @@ function readSafeBottomPxOnce(): number {
   return readCssPxVar('--sab-px')
 }
 
-const DEFAULT_COMPOSER_PADDING = 64
+/**
+ * Closer to the real measured composer card height on iPhone + Android
+ * native (textarea row + button row + safe-area padding). The exact value
+ * doesn't matter long-term — it's only used as the fallback for the very
+ * first chat surface mount before `cachedMeasuredComposerHeight` is warm.
+ */
+const DEFAULT_COMPOSER_PADDING = 88
 const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48
 const NATIVE_KEYBOARD_MIN_HEIGHT = 60
 const KEYBOARD_OFFSET_EPSILON = 6
 export const CHAT_COMPOSER_GAP_PX = 10
+
+/**
+ * Module-level cache of the last measured composer card height. Survives
+ * for the lifetime of the SPA session so that subsequent chat thread opens
+ * (DM ↔ group, switching threads) seed `composerHeight` with the real
+ * value on the very first render, eliminating the post-paint upward shift
+ * that the inverted list would otherwise show as `listPaddingBottom` grows
+ * from the placeholder default to the measured value.
+ */
+let cachedMeasuredComposerHeight = 0
+
+function readInitialComposerHeight(): number {
+  if (cachedMeasuredComposerHeight > 0) return cachedMeasuredComposerHeight
+  if (typeof document !== 'undefined') {
+    const cssVar = readCssPxVar('--chat-composer-height')
+    if (cssVar > 0) {
+      cachedMeasuredComposerHeight = cssVar
+      return cssVar
+    }
+  }
+  return DEFAULT_COMPOSER_PADDING
+}
+
+function writeMeasuredComposerHeight(height: number): void {
+  cachedMeasuredComposerHeight = height
+  if (typeof document !== 'undefined') {
+    document.documentElement.style.setProperty('--chat-composer-height', `${height}px`)
+  }
+}
 
 export interface UseChatComposerChromeOptions {
   isMobile: boolean
@@ -50,7 +85,13 @@ export function useChatComposerChrome({
   onLayoutNudgeRef.current = onLayoutNudge
 
   const [keyboardOffset, setKeyboardOffset] = useState(0)
-  const [composerHeight, setComposerHeight] = useState(DEFAULT_COMPOSER_PADDING)
+  // Seed from the cached measured height (or `--chat-composer-height` CSS
+  // var) so the first paint already reflects the real composer card size.
+  // Without this, `listPaddingBottom` would grow from the placeholder
+  // value to the measured value after the first useLayoutEffect runs and
+  // visually push the newest message upward (gap appears between latest
+  // message and composer).
+  const [composerHeight, setComposerHeight] = useState(readInitialComposerHeight)
   // Seed from the live CSS var so the first paint already includes the
   // bottom safe-area inset (prevents a post-paint vertical shift in the
   // inverted chat list on iOS notch devices).
@@ -68,21 +109,40 @@ export function useChatComposerChrome({
 
   useLayoutEffect(() => {
     if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return
-    const node = composerCardRef.current
-    if (!node) return
 
-    const updateHeight = () => {
+    let observer: ResizeObserver | null = null
+    let rafId: number | null = null
+    let observedNode: HTMLDivElement | null = null
+
+    const measureAndCache = (node: HTMLDivElement) => {
       const height = node.getBoundingClientRect().height
       if (!height) return
+      writeMeasuredComposerHeight(height)
       setComposerHeight(prev => (Math.abs(prev - height) < 1 ? prev : height))
     }
 
-    updateHeight()
-    const observer = new ResizeObserver(updateHeight)
-    observer.observe(node)
+    const attach = () => {
+      const node = composerCardRef.current
+      if (!node) {
+        // The composer is portaled to document.body; on some renders its ref
+        // attaches on a later microtask. Retry on the next animation frame
+        // instead of leaving `composerHeight` stuck at the placeholder.
+        rafId = requestAnimationFrame(attach)
+        return
+      }
+      observedNode = node
+      measureAndCache(node)
+      observer = new ResizeObserver(() => {
+        if (observedNode) measureAndCache(observedNode)
+      })
+      observer.observe(node)
+    }
+
+    attach()
 
     return () => {
-      observer.disconnect()
+      if (rafId !== null) cancelAnimationFrame(rafId)
+      observer?.disconnect()
     }
   }, [])
 
