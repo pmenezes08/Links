@@ -101,13 +101,8 @@ def _public_base_url(host_url: Optional[str] = None) -> str:
 
 
 def _invite_logo_url(base_url: str) -> str:
-    try:
-        logo_url = _legacy_helpers()["get_invite_logo_url"]()
-    except Exception:
-        logo_url = None
-    if not logo_url or not str(logo_url).startswith("http"):
-        return f"{base_url}/static/cpoint-logo.svg"
-    return str(logo_url)
+    # Single bundled logo everywhere (no longer admin-configurable).
+    return f"{base_url}/static/cpoint-logo.png"
 
 
 def _ensure_tables(cursor) -> None:

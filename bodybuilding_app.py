@@ -20041,7 +20041,7 @@ def admin_get_invite_logo():
                 return jsonify({'success': True, 'logo_url': logo_url})
             else:
                 # Return default
-                return jsonify({'success': True, 'logo_url': None, 'default': '/static/cpoint-logo.svg'})
+                return jsonify({'success': True, 'logo_url': None, 'default': '/static/cpoint-logo.png'})
     except Exception as e:
         logger.error(f"admin_get_invite_logo error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -23812,45 +23812,23 @@ def debug_posts():
         return jsonify({'success': False, 'error': str(e)})
 
 APP_STORE_URL = "https://apps.apple.com/us/app/cpoint/id6755534074"
-DEFAULT_INVITE_LOGO = '/static/cpoint-logo.svg'
+DEFAULT_INVITE_LOGO = '/static/cpoint-logo.png'
 
 @app.route('/api/public/logo')
 def api_public_logo():
-    """Public logo endpoint (no auth). Returns R2 logo URL or redirects to it."""
-    logo_url = get_invite_logo_url()
-    if not logo_url or not logo_url.startswith('http'):
-        base = PUBLIC_BASE_URL or request.host_url.rstrip('/')
-        logo_url = f"{base}{logo_url}" if logo_url else f"{base}/static/cpoint-logo.svg"
-    return redirect(logo_url)
+    """Public logo endpoint (no auth).
+
+    Retained only for back-compat with already-installed clients / cached
+    index.html that may still request this URL. Always redirects to the single
+    bundled logo so the artwork is consistent everywhere.
+    """
+    base = PUBLIC_BASE_URL or request.host_url.rstrip('/')
+    return redirect(f"{base}/static/cpoint-logo.png")
 
 def get_invite_logo_url():
-    """Get the invite logo URL from database, resolving R2 paths to full URLs."""
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            if USE_MYSQL:
-                c.execute("SELECT `value` FROM site_settings WHERE `key` = 'invite_logo'")
-            else:
-                c.execute("SELECT value FROM site_settings WHERE key = 'invite_logo'")
-            row = c.fetchone()
-            if row:
-                val = row[0] if isinstance(row, tuple) else row['value']
-                if val:
-                    if val.startswith('http'):
-                        return val
-                    # Resolve R2 path to full URL - ONLY via R2_PUBLIC_URL
-                    try:
-                        from backend.services.r2_storage import R2_PUBLIC_URL
-                        if R2_PUBLIC_URL:
-                            return f"{R2_PUBLIC_URL.rstrip('/')}/{val.lstrip('/')}"
-                    except Exception:
-                        pass
-                    # R2 not available - fall through to default (don't return bare path)
-    except Exception as e:
-        logger.warning(f"Could not fetch invite logo: {e}")
-    # Fallback: absolute URL to default logo (never return a relative path)
+    """Single canonical logo URL (absolute). No longer admin-configurable."""
     base = PUBLIC_BASE_URL or 'https://app.c-point.co'
-    return f"{base}/static/cpoint-logo.svg"
+    return f"{base}/static/cpoint-logo.png"
 
 @app.route('/invite/<token>')
 def invite_landing(token):

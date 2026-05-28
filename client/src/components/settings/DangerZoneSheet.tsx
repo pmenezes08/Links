@@ -1,43 +1,13 @@
-import { useEffect, useState } from 'react'
-import { Capacitor } from '@capacitor/core'
-import { Preferences } from '@capacitor/preferences'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { resetAccountScopedState } from '../../utils/accountStateReset'
+import { clearAllUserData } from '../../utils/clearAllUserData'
 import { triggerHaptic } from '../../utils/haptics'
-import { unregisterPushBeforeLogout } from '../../utils/logout'
+import { useComposerKeyboardLift } from '../../hooks/useComposerKeyboardLift'
 
 type DangerZoneSheetProps = {
   open: boolean
   onClose: () => void
-}
-
-async function clearAllUserData(): Promise<void> {
-  // Deactivate push tokens while session cookie is still valid.
-  await unregisterPushBeforeLogout()
-
-  try {
-    if (Capacitor.isNativePlatform()) await Preferences.clear()
-  } catch (e) {
-    console.warn('Error clearing Capacitor Preferences:', e)
-  }
-
-  await resetAccountScopedState({
-    localStorageMode: 'all',
-    clearSessionStorage: true,
-    preserveSessionStorageKeys: [],
-    cacheMode: 'all',
-    unregisterServiceWorkers: true,
-  })
-
-  try {
-    await fetch('/logout?_=' + Date.now(), {
-      credentials: 'include',
-      cache: 'no-store',
-    })
-  } catch (e) {
-    console.warn('Error calling logout:', e)
-  }
 }
 
 export default function DangerZoneSheet({ open, onClose }: DangerZoneSheetProps) {
@@ -45,6 +15,8 @@ export default function DangerZoneSheet({ open, onClose }: DangerZoneSheetProps)
   const [confirmation, setConfirmation] = useState('')
   const [loading, setLoading] = useState(false)
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const { keyboardLift, showKeyboard } = useComposerKeyboardLift()
 
   useEffect(() => {
     if (!open) {
@@ -83,18 +55,11 @@ export default function DangerZoneSheet({ open, onClose }: DangerZoneSheetProps)
         setFeedback({ type: 'success', text: t('account.danger.deleted') })
         void triggerHaptic('success')
 
-        try {
-          if (Capacitor.isNativePlatform()) {
-            const { GoogleAuth } = await import('@codetrix-studio/capacitor-google-auth')
-            await GoogleAuth.signOut()
-          }
-        } catch {}
-
+        // Full cold-start teardown (push, native storage, caches, SW, server session).
         await clearAllUserData()
 
-        setTimeout(() => {
-          window.location.replace('/signup?cleared=' + Date.now())
-        }, 800)
+        // SW + caches are gone; load a fresh document immediately.
+        window.location.replace('/signup?cleared=' + Date.now())
       } else {
         setFeedback({ type: 'error', text: json?.error || t('account.danger.delete_failed') })
         setLoading(false)
@@ -118,9 +83,13 @@ export default function DangerZoneSheet({ open, onClose }: DangerZoneSheetProps)
       <div
         role="dialog"
         aria-modal="true"
-        className={`w-full rounded-t-[2rem] border border-red-300/15 bg-[#090909] px-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] pt-3 text-white shadow-[0_-28px_80px_rgba(0,0,0,0.72)] transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+        className={`w-full max-h-[85dvh] overflow-y-auto overscroll-contain rounded-t-[2rem] border border-red-300/15 bg-[#090909] px-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] pt-3 text-white shadow-[0_-28px_80px_rgba(0,0,0,0.72)] transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
           open ? 'translate-y-0' : 'translate-y-full'
         }`}
+        style={{
+          marginBottom: showKeyboard ? `${keyboardLift}px` : undefined,
+          transition: 'transform 0.5s cubic-bezier(0.32,0.72,0,1), margin-bottom 0.1s ease-out',
+        }}
         onClick={e => e.stopPropagation()}
       >
         <div className="mx-auto mb-5 h-1 w-11 rounded-full bg-white/20" />
@@ -143,9 +112,15 @@ export default function DangerZoneSheet({ open, onClose }: DangerZoneSheetProps)
         <label className="mt-5 block">
           <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/28">{t('account.danger.confirm_label')}</span>
           <input
+            ref={inputRef}
             type="text"
             value={confirmation}
             onChange={e => setConfirmation(e.target.value)}
+            onFocus={() => {
+              window.setTimeout(() => {
+                inputRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+              }, 250)
+            }}
             className="mt-2 w-full rounded-2xl border border-red-300/20 bg-white/[0.06] px-4 py-3 text-white placeholder:text-white/25 focus:border-red-200/60 focus:outline-none"
             placeholder="DELETE"
             disabled={loading}

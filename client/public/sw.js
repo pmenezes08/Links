@@ -1,4 +1,4 @@
-const SW_VERSION = '2.69.3'
+const SW_VERSION = '2.72.0'
 const APP_SHELL_CACHE = `cp-shell-${SW_VERSION}`
 const RUNTIME_CACHE = `cp-runtime-${SW_VERSION}`
 const MEDIA_CACHE = `cp-media-${SW_VERSION}`
@@ -9,10 +9,10 @@ const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/static/logo.png',
+  '/static/cpoint-logo.png',
   '/static/icons/icon-192.png',
   '/static/icons/icon-512.png',
-  '/apple-touch-icon.png'
+  '/static/apple-touch-icon.png'
 ]
 
 const STATIC_ASSET_PATHS = new Set(STATIC_ASSETS)

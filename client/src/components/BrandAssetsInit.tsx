@@ -1,11 +1,5 @@
 import { useEffect } from 'react'
 
-type GetLogoResponse = {
-  success?: boolean
-  logo_path?: string | null
-  updated_at?: string | number | null
-}
-
 const DEFAULT_MANIFEST = {
   name: 'C-Point',
   short_name: 'C-Point',
@@ -19,15 +13,8 @@ const DEFAULT_MANIFEST = {
 
 const ICON_192_PATH = '/static/icons/icon-192.png'
 const ICON_512_PATH = '/static/icons/icon-512.png'
-const LOGO_FALLBACK = '/static/logo.png'
-const APPLE_TOUCH_ICON_PATH = '/apple-touch-icon.png'
-
-function resolveStaticPath(path: string | null | undefined){
-  if (!path) return LOGO_FALLBACK
-  if (path.startsWith('http://') || path.startsWith('https://')) return path
-  if (path.startsWith('/')) return path
-  return `/static/${path.replace(/^static\//, '')}`
-}
+const LOGO_PATH = '/static/cpoint-logo.png'
+const APPLE_TOUCH_ICON_PATH = '/static/apple-touch-icon.png'
 
 function updateLink(rel: string, href: string, extra?: Record<string, string>){
   if (typeof document === 'undefined') return
@@ -49,31 +36,15 @@ export default function BrandAssetsInit(){
   useEffect(() => {
     let manifestObjectUrl: string | null = null
 
-    const syncBranding = async () => {
-      const cacheBust = Date.now().toString()
-      let logoUrl = `${LOGO_FALLBACK}?v=${cacheBust}`
+    const syncBranding = () => {
+      // Single bundled logo — no network fetch, so it can never fall back to a
+      // broken-image glyph after caches/SW are wiped.
+      updateLink('icon', LOGO_PATH, { type: 'image/png' })
+      updateLink('shortcut icon', LOGO_PATH, { type: 'image/png' })
+      updateLink('apple-touch-icon', APPLE_TOUCH_ICON_PATH)
 
-      try{
-        const response = await fetch('/get_logo', { credentials: 'include' })
-        if (response.ok){
-          const data = await response.json().catch(() => null) as GetLogoResponse | null
-          if (data?.success && data.logo_path){
-            const resolved = resolveStaticPath(data.logo_path)
-            const versionHint = data.updated_at ? String(data.updated_at) : cacheBust
-            logoUrl = `${resolved}?v=${versionHint}`
-          }
-        }
-      }catch{
-        // ignore network/logo fetch errors
-      }
-
-      // Update favicon variants
-      updateLink('icon', logoUrl, { type: 'image/png' })
-      updateLink('shortcut icon', logoUrl, { type: 'image/png' })
-      updateLink('apple-touch-icon', `${APPLE_TOUCH_ICON_PATH}?v=${cacheBust}`)
-
-      const icon192 = `${ICON_192_PATH}?v=${cacheBust}`
-      const icon512 = `${ICON_512_PATH}?v=${cacheBust}`
+      const icon192 = ICON_192_PATH
+      const icon512 = ICON_512_PATH
 
       const manifestPayload = {
         ...DEFAULT_MANIFEST,

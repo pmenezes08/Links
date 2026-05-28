@@ -1,5 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
 import { FixedComposerShell } from '../components/FixedComposerShell'
+import BrandLogo from '../components/BrandLogo'
 import { useTranslation } from 'react-i18next'
 import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
 import {
@@ -409,7 +410,6 @@ export default function OnboardingChat({
   const lastComposedCompanyIntelRef = useRef('')
   const [composingBio, setComposingBio] = useState(false)
   const [tourStep, setTourStep] = useState<number | null>(null)
-  const [headerLogoSrc, setHeaderLogoSrc] = useState('/api/public/logo')
   const [tierHints, setTierHints] = useState<OnboardingTierHints | null>(null)
   const [showDeferConfirm, setShowDeferConfirm] = useState(false)
   const [deferringProfile, setDeferringProfile] = useState(false)
@@ -2215,12 +2215,7 @@ export default function OnboardingChat({
     return (
       <div className="fixed inset-0 z-[1200] bg-black flex items-center justify-center px-6" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         <div className="flex flex-col items-center gap-4 text-center">
-          <img
-            src={headerLogoSrc}
-            alt="C-Point"
-            className="w-14 h-14 rounded-2xl object-contain"
-            onError={() => setHeaderLogoSrc('/static/cpoint-logo.svg')}
-          />
+          <BrandLogo className="w-14 h-14 rounded-2xl object-contain" />
           <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-[#4db6ac] animate-spin" />
           <div className="text-sm text-white/65">{oc(t, 'ui.booting')}</div>
         </div>
@@ -2234,12 +2229,7 @@ export default function OnboardingChat({
       <div className="shrink-0 border-b border-white/10 bg-black/95 backdrop-blur-sm">
         <div className="max-w-lg mx-auto px-4 pb-2 flex flex-col items-center" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}>
           <div className="flex items-center gap-2 mb-2">
-            <img
-              src={headerLogoSrc}
-              alt="C-Point"
-              className="w-8 h-8 rounded-lg object-contain"
-              onError={() => setHeaderLogoSrc('/static/cpoint-logo.svg')}
-            />
+            <BrandLogo className="w-8 h-8 rounded-lg object-contain" />
           </div>
           <div className="w-full flex items-center gap-3 pb-2">
             <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#4db6ac] to-[#2a7a72] flex items-center justify-center text-[10px] font-bold text-black shrink-0">

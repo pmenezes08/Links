@@ -2,45 +2,7 @@ import { useEffect, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Capacitor } from '@capacitor/core'
-import { Preferences } from '@capacitor/preferences'
-import { resetAccountScopedState } from '../utils/accountStateReset'
-import { unregisterPushBeforeLogout } from '../utils/logout'
-
-// Comprehensive cache clearing for account deletion
-async function clearAllUserData(): Promise<void> {
-  console.log('🗑️ Clearing all user data after account deletion...')
-
-  // Deactivate push tokens while session cookie is still valid.
-  await unregisterPushBeforeLogout()
-
-  try {
-    if (Capacitor.isNativePlatform()) {
-      await Preferences.clear()
-      console.log('✅ Capacitor Preferences (native storage) cleared')
-    }
-  } catch (e) {
-    console.warn('Error clearing Capacitor Preferences:', e)
-  }
-
-  await resetAccountScopedState({
-    localStorageMode: 'all',
-    clearSessionStorage: true,
-    preserveSessionStorageKeys: [],
-    cacheMode: 'all',
-    unregisterServiceWorkers: true,
-  })
-
-  try {
-    await fetch('/logout?_=' + Date.now(), { 
-      credentials: 'include',
-      cache: 'no-store'
-    })
-    console.log('✅ Server session cleared via /logout')
-  } catch (e) {
-    console.warn('Error calling logout:', e)
-  }
-}
+import { clearAllUserData } from '../utils/clearAllUserData'
 
 export default function AccountDangerZone() {
   const { setTitle } = useHeader()
@@ -72,23 +34,13 @@ export default function AccountDangerZone() {
       const json = await resp.json().catch(() => null)
       if (json?.success) {
         setFeedback({ type: 'success', text: t('account.danger.deleted') })
-        
-        // Clear Google Sign-In cached account
-        try {
-          if (Capacitor.isNativePlatform()) {
-            const { GoogleAuth } = await import('@codetrix-studio/capacitor-google-auth')
-            await GoogleAuth.signOut()
-          }
-        } catch {}
 
-        // Clear all user data (localStorage, sessionStorage, IndexedDB, Capacitor Preferences, service worker caches)
+        // Full cold-start teardown (push, native storage, caches, SW, server session).
         await clearAllUserData()
-        
-        // Force redirect to signup page with cache busting
-        // Use replace to prevent back button issues
-        setTimeout(() => {
-          window.location.replace('/signup?cleared=' + Date.now())
-        }, 800)
+
+        // SW + caches are gone; load a fresh document immediately. `replace`
+        // avoids back-button returning to the deleted account.
+        window.location.replace('/signup?cleared=' + Date.now())
       } else {
         setFeedback({ type: 'error', text: json?.error || t('account.danger.delete_failed') })
         setLoading(false)

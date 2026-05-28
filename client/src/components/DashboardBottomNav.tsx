@@ -97,7 +97,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
             className={`p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${isDashboard ? 'bg-white/10' : 'hover:bg-white/10 active:bg-white/15'}`}
             aria-label={t('navigation.communities')}
             aria-current={isDashboard ? 'page' : undefined}
-            onClick={() => { tabPress(); navigate('/premium_dashboard') }}
+            onClick={() => { tabPress(); setSteveOpen(false); navigate('/premium_dashboard') }}
           >
             <i className={`fa-solid fa-th text-[24px] leading-none ${isDashboard ? 'text-cpoint-turquoise' : ''}`} />
           </button>
@@ -106,7 +106,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
             className={`p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${isFeed ? 'bg-white/10' : 'hover:bg-white/10 active:bg-white/15'}`}
             aria-label={t('navigation.feed')}
             aria-current={isFeed ? 'page' : undefined}
-            onClick={() => { tabPress(); navigate('/feed') }}
+            onClick={() => { tabPress(); setSteveOpen(false); navigate('/feed') }}
           >
             <i className={`fa-solid fa-rss text-[24px] leading-none ${isFeed ? 'text-cpoint-turquoise' : ''}`} />
           </button>
@@ -125,7 +125,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
             className={`p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${!isFeed && !isAbout && searchOpen ? 'bg-white/10 text-cpoint-turquoise' : 'hover:bg-white/10 active:bg-white/15'}`}
             aria-label={searchOpen && !isFeed && !isAbout ? t('navigation.close_search') : t('navigation.search_communities')}
             aria-pressed={!isFeed && !isAbout && searchOpen}
-            onClick={() => { tabPress(); onSearch() }}
+            onClick={() => { tabPress(); setSteveOpen(false); onSearch() }}
           >
             <i className="fa-solid fa-magnifying-glass text-[24px] leading-none" />
           </button>
@@ -134,7 +134,8 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
 
       {steveOpen ? (
         <div
-          className="fixed inset-0 z-[950] flex items-center justify-center px-4 pt-4 bg-black pb-[var(--app-dashboard-bottom-nav-height)]"
+          className="fixed inset-x-0 top-0 z-[950] flex items-center justify-center px-4 pt-4 bg-black/60"
+          style={{ bottom: 'var(--app-dashboard-bottom-nav-height)' }}
           role="presentation"
           onClick={() => setSteveOpen(false)}
         >

@@ -14,6 +14,7 @@ import {
   renderGoogleSignInButton,
 } from '../utils/googleIdentityWeb'
 import { useUserProfile } from '../contexts/UserProfileContext'
+import BrandLogo from '../components/BrandLogo'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
 const APPLE_CLIENT_ID = 'co.cpoint.app'
@@ -436,11 +437,7 @@ export default function MobileLogin() {
       <div className="w-full max-w-xs rounded-xl p-6 relative z-10 bg-black border border-white/10">
         {step !== 'password' && (
           <div className="text-center mb-5">
-            <img
-              src="/api/public/logo"
-              alt="C-Point"
-              className="w-16 h-16 rounded-2xl object-contain mx-auto mb-3"
-            />
+            <BrandLogo className="w-16 h-16 rounded-2xl object-contain mx-auto mb-3" />
             <h1 className="text-lg font-semibold">C-Point</h1>
             {invitationInfo ? (
               <div className="mt-3 p-3 bg-cpoint-turquoise/10 border border-cpoint-turquoise/30 rounded-lg">

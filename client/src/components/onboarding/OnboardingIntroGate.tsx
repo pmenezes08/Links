@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { matchLocale, type SupportedLocale } from '../../i18n'
 import { LOCALE_OPTIONS } from '../../i18n/localeOptions'
 import { useLocale } from '../../i18n/useLocale'
+import BrandLogo from '../BrandLogo'
 
 type OnboardingIntroGateProps = {
   onStart: () => void
@@ -99,11 +100,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
         <div className="w-full max-w-md">
           <div className="rounded-[28px] border border-cpoint-turquoise/45 bg-black overflow-hidden">
             <div className="p-6 sm:p-7">
-              <img
-                src="/api/public/logo"
-                alt="C-Point"
-                className="w-16 h-16 rounded-2xl object-contain mx-auto mb-5"
-              />
+              <BrandLogo className="w-16 h-16 rounded-2xl object-contain mx-auto mb-5" />
 
               {showVideo && (
                 <div className="mb-5 rounded-2xl overflow-hidden border border-cpoint-turquoise/35 bg-black">
@@ -251,11 +248,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
               maxHeight: 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2rem)',
             }}
           >
-            <img
-              src="/api/public/logo"
-              alt="C-Point"
-              className="w-12 h-12 rounded-xl object-contain mx-auto mb-4"
-            />
+            <BrandLogo className="w-12 h-12 rounded-xl object-contain mx-auto mb-4" />
             <h2 id="onboarding-manifesto-title" className="text-xl font-semibold text-center mb-5">{t('onboarding_intro.manifesto_title')}</h2>
             <div className="space-y-4 text-sm leading-relaxed text-[#c8d6d9]">
               {manifestoParagraphs.map((paragraph) => (

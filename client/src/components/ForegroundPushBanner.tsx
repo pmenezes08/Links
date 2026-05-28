@@ -6,12 +6,11 @@ import {
   navigateToPushUrl,
   shouldSkipForegroundBannerDueToSameRoute,
 } from '../utils/pushNotificationPayload'
+import BrandLogo from './BrandLogo'
 
 const AUTO_DISMISS_MS = 5000
 const DEDupe_MS = 3500
 const SWIPE_UP_DISMISS_PX = 48
-
-const LOGO_SOURCES = ['/api/public/logo', '/static/logo.png', '/static/icons/icon-192.png'] as const
 
 type BannerState =
   | { visible: false }
@@ -32,7 +31,6 @@ export default function ForegroundPushBanner() {
   const navigate = useNavigate()
   const location = useLocation()
   const [banner, setBanner] = useState<BannerState>({ visible: false })
-  const [logoSrcIndex, setLogoSrcIndex] = useState(0)
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastPayloadKeyRef = useRef<{ key: string; at: number } | null>(null)
   const touchStartY = useRef<number | null>(null)
@@ -63,7 +61,6 @@ export default function ForegroundPushBanner() {
       lastPayloadKeyRef.current = { key: payloadKey, at: now }
 
       clearTimer()
-      setLogoSrcIndex(0)
       setBanner({ visible: true, headline, subline, url, entered: false })
       requestAnimationFrame(() => {
         setBanner((b) => (b.visible ? { ...b, entered: true } : b))
@@ -131,16 +128,7 @@ export default function ForegroundPushBanner() {
         style={{ transform, opacity }}
         aria-label={`${banner.headline}. Tap to open.`}
       >
-        <img
-          src={LOGO_SOURCES[logoSrcIndex]}
-          alt=""
-          width={32}
-          height={32}
-          className="h-8 w-8 shrink-0 rounded-md object-contain"
-          onError={() =>
-            setLogoSrcIndex((i) => (i + 1 < LOGO_SOURCES.length ? i + 1 : i))
-          }
-        />
+        <BrandLogo alt="" className="h-8 w-8 shrink-0 rounded-md object-contain" />
         <div className="min-w-0 flex-1 py-0.5">
           <span className="block text-sm font-semibold leading-tight text-neutral-900 line-clamp-1">
             {banner.headline}

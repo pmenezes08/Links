@@ -33,27 +33,64 @@ export default function PageTransitionStack({ children, onTransitionEnd }: PageT
   const [transitionType, setTransitionType] = useState<TransitionType>('none')
   const [outgoing, setOutgoing] = useState<ReactNode>(null)
 
+  // Hold the latest children + callback in refs so a mid-transition re-render
+  // (e.g. async feed data arriving) cannot re-run the effect and cancel the
+  // completion timer. Deps below intentionally exclude `children`/`onTransitionEnd`.
+  const childrenRef = useRef(children)
+  childrenRef.current = children
+  const onTransitionEndRef = useRef(onTransitionEnd)
+  onTransitionEndRef.current = onTransitionEnd
+
+  // The active completion timer (fallback for animationend) lives in a ref so it
+  // survives re-renders and can be cleared by the next transition or animationend.
+  const timerRef = useRef<number | null>(null)
+
+  const finishTransition = () => {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+    setTransitioning(false)
+    setOutgoing(null)
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.remove('page-transition-active')
+    }
+    onTransitionEndRef.current?.()
+  }
+
   useLayoutEffect(() => {
     const prevPath = prevPathRef.current
     const nextPath = location.pathname
     if (prevPath === nextPath) {
-      snapshotRef.current = { path: nextPath, content: children }
+      snapshotRef.current = { path: nextPath, content: childrenRef.current }
       return
     }
 
     const type = detectTransitionType(prevPath, nextPath, navigationType, TRANSITIONS_ENABLED)
     prevPathRef.current = nextPath
 
+    // Any path change must clear a lingering transition so we can never get
+    // stuck off-screen (the bug that blanked feed/DM/group-chat/post-reply).
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+
     if (type === 'none') {
-      snapshotRef.current = { path: nextPath, content: children }
-      queueMicrotask(() => onTransitionEnd?.())
+      snapshotRef.current = { path: nextPath, content: childrenRef.current }
+      setTransitioning(false)
+      setOutgoing(null)
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.remove('page-transition-active')
+      }
+      queueMicrotask(() => onTransitionEndRef.current?.())
       return
     }
 
     setOutgoing(snapshotRef.current.content)
     setTransitionType(type)
     setTransitioning(true)
-    snapshotRef.current = { path: nextPath, content: children }
+    snapshotRef.current = { path: nextPath, content: childrenRef.current }
 
     if (typeof document !== 'undefined') {
       document.documentElement.classList.add('page-transition-active')
@@ -65,17 +102,20 @@ export default function PageTransitionStack({ children, onTransitionEnd }: PageT
         ? TAB_CROSSFADE_MS
         : PAGE_TRANSITION_MS
 
-    const timer = window.setTimeout(() => {
-      setTransitioning(false)
-      setOutgoing(null)
-      if (typeof document !== 'undefined') {
-        document.documentElement.classList.remove('page-transition-active')
-      }
-      onTransitionEnd?.()
-    }, duration)
+    // Primary completion signal is the incoming element's animationend; this
+    // timer is only a fallback (extra slack) in case animationend never fires.
+    timerRef.current = window.setTimeout(finishTransition, duration + 80)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, navigationType])
 
-    return () => window.clearTimeout(timer)
-  }, [location.pathname, navigationType, children, onTransitionEnd])
+  useLayoutEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current)
+        timerRef.current = null
+      }
+    }
+  }, [])
 
   if (!TRANSITIONS_ENABLED) {
     return <>{children}</>
@@ -109,6 +149,10 @@ export default function PageTransitionStack({ children, onTransitionEnd }: PageT
       )}
       <div
         className="page-transition-incoming"
+        onAnimationEnd={(e) => {
+          // Ignore bubbled animationend events from child page content.
+          if (transitioning && e.target === e.currentTarget) finishTransition()
+        }}
         style={{
           position: transitioning ? 'relative' : 'static',
           zIndex: transitioning ? 2 : 'auto',

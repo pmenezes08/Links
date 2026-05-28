@@ -24,6 +24,7 @@ import { isPremiumDashboardPath } from '../components/DashboardBottomNav'
 import { useDashboardLayout } from '../components/DashboardLayout'
 import { SkeletonCommunityCard } from '../components/SkeletonRow'
 import AboutCPointModal from '../components/about/AboutCPointModal'
+import BrandLogo from '../components/BrandLogo'
 import { setOnboardingFullscreenOverlay } from '../utils/fullscreenOverlay'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
@@ -1138,7 +1139,7 @@ export default function PremiumDashboard() {
           {onboardingGateRequired && !showOnboarding && (
             <div className="fixed inset-0 z-[1200] bg-black/90 backdrop-blur-md flex items-center justify-center px-6">
               <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0d1214] p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.55)]">
-                <img src="/api/public/logo" alt="C-Point" className="w-14 h-14 rounded-2xl object-contain mx-auto mb-4" />
+                <BrandLogo className="w-14 h-14 rounded-2xl object-contain mx-auto mb-4" />
                 <h2 className="text-lg font-semibold text-white mb-2">{t('dashboard.finish_profile_title')}</h2>
                 <p className="text-sm text-[#9fb0b5] mb-6">
                   {t('dashboard.finish_profile_body')}
@@ -1156,7 +1157,7 @@ export default function PremiumDashboard() {
           {onboardingLaunching && !showOnboarding && !onboardingGateRequired && (
             <div className="fixed inset-0 z-[1200] bg-black/80 backdrop-blur-sm flex items-center justify-center px-6">
               <div className="flex flex-col items-center gap-4 text-center">
-                <img src="/api/public/logo" alt="C-Point" className="w-14 h-14 rounded-2xl object-contain" />
+                <BrandLogo className="w-14 h-14 rounded-2xl object-contain" />
                 <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-cpoint-turquoise animate-spin" />
                 <div className="text-sm text-white/65">{t('dashboard.opening_steve')}</div>
               </div>

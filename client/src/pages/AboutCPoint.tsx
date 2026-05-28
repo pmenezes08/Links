@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 import { useHeader } from '../contexts/HeaderContext'
+import BrandLogo from '../components/BrandLogo'
 import {
   ABOUT_CPOINT_VERSION_LABEL,
   ABOUT_HOW_IT_WORKS,
@@ -272,7 +273,7 @@ export default function AboutCPoint() {
       <div className="max-w-xl mx-auto px-3 py-4 space-y-4">
         <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3 sm:p-4">
           <div className="flex items-center gap-3">
-            <img src="/api/public/logo" alt="" className="w-12 h-12 rounded-xl object-contain shrink-0" />
+            <BrandLogo alt="" className="w-12 h-12 rounded-xl object-contain shrink-0" />
             <div className="min-w-0">
               <div className="text-base font-semibold text-white">C-Point</div>
               <div className="text-sm text-[#4db6ac]">{t('about_page.tagline')}</div>
