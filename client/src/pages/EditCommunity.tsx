@@ -3,10 +3,10 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import ContentGenerationModal from '../components/ContentGenerationModal'
 import DeleteCommunityModal, { type DeleteCommunityResult } from '../components/DeleteCommunityModal'
+import ImageLoader from '../components/ImageLoader'
 import { clearDeviceCache } from '../utils/deviceCache'
 import { invalidateDashboardCache } from '../utils/dashboardCache'
 import { openExternalBillingUrl, providerBadge, providerLabel } from '../utils/mobileStoreBilling'
-import { resolveCommunityBackgroundUrl } from '../utils/communityBackgroundUrl'
 
 // Tiers and Stripe state live exclusively on the root community. The
 // API now also returns a payload for sub-community owners with
@@ -701,10 +701,11 @@ export default function EditCommunity(){
             {/* Current image preview */}
             {currentBackgroundPath && !removeBackground && !imageFile && (
               <div style={{ position: 'relative' }} className="mb-3 rounded-lg border border-white/10 overflow-hidden">
-                <img 
-                  src={resolveCommunityBackgroundUrl(currentBackgroundPath)} 
+                <ImageLoader 
+                  src={currentBackgroundPath} 
                   alt={t('communities.current_community_image_alt')} 
-                  className="w-full max-h-48 object-cover"
+                  className="w-full max-h-48"
+                  aspectRatio="auto"
                 />
                 <button
                   type="button"
