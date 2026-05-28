@@ -356,8 +356,18 @@ Run after any change to Steve's platform manual, persona, platform-question rout
 Run after changes to authentication, remember-me cookies, CSRF/origin gates, or client-side logout clearing.
 
 - [ ] **Logout**: While signed in, use in-app logout. Confirm you land on `/` or `/welcome`, cannot access `/premium_dashboard` until you sign in again, and notifications do not continue for the prior account on this device after a refresh.
-- [ ] **Account switch**: Log in as user A, browse a community and open DM threads so local caches populate. Log out fully, then log in as user B on the same browser/device. Confirm B’s profile/name appears everywhere (header, mentions), not A’s; no DM or feed content from A without navigating explicitly.
+- [ ] **Account switch**: Log in as user A, browse a community and open DM threads so local caches populate. Log out fully, then log in as user B on the same browser/device. Confirm B's profile/name appears everywhere (header, mentions), not A's; no DM or feed content from A without navigating explicitly.
 - [ ] **Remember-me**: With stay-signed-in behaviour, close the browser, reopen — session restores. After full logout, reopening must require credentials again (no silent re-login as the previous user).
+
+**May 2026 hotfix verification — sessions not actually logging out (RC-1, banking-grade multi-device)**
+
+- [ ] **Logout confirmation modal**: Tapping "Log out" anywhere (header burger, dashboard, settings) shows the confirm dialog with the explicit copy: **"Log out of C-Point? This signs you out on every device where you're logged in. You'll need to sign in again on each one."** Cancel dismisses without side effects; "Log out" proceeds.
+- [ ] **Multi-device revoke**: Log in on Capacitor iOS, then on Capacitor Android, then on a desktop browser as the same user. Tap logout on iOS only. Open Android — should be on `/welcome` after a refresh / next foreground (no auto-login). Same for desktop. Confirm the `auth.logout … user_tokens_revoked=≥3` log line in the Cloud Run logs.
+- [ ] **Capacitor cookie clear (iOS WKWebView)**: After logout, force-quit the app and relaunch — must land on `/welcome`, not on a dashboard. (Open follow-up for `URLSession.shared` jar parity.)
+- [ ] **Capacitor cookie clear (Android WebView)**: After logout, force-quit (swipe-kill) the app and relaunch — must land on `/welcome`. (Open follow-up for `CookieManager.flush()`.)
+- [ ] **Legacy-domain users**: For an account whose `remember_token` was issued before the May-2026 cookie-domain migration (`Domain=.c-point.co`), confirm logout actually expires the cookie in DevTools → Application → Cookies. Multiple `Set-Cookie: remember_token=` lines on the `/logout` response (configured + legacy + host-only) are expected.
+- [ ] **No fresh remember-me on `/logout` (smoking-gun check)**: In a Capacitor build (or curl with only the `remember_token` cookie set, no `cpoint_session`), call `GET /logout`. The 302 response's `Set-Cookie: remember_token=…` headers must all carry an empty value with `Max-Age=0` — none may carry a non-empty value. Pre-fix this was the bug; post-fix this regression test is the production canary.
+- [ ] **Audit log**: Check Cloud Run logs filter `auth.remember_me_restore` — these lines should appear ONLY when the user is genuinely returning to the app with a valid remember-me cookie, never on `/logout` itself.
 
 **Cross-surface regressions after auth/security deploys**
 

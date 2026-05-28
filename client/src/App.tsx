@@ -21,6 +21,7 @@ import { UserProfileContext, type UserProfile } from './contexts/UserProfileCont
 import PushInit from './components/PushInit'
 import NotificationPrompt from './components/NotificationPrompt'
 import { EntitlementsProvider } from './contexts/EntitlementsContext'
+import { LogoutPromptProvider } from './contexts/LogoutPromptContext'
 import { NetworkProvider } from './contexts/NetworkContext'
 import { BadgeProvider } from './contexts/BadgeContext'
 import OfflineBanner from './components/OfflineBanner'
@@ -921,13 +922,15 @@ export default function App() {
       <NetworkProvider>
         <BrowserRouter>
           <EntitlementsProvider>
-            <OfflineBanner />
-            <OutboxDrainer />
-            <BrandAssetsInit />
-            <LocaleBootstrap />
-            <PushInit />
-            <NotificationPrompt />
-            <AppRoutes />
+            <LogoutPromptProvider>
+              <OfflineBanner />
+              <OutboxDrainer />
+              <BrandAssetsInit />
+              <LocaleBootstrap />
+              <PushInit />
+              <NotificationPrompt />
+              <AppRoutes />
+            </LogoutPromptProvider>
           </EntitlementsProvider>
         </BrowserRouter>
       </NetworkProvider>

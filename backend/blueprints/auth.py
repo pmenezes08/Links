@@ -125,6 +125,19 @@ def auto_login_from_remember_token():
             return
         g.remember_token_rotation_username = username
         g.remember_token_rotation_old_hash = token_hash
+        # Audit signal so post-deploy monitoring can detect anomalous remember-me restoration
+        # (e.g. cookie used from a new IP after logout). Required by the May-2026 logout hotfix.
+        try:
+            ua = (request.headers.get("User-Agent") or "-")[:120]
+            current_app.logger.info(
+                "auth.remember_me_restore username=%s ip=%s ua=%s endpoint=%s",
+                username,
+                request.remote_addr or "-",
+                ua,
+                request.endpoint or "-",
+            )
+        except Exception:
+            pass
     except Exception as exc:
         current_app.logger.warning("auto_login_from_remember_token failed: %s", exc)
 
@@ -132,6 +145,17 @@ def auto_login_from_remember_token():
 @auth_bp.after_app_request
 def rotate_remember_token_after_auto_login(response):
     """Refresh remember-token cookies after silent session restoration."""
+    # Never rotate on the logout endpoint itself: previously this hook re-issued a fresh
+    # remember_token on the /logout response, undoing the revocation in the same response
+    # and silently keeping the user signed in on Capacitor (RC-1 in
+    # docs/audit/LOGOUT_REMEDIATION_PLAN.md).
+    if (
+        getattr(g, "skip_remember_rotation", False)
+        or request.endpoint == "auth.logout"
+        or request.path == "/logout"
+    ):
+        return response
+
     username = getattr(g, "remember_token_rotation_username", None)
     old_hash = getattr(g, "remember_token_rotation_old_hash", None)
     if not username or not old_hash:
@@ -579,7 +603,11 @@ def signup():
 
 @auth_bp.route("/logout", endpoint="logout")
 def logout():
-    """Clear session and remember-me cookies."""
+    """Clear session and remember-me cookies on every device the user is signed in on."""
+    # Belt-and-suspenders: also short-circuits the after-request rotation hook in case
+    # request.endpoint is somehow unset by the time it runs.
+    g.skip_remember_rotation = True
+
     logger = current_app.logger
     username = session.get("username")
     install_id = (request.cookies.get(auth_session.INSTALL_COOKIE_NAME) or "").strip()
@@ -593,6 +621,10 @@ def logout():
         for key in ("native_push_tokens", "fcm_tokens"):
             push_counts[key] = max(push_counts.get(key, 0), install_counts.get(key, 0))
     tokens_revoked = remember_tokens.revoke_by_cookie(request)
+    # Revoke every remember-me row for this user so logout ends the session on all
+    # of their devices, not just this one. Banking-grade default; matches the
+    # explicit copy in the LogoutPromptProvider modal.
+    user_tokens_revoked = remember_tokens.revoke_for_user(username) if username else 0
 
     session.clear()
     session.permanent = False
@@ -613,9 +645,10 @@ def logout():
     current_app.session_interface.save_session(current_app, session, resp)
     auth_session.no_store(resp)
     logger.info(
-        "auth.logout pre_username=%s tokens_revoked=%d push_native=%d push_fcm=%d push_web=%d",
+        "auth.logout pre_username=%s tokens_revoked=%d user_tokens_revoked=%d push_native=%d push_fcm=%d push_web=%d",
         username or "-",
         tokens_revoked,
+        user_tokens_revoked,
         push_counts.get("native_push_tokens", 0),
         push_counts.get("fcm_tokens", 0),
         push_counts.get("push_subscriptions", 0),

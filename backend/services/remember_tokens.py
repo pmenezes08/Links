@@ -214,8 +214,21 @@ def revoke_for_user(username: Optional[str]) -> int:
 
 
 def clear_cookie(response) -> None:
-    """Expire the remember-token cookie with the same attrs used by issue()."""
-    response.set_cookie(COOKIE_NAME, "", max_age=0, expires=0, **_cookie_attrs())
+    """Expire the remember-token cookie across every domain variant it may have been issued under.
+
+    Mirrors ``backend.services.auth_session.clear_session_cookie`` so users from before the
+    May-2026 host-only domain migration (cookies issued with ``Domain=.c-point.co``) can
+    actually log out. Without the legacy-domain sweep the configured-domain expire line is
+    ignored by the browser and the old cookie keeps re-authenticating the user via
+    ``auto_login_from_remember_token``.
+    """
+    attrs = _cookie_attrs()
+    response.set_cookie(COOKIE_NAME, "", max_age=0, expires=0, **attrs)
+    for legacy_domain in (".c-point.co", "app.c-point.co"):
+        legacy = {**attrs, "domain": legacy_domain}
+        response.set_cookie(COOKIE_NAME, "", max_age=0, expires=0, **legacy)
+    host_only = {k: v for k, v in attrs.items() if k != "domain" and v is not None}
+    response.set_cookie(COOKIE_NAME, "", max_age=0, expires=0, **host_only)
 
 
 __all__ = [
