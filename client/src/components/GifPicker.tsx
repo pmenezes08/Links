@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { CPOINT_EASE_OUT, PAGE_TRANSITION_MS, REDUCED_MOTION_FADE_MS } from '../design/motion'
+import { hapticImpactLight, hapticSelection } from '../utils/haptics'
+import { NativeIconButton } from './NativeIconButton'
 
 export type GifSelection = {
   id: string
@@ -26,6 +30,38 @@ type GiphyItem = {
   }
 }
 
+const TRANSPARENT_PIXEL =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+const SHEET_MIN_HEIGHT_PX = 320
+const SHEET_MAX_HEIGHT_PX = 560
+const SHEET_HEIGHT_RATIO = 0.6
+const DRAG_DISMISS_THRESHOLD_RATIO = 0.3
+const DRAG_DISMISS_VELOCITY_PX_PER_S = 600
+const DRAG_START_THRESHOLD_PX = 6
+
+function isIosCapacitor(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    return (window as any).Capacitor?.getPlatform?.() === 'ios'
+  } catch {
+    return false
+  }
+}
+
+function detectPrefersReducedMotion(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  } catch {
+    return false
+  }
+}
+
+function getInitialViewportHeight(): number {
+  if (typeof window === 'undefined') return 600
+  return window.visualViewport?.height || window.innerHeight || 600
+}
+
 export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps){
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
@@ -36,7 +72,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
   const [keyLoading, setKeyLoading] = useState(false)
 
   const [useProxy] = useState(true)
-  
+
   const envKey = useMemo(() => {
     const raw = (import.meta as any)?.env?.VITE_GIPHY_API_KEY
     return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : null
@@ -44,6 +80,42 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
 
   const [apiKey, setApiKey] = useState<string | null>(envKey)
 
+  // Sheet/motion state
+  const [mounted, setMounted] = useState(isOpen)
+  const [entered, setEntered] = useState(false)
+  const [reducedMotion, setReducedMotion] = useState<boolean>(detectPrefersReducedMotion)
+  const [keyboardLift, setKeyboardLift] = useState(0)
+  const [vvHeight, setVvHeight] = useState<number>(getInitialViewportHeight)
+
+  // Drag-to-dismiss state
+  const [dragY, setDragY] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const [dragTransition, setDragTransition] = useState(false)
+
+  const sheetRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const gridRef = useRef<HTMLDivElement>(null)
+  const observerRef = useRef<IntersectionObserver | null>(null)
+  const previousFocusRef = useRef<HTMLElement | null>(null)
+  const dragTransitionTimerRef = useRef<number | null>(null)
+  const dragStateRef = useRef<{
+    startY: number
+    lastY: number
+    lastTime: number
+    velocity: number
+    sheetHeight: number
+    started: boolean
+    active: boolean
+  }>({ startY: 0, lastY: 0, lastTime: 0, velocity: 0, sheetHeight: 0, started: false, active: false })
+
+  const isIosNative = useMemo(() => isIosCapacitor(), [])
+
+  const sheetHeight = useMemo(
+    () => Math.min(SHEET_MAX_HEIGHT_PX, Math.max(SHEET_MIN_HEIGHT_PX, vvHeight * SHEET_HEIGHT_RATIO)),
+    [vvHeight],
+  )
+
+  // ESC key dismiss
   useEffect(() => {
     if (!isOpen) return
     const handler = (event: KeyboardEvent) => {
@@ -56,6 +128,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
     return () => window.removeEventListener('keydown', handler)
   }, [isOpen, onClose])
 
+  // Reset query/results on open
   useEffect(() => {
     if (!isOpen) return
     setQuery('')
@@ -64,12 +137,14 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
     setError(null)
   }, [isOpen])
 
+  // Debounce search input
   useEffect(() => {
     if (!isOpen) return
     const timeout = window.setTimeout(() => setDebouncedQuery(query.trim()), 300)
     return () => window.clearTimeout(timeout)
   }, [query, isOpen])
 
+  // GIPHY fetch — UNCHANGED logic from prior implementation
   const loadGifs = useCallback(async (searchTerm: string, signal: AbortSignal) => {
     setLoading(true)
     setError(null)
@@ -127,6 +202,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
     return () => controller.abort()
   }, [debouncedQuery, isOpen, loadGifs])
 
+  // GIPHY API key bootstrap — UNCHANGED logic from prior implementation
   useEffect(() => {
     if (!isOpen) return
     if (apiKey || useProxy) { setKeyLoading(false); return }
@@ -157,67 +233,452 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
     return () => { cancelled = true }
   }, [apiKey, isOpen])
 
-  if (!isOpen) return null
+  // prefers-reduced-motion subscription
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    let mq: MediaQueryList
+    try {
+      mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    } catch {
+      return
+    }
+    const handler = () => setReducedMotion(mq.matches)
+    if (mq.addEventListener) mq.addEventListener('change', handler)
+    else if ((mq as any).addListener) (mq as any).addListener(handler)
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', handler)
+      else if ((mq as any).removeListener) (mq as any).removeListener(handler)
+    }
+  }, [])
+
+  // Mount / enter / exit lifecycle for slide-up animation
+  useEffect(() => {
+    if (isOpen) {
+      previousFocusRef.current =
+        typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null
+      setMounted(true)
+      let raf1: number | null = null
+      let raf2: number | null = null
+      raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => setEntered(true))
+      })
+      return () => {
+        if (raf1 !== null) cancelAnimationFrame(raf1)
+        if (raf2 !== null) cancelAnimationFrame(raf2)
+      }
+    }
+    setEntered(false)
+    const exitMs = reducedMotion ? REDUCED_MOTION_FADE_MS : PAGE_TRANSITION_MS
+    const timer = window.setTimeout(() => {
+      setMounted(false)
+      setDragY(0)
+      setDragging(false)
+      setDragTransition(false)
+      const prev = previousFocusRef.current
+      previousFocusRef.current = null
+      if (prev && typeof prev.focus === 'function') {
+        try { prev.focus({ preventScroll: true } as FocusOptions) } catch { try { prev.focus() } catch {} }
+      }
+    }, exitMs)
+    return () => window.clearTimeout(timer)
+  }, [isOpen, reducedMotion])
+
+  // visualViewport keyboard lift + height (mirrors CommentReply.tsx :349-374 RAF pattern)
+  useEffect(() => {
+    if (!isOpen || typeof window === 'undefined') {
+      setKeyboardLift(0)
+      return
+    }
+    const viewport = window.visualViewport
+    if (!viewport) {
+      setKeyboardLift(0)
+      setVvHeight(window.innerHeight)
+      return
+    }
+    let rafId: number | null = null
+    const update = () => {
+      const lift = Math.max(0, window.innerHeight - (viewport.height + viewport.offsetTop))
+      setKeyboardLift(prev => (Math.abs(prev - lift) < 1 ? prev : lift))
+      const nextH = viewport.height
+      setVvHeight(prev => (Math.abs(prev - nextH) < 1 ? prev : nextH))
+    }
+    const schedule = () => {
+      if (rafId !== null) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(update)
+    }
+    viewport.addEventListener('resize', schedule)
+    viewport.addEventListener('scroll', schedule)
+    update()
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId)
+      viewport.removeEventListener('resize', schedule)
+      viewport.removeEventListener('scroll', schedule)
+      setKeyboardLift(0)
+    }
+  }, [isOpen])
+
+  // Programmatic focus on iOS (autoFocus prop covers other platforms)
+  useEffect(() => {
+    if (!mounted || !isIosNative) return
+    const t = window.setTimeout(() => {
+      try { inputRef.current?.focus() } catch {}
+    }, 50)
+    return () => window.clearTimeout(t)
+  }, [mounted, isIosNative])
+
+  // IntersectionObserver — pause off-screen GIF tiles, resume when visible
+  useEffect(() => {
+    if (!mounted || typeof IntersectionObserver === 'undefined') return
+    const root = gridRef.current
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const img = entry.target as HTMLImageElement
+        const realSrc = img.dataset.src
+        if (!realSrc) return
+        const paused = img.dataset.paused === '1'
+        if (entry.isIntersecting && paused) {
+          img.src = realSrc
+          img.dataset.paused = '0'
+        } else if (!entry.isIntersecting && !paused) {
+          img.src = TRANSPARENT_PIXEL
+          img.dataset.paused = '1'
+        }
+      })
+    }, { root, rootMargin: '256px', threshold: 0 })
+    observerRef.current = observer
+    return () => {
+      observer.disconnect()
+      observerRef.current = null
+    }
+  }, [mounted])
+
+  const tileImgRef = useCallback((node: HTMLImageElement | null) => {
+    if (!node) return
+    const obs = observerRef.current
+    if (obs) obs.observe(node)
+  }, [])
+
+  // Cleanup any pending drag transition timer on unmount
+  useEffect(() => {
+    return () => {
+      if (dragTransitionTimerRef.current !== null) {
+        window.clearTimeout(dragTransitionTimerRef.current)
+        dragTransitionTimerRef.current = null
+      }
+    }
+  }, [])
+
+  // Drag-to-dismiss — pointer-down on the drag-affordance area only.
+  // Uses window-level move/up listeners with a small movement threshold so
+  // tapping the search input still focuses normally instead of stealing the
+  // click. Grid scrolling is unaffected because its pointer-down is on a
+  // sibling element, not this handler.
+  const handleDragPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    if (dragTransition) return
+    const sheetRect = sheetRef.current?.getBoundingClientRect()
+    const sheetH = sheetRect?.height || sheetHeight
+    const now = performance.now()
+    dragStateRef.current = {
+      startY: event.clientY,
+      lastY: event.clientY,
+      lastTime: now,
+      velocity: 0,
+      sheetHeight: sheetH,
+      started: false,
+      active: true,
+    }
+
+    const onMove = (e: PointerEvent) => {
+      const state = dragStateRef.current
+      if (!state.active) return
+      const t1 = performance.now()
+      const delta = e.clientY - state.startY
+      if (!state.started) {
+        if (delta < 0) {
+          // Upward motion — not a dismiss gesture; ignore until a downward
+          // movement past threshold occurs.
+          state.lastY = e.clientY
+          state.lastTime = t1
+          return
+        }
+        if (delta < DRAG_START_THRESHOLD_PX) {
+          state.lastY = e.clientY
+          state.lastTime = t1
+          return
+        }
+        state.started = true
+        setDragging(true)
+      }
+      const next = Math.max(0, delta)
+      const dt = t1 - state.lastTime
+      if (dt > 0) {
+        state.velocity = (e.clientY - state.lastY) / (dt / 1000)
+      }
+      state.lastY = e.clientY
+      state.lastTime = t1
+      setDragY(next)
+    }
+
+    const cleanup = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+    }
+
+    const onCancel = () => {
+      const state = dragStateRef.current
+      cleanup()
+      state.active = false
+      if (!state.started) return
+      setDragging(false)
+      setDragY(0)
+      setDragTransition(true)
+      if (dragTransitionTimerRef.current !== null) window.clearTimeout(dragTransitionTimerRef.current)
+      dragTransitionTimerRef.current = window.setTimeout(() => {
+        dragTransitionTimerRef.current = null
+        setDragTransition(false)
+      }, reducedMotion ? REDUCED_MOTION_FADE_MS : PAGE_TRANSITION_MS) as unknown as number
+    }
+
+    const onUp = (e: PointerEvent) => {
+      const state = dragStateRef.current
+      cleanup()
+      if (!state.active) return
+      state.active = false
+      if (!state.started) return
+      const sheetH2 = state.sheetHeight
+      const dragDistance = Math.max(0, e.clientY - state.startY)
+      const velocity = state.velocity
+      const shouldDismiss =
+        dragDistance >= sheetH2 * DRAG_DISMISS_THRESHOLD_RATIO ||
+        velocity >= DRAG_DISMISS_VELOCITY_PX_PER_S
+      setDragging(false)
+      if (shouldDismiss) {
+        // Slide the rest of the way down via the dragTransition path; then
+        // notify the parent. Parent's isOpen=false will run the regular
+        // unmount cleanup which clears dragY/dragTransition.
+        setDragY(sheetH2)
+        setDragTransition(true)
+        // Drag-dismiss is the only path that gets a haptic; tap-outside,
+        // Esc, and programmatic close stay silent so the closing surface
+        // doesn't double up on the caller's own dismiss UX.
+        hapticImpactLight()
+        onClose()
+      } else {
+        setDragY(0)
+        setDragTransition(true)
+        if (dragTransitionTimerRef.current !== null) window.clearTimeout(dragTransitionTimerRef.current)
+        dragTransitionTimerRef.current = window.setTimeout(() => {
+          dragTransitionTimerRef.current = null
+          setDragTransition(false)
+        }, reducedMotion ? REDUCED_MOTION_FADE_MS : PAGE_TRANSITION_MS) as unknown as number
+      }
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+  }, [dragTransition, sheetHeight, reducedMotion, onClose])
+
+  // Compute sheet style each render
+  const sheetStyle = useMemo<CSSProperties>(() => {
+    const useDrag = dragging || dragTransition
+    let transform: string
+    if (reducedMotion) {
+      transform = useDrag ? `translateY(${dragY}px)` : 'translateY(0%)'
+    } else if (useDrag) {
+      transform = `translateY(${dragY}px)`
+    } else {
+      transform = entered ? 'translateY(0%)' : 'translateY(100%)'
+    }
+    const opacity = reducedMotion ? (entered ? 1 : 0) : 1
+    let transition: string
+    if (dragging) {
+      transition = 'none'
+    } else if (reducedMotion) {
+      transition = `opacity ${REDUCED_MOTION_FADE_MS}ms linear`
+    } else {
+      transition = `transform ${PAGE_TRANSITION_MS}ms ${CPOINT_EASE_OUT}, opacity ${PAGE_TRANSITION_MS}ms linear`
+    }
+    return {
+      transform,
+      opacity,
+      transition,
+      bottom: keyboardLift,
+      height: sheetHeight,
+      maxHeight: sheetHeight,
+    }
+  }, [dragging, dragTransition, dragY, entered, keyboardLift, reducedMotion, sheetHeight])
+
+  const backdropStyle = useMemo<CSSProperties>(() => {
+    let opacity: number
+    if (reducedMotion) {
+      opacity = entered ? 1 : 0
+    } else if (dragging || dragTransition) {
+      const sheetH = dragStateRef.current.sheetHeight || sheetHeight
+      const ratio = sheetH > 0 ? Math.max(0, Math.min(1, 1 - dragY / sheetH)) : 1
+      opacity = entered ? ratio : 0
+    } else {
+      opacity = entered ? 1 : 0
+    }
+    const transition = dragging
+      ? 'none'
+      : `opacity ${reducedMotion ? REDUCED_MOTION_FADE_MS : PAGE_TRANSITION_MS}ms linear`
+    return {
+      opacity,
+      transition,
+      pointerEvents: dragging || dragTransition ? 'none' : 'auto',
+    }
+  }, [dragY, dragging, dragTransition, entered, reducedMotion, sheetHeight])
+
+  if (!mounted) return null
+
+  const trimmedQuery = query.trim()
+  const truncatedQuery = trimmedQuery.length > 30 ? `${trimmedQuery.slice(0, 30)}…` : trimmedQuery
+  const headerLabel = trimmedQuery ? `Results for "${truncatedQuery}"` : 'Trending'
+
+  const showFullSkeleton = (keyLoading || (loading && results.length === 0)) && !error
+  const showInlineLoadingDot = loading && results.length > 0
+  const showResults = results.length > 0
+  const showEmpty = !loading && !keyLoading && !error && results.length === 0
+  const ariaLabel = t('shared.search_gifs') || 'GIF picker'
 
   return (
-    <div className="fixed inset-0 z-[1400] flex items-center justify-center bg-black/70 backdrop-blur-sm px-3" onClick={onClose}>
-      <div className="w-full max-w-[400px] max-h-[78vh] rounded-2xl border border-white/10 bg-[#0b0f10] py-3 px-3 shadow-[0_20px_36px_rgba(0,0,0,0.55)]" onClick={(e)=> e.stopPropagation()}>
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 flex-1 rounded-lg border border-white/15 bg-white/[0.02] px-2 py-1.25">
-            <i className="fa-solid fa-magnifying-glass text-white/45 text-[11px]" />
-            <input
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="flex-1 bg-transparent text-[12px] text-white placeholder-white/35 outline-none"
-              placeholder={t('shared.search_gifs')}
-            />
-            {query && (
-              <button className="text-white/35 hover:text-white transition px-1" onClick={() => setQuery('')} aria-label={t('shared.clear_search')}>
-                <i className="fa-solid fa-xmark text-xs" />
-              </button>
-            )}
+    <>
+      <div
+        className="fixed inset-0 z-[1399] bg-black/40 backdrop-blur-sm"
+        style={backdropStyle}
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div
+        ref={sheetRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={ariaLabel}
+        className="fixed left-0 right-0 z-[1400] mx-auto sm:max-w-2xl rounded-t-2xl liquid-glass-surface border-0 border-t border-white/8 flex flex-col overflow-hidden"
+        style={sheetStyle}
+      >
+        {/* Drag-affordance area: handle pill + search row. Pointer-down here
+            starts a drag (with 6px movement threshold so taps focus the
+            input normally). Grid scrolling is on a sibling element below and
+            never starts a drag. */}
+        <div
+          className="shrink-0 select-none"
+          style={{ touchAction: 'none' }}
+          onPointerDown={handleDragPointerDown}
+        >
+          <div className="mx-auto mt-2 mb-1 h-1 w-7 rounded-full bg-white/20" aria-hidden="true" />
+          <div className="px-3 pt-1 pb-2 flex items-center">
+            <div className="flex-1 min-w-0 min-h-9 rounded-lg border border-white/15 bg-white/8 flex items-center transition-colors focus-within:border-[#4db6ac]">
+              <i className="fa-solid fa-magnifying-glass text-[12px] text-white/45 ml-2.5" aria-hidden="true" />
+              <input
+                ref={inputRef}
+                type="text"
+                value={query}
+                autoFocus={!isIosNative}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('shared.search_gifs') || 'Search GIFs'}
+                aria-label={t('shared.search_gifs') || 'Search GIFs'}
+                className="flex-1 min-w-0 bg-transparent px-2 py-1 text-[13px] text-white placeholder-white/40 outline-none"
+                style={{ touchAction: 'auto' }}
+              />
+              {query && (
+                <NativeIconButton
+                  size="sm"
+                  variant="muted"
+                  preventBlur
+                  className="mr-1"
+                  aria-label={t('shared.clear_search') || 'Clear search'}
+                  onClick={() => setQuery('')}
+                >
+                  <i className="fa-solid fa-xmark text-[11px]" aria-hidden="true" />
+                </NativeIconButton>
+              )}
+            </div>
+            <span className="text-[10px] text-white/40 tracking-wide uppercase shrink-0 ml-2 mr-2">via GIPHY</span>
           </div>
-          <button className="shrink-0 w-7 h-7 rounded-full text-white/60 hover:text-white hover:bg-white/10 flex items-center justify-center transition" onClick={onClose} aria-label={t('shared.close_gif_picker')}>
-            <i className="fa-solid fa-times text-sm" />
-          </button>
         </div>
 
-        <div className="mt-2.5 max-h-[54vh] overflow-y-auto pr-1">
-          {keyLoading ? (
-            <div className="flex items-center justify-center py-16 text-white/70 text-sm gap-2">
-              <i className="fa-solid fa-spinner fa-spin" />
-              Connecting to GIF library…
+        <div ref={gridRef} className="flex-1 overflow-y-auto px-3 pb-3">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="text-[11px] font-medium uppercase tracking-wider text-white/45 px-1">
+              {headerLabel}
             </div>
-          ) : !useProxy && !apiKey ? (
-            <div className="py-12 text-center text-sm text-red-400 px-4 leading-relaxed">GIF search requires a valid GIPHY API key. Ask an admin to configure it in the server environment.</div>
-          ) : loading ? (
-            <div className="flex items-center justify-center py-16 text-white/70 text-sm gap-2">
-              <i className="fa-solid fa-spinner fa-spin" />
-              Loading GIFs…
+            {showInlineLoadingDot && (
+              <div
+                className="flex items-center gap-1 text-[11px] text-white/45"
+                role="status"
+                aria-live="polite"
+              >
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-white/60 animate-pulse" aria-hidden="true" />
+                <span className="sr-only">Loading</span>
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <div className="text-red-400 text-xs px-1 pb-2" role="alert">
+              {error}
             </div>
-          ) : error ? (
-            <div className="py-12 text-center text-sm text-red-400 px-4 leading-relaxed">{error}</div>
-          ) : results.length === 0 ? (
-            <div className="py-10 text-center text-sm text-white/60">{t('shared.no_gifs_found')}</div>
-          ) : (
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+          )}
+
+          {showFullSkeleton ? (
+            <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-5 md:grid-cols-6">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div
+                  key={`skeleton-${i}`}
+                  className="aspect-[4/3] rounded-md bg-white/5 animate-pulse"
+                />
+              ))}
+            </div>
+          ) : showResults ? (
+            <div
+              className={`grid grid-cols-4 gap-1.5 sm:grid-cols-5 md:grid-cols-6 transition-opacity duration-150 ${
+                showInlineLoadingDot ? 'opacity-60' : 'opacity-100'
+              }`}
+            >
               {results.map((gif) => (
                 <button
                   key={gif.id}
-                  className="relative group rounded-lg overflow-hidden border border-white/10 focus:outline-none focus:ring-2 focus:ring-[#4db6ac]"
-                  onClick={() => onSelect(gif)}
+                  type="button"
+                  className="relative group aspect-[4/3] rounded-md overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4db6ac] focus-visible:ring-offset-1 focus-visible:ring-offset-transparent"
+                  onClick={() => {
+                    // Fire selection haptic before onSelect so the tap feels
+                    // immediate; selection cue maps to a soft tick on iOS /
+                    // Android and a silent no-op on web.
+                    hapticSelection()
+                    onSelect(gif)
+                  }}
+                  aria-label="Select GIF"
                 >
-                  <img src={gif.previewUrl} alt="GIF preview" className="h-28 w-full object-cover" loading="lazy" />
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-xs font-medium text-white uppercase tracking-wide">Use GIF</div>
+                  <img
+                    ref={tileImgRef}
+                    src={gif.previewUrl}
+                    data-src={gif.previewUrl}
+                    data-paused="0"
+                    alt="GIF"
+                    loading="lazy"
+                    decoding="async"
+                    className="w-full h-full object-cover"
+                  />
+                  <div
+                    className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                    aria-hidden="true"
+                  />
                 </button>
               ))}
             </div>
-          )}
+          ) : showEmpty ? (
+            <div className="min-h-[160px] flex items-center justify-center">
+              <p className="text-[13px] text-white/50 text-center">
+                {t('shared.no_gifs_found_friendly', { defaultValue: 'Nothing matched — try a different search' })}
+              </p>
+            </div>
+          ) : null}
         </div>
-
-        <div className="mt-3 text-right text-[10px] tracking-wide text-white/30 uppercase">Powered by GIPHY</div>
       </div>
-    </div>
+    </>
   )
 }

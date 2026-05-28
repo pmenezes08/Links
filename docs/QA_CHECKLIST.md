@@ -552,3 +552,35 @@ Pilot routes: `/premium_dashboard`, `/feed`, `/about_cpoint`, `/community_feed_r
 
 - [ ] **§14 chat unaffected**: open a DM thread and a group thread. Verify inverted-list open-at-bottom, send, scroll, keyboard open/close — all per §14 checks unchanged.
 - [ ] **Non-pilot routes unaffected**: navigate to Settings, Profile, Messages, Networking. These routes must behave exactly as before (no transition animation, no layout regression).
+
+### Wave 2 — composer & profile polish
+
+Wave 2 (`Pilot Wave 2 — composer & profile polish`, KB test ref `manual:pilot_wave_2`, tracker `docs/workflow-state-wave-2.md`) extends this section. Chat thread / group thread / Messages / Communities motion changes are explicitly **out of scope for Wave 2**.
+
+#### §15.A — Wave 2 PR-1: GIF picker rebuild
+
+> **Wave 2 must not regress §14.** Re-run §14 chat scroll open-at-bottom checks before signing off any §15.A row.
+
+- [ ] **Open from each surface**: open the GIF picker from CommentReply (`/reply/...`), CreatePost, CommunityFeed composer, PostDetail composer, ChatThread (DM), GroupChatThread. Sheet opens with a slide-up from the bottom and rounded top corners; the existing composer is not pushed off-screen.
+- [ ] **Trending shows immediately**: opening the picker without typing shows a "Trending" header and 24 GIFs.
+- [ ] **Search debounces**: typing `puppy` shows the `Results for "puppy"` header within ~300ms; clearing the input returns to Trending without a flash.
+- [ ] **Keyboard-aware (the original bug)**: with the soft keyboard open, the LAST row of the GIF grid is reachable by scrolling — no GIFs are hidden under the keyboard. Test on iOS Safari, iOS Capacitor, Android Chrome, Android Capacitor.
+- [ ] **Sheet height clamps**: sheet height = 60% of `visualViewport.height`, clamped to 320–560px. Grid scrolls inside the sheet, never under the keyboard.
+- [ ] **Drag-to-dismiss**: dragging the sheet down ≥30% of its height OR with velocity ≥600 px/s closes it. A smaller drag springs back via the pilot easing.
+- [ ] **Drag does not steal grid scroll**: scrolling the grid by touching a tile does NOT trigger the dismiss drag.
+- [ ] **Tap-outside / Esc**: both close the sheet without firing a haptic.
+- [ ] **Haptic on select**: tapping a tile fires a selection haptic (iOS + Android Capacitor only) BEFORE the picker closes.
+- [ ] **Haptic on drag dismiss**: at the moment the dismiss threshold passes, a light impact haptic fires. Tap-outside / Esc / programmatic close do NOT fire haptics.
+- [ ] **GIPHY attribution visible**: `via GIPHY` is right-aligned inside the sticky search row at all times, at `white/40` opacity. No separate footer.
+- [ ] **IntersectionObserver pause**: scroll the grid quickly; off-screen GIFs swap to a transparent placeholder (memory/CPU should not climb). Re-entering tiles resume animating.
+- [ ] **Reduced motion (open/close)**: with `prefers-reduced-motion: reduce` enabled, sheet open/close uses an 80ms opacity fade — no slide.
+- [ ] **Reduced motion (drag)**: drag-to-dismiss still works under reduced motion (fades out at threshold instead of sliding).
+- [ ] **Loading skeleton**: under DevTools "Slow 3G" throttle, 12 placeholder tiles render in the same grid before results load.
+- [ ] **Re-search after results**: with results showing, type a new term — prior results dim and a tiny pulsing dot appears above the grid (no full-takeover loader).
+- [ ] **Error state**: with `/api/giphy/search` 500-throttled (DevTools network override), an inline single-line red message renders ABOVE the grid; previous results stay visible.
+- [ ] **Empty state**: searching `asdfqwerzxcv1234` shows centered "Nothing matched — try a different search" inside a min-height container.
+- [ ] **Selection inserts correctly**: choosing a GIF on each of the 6 callers correctly attaches the GIF to the composer (no regression in the upload/preview flow).
+- [ ] **Public API unchanged**: confirm by reviewing the diff that `GifPickerProps`, `GifSelection`, and the 6 callers were untouched.
+- [ ] **§14 chat regression rerun**: chat thread open-at-bottom, send, keyboard open/close all behave identically to current `staging`.
+
+Subsequent PRs (PR-2 profile / PR-3 settings / PR-4 notifications + followers / PR-5 haptics / PR-6 multi-step pop-back / PR-7 Feed PTR visual) extend this list as they land.

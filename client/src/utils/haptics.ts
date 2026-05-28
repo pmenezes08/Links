@@ -44,3 +44,21 @@ export async function triggerHaptic(cue: HapticCue = 'light'): Promise<void> {
     // Haptics should never block the interaction that requested them.
   }
 }
+
+// Convenience wrappers for hot-path UI handlers. Each is `void`-returning so
+// callers don't have to remember `void triggerHaptic(...)`. Failures are
+// swallowed inside `triggerHaptic`, so these are safe to call from any
+// event handler — web, iOS Capacitor, Android Capacitor, or a device with
+// system haptics disabled.
+
+export function hapticImpactLight(): void {
+  void triggerHaptic('light')
+}
+
+export function hapticImpactMedium(): void {
+  void triggerHaptic('medium')
+}
+
+export function hapticSelection(): void {
+  void triggerHaptic('selection')
+}
