@@ -36,6 +36,7 @@ from backend.services.native_push import (
 )
 from backend.services import auth_session, disposable_email, remember_tokens, session_identity
 from backend.services import api_errors
+from backend.services import session_revocation
 from backend.services.account_deletion import AccountDeletionMode, delete_user_in_connection
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.email_normalization import (
@@ -83,6 +84,7 @@ def _finalize_session_response(resp, username: str) -> None:
     auth_session.clear_session_cookie(resp)
     session.permanent = True
     session["username"] = username
+    session_revocation.stamp_session(session, username)
     session.modified = True
     try:
         current_app.session_interface.save_session(current_app, session, resp)
@@ -115,7 +117,10 @@ def auto_login_from_remember_token():
     """Restore sessions from remember_token cookies when possible."""
     try:
         if "username" in session:
-            return
+            if session_revocation.is_session_revoked(session):
+                session.clear()
+            else:
+                return
         if "pending_username" in session:
             current_app.logger.info("auth.auto_login_skipped reason=pending_username")
             return
@@ -509,6 +514,7 @@ def signup():
 
                     session["username"] = username
                     session.permanent = True
+                    session_revocation.stamp_session(session, username)
 
                     if _is_mobile_request():
                         return jsonify(
@@ -625,6 +631,8 @@ def logout():
     # of their devices, not just this one. Banking-grade default; matches the
     # explicit copy in the LogoutPromptProvider modal.
     user_tokens_revoked = remember_tokens.revoke_for_user(username) if username else 0
+    # Bump session_version so signed cookies on other devices are invalidated on next request.
+    session_revocation.bump_session_version(username)
 
     session.clear()
     session.permanent = False
@@ -679,6 +687,7 @@ def delete_account_post():
         logger.exception("delete_account error for %s", username)
         return jsonify({"success": False, "error": "server error"}), 500
 
+    session_revocation.bump_session_version(username)
     session.clear()
     try:
         from redis_cache import invalidate_user_cache
@@ -705,10 +714,13 @@ def delete_account_post():
     except Exception:
         pass
 
+    remember_tokens.revoke_for_user(username)
+
     resp = jsonify({"success": True, "clear_storage": True})
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    resp.headers["Pragma"] = "no-cache"
-    resp.headers["Expires"] = "0"
+    remember_tokens.clear_cookie(resp)
+    auth_session.clear_session_cookie(resp)
+    auth_session.clear_install_cookie(resp)
+    auth_session.no_store(resp)
     return resp
 
 
@@ -794,6 +806,9 @@ def login_password():
                     logger.info(f"login_password: Plain password check for '{username}', correct={password_correct}")
 
                 if password_correct:
+                    session.clear()
+                    session.permanent = False
+
                     try:
                         conn = get_db_connection()
                         c = conn.cursor()
@@ -1157,6 +1172,7 @@ def google_sign_in():
                 conn.commit()
                 session['username'] = username
                 session.permanent = True
+                session_revocation.stamp_session(session, username)
                 _invalidate_profile_and_dashboard_caches(username)
                 logger.info(f"Google sign-in: returning user {username}")
                 resp = make_response(jsonify({'success': True, 'username': username, 'is_new': False}))
@@ -1181,6 +1197,7 @@ def google_sign_in():
                 conn.commit()
                 session['username'] = username
                 session.permanent = True
+                session_revocation.stamp_session(session, username)
                 # Display name is intentionally NOT touched on link: established users keep
                 # whatever they already had in user_profiles. Auto-fill happens only on the
                 # new-user creation branch below.
@@ -1244,6 +1261,7 @@ def google_sign_in():
 
             session['username'] = username
             session.permanent = True
+            session_revocation.stamp_session(session, username)
             _invalidate_profile_and_dashboard_caches(username)
             logger.info(f"Google sign-in: created new user {username}")
             resp = make_response(jsonify({'success': True, 'username': username, 'is_new': True}))
@@ -1307,6 +1325,7 @@ def apple_sign_in():
                 conn.commit()
                 session['username'] = username
                 session.permanent = True
+                session_revocation.stamp_session(session, username)
                 _invalidate_profile_and_dashboard_caches(username)
                 logger.info("Apple sign-in: returning user %s", username)
                 resp = make_response(jsonify({'success': True, 'username': username, 'is_new': False}))
@@ -1332,6 +1351,7 @@ def apple_sign_in():
                     conn.commit()
                     session['username'] = username
                     session.permanent = True
+                    session_revocation.stamp_session(session, username)
                     _invalidate_profile_and_dashboard_caches(username)
                     logger.info("Apple sign-in: linked %s to Apple ID", username)
                     resp = make_response(jsonify({'success': True, 'username': username, 'is_new': False}))
@@ -1396,6 +1416,7 @@ def apple_sign_in():
 
             session['username'] = username
             session.permanent = True
+            session_revocation.stamp_session(session, username)
             _invalidate_profile_and_dashboard_caches(username)
             logger.info("Apple sign-in: created new user %s", username)
             resp = make_response(jsonify({'success': True, 'username': username, 'is_new': True}))

@@ -171,11 +171,10 @@ describe('performLogout (Phase G4)', () => {
     const deleteTokenMock = vi.fn(() => Promise.resolve())
     const order: string[] = []
 
-    // Mock dynamic imports for Capacitor (native) and FCMNotifications
-    vi.mock('@capacitor/core', () => ({
+    vi.doMock('@capacitor/core', () => ({
       Capacitor: { isNativePlatform: () => true, getPlatform: () => 'ios' },
     }))
-    vi.mock('../services/fcmNotifications', () => ({
+    vi.doMock('../services/fcmNotifications', () => ({
       FCMNotifications: { deleteToken: deleteTokenMock },
     }))
 
@@ -189,7 +188,6 @@ describe('performLogout (Phase G4)', () => {
       return Promise.resolve()
     })
 
-    // Re-import to pick up mocks
     const { unregisterPushBeforeLogout } = await import('./logout')
     await unregisterPushBeforeLogout()
 
@@ -201,7 +199,7 @@ describe('performLogout (Phase G4)', () => {
       expect(dtIdx).toBeLessThan(unregIdx)
     }
 
-    vi.unmock('@capacitor/core')
-    vi.unmock('../services/fcmNotifications')
+    vi.doUnmock('@capacitor/core')
+    vi.doUnmock('../services/fcmNotifications')
   })
 })

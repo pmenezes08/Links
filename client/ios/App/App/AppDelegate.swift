@@ -60,6 +60,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         
         // Sync badge with server when app launches
         syncBadgeWithServer()
+
+        // Listen for logout events from the WebView (JS posts via Capacitor App plugin)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleLogoutNotification),
+            name: Notification.Name("CPointUserLoggedOut"),
+            object: nil
+        )
         
         // 1. Initialize Firebase (optional - for FCM token conversion)
         FirebaseApp.configure()
@@ -145,6 +153,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             NSLog("📛 Invalid badge URL")
             return
         }
+
+        // Skip badge sync if no session cookie exists (user is logged out)
+        let hasSession = HTTPCookieStorage.shared.cookies(for: url)?.contains(where: { $0.name == "cpoint_session" }) ?? false
+        if !hasSession {
+            NSLog("📛 No session cookie — skipping badge sync")
+            return
+        }
         
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -173,6 +188,26 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             }
         }
         task.resume()
+    }
+
+    // MARK: - Logout Cookie Cleanup
+
+    /// Clear all cookies for the app domain from URLSession's shared cookie store.
+    /// Called when the WebView navigates to /welcome after logout (observed via
+    /// Capacitor's App URL open event or directly from JS via evaluateJavaScript).
+    func clearServerCookies() {
+        guard let serverUrl = URL(string: serverURL) else { return }
+        if let cookies = HTTPCookieStorage.shared.cookies(for: serverUrl) {
+            for cookie in cookies {
+                HTTPCookieStorage.shared.deleteCookie(cookie)
+            }
+            NSLog("🔒 Cleared %d cookies for %@", cookies.count, serverURL)
+        }
+        UIApplication.shared.applicationIconBadgeNumber = 0
+    }
+
+    @objc private func handleLogoutNotification() {
+        clearServerCookies()
     }
 
     // MARK: - Capacitor Deep Links & Universal Links

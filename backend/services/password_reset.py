@@ -255,6 +255,10 @@ def complete_reset(token: str, new_password: str, confirm_password: str) -> Tupl
                 (token,),
             )
             conn.commit()
+
+            from backend.services import session_revocation
+            session_revocation.bump_session_version(username)
+
             return True, "Your password has been reset successfully."
     except Exception as exc:
         logger.error("complete_reset error: %s", exc)

@@ -5,6 +5,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.webkit.CookieManager;
 
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
@@ -32,6 +33,12 @@ public class MainActivity extends BridgeActivity {
 
     private void handleShareIntent(Intent intent) {
         ShareIntentHelper.saveIncomingIntent(this, intent);
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        CookieManager.getInstance().flush();
     }
 
     @Override

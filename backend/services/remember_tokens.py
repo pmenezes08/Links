@@ -174,6 +174,8 @@ def restore_session(request, session) -> Optional[str]:
 
     session.permanent = True
     session["username"] = username
+    from backend.services import session_revocation
+    session_revocation.stamp_session(session, str(username))
     return str(username)
 
 

@@ -153,6 +153,8 @@ CREATE TABLE IF NOT EXISTS users (
     is_active TINYINT(1) DEFAULT 1,
     is_admin TINYINT(1) DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    session_version INT UNSIGNED NOT NULL DEFAULT 1,
+    session_invalidated_at DATETIME DEFAULT NULL,
     INDEX idx_users_canonical_email (canonical_email)
 )
 """

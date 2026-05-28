@@ -623,9 +623,9 @@ _canonical_scheme = (os.getenv('CANONICAL_SCHEME') or '').lower()
 
 # Session configuration
 try:
-    _auth_session_lifetime_days = max(30, int(os.getenv('AUTH_SESSION_LIFETIME_DAYS', '365')))
+    _auth_session_lifetime_days = max(30, int(os.getenv('AUTH_SESSION_LIFETIME_DAYS', '90')))
 except Exception:
-    _auth_session_lifetime_days = 365
+    _auth_session_lifetime_days = 90
 app.config['AUTH_SESSION_LIFETIME_DAYS'] = _auth_session_lifetime_days
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_PATH'] = '/'
