@@ -5,7 +5,12 @@ import {
   CPOINT_EASE_OUT,
   REDUCED_MOTION_FADE_MS,
 } from '../design/motion'
-import { detectTransitionType, isDashboardTabPath, isPilotRoute } from '../components/pageTransitionUtils'
+import {
+  detectTransitionType,
+  isDashboardTabPath,
+  isDeepDrillDownRoute,
+  isPilotRoute,
+} from '../components/pageTransitionUtils'
 
 describe('motion tokens', () => {
   it('matches DESIGN.md values', () => {
@@ -41,6 +46,58 @@ describe('detectTransitionType', () => {
   it('returns push between pilot drill-down routes', () => {
     expect(detectTransitionType('/premium_dashboard', '/community_feed_react/1', 'PUSH', true)).toBe('push')
     expect(detectTransitionType('/community_feed_react/1', '/post/42', 'PUSH', true)).toBe('push')
+  })
+
+  // Multi-step pop: a back-tap from a deep drill-down route may jump several
+  // history levels (e.g. Post → Tab, skipping the Community feed). These
+  // should still animate as `pop` rather than snap.
+  it('returns pop for Post → Dashboard (POP)', () => {
+    expect(detectTransitionType('/post/42', '/premium_dashboard', 'POP', true)).toBe('pop')
+  })
+
+  it('returns pop for Post → Communities (POP)', () => {
+    expect(detectTransitionType('/post/42', '/communities', 'POP', true)).toBe('pop')
+  })
+
+  it('returns pop for Reply → Community feed (POP)', () => {
+    expect(detectTransitionType('/reply/5', '/community_feed_react/1', 'POP', true)).toBe('pop')
+  })
+
+  it('returns pop for Community feed → Dashboard (POP)', () => {
+    expect(detectTransitionType('/community_feed_react/1', '/premium_dashboard', 'POP', true)).toBe('pop')
+  })
+
+  // Programmatic jump (PUSH) from a drill-down to a tab root is not a true
+  // forward navigation — keep it non-pop and don't push-slide it.
+  it('does not push-slide a programmatic Post → Dashboard (PUSH)', () => {
+    const result = detectTransitionType('/post/42', '/premium_dashboard', 'PUSH', true)
+    expect(['tab', 'none']).toContain(result)
+    expect(result).not.toBe('pop')
+  })
+
+  // Chat threads are explicitly excluded from the pilot motion scope; the
+  // multi-step pop branch must not affect them.
+  it('preserves existing none for ChatThread → Dashboard (POP)', () => {
+    expect(detectTransitionType('/user_chat/chat/somebody', '/premium_dashboard', 'POP', true)).toBe('none')
+  })
+})
+
+describe('isDeepDrillDownRoute', () => {
+  it('recognises post, community feed, group feed, reply, and group reply routes', () => {
+    expect(isDeepDrillDownRoute('/post/42')).toBe(true)
+    expect(isDeepDrillDownRoute('/community_feed_react/1')).toBe(true)
+    expect(isDeepDrillDownRoute('/group_feed_react/9')).toBe(true)
+    expect(isDeepDrillDownRoute('/reply/5')).toBe(true)
+    expect(isDeepDrillDownRoute('/group_reply/5')).toBe(true)
+    expect(isDeepDrillDownRoute('/community/my-slug/feed')).toBe(true)
+  })
+
+  it('excludes tab roots and chat threads', () => {
+    expect(isDeepDrillDownRoute('/premium_dashboard')).toBe(false)
+    expect(isDeepDrillDownRoute('/feed')).toBe(false)
+    expect(isDeepDrillDownRoute('/communities')).toBe(false)
+    expect(isDeepDrillDownRoute('/user_chat')).toBe(false)
+    expect(isDeepDrillDownRoute('/user_chat/chat/somebody')).toBe(false)
   })
 })
 

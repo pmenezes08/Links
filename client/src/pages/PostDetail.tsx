@@ -34,7 +34,7 @@ import { NativeIconButton } from '../components/NativeIconButton'
 import { FixedComposerShell } from '../components/FixedComposerShell'
 import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
 import { preventComposerBlur, composerControlPointerProps } from '../utils/composerBlurGuard'
-import { triggerHaptic } from '../utils/haptics'
+import { triggerHaptic, hapticImpactLight } from '../utils/haptics'
 import {
   attachReplyToPostTree,
   normalizePostForDetail,
@@ -1567,6 +1567,7 @@ export default function PostDetail(){
           <button
             className="p-2 rounded-full hover:bg-white/10 transition-colors"
             onClick={() => {
+              hapticImpactLight()
               const state = (location.state || {}) as { communityId?: string | number; groupId?: string | number }
               const gidRaw =
                 (isGroupPost && (post as any)?.group_id != null && (post as any).group_id !== '')
@@ -2047,8 +2048,10 @@ export default function PostDetail(){
         </div>
       ) : null}
 
-      {/* Fixed-bottom reply composer - hidden when inline reply is active */}
-      {activeInlineReplyFor === null && (
+      {/* Fixed-bottom reply composer - hidden when inline reply is active or
+          when the GIF picker is open (so the glass sheet does not show the
+          composer chrome through it). */}
+      {activeInlineReplyFor === null && !gifPickerOpen && (
       <FixedComposerShell
         shellRef={composerRef}
         keyboardLift={keyboardLift}

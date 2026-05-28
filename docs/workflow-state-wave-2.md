@@ -18,12 +18,13 @@
 | PR | Title | Owner subagent(s) | Status |
 |----|-------|-------------------|--------|
 | PR-1 | GIF picker rebuild (bottom-sheet, glass, keyboard-aware) | `thread-engineer` + `platform-designer` | Implemented — QA in progress |
-| PR-2 | Profile + PublicProfile frame-0 skeletons | `platform-designer` | Not started |
-| PR-3 | AccountSettings frame-0 skeleton | `platform-designer` | Not started |
-| PR-4 | Notifications + Followers frame-0 skeletons | `platform-designer` | Not started |
-| PR-5 | Capacitor Haptics (send / pop-back / GIF select / long-press) | `capacitor-ux-polish` + `ios-expert` + `android-expert` | Not started |
-| PR-6 | Pop-back animation Post → Community → Tab | `thread-engineer` | Not started |
-| PR-7 | Pull-to-refresh visual on Feed (pilot tokens) | `platform-designer` | Not started |
+| PR-1.1 | GIF picker hotfix: safe-area top + opaque underlay + composer hide | `thread-engineer` | Implemented — QA in progress |
+| PR-2 | Profile + PublicProfile frame-0 skeletons | `platform-designer` | Implemented — QA in progress |
+| PR-3 | AccountSettings frame-0 skeleton | `platform-designer` | Implemented — QA in progress |
+| PR-4 | Notifications + Followers frame-0 skeletons | `platform-designer` | Implemented — QA in progress |
+| PR-5 | Capacitor Haptics (send / pop-back / long-press / PTR) | `capacitor-ux-polish` | Implemented — QA in progress |
+| PR-6 | Multi-step pop-back (drill-down → tab-root) | `thread-engineer` | Implemented — QA in progress |
+| PR-7 | Pull-to-refresh visual on Feed (pilot tokens) | `platform-designer` | Implemented — QA in progress |
 
 ## Out of scope (deferred — DO NOT touch in Wave 2)
 
@@ -117,6 +118,11 @@ These surfaces will get their own design pass in a later wave with `thread-engin
 | 2026-05-28 | **PR-1 brand-specialist sign-off: PASS_WITH_ADJUSTMENTS** — see `docs/design/gif_picker_spec.md` "Brand sign-off". | Three minor tweaks (GIPHY attribution contrast bump to `white/40`, section label brightness alignment, empty-state copy revision) plus one tracked-debt exception (`#4db6ac` accepted for intra-flow consistency, logged for accent-backfill epic). No blockers. |
 | 2026-05-28 | **PR-1 brand adjustments applied to `GifPicker.tsx`**: GIPHY attribution `white/35` → `white/40`, header labels `white/55` → `white/45`, empty copy → `Nothing matched — try a different search`. | Direct application of the three PASS_WITH_ADJUSTMENTS items above; verified visually against the spec. No public API or caller changes. |
 | 2026-05-28 | **PR-1 verifier-qa: §15.A authored, manual checklist ready for staging run.** | 21 bullets covering keyboard-aware open, drag-to-dismiss, haptics, IntersectionObserver pause, reduced motion, error/empty/loading states, cross-surface parity (6 callers), public API freeze, and §14 chat regression rerun. Ready for PO to run on staging. |
+| 2026-05-28 | **PR-1.1 hotfix shipped after PO QA**: glass-bleed and notch-overlap fixes. | Reported on staging: composer leaked through the picker's `liquid-glass-surface`, and the search row sat under the iOS status bar. Fix: `paddingTop: env(safe-area-inset-top)` + `sheetHeight` clamp - `--sat-px` - 8px floor at `SHEET_MIN_HEIGHT_PX`; solid `#0b0f10` background behind the glass material; the 6 callers unmount their `FixedComposerShell` (or equivalent) when `gifPickerOpen` is true. No Capacitor `StatusBar.hide()` (causes layout shift, against iOS HIG). `ChatThread.tsx` / `GroupChatThread.tsx` got a one-line visibility-flag change; no motion / scroll / message-list changes — within deferred-list policy. |
+| 2026-05-28 | **PR-2 / PR-3 / PR-4 frame-0 skeletons shipped.** | Added `SkeletonProfileShell`, `SkeletonSettingsRow/List`, `SkeletonNotificationRow/List`, `SkeletonFollowerRow/List` to `SkeletonRow.tsx`. Replaced loading spinners on `Profile.tsx`, `PublicProfile.tsx`, `AccountSettings.tsx`, `Notifications.tsx`, `Followers.tsx`. No data-fetch / route / motion changes; existing skeleton exports preserved; layout stable on hydrate. |
+| 2026-05-28 | **PR-5 haptics: 10 call sites added across 8 files.** | `hapticImpactLight()` on PTR threshold + UI back buttons (HeaderBar central `goBack`, PostDetail / CommentReply / CommunityFeed / PublicProfile / ChatThread / GroupChatThread headers). All composer sends already had haptics (`chatHapticSend`, `triggerHaptic('light')`); long-press already wired via `chatHapticMenuOpen()`. Skipped `useAndroidBackButton` (OS feedback) and post-action `navigate(-1)` after confirm dialogs to avoid double-haptic. |
+| 2026-05-28 | **PR-6 multi-step pop-back: drill-down → tab-root POPs animate.** | Extended `pageTransitionUtils.ts` with `isDeepDrillDownRoute` (covers `/post/`, `/community_feed_react/`, `/group_feed_react/`, `/reply/`, `/group_reply/`, `/community/:slug/feed`) and a multi-step POP branch in `detectTransitionType`. Programmatic PUSH from drill-down to tab-root stays `none` (no jump-slide). Chat threads explicitly excluded. `pageTransition.test.ts` 10 → 18 tests, all passing. |
+| 2026-05-28 | **PR-7 pull-to-refresh visual on Feed (HomeTimeline).** | New `PullToRefreshPuck.tsx` (40px glass disc, `#00CEC8` arc that fills 0–60px and rotates 0–270°). Touch-only, gated on `VITE_PAGE_TRANSITIONS=true`, fires `setRefreshKey(k+1)` (existing refresh path — no new fetch logic). Spring-back via `PAGE_TRANSITION_MS` + `CPOINT_EASE_OUT`; reduced-motion uses opacity fade. |
 
 ## Cross-references
 

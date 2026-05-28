@@ -5,6 +5,7 @@ import type { TFunction } from 'i18next'
 import { useHeader } from '../contexts/HeaderContext'
 import { useBadges } from '../contexts/BadgeContext'
 import { renderTextWithLinks } from '../utils/linkUtils'
+import { SkeletonNotificationList } from '../components/SkeletonRow'
 
 type Notif = {
   id: number
@@ -591,7 +592,7 @@ export default function Notifications(){
               </button>
             </div>
             {loading || !items ? (
-              <div className="text-[#9fb0b5] py-10 text-center">{t('notifications_page.loading')}</div>
+              <SkeletonNotificationList />
             ) : items.length === 0 ? (
               <div className="text-[#9fb0b5] py-10 text-center">
                 <i className="fa-regular fa-bell text-2xl" />

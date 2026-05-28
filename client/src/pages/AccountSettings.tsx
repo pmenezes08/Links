@@ -16,6 +16,7 @@ import { useHeader } from '../contexts/HeaderContext'
 import { LOCALE_OPTIONS } from '../i18n/localeOptions'
 import { useLocale } from '../i18n/useLocale'
 import { triggerHaptic } from '../utils/haptics'
+import { SkeletonSettingsList } from '../components/SkeletonRow'
 
 type ProfileData = {
   username: string
@@ -262,10 +263,9 @@ export default function AccountSettings() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-black text-white">
-        <div className="text-center">
-          <i className="fa-solid fa-spinner fa-spin mb-4 text-2xl" />
-          <div>{t('account.info.loading_profile')}</div>
+      <div className="overflow-hidden bg-black text-white" style={{ minHeight: 'calc(100dvh - var(--app-header-offset, 0px))' }}>
+        <div className="mx-auto max-w-xl px-4 pt-4">
+          <SkeletonSettingsList />
         </div>
       </div>
     )

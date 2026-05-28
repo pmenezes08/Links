@@ -28,7 +28,7 @@ import { NativeIconButton } from '../components/NativeIconButton'
 import { FixedComposerShell } from '../components/FixedComposerShell'
 import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
 import { composerControlPointerProps } from '../utils/composerBlurGuard'
-import { triggerHaptic } from '../utils/haptics'
+import { triggerHaptic, hapticImpactLight } from '../utils/haptics'
 
 function replyDisplayUrl(raw: string | null | undefined): string {
   const s = (raw ?? '').trim()
@@ -814,6 +814,7 @@ export default function CommentReply() {
           <button
             className="p-2 rounded-full hover:bg-white/10 transition-colors"
             onClick={() => {
+              hapticImpactLight()
               // Simple approach: always go to the post. PostDetail will handle
               // smart context detection to decide whether to go to community feed
               if (post) {
@@ -1387,7 +1388,9 @@ export default function CommentReply() {
         </div>
       </div>
 
-      {/* Fixed bottom reply composer */}
+      {/* Fixed bottom reply composer — hidden while the GIF picker is open
+          so the glass sheet does not show the composer chrome through it. */}
+      {!showGifPicker && (
       <FixedComposerShell
         keyboardLift={keyboardLift}
         safeBottomPx={safeBottomPx}
@@ -1576,6 +1579,7 @@ export default function CommentReply() {
           </div>
         </div>
       </FixedComposerShell>
+      )}
 
       {replyComposerExpanded && reply && post && (
         <div

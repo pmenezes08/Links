@@ -14,6 +14,7 @@ import { groupChatInfoDeviceCacheKey, groupChatMessagesDeviceCacheKey } from '..
 import { useNativeStatusBar } from '../hooks/useNativeStatusBar'
 import { useAndroidBackButton } from '../hooks/useAndroidBackButton'
 import { Style } from '@capacitor/status-bar'
+import { hapticImpactLight } from '../utils/haptics'
 import { NativeIconButton } from '../components/NativeIconButton'
 import {
   mergePolledGroupMessages,
@@ -2005,7 +2006,7 @@ export default function GroupChatThread() {
       <div className="min-h-screen chat-thread-bg text-white flex flex-col">
         <div style={{ paddingTop: 'env(safe-area-inset-top, 0px)', background: '#000' }}>
           <div className="h-12 flex items-center px-3">
-            <button className="p-2 rounded-full hover:bg-white/10" onClick={() => navigate('/user_chat')} aria-label={t('common.back')}>
+            <button className="p-2 rounded-full hover:bg-white/10" onClick={() => { hapticImpactLight(); navigate('/user_chat') }} aria-label={t('common.back')}>
               <i className="fa-solid fa-arrow-left text-white" />
             </button>
           </div>
@@ -2058,7 +2059,7 @@ export default function GroupChatThread() {
         <div className="h-12 flex items-center gap-2 px-3">
           <button 
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
-            onClick={() => navigate('/user_chat')} 
+            onClick={() => { hapticImpactLight(); navigate('/user_chat') }} 
             aria-label={t('chat.back_to_messages')}
           >
             <i className="fa-solid fa-arrow-left text-white" />
@@ -2415,9 +2416,14 @@ export default function GroupChatThread() {
         </button>
       )}
 
-      {/* ====== COMPOSER - FIXED AT BOTTOM (portaled for keyboard lift) ====== */}
+      {/* ====== COMPOSER - FIXED AT BOTTOM (portaled for keyboard lift) ======
+          Render guard adds `!gifPickerOpen` so the underlying composer chrome
+          does not show through the GIF picker's translucent glass sheet.
+          This is a one-line visibility flag — it does not touch motion,
+          scroll, keyboard, or message-list rendering (per
+          docs/workflow-state-wave-2.md deferred-list scope). */}
       <ChatComposerPortal
-        visible={pendingMedia.length === 0}
+        visible={pendingMedia.length === 0 && !gifPickerOpen}
         composerRef={composerRef}
         displayKeyboardLift={displayKeyboardLift}
         isWeb={isWeb}

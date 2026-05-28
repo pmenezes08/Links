@@ -53,7 +53,7 @@ import {
   shouldClientBlockSteveIntent,
 } from '../utils/steveClientGate'
 import { preflightSteveMention } from '../utils/stevePreflight'
-import { triggerHaptic } from '../utils/haptics'
+import { triggerHaptic, hapticImpactLight } from '../utils/haptics'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
@@ -2398,7 +2398,7 @@ export default function CommunityFeed() {
   const feedBackButton = (
     <div style={{ paddingTop: 'var(--sat-px, 0px)', background: '#000' }}>
       <div className="h-12 flex items-center px-3">
-        <button className="p-2 rounded-full hover:bg-white/10" onClick={() => navigate(-1)} aria-label={t('navigation.back')}>
+        <button className="p-2 rounded-full hover:bg-white/10" onClick={() => { hapticImpactLight(); navigate(-1) }} aria-label={t('navigation.back')}>
           <i className="fa-solid fa-arrow-left text-white" />
         </button>
         <span className="ml-2 text-white font-semibold truncate">{data?.community?.name || t('feed.community_fallback')}</span>
@@ -4315,6 +4315,11 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
   const [childReplyGif, setChildReplyGif] = useState<GifSelection | null>(null)
   const [sendingChildReply, setSendingChildReply] = useState(false)
   const [gifPickerTarget, setGifPickerTarget] = useState<'main' | number | null>(null)
+  // Hide inline reply composers while the per-post GIF picker is open so the
+  // translucent glass sheet does not show composer chrome through it. The
+  // composer remounts as soon as the user selects or dismisses (target is
+  // reset to null in those paths).
+  const isGifPickerOpen = gifPickerTarget !== null
   const [personalStarred, setPersonalStarred] = useState(!!post.is_starred)
   const [communityStarred, setCommunityStarred] = useState(!!post.is_community_starred)
 
@@ -5173,7 +5178,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                     </button>
                   </div>
 
-                  {activeChildReplyFor === r.id && (
+                  {activeChildReplyFor === r.id && !isGifPickerOpen && (
                     <div className="mt-2 rounded-lg border border-white/5 bg-white/[0.03] px-2 pt-2 pb-2 space-y-2" onClick={(e)=> e.stopPropagation()}>
                       <MentionTextarea
                         value={childReplyText}
@@ -5277,8 +5282,8 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
         </div>
       )}
       {/* Inline quick reply composer - sleek, full-width, low-distraction */}
-      {/* Hidden when child reply is active */}
-      {!post.poll && activeChildReplyFor === null && (
+      {/* Hidden when child reply is active or the GIF picker is open */}
+      {!post.poll && activeChildReplyFor === null && !isGifPickerOpen && (
         <div className="px-3 pb-3" onClick={(e)=> e.stopPropagation()}>
           <div className="rounded-xl border border-white/5 bg-white/[0.03] px-2 pt-2 pb-2 space-y-2">
               <MentionTextarea

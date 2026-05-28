@@ -10,6 +10,8 @@ import { renderTextWithSourceLinks } from '../utils/linkUtils'
 import { profileIndustryLabel } from '../utils/profileOptionLabel'
 import TranslateGlobeButton from '../components/TranslateGlobeButton'
 import { useEntitlements } from '../hooks/useEntitlements'
+import { SkeletonProfileShell } from '../components/SkeletonRow'
+import { hapticImpactLight } from '../utils/haptics'
 
 type PersonalHighlight = {
   id?: string | null
@@ -310,7 +312,23 @@ export default function PublicProfile() {
 
   const presentLabel = t('profile.public.present')
 
-  if (loading) return <div className="glass-page min-h-screen text-white px-4">{t('profile.loading')}</div>
+  if (loading) return (
+    <div className="glass-page min-h-screen text-white pb-10">
+      <div className="max-w-3xl mx-auto px-4 pt-2 pb-2">
+        <button
+          className="flex items-center gap-2 text-[#9fb0b5] hover:text-white transition-colors"
+          onClick={() => { hapticImpactLight(); navigate(-1) }}
+          aria-label={t('profile.aria.go_back')}
+        >
+          <i className="fa-solid fa-arrow-left" />
+          <span className="text-sm">{t('profile.public.back')}</span>
+        </button>
+      </div>
+      <div className="glass-card glass-card--plain max-w-3xl mx-auto px-4 py-4">
+        <SkeletonProfileShell />
+      </div>
+    </div>
+  )
   if (error || !profile) return <ProfileUnavailable />
 
   const personal = profile.personal || {}
@@ -408,7 +426,7 @@ export default function PublicProfile() {
       <div className="max-w-3xl mx-auto px-4 pt-2 pb-2">
         <button 
           className="flex items-center gap-2 text-[#9fb0b5] hover:text-white transition-colors"
-          onClick={() => navigate(-1)}
+          onClick={() => { hapticImpactLight(); navigate(-1) }}
           aria-label={t('profile.aria.go_back')}
         >
           <i className="fa-solid fa-arrow-left" />

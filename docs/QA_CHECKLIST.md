@@ -583,4 +583,46 @@ Wave 2 (`Pilot Wave 2 — composer & profile polish`, KB test ref `manual:pilot_
 - [ ] **Public API unchanged**: confirm by reviewing the diff that `GifPickerProps`, `GifSelection`, and the 6 callers were untouched.
 - [ ] **§14 chat regression rerun**: chat thread open-at-bottom, send, keyboard open/close all behave identically to current `staging`.
 
-Subsequent PRs (PR-2 profile / PR-3 settings / PR-4 notifications + followers / PR-5 haptics / PR-6 multi-step pop-back / PR-7 Feed PTR visual) extend this list as they land.
+#### §15.B — Wave 2 PR-1.1: GIF picker hotfix (notch + composer bleed)
+
+- [ ] **Status bar visible above sheet on iOS Capacitor**: clock/battery/notch readable when picker is open; search row never sits under the system area.
+- [ ] **No bleed-through on any of the 6 callers**: open the picker from CommentReply / CreatePost / CommunityFeed / PostDetail / ChatThread / GroupChatThread — the underlying composer is unmounted, no `+`, mic, send, or "Message" placeholder visible behind the GIF grid.
+- [ ] **Sheet height respects safe-area**: on tall iPhones with a notch, sheet top is below the notch with ≥ 8px breathing margin.
+- [ ] **No Capacitor StatusBar flicker**: opening/closing the picker does NOT toggle the system status bar (we deliberately did not use `StatusBar.hide()`).
+- [ ] **Composer reappears on close**: tap-outside / drag-dismiss / Esc / GIF select — composer remounts immediately on close, no flash gap.
+
+#### §15.C — Wave 2 PR-2 / PR-3 / PR-4: frame-0 skeletons
+
+- [ ] **Profile (own)**: cold-load `/profile` shows `SkeletonProfileShell` (avatar circle + 2 text lines + 3 stat pills + 6-tile grid) on frame 0 — no spinner, no "Loading…" text.
+- [ ] **PublicProfile (other user)**: cold-load `/profile/<username>` shows `SkeletonProfileShell` with the back button rendered immediately so it's reachable during load.
+- [ ] **AccountSettings**: cold-load `/account_settings` (or whatever the route is) shows `SkeletonSettingsList` (8 divided rows, icon + title + chevron) — header rendered immediately.
+- [ ] **Notifications**: cold-load `/notifications` shows `SkeletonNotificationList` (8 rows: avatar + 2-line preview + timestamp pill).
+- [ ] **Followers**: cold-load `/followers/<username>` shows `SkeletonFollowerList` (10 rows: avatar + name line + follow-button placeholder).
+- [ ] **Layout stability**: hydrating from skeleton to real content shows NO layout jump — outer container dimensions match.
+- [ ] **No data regression**: each page still loads the same data and renders the same content on hydrate.
+
+#### §15.D — Wave 2 PR-5: Capacitor Haptics
+
+- [ ] **PTR trigger haptic**: pulling down on Feed past the 60px threshold fires a light impact haptic (iOS + Android Capacitor).
+- [ ] **UI back-button haptic**: tapping the in-app back arrow on PostDetail / CommentReply / CommunityFeed / PublicProfile / ChatThread / GroupChatThread / Notifications fires a light impact haptic.
+- [ ] **No double-haptic on send**: composer send still fires its existing send haptic (`chatHapticSend` / `triggerHaptic('light')`); no second haptic added.
+- [ ] **No haptic on Android hardware back**: the OS already provides feedback; we don't add a second one.
+- [ ] **No haptic on post-action `navigate(-1)`**: after delete / hide / report / block confirm dialogs, `navigate(-1)` does not fire a haptic (avoids double-feedback after the modal confirm).
+
+#### §15.E — Wave 2 PR-6: multi-step pop-back
+
+- [ ] **Post → Communities back**: from a `/post/:id` opened off the Communities tab, tap back. Animation = pop slide (right-to-left exit, left-to-right enter). Previously snapped instantly.
+- [ ] **Reply → Community feed back**: from `/reply/:id` opened off a community feed, tap back. Animation = pop slide.
+- [ ] **Post → Dashboard back**: from `/post/:id`, tap back to land on Dashboard. Animation = pop slide.
+- [ ] **Community feed → Dashboard back**: same — pop slide.
+- [ ] **No regression on chat threads**: ChatThread → Dashboard back behaves exactly as before (no slide animation introduced — chat is deferred).
+- [ ] **Programmatic jumps are not slides**: typing `/dashboard` in the URL bar from `/post/42` does not animate (PUSH from drill-down to tab-root stays `none`).
+
+#### §15.F — Wave 2 PR-7: pull-to-refresh on Feed
+
+- [ ] **Puck appears on overscroll**: at `scrollTop === 0`, dragging downward shows a 40px glass disc with a teal `#00CEC8` arc that fills as you drag.
+- [ ] **Threshold 60px**: drag ≥ 60px and release → arc spins, refresh fires (`setRefreshKey`), feed reloads. Drag < 60px and release → spring back, no refresh.
+- [ ] **Spring-back motion**: matches `PAGE_TRANSITION_MS` (250ms) with `CPOINT_EASE_OUT`.
+- [ ] **Reduced motion**: with `prefers-reduced-motion: reduce`, no slide — opacity fade only.
+- [ ] **Feature flag off = no PTR**: with `VITE_PAGE_TRANSITIONS=false` (e.g. prod), HomeTimeline behaves as before — no listener attached, no visual.
+- [ ] **No data regression**: refresh fires the same fetch paths (`/api/home_timeline`, `/api/dashboard_unread_feed`) that already exist; nothing new on the network tab.

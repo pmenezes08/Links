@@ -62,6 +62,27 @@ function getInitialViewportHeight(): number {
   return window.visualViewport?.height || window.innerHeight || 600
 }
 
+function readSafeAreaTopPx(): number {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return 0
+  try {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue('--sat-px').trim()
+    if (raw) {
+      const parsed = parseFloat(raw)
+      if (!Number.isNaN(parsed) && parsed >= 0) return parsed
+    }
+  } catch {}
+  try {
+    const probe = document.createElement('div')
+    probe.style.cssText =
+      'position:fixed;top:0;left:0;width:0;height:0;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top, 0px);'
+    document.body.appendChild(probe)
+    const measured = probe.getBoundingClientRect().height
+    document.body.removeChild(probe)
+    if (!Number.isNaN(measured) && measured >= 0) return measured
+  } catch {}
+  return 0
+}
+
 export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps){
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
@@ -86,6 +107,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
   const [reducedMotion, setReducedMotion] = useState<boolean>(detectPrefersReducedMotion)
   const [keyboardLift, setKeyboardLift] = useState(0)
   const [vvHeight, setVvHeight] = useState<number>(getInitialViewportHeight)
+  const [safeAreaTopPx, setSafeAreaTopPx] = useState<number>(0)
 
   // Drag-to-dismiss state
   const [dragY, setDragY] = useState(0)
@@ -110,10 +132,14 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
 
   const isIosNative = useMemo(() => isIosCapacitor(), [])
 
-  const sheetHeight = useMemo(
-    () => Math.min(SHEET_MAX_HEIGHT_PX, Math.max(SHEET_MIN_HEIGHT_PX, vvHeight * SHEET_HEIGHT_RATIO)),
-    [vvHeight],
-  )
+  const sheetHeight = useMemo(() => {
+    const base = Math.min(
+      SHEET_MAX_HEIGHT_PX,
+      Math.max(SHEET_MIN_HEIGHT_PX, vvHeight * SHEET_HEIGHT_RATIO),
+    )
+    const clamped = base - safeAreaTopPx - 8
+    return Math.max(SHEET_MIN_HEIGHT_PX, clamped)
+  }, [vvHeight, safeAreaTopPx])
 
   // ESC key dismiss
   useEffect(() => {
@@ -127,6 +153,24 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [isOpen, onClose])
+
+  // Measure safe-area-inset-top once on open so the sheet height accounts for
+  // the iOS status bar / notch. Re-measure on viewport size changes (rotation).
+  useEffect(() => {
+    if (!isOpen) return
+    const sync = () => setSafeAreaTopPx(prev => {
+      const next = readSafeAreaTopPx()
+      return Math.abs(prev - next) < 0.5 ? prev : next
+    })
+    sync()
+    if (typeof window === 'undefined') return
+    window.addEventListener('resize', sync)
+    window.addEventListener('orientationchange', sync)
+    return () => {
+      window.removeEventListener('resize', sync)
+      window.removeEventListener('orientationchange', sync)
+    }
+  }, [isOpen])
 
   // Reset query/results on open
   useEffect(() => {
@@ -508,6 +552,14 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
       bottom: keyboardLift,
       height: sheetHeight,
       maxHeight: sheetHeight,
+      // Defense in depth: an opaque near-black background sits behind the
+      // glass material so any caller that forgets to hide its composer still
+      // gets an opaque sheet (no bleed-through). The liquid-glass-surface
+      // ::before highlight still renders on top via CSS specificity.
+      backgroundColor: '#0b0f10',
+      // Respect the iOS status bar / notch so the search row never tucks
+      // under the system UI. Pairs with the sheetHeight clamp above.
+      paddingTop: 'env(safe-area-inset-top, 0px)',
     }
   }, [dragging, dragTransition, dragY, entered, keyboardLift, reducedMotion, sheetHeight])
 

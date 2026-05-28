@@ -79,6 +79,7 @@ import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOu
 import { useNativeStatusBar } from '../hooks/useNativeStatusBar'
 import { useAndroidBackButton } from '../hooks/useAndroidBackButton'
 import { Style } from '@capacitor/status-bar'
+import { hapticImpactLight } from '../utils/haptics'
 import {
   takePendingShareFilesOnce,
   takePendingShareUrlsOnce,
@@ -2258,7 +2259,7 @@ export default function ChatThread(){
         <div className="h-12 flex items-center gap-2 px-3">
           <button 
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
-            onClick={()=> navigate('/user_chat')} 
+            onClick={()=> { hapticImpactLight(); navigate('/user_chat') }} 
             aria-label={t('chat.back_to_messages')}
           >
             <i className="fa-solid fa-arrow-left text-white" />
@@ -2688,9 +2689,14 @@ export default function ChatThread(){
       />
     )}
 
-    {/* ====== COMPOSER - FIXED AT BOTTOM (portaled for keyboard lift) ====== */}
+    {/* ====== COMPOSER - FIXED AT BOTTOM (portaled for keyboard lift) ======
+        Render guard adds `!gifPickerOpen` so the underlying composer chrome
+        does not show through the GIF picker's translucent glass sheet.
+        This is a one-line visibility flag — it does not touch motion,
+        scroll, keyboard, or message-list rendering (per
+        docs/workflow-state-wave-2.md deferred-list scope). */}
     <ChatComposerPortal
-      visible={!isMultiSelectMode && pendingMedia.length === 0}
+      visible={!isMultiSelectMode && pendingMedia.length === 0 && !gifPickerOpen}
       composerRef={composerRef}
       displayKeyboardLift={displayKeyboardLift}
       isWeb={isWeb}

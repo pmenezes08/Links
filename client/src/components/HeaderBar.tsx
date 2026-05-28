@@ -6,6 +6,7 @@ import Avatar from './Avatar'
 import { useLogoutRequest } from '../contexts/LogoutPromptContext'
 import { useBadges } from '../contexts/BadgeContext'
 import BurgerMenuDrawer from './BurgerMenuDrawer'
+import { hapticImpactLight } from '../utils/haptics'
 
 type HeaderBarProps = {
   title: string
@@ -36,6 +37,7 @@ export default function HeaderBar({ title, username, displayName, avatarUrl, tit
 
   const showBack = location.pathname === '/notifications'
   const goBack = () => {
+    hapticImpactLight()
     if (window.history.length > 1) { navigate(-1) } else { navigate('/home') }
   }
 

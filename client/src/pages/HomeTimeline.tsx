@@ -15,9 +15,19 @@ import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
 import { NativeListRow } from '../components/NativeListRow'
 import { PanelCard } from '../components/settings/SettingsSection'
 import { useBadges } from '../contexts/BadgeContext'
+import PullToRefreshPuck from '../components/PullToRefreshPuck'
+import { PAGE_TRANSITION_MS } from '../design/motion'
+import { hapticImpactLight } from '../utils/haptics'
 const HOME_TIMELINE_CACHE_KEY = 'home-timeline'
 const HOME_TIMELINE_CACHE_TTL_MS = 2 * 60 * 1000 // 2 minutes
 const HOME_TIMELINE_CACHE_VERSION = 'home-timeline-v1'
+
+const PTR_ENABLED =
+  import.meta.env.VITE_PAGE_TRANSITIONS === 'true' &&
+  typeof window !== 'undefined' &&
+  'ontouchstart' in window
+const PTR_THRESHOLD = 60
+const PTR_MAX_DRAG = 80
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string }
@@ -369,6 +379,14 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
   feedModeRef.current = feedMode
   const feedFiltersHydrated = useRef(false)
 
+  // --- Pull-to-refresh gesture state ---
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [ptrDragY, setPtrDragY] = useState(0)
+  const [ptrRefreshing, setPtrRefreshing] = useState(false)
+  const [ptrSettling, setPtrSettling] = useState(false)
+  const ptrStartY = useRef<number | null>(null)
+  const ptrActive = useRef(false)
+
   useEffect(() => {
     let link = document.getElementById('legacy-styles') as HTMLLinkElement | null
     if (!link){
@@ -580,6 +598,82 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
     setTitle(mode === 'dashboard_feed' ? t('navigation.feed') : t('navigation.home'))
   }, [setTitle, mode, t])
 
+  // --- Pull-to-refresh touch handler ---
+  useEffect(() => {
+    if (!PTR_ENABLED) return
+    const el = scrollRef.current
+    if (!el) return
+
+    function onTouchStart(e: TouchEvent) {
+      if (ptrRefreshing) return
+      if (el!.scrollTop > 0) return
+      ptrStartY.current = e.touches[0].clientY
+      ptrActive.current = false
+    }
+
+    function onTouchMove(e: TouchEvent) {
+      if (ptrStartY.current === null || ptrRefreshing) return
+      const dy = e.touches[0].clientY - ptrStartY.current
+      if (dy <= 0) {
+        if (ptrActive.current) {
+          setPtrDragY(0)
+          ptrActive.current = false
+        }
+        return
+      }
+      if (el!.scrollTop > 0) return
+      ptrActive.current = true
+      setPtrDragY(Math.min(dy, PTR_MAX_DRAG))
+    }
+
+    function onTouchEnd() {
+      if (ptrStartY.current === null) { return }
+      const wasDragging = ptrActive.current
+      ptrStartY.current = null
+      ptrActive.current = false
+
+      if (!wasDragging) return
+
+      // Read current dragY via a micro-task to avoid stale closure
+      setPtrDragY((currentDrag) => {
+        if (currentDrag >= PTR_THRESHOLD) {
+          hapticImpactLight()
+          setPtrRefreshing(true)
+          setPtrSettling(true)
+          setRefreshKey((k) => k + 1)
+          setTimeout(() => setPtrSettling(false), PAGE_TRANSITION_MS)
+          return 0
+        }
+        setPtrSettling(true)
+        setTimeout(() => setPtrSettling(false), PAGE_TRANSITION_MS)
+        return 0
+      })
+    }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: true })
+    el.addEventListener('touchend', onTouchEnd, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+    }
+  // ptrRefreshing kept out of deps intentionally — refs track live value
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ptrRefreshing])
+
+  // Clear refreshing state when the fetch triggered by refreshKey settles
+  useEffect(() => {
+    if (!ptrRefreshing) return
+    if (loading) return
+    setPtrSettling(true)
+    const t = setTimeout(() => {
+      setPtrRefreshing(false)
+      setPtrSettling(false)
+    }, PAGE_TRANSITION_MS)
+    return () => clearTimeout(t)
+  }, [ptrRefreshing, loading])
+
   async function handlePollVote(postId: number, pollId: number, optionId: number){
     // Optimistic update for poll vote
     setData((prev:any) => {
@@ -637,13 +731,16 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
       style={{ top: 'var(--app-header-offset, calc(56px + var(--sat-px, 0px)))' }}
     >
       <div
-        className={`h-full max-w-2xl mx-auto overflow-y-auto px-3 ${mode === 'dashboard_feed' && hasDashboardCommunities ? 'pb-[var(--app-dashboard-content-pad-bottom)]' : 'pb-24'}`}
+        ref={scrollRef}
+        className={`relative h-full max-w-2xl mx-auto overflow-y-auto px-3 ${mode === 'dashboard_feed' && hasDashboardCommunities ? 'pb-[var(--app-dashboard-content-pad-bottom)]' : 'pb-24'}`}
         style={{
           WebkitOverflowScrolling: 'touch' as any,
-          // Match main dashboard column: app-content (8px) + py-6 top (24px) → header-to-content breathing room
           paddingTop: 'calc(var(--app-content-gap, 8px) + 1rem)',
         }}
       >
+        {PTR_ENABLED && (
+          <PullToRefreshPuck dragY={ptrDragY} refreshing={ptrRefreshing} settling={ptrSettling} />
+        )}
         {mode === 'dashboard_feed' && hasDashboardCommunities ? (
           <div className="mb-4 rounded-2xl border border-white/10 bg-black p-3 shadow-sm shadow-black/20 space-y-4">
             <div className="flex items-center justify-center gap-6 sm:gap-8">

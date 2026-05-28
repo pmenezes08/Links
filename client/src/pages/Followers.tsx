@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import { useHeader } from '../contexts/HeaderContext'
+import { SkeletonFollowerList } from '../components/SkeletonRow'
 
 type FollowEntry = {
   username: string
@@ -288,7 +289,7 @@ export default function Followers() {
 
   const renderEmptyState = () => {
     if (loading) {
-      return <div className="text-[#9fb0b5]">Loading…</div>
+      return <SkeletonFollowerList />
     }
     if (error) {
       return <div className="text-red-400">{error}</div>
@@ -432,7 +433,7 @@ export default function Followers() {
 
         <div className="rounded-xl border border-white/10 bg-black/50 p-3">
           {loading && items.length === 0 ? (
-            <div className="text-[#9fb0b5]">Loading…</div>
+            <SkeletonFollowerList />
           ) : error ? (
             <div className="text-red-400">{error}</div>
           ) : items.length === 0 ? (

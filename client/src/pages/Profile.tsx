@@ -9,6 +9,7 @@ import { clearAvatarCache } from '../utils/avatarCache'
 import { profileGenderLabel, profileIndustryLabel, profileInterestLabel } from '../utils/profileOptionLabel'
 import { ProfileSelectField, type SelectOption } from '../components/profile/ProfileSelectField'
 import { ProfileDetailsModal, type WorkExperienceRow, type EducationRow } from '../components/profile/ProfileDetailsModal'
+import { SkeletonProfileShell } from '../components/SkeletonRow'
 
 const PROFILE_DRAFT_KEY = 'cpoint_profile_personal_draft'
 
@@ -1122,7 +1123,13 @@ export default function Profile() {
     if (file) handlePhotoUpload(file)
   }
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">{t('profile.loading')}</div>
+  if (loading) return (
+    <div className="glass-page min-h-screen text-white">
+      <div className="glass-card glass-card--plain max-w-3xl mx-auto px-4 py-4">
+        <SkeletonProfileShell />
+      </div>
+    </div>
+  )
   if (error || !summary) return <div className="p-4 text-red-400">{error || t('profile.error.generic')}</div>
 
   return (

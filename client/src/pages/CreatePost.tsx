@@ -771,7 +771,9 @@ export default function CreatePost(){
       )}
     </div>
     
-    {typeof document !== 'undefined' && createPortal(
+    {/* The portaled composer is hidden while the GIF picker is open so the
+        glass sheet does not show the composer chrome through it. */}
+    {!gifPickerOpen && typeof document !== 'undefined' && createPortal(
     <div 
       ref={composerRef}
       className="fixed left-0 right-0"
