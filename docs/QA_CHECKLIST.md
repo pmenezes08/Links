@@ -636,3 +636,63 @@ Wave 2 (`Pilot Wave 2 — composer & profile polish`, KB test ref `manual:pilot_
 - [ ] **Reduced motion**: with `prefers-reduced-motion: reduce`, no slide — opacity fade only.
 - [ ] **Feature flag off = no PTR**: with `VITE_PAGE_TRANSITIONS=false` (e.g. prod), HomeTimeline behaves as before — no listener attached, no visual.
 - [ ] **No data regression**: refresh fires the same fetch paths (`/api/home_timeline`, `/api/dashboard_unread_feed`) that already exist; nothing new on the network tab.
+
+---
+
+### §16 — Multi-Device Session Invalidation (session_version)
+
+**Prerequisite:** Deploy the `a2e1a800d` commit to staging. Have 3 devices available (iOS, Android, web) or at minimum 2 browsers/profiles.
+
+#### §16.A — Basic multi-device logout
+
+- [ ] **Setup**: Log in to the same account on Device A (iOS/Capacitor), Device B (Android/Capacitor), Device C (web browser).
+- [ ] **Action**: On Device A, tap Profile → Log out. Confirm the "all devices" prompt.
+- [ ] **Device A result**: Redirected to `/welcome`. Session cleared. Cannot access `/premium_dashboard` without re-login.
+- [ ] **Device B result**: On next action (navigate, refresh, or API call), session is invalidated → redirected to `/welcome` or login. Should happen within 60 seconds (Redis cache TTL).
+- [ ] **Device C result**: Same as Device B — forced to re-authenticate on next request.
+
+#### §16.B — Password reset invalidation
+
+- [ ] **Setup**: Log in on 2 devices (A and B).
+- [ ] **Action**: From Device A (or via email link), complete a password reset.
+- [ ] **Device B result**: On next request, session is cleared. Must log in again with new password.
+- [ ] **Device A result**: If the password reset was done while logged in, session remains valid (version was bumped but a fresh stamp was issued on the login that follows).
+
+#### §16.C — Delete account invalidation
+
+- [ ] **Setup**: Log in on 2 devices.
+- [ ] **Action**: On Device A, delete account via Account Settings.
+- [ ] **Device B result**: On next request, session is cleared (both session_version bump and user no longer exists check).
+
+#### §16.D — Legacy session migration (lazy enrollment)
+
+- [ ] **First request after deploy**: A session that existed before this deploy (no `_sv` field in cookie) should continue working — NOT be logged out.
+- [ ] **After first response**: The cookie is re-signed with `_sv` field. Subsequent logouts correctly invalidate this device.
+- [ ] **Verify via browser DevTools**: After first page load post-deploy, decode the `cpoint_session` cookie — it should now contain `_sv` and `_created_at` fields.
+
+#### §16.E — Session lifetime reduction (365d → 90d)
+
+- [ ] **New login**: After logging in, the session cookie `Max-Age` or `Expires` header reflects ~90 days (not 365).
+- [ ] **Existing sessions**: Sessions created before this deploy retain their original expiry (cookie was already signed with the old lifetime). They will naturally expire or be re-stamped on next request.
+
+#### §16.F — Redis failure mode (fail-open)
+
+- [ ] **Normal operation**: With Redis available, session_version is cached (check Redis for `session_ver:{username}` key).
+- [ ] **Redis down**: If Redis is temporarily unreachable, the app falls back to MySQL for the version check. Login/logout still works. No 500 errors.
+- [ ] **Both Redis + MySQL down**: App continues functioning as before (fail-open). No new single points of failure.
+
+#### §16.G — iOS native cookie guard (PR-B)
+
+- [ ] **iOS logout**: After logging out on iOS, the app badge counter stops updating (no spurious badge-sync requests to the server).
+- [ ] **iOS re-login**: After logging back in, badge sync resumes normally.
+
+#### §16.H — Android CookieManager flush (PR-C)
+
+- [ ] **Android logout + force-kill**: Log out on Android, then immediately swipe-kill the app (within 1 second). Relaunch — should show login/welcome screen, NOT the previous session.
+- [ ] **Android normal use**: Cookie persistence works normally during active use (not flushed prematurely).
+
+#### §16.I — Logout closure PRs (D, F, G)
+
+- [ ] **Delete account clears cookies**: After account deletion, `remember_token`, `cpoint_session`, and `native_push_install_id` cookies are cleared in the response headers.
+- [ ] **Password login isolation**: Log in as User A via password. Without logging out, log in as User B via password on the same browser. No remnants of User A's session data leak into User B's session.
+- [ ] **Vitest passes**: Run `npx vitest run src/utils/logout.test.ts` — all tests pass, including the FCMNotifications.deleteToken test.
