@@ -292,6 +292,24 @@ Run after any change to Steve context, profiling, or KB access.
 
 Mark corresponding Tests-page rows successful only after full pass.
 
+## §11a — Steve Chat Memory Flags
+
+Run after any change to Phase 3 chat-memory config, scope helpers, indexing,
+retrieval, or prompt injection.
+
+- [ ] In admin-web → Knowledge Base → Hard Limits, confirm all
+      `chat_memory_*` fields are present and default OFF / `$0` budget on
+      staging unless a deliberate rollout is in progress.
+- [ ] Hit `/api/me/entitlements` as `test_premium` and confirm the
+      `chat_memory_*` values mirror the KB edits after a refresh.
+- [ ] With `chat_memory_enabled=false`, send Steve DMs, peer-DM `@Steve`,
+      and group `@Steve` messages. Expected: replies behave exactly like
+      the bounded recent-window + optional thread-summary path; no
+      `steve_chat_memory` Firestore documents are created.
+- [ ] When later PRs enable retrieval, verify peer-DM scope
+      `dm:{conv_id}` never appears in any other DM, and group scope
+      `group:{group_id}` is visible only to current members/admins.
+
 ## §12 — Steve DM Polish
 
 Run after any change to Steve DM rendering, Steve typing indicators, or chat mention rendering.

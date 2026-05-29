@@ -73,7 +73,24 @@ _DEFAULTS: Dict[str, Any] = {
     "max_output_tokens_group": 1500,
     "max_tool_invocations_per_turn": 3,
     "max_context_messages": 200,
+    "max_context_messages_peer_dm": 60,
     "max_images_per_turn": 5,
+    "thread_summary_enabled": False,
+    "thread_summary_trigger_messages": 120,
+    "thread_summary_refresh_messages": 40,
+    "thread_summary_max_chars": 2000,
+    "chat_memory_enabled": False,
+    "chat_memory_peer_dm_enabled": False,
+    "chat_memory_group_enabled": False,
+    "chat_memory_min_messages": 200,
+    "chat_memory_chunk_messages": 60,
+    "chat_memory_chunk_chars": 3200,
+    "chat_memory_top_k": 4,
+    "chat_memory_max_prompt_chars": 3500,
+    "chat_memory_backfill_max_messages": 4000,
+    "chat_memory_event_ledger_enabled": False,
+    "chat_memory_embedding_model": "",
+    "chat_memory_indexing_daily_budget_usd": 0.0,
     "rpm_per_user": 10,
     "hpm_per_user": 60,
     # Special overrides
@@ -108,6 +125,22 @@ def _kb_field_value(page_slug: str, field_name: str, default: Any) -> Any:
     return default
 
 
+def _bool_field(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off", ""}:
+            return False
+    return default
+
+
 def _load_kb_defaults() -> Dict[str, Any]:
     """Read all the values we care about from the KB, falling back to _DEFAULTS."""
     out = dict(_DEFAULTS)
@@ -133,14 +166,43 @@ def _load_kb_defaults() -> Dict[str, Any]:
     for k in (
         "ai_daily_limit", "max_output_tokens_dm", "max_output_tokens_feed",
         "max_output_tokens_group", "max_tool_invocations_per_turn",
-        "max_context_messages", "max_images_per_turn", "rpm_per_user", "hpm_per_user",
+        "max_context_messages", "max_context_messages_peer_dm",
+        "max_images_per_turn", "rpm_per_user", "hpm_per_user",
         "ai_daily_limit_special", "max_tool_invocations_per_turn_special",
+        "thread_summary_trigger_messages", "thread_summary_refresh_messages",
+        "thread_summary_max_chars", "chat_memory_min_messages",
+        "chat_memory_chunk_messages", "chat_memory_chunk_chars",
+        "chat_memory_top_k", "chat_memory_max_prompt_chars",
+        "chat_memory_backfill_max_messages",
     ):
         v = _kb_field_value("hard-limits", k, _DEFAULTS[k])
         try:
             out[k] = int(v)
         except Exception:
             out[k] = _DEFAULTS[k]
+    ts_enabled = _kb_field_value("hard-limits", "thread_summary_enabled",
+                                 _DEFAULTS["thread_summary_enabled"])
+    out["thread_summary_enabled"] = _bool_field(ts_enabled, _DEFAULTS["thread_summary_enabled"])
+    for k in (
+        "chat_memory_enabled",
+        "chat_memory_peer_dm_enabled",
+        "chat_memory_group_enabled",
+        "chat_memory_event_ledger_enabled",
+    ):
+        v = _kb_field_value("hard-limits", k, _DEFAULTS[k])
+        out[k] = _bool_field(v, _DEFAULTS[k])
+    out["chat_memory_embedding_model"] = str(
+        _kb_field_value("hard-limits", "chat_memory_embedding_model",
+                        _DEFAULTS["chat_memory_embedding_model"]) or ""
+    ).strip()
+    try:
+        out["chat_memory_indexing_daily_budget_usd"] = float(
+            _kb_field_value("hard-limits", "chat_memory_indexing_daily_budget_usd",
+                            _DEFAULTS["chat_memory_indexing_daily_budget_usd"])
+            or _DEFAULTS["chat_memory_indexing_daily_budget_usd"]
+        )
+    except Exception:
+        out["chat_memory_indexing_daily_budget_usd"] = _DEFAULTS["chat_memory_indexing_daily_budget_usd"]
     try:
         out["monthly_spend_ceiling_eur_special"] = float(
             _kb_field_value("hard-limits", "monthly_spend_ceiling_eur_special",
@@ -329,7 +391,24 @@ def resolve_entitlements(username: Optional[str]) -> Dict[str, Any]:
         "max_output_tokens_feed": defaults["max_output_tokens_feed"],
         "max_output_tokens_group": defaults["max_output_tokens_group"],
         "max_context_messages": defaults["max_context_messages"],
+        "max_context_messages_peer_dm": defaults["max_context_messages_peer_dm"],
         "max_images_per_turn": defaults["max_images_per_turn"],
+        "thread_summary_enabled": defaults.get("thread_summary_enabled", False),
+        "thread_summary_trigger_messages": defaults.get("thread_summary_trigger_messages", 120),
+        "thread_summary_refresh_messages": defaults.get("thread_summary_refresh_messages", 40),
+        "thread_summary_max_chars": defaults.get("thread_summary_max_chars", 2000),
+        "chat_memory_enabled": defaults.get("chat_memory_enabled", False),
+        "chat_memory_peer_dm_enabled": defaults.get("chat_memory_peer_dm_enabled", False),
+        "chat_memory_group_enabled": defaults.get("chat_memory_group_enabled", False),
+        "chat_memory_min_messages": defaults.get("chat_memory_min_messages", 200),
+        "chat_memory_chunk_messages": defaults.get("chat_memory_chunk_messages", 60),
+        "chat_memory_chunk_chars": defaults.get("chat_memory_chunk_chars", 3200),
+        "chat_memory_top_k": defaults.get("chat_memory_top_k", 4),
+        "chat_memory_max_prompt_chars": defaults.get("chat_memory_max_prompt_chars", 3500),
+        "chat_memory_backfill_max_messages": defaults.get("chat_memory_backfill_max_messages", 4000),
+        "chat_memory_event_ledger_enabled": defaults.get("chat_memory_event_ledger_enabled", False),
+        "chat_memory_embedding_model": defaults.get("chat_memory_embedding_model", ""),
+        "chat_memory_indexing_daily_budget_usd": defaults.get("chat_memory_indexing_daily_budget_usd", 0.0),
     }
 
     if tier == TIER_SPECIAL:
