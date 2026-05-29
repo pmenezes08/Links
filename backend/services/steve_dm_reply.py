@@ -35,7 +35,7 @@ GROK_TIMEOUT_MESSAGE = (
     "That took longer than expected on my side. Try again in a moment, "
     "or say **retry** and I'll take another pass."
 )
-GROK_EMPTY_MESSAGE = "I couldn't put together a reply that turn — try again in a moment."
+GROK_EMPTY_MESSAGE = "That one got away from me — try asking again in a moment."
 
 
 def _canonical_app_origin() -> str:
@@ -46,7 +46,7 @@ def _premium_subscription_dm_cta() -> str:
     base = _canonical_app_origin()
     url = f"{base}/account_settings/membership"
     return (
-        "Steve is a **Premium** feature — I need an active subscription to chat here.\n\n"
+        "I'm part of the **Premium** experience — I need an active subscription to chat here.\n\n"
         f"[Manage membership]({url}) · Settings → Manage Membership · upgrade to unlock me."
     )
 
@@ -137,7 +137,7 @@ def run_steve_dm_reply(
             if gate_reason == _errs.REASON_PREMIUM_REQUIRED:
                 blocked = _premium_subscription_dm_cta()
             elif gate_reason == _errs.REASON_DAILY_CAP:
-                blocked = "You've hit today's Steve limit. It resets at midnight UTC."
+                blocked = "You've hit today's Steve limit — it resets overnight."
             else:
                 blocked = (
                     "You've used up your Steve calls for this month. "
@@ -381,6 +381,7 @@ def _run_grok_dm_turn(
         estimate_response_cost_usd,
         get_steve_model_config,
         output_cap_for_surface,
+        peer_context_limit,
         response_usage_tokens,
     )
     from backend.services.steve_prompt_policy import (
@@ -424,6 +425,21 @@ def _run_grok_dm_turn(
     context_reset_at = None
     reset_dt = None
     firestore_context_ok = False
+    fs = None
+    conv_id = None
+
+    is_peer = bool(other_username)
+    from backend.services.steve_thread_memory import dm_context_read_limit
+
+    _peer_window = peer_context_limit(entitlements, fallback=PEER_DM_CONTEXT_LINES)
+    _max_ctx = context_limit(entitlements, fallback=200)
+    _read_limit = dm_context_read_limit(
+        entitlements,
+        is_peer=is_peer,
+        peer_window=_peer_window,
+        max_context=_max_ctx,
+    )
+
     try:
         import os
 
@@ -449,25 +465,39 @@ def _run_grok_dm_turn(
                 logger.warning("Failed to load DM conversation reset timestamp: %s", reset_err)
 
             msgs_ref = fs.collection("dm_conversations").document(conv_id).collection("messages")
-            docs = msgs_ref.order_by("created_at").stream()
+            docs = list(
+                msgs_ref.order_by("created_at", direction="DESCENDING")
+                .limit(_read_limit)
+                .stream()
+            )
+            docs.reverse()
+            from backend.services.steve_thread_memory import (
+                format_msg_timestamp,
+                is_unsafe_context_message,
+            )
+
             for doc in docs:
                 d = doc.to_dict() or {}
+                if is_unsafe_context_message(d):
+                    continue
                 append_image_from_row(d, image_urls_collected)
                 snd = d.get("sender", "")
                 text = (d.get("text") or "").strip()
                 msg_ts = _steve_parse_dt(d.get("created_at"))
                 if reset_dt and msg_ts and msg_ts < reset_dt:
                     continue
+                ts_prefix = format_msg_timestamp(d.get("created_at"))
                 if text and snd:
-                    recent_messages.append(f"{snd}: {text}")
+                    recent_messages.append(f"{ts_prefix}{snd}: {text}")
                 elif snd and (d.get("image_path") or d.get("media_paths")):
-                    recent_messages.append(f"{snd}: [shared a photo]")
+                    recent_messages.append(f"{ts_prefix}{snd}: [shared a photo]")
             firestore_context_ok = True
     except Exception as fs_err:
         logger.warning("Steve DM Firestore context failed: %s", fs_err)
 
     if not firestore_context_ok:
         from backend.services.steve_chat_images import append_image_from_row
+        from backend.services.steve_thread_memory import format_msg_timestamp as _fmt_ts
 
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -476,14 +506,17 @@ def _run_grok_dm_turn(
             ph = get_sql_placeholder()
             c.execute(
                 f"""
-                SELECT sender, message, image_path, media_paths, timestamp FROM messages
+                SELECT sender, message, image_path, media_paths, timestamp, is_encrypted FROM messages
                 WHERE (sender = {ph} AND receiver = {ph})
                    OR (sender = {ph} AND receiver = {ph})
-                ORDER BY timestamp ASC
+                ORDER BY timestamp DESC
+                LIMIT {int(_read_limit)}
                 """,
                 (chat_user_a, chat_user_b, chat_user_b, chat_user_a),
             )
-            for row in c.fetchall():
+            rows = list(c.fetchall())
+            rows.reverse()
+            for row in rows:
                 if hasattr(row, "keys"):
                     row_dict = {
                         "image_path": row.get("image_path"),
@@ -492,6 +525,7 @@ def _run_grok_dm_turn(
                     s = row["sender"]
                     m = row.get("message")
                     ts_raw = row.get("timestamp")
+                    is_encrypted = bool(row.get("is_encrypted", False))
                 else:
                     row_dict = {
                         "image_path": row[2] if len(row) > 2 else None,
@@ -500,17 +534,19 @@ def _run_grok_dm_turn(
                     s = row[0]
                     m = row[1]
                     ts_raw = row[4] if len(row) > 4 else None
+                    is_encrypted = bool(row[5]) if len(row) > 5 else False
                 append_image_from_row(row_dict, image_urls_collected)
-                if not s:
+                if not s or is_encrypted:
                     continue
                 row_ts = _steve_parse_dt(ts_raw) if ts_raw is not None else None
                 if reset_dt and row_ts and row_ts < reset_dt:
                     continue
+                ts_prefix = _fmt_ts(ts_raw)
                 text = (m or "").strip() if m is not None else ""
                 if text:
-                    recent_messages.append(f"{s}: {text}")
+                    recent_messages.append(f"{ts_prefix}{s}: {text}")
                 elif row_dict.get("image_path") or row_dict.get("media_paths"):
-                    recent_messages.append(f"{s}: [shared a photo]")
+                    recent_messages.append(f"{ts_prefix}{s}: [shared a photo]")
 
     current_date = datetime.now().strftime("%A, %B %d, %Y at %H:%M UTC")
 
@@ -534,23 +570,44 @@ def _run_grok_dm_turn(
             if profile_ctx:
                 mentioned_profiles.append((mentioned_user, profile_ctx))
 
-    is_peer = bool(other_username)
     max_context = context_limit(entitlements, fallback=200)
-    if is_peer:
-        all_messages = recent_messages[-min(PEER_DM_CONTEXT_LINES, max_context):]
+    verbatim_window = _peer_window if is_peer else 30
+    all_messages = recent_messages[-_read_limit:]
+    if len(all_messages) > verbatim_window:
+        older_messages = all_messages[:-verbatim_window]
+        current_messages = all_messages[-verbatim_window:]
+    else:
         older_messages: List[str] = []
         current_messages = all_messages
-    else:
-        all_messages = recent_messages[-max_context:]
-        if len(all_messages) > 30:
-            older_messages = all_messages[:-30]
-            current_messages = all_messages[-30:]
-        else:
-            older_messages = []
-            current_messages = all_messages
+
+    thread_summary_text = None
+    if firestore_context_ok and conv_id:
+        try:
+            from backend.services.steve_thread_memory import (
+                SUMMARY_SURFACE_DM,
+                maybe_refresh_thread_summary,
+            )
+
+            thread_summary_text = maybe_refresh_thread_summary(
+                fs_client=fs,
+                collection="dm_conversations",
+                doc_id=conv_id,
+                all_messages=all_messages,
+                verbatim_window=verbatim_window,
+                entitlements=entitlements,
+                sender_username=sender_username,
+                surface=SUMMARY_SURFACE_DM,
+                reset_dt=reset_dt,
+            )
+        except Exception as ts_err:
+            logger.warning("Thread summary failed (non-fatal): %s", ts_err)
 
     context = f"Direct message conversation between {chat_user_a} and {chat_user_b}:\n"
-    if older_messages and not is_peer:
+    if thread_summary_text:
+        context += "=== THREAD MEMORY (structured summary of earlier conversation) ===\n"
+        context += thread_summary_text
+        context += "\n\n"
+    if older_messages and not thread_summary_text:
         context += f"=== OLDER CONTEXT ({len(older_messages)} messages — background reference) ===\n"
         context += "\n".join(older_messages)
         context += "\n\n"
@@ -573,6 +630,7 @@ def _run_grok_dm_turn(
         STEVE_SHARED_PHOTO_USER_MESSAGE,
         build_grok_user_content,
         select_image_urls_for_turn,
+        vision_focus_context_line,
         vision_system_prompt_addon,
     )
 
@@ -583,14 +641,16 @@ def _run_grok_dm_turn(
     except Exception:
         pass
     force_vision = (user_message or "").strip() == STEVE_SHARED_PHOTO_USER_MESSAGE
-    image_urls = select_image_urls_for_turn(
+    image_selection = select_image_urls_for_turn(
         image_urls_collected,
         user_message,
         force=force_vision,
         max_count=max_imgs,
     )
+    image_urls = image_selection.urls
     if image_urls:
         context += f"\n\n[{len(image_urls)} image(s) from the conversation are attached for you to see.]"
+        context += vision_focus_context_line(image_selection)
 
     if context_reset_at and not is_peer:
         context += (
@@ -615,12 +675,18 @@ def _run_grok_dm_turn(
     except Exception as manual_err:
         logger.warning("Steve DM platform manual load failed (non-fatal): %s", manual_err)
 
-    history_rule = (
-        "- You ONLY see a short excerpt above from a DM between two members — not the entire thread.\n"
-        "- Do NOT claim you read their full chat history beyond this excerpt."
-        if is_peer
-        else "- You have access to the conversation excerpts provided below (recent window plus optional older summary).\n"
-    )
+    if is_peer and thread_summary_text:
+        history_rule = (
+            "- You see a recent window of this DM plus a summary of older conversation between two members.\n"
+            "- Answer naturally using both the summary and the recent messages."
+        )
+    elif is_peer:
+        history_rule = (
+            "- You see a recent window of this DM between two members — not necessarily the entire thread.\n"
+            "- Answer naturally from what you can see. If the answer requires history you don't have, say so honestly without over-explaining the limitation."
+        )
+    else:
+        history_rule = "- You have access to the conversation excerpts provided below (recent window plus optional older summary).\n"
 
     platform_question_dm = False
     professional_dm = False
@@ -637,13 +703,11 @@ def _run_grok_dm_turn(
 
     from backend.services.steve_community_config import get_paid_steve_package_config
     from backend.services.steve_prompt_policy import (
-        news_current_events_requested,
-        render_hosted_search_capability_instructions,
+        STEVE_EMOJI_RULES,
+        STEVE_LANGUAGE_RULES,
+        render_steve_external_knowledge_guidance,
     )
-    from backend.services.steve_tool_policy import (
-        steve_optional_live_web_intent,
-        steve_tool_names_for_log,
-    )
+    from backend.services.steve_tool_policy import steve_tool_names_for_log
     from backend.services.steve_tool_router import resolve_steve_hosted_tools
 
     steve_pkg = get_paid_steve_package_config()
@@ -655,21 +719,17 @@ def _run_grok_dm_turn(
         professional_advice_question=professional_dm,
         config=steve_pkg,
     )
-    has_web_tools = bool(dm_tools)
+    has_web_tools = any(
+        isinstance(t, dict) and (t.get("type") or "").strip().lower() == "web_search" for t in (dm_tools or [])
+    )
     has_x_tool = any(
         isinstance(t, dict) and (t.get("type") or "").strip().lower() == "x_search" for t in (dm_tools or [])
     )
-    optional_web_offer = bool(
-        not has_web_tools
-        and not platform_question_dm
-        and not professional_dm
-        and steve_optional_live_web_intent(user_message)
-        and not news_current_events_requested(user_message)
-    )
-    caps_lines = render_hosted_search_capability_instructions(
-        has_hosted_search_tools=has_web_tools,
-        optional_web_offer=optional_web_offer,
-        has_x_search=has_x_tool,
+    external_blocked = not dm_tools
+    caps_lines = render_steve_external_knowledge_guidance(
+        web_search_attached=has_web_tools,
+        x_search_attached=has_x_tool,
+        external_tools_blocked=external_blocked,
     )
     admin_line = (
         "\n- As an admin, you have full platform access."
@@ -686,20 +746,24 @@ IDENTITY RULES:
 - Never answer as if the user is asking about X/Twitter unless they explicitly say X, Twitter, or x.com.
 - Do not call yourself an assistant, bot, chatbot, AI service, or support widget.
 
-YOUR CAPABILITIES:
+CONTEXT SCOPE:
 {history_rule}
+
+EXTERNAL KNOWLEDGE:
 {caps_lines}{admin_line}
 
+{STEVE_LANGUAGE_RULES}
+
+TOOL RULES:
+- For questions about C-Point, this platform, the app, communities, posts, DMs, Steve, privacy, pricing, onboarding, discovery, bugs, feedback, Paulo, founder, vision, or mission: use the C-Point Platform Manual below and do NOT use web search or X search.
+- Follow **EXTERNAL KNOWLEDGE** above for when live web/X sources apply; do not contradict it.
+- Only discuss X/Twitter if the user explicitly asks about X, Twitter, or x.com.
+
 REMINDER VAULT (CRITICAL):
-- You cannot save, insert, or schedule rows in the user’s C-Point Reminder Vault from this chat turn by yourself.
+- You cannot save, insert, or schedule rows in the user's C-Point Reminder Vault from this chat turn by yourself.
 - Do not say a reminder was saved, stored, registered, added to the Reminder Vault, added to the dashboard, or that you will fire a push at a specific time — unless the user is clearly quoting a prior message that contains the real confirmation marker **(Vault #** from the dedicated vault flow.
 - Do **not** say you cancelled, cleared, removed, or deleted reminders, or that the vault was updated — you cannot do that from this chat. Only the app does when the user says **cancel reminder #**… (optionally several **#ids** in one message) or removes one in **⋯ → Reminder Vault**. If they ask to cancel, tell them to use that phrasing or the vault — do not confirm success yourself.
 - If they want to see what is scheduled, point them to **⋯ → Reminder Vault** or replying **list my reminders** when that applies. Otherwise help them phrase a clear time and task without claiming it is already persisted.
-
-TOOL RULES:
-- For questions about C-Point, this platform, the app, communities, posts, DMs, Steve, privacy, pricing, onboarding, discovery, bugs, feedback, Paulo, founder, vision, or mission: use the C-Point Platform Manual below and do NOT use web_search or x_search (hosted tools won’t appear for manual-only turns).
-- Follow **YOUR CAPABILITIES** above for whether this turn includes hosted web/X tools; do not contradict that.
-- Only discuss X/Twitter if the user explicitly asks about X, Twitter, or x.com.
 
 {platform_manual_prompt}
 
@@ -717,14 +781,16 @@ COMMUNITY & PRIVACY RULES:
 
 RESPONSE STYLE:
 - Be helpful and concise for casual chat (2-5 sentences). For news, weather, sports, politics, markets, and current-events briefings, ignore the short casual limit and follow STEVE RESPONSE POLICY **news_current_events** (structured sections, substantive bullets, headline Markdown sources).
-- Use emojis occasionally
+{STEVE_EMOJI_RULES}
 - If you cannot answer, be transparent about it
 - NEVER hallucinate or make up information about users — only use the profile data provided below"""
 
     system_prompt = append_response_policy(system_prompt, user_message, surface=SURFACE_DM)
 
     if image_urls:
-        system_prompt += vision_system_prompt_addon()
+        system_prompt += vision_system_prompt_addon(
+            focus_single_image=image_selection.reply_targeted or image_selection.specific_image,
+        )
 
     if user_profile_ctx:
         system_prompt += f"""
@@ -824,10 +890,10 @@ Only share this information if asked. Be factual — do not embellish or invent 
     )
 
     try:
-        from backend.services.steve_credit_weights import tools_flags_from_hosted_tools
+        from backend.services.steve_credit_weights import tools_flags_from_response
 
         tokens_in, tokens_out = response_usage_tokens(response)
-        web_t, x_t = tools_flags_from_hosted_tools(dm_tools)
+        web_t, x_t = tools_flags_from_response(response)
         ai_usage.log_usage(
             sender_username,
             surface=ai_usage.SURFACE_DM,

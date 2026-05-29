@@ -32,6 +32,7 @@ class SteveModelConfig:
     max_output_tokens_feed: int = 1400
     max_output_tokens_group: int = 1500
     max_context_messages: int = 200
+    max_context_messages_peer_dm: int = 60
 
 
 def get_steve_model_config(
@@ -91,6 +92,11 @@ def get_steve_model_config(
             defaults.max_context_messages,
             minimum=1,
         ),
+        max_context_messages_peer_dm=_int(
+            hard_limits.get("max_context_messages_peer_dm"),
+            defaults.max_context_messages_peer_dm,
+            minimum=1,
+        ),
     )
 
 
@@ -113,6 +119,20 @@ def output_cap_for_surface(entitlements: Optional[dict[str, Any]], surface: str,
 
 def context_limit(entitlements: Optional[dict[str, Any]], fallback: int = 200) -> int:
     value = (entitlements or {}).get("max_context_messages")
+    try:
+        return max(1, int(value))
+    except (TypeError, ValueError):
+        return max(1, int(fallback or 1))
+
+
+def peer_context_limit(entitlements: Optional[dict[str, Any]], fallback: int = 10) -> int:
+    """Context window for peer DMs (@Steve in a human-human DM).
+
+    Defaults to the legacy ``PEER_DM_CONTEXT_LINES`` (10) when the KB
+    field is missing, so a broken KB seed can never silently widen the
+    window.
+    """
+    value = (entitlements or {}).get("max_context_messages_peer_dm")
     try:
         return max(1, int(value))
     except (TypeError, ValueError):

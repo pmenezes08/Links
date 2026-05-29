@@ -43,6 +43,7 @@ export interface EntitlementsSnapshot {
   max_output_tokens_group?: number
   max_tool_invocations_per_turn?: number
   max_context_messages?: number
+  max_context_messages_peer_dm?: number
   max_images_per_turn?: number
   rpm_per_user?: number
   hpm_per_user?: number

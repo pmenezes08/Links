@@ -2194,6 +2194,19 @@ def reset_steve_context(group_id: int):
             now = datetime.now().isoformat()
             c.execute(f"UPDATE group_chats SET steve_context_reset_at = {ph} WHERE id = {ph}", (now, group_id))
             conn.commit()
+            try:
+                import os
+                from google.cloud import firestore as _firestore
+                from backend.services.steve_thread_memory import clear_thread_summary
+
+                firestore_database = os.environ.get('FIRESTORE_DATABASE', 'cpoint')
+                project = os.environ.get('GOOGLE_CLOUD_PROJECT') or os.environ.get('GCP_PROJECT')
+                fs = _firestore.Client(project=project, database=firestore_database) if project else _firestore.Client(database=firestore_database)
+                group_doc = fs.collection('group_chats').document(str(group_id))
+                group_doc.set({'steve_context_reset_at': now}, merge=True)
+                clear_thread_summary(fs, collection="group_chats", doc_id=str(group_id))
+            except Exception as fs_reset_err:
+                logger.warning("Could not clear Firestore Steve summary for group %s: %s", group_id, fs_reset_err)
             
             return jsonify({"success": True, "reset_at": now})
     except Exception as e:
@@ -3080,7 +3093,7 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
             now_iso = _dt.now().isoformat()
             if _ent_reason == _errs.REASON_PREMIUM_REQUIRED:
                 blocked_text = (
-                    f"@{sender_username} Steve is a Premium feature. "
+                    f"@{sender_username} I'm part of the Premium experience. "
                     "Upgrade in Settings → Manage Membership to keep chatting with me here."
                 )
             elif _ent_reason == _errs.REASON_COMMUNITY_POOL_EXHAUSTED:
@@ -3091,7 +3104,7 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
             elif _ent_reason == _errs.REASON_DAILY_CAP:
                 blocked_text = (
                     f"@{sender_username} you've hit today's Steve limit. "
-                    "It resets at midnight UTC — see Settings → AI Usage."
+                    "It resets overnight — see Settings → AI Usage."
                 )
             else:
                 blocked_text = (
@@ -3136,10 +3149,14 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
                     context_reset_at = (settings_row["steve_context_reset_at"] if hasattr(settings_row, "keys") else settings_row[1]) or None
         except Exception as settings_err:
             logger.warning(f"Could not load Steve settings for group {group_id}: {settings_err}")
+        from backend.services.steve_chat_memory import parse_memory_datetime
+        reset_dt = parse_memory_datetime(context_reset_at)
         
         from backend.services.steve_prompt_policy import (
+            STEVE_EMOJI_RULES,
+            STEVE_LANGUAGE_RULES,
             append_response_policy,
-            render_hosted_search_capability_instructions,
+            render_steve_external_knowledge_guidance,
             should_include_community_resources,
             should_include_user_profile,
         )
@@ -3155,65 +3172,8 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         # Load full conversation context from Firestore (fall back to MySQL)
         recent_messages = []
         image_urls = []
-        
-        try:
-            import os
-            FIRESTORE_DATABASE = os.environ.get('FIRESTORE_DATABASE', 'cpoint')
-            from google.cloud import firestore as _firestore
-            project = os.environ.get('GOOGLE_CLOUD_PROJECT') or os.environ.get('GCP_PROJECT')
-            fs = _firestore.Client(project=project, database=FIRESTORE_DATABASE) if project else _firestore.Client(database=FIRESTORE_DATABASE)
-            
-            msgs_ref = fs.collection('group_chats').document(str(group_id)).collection('messages')
-            docs = msgs_ref.order_by('created_at').stream()
-            for doc in docs:
-                d = doc.to_dict()
-                sender = d.get('sender', '')
-                text = d.get('text', '')
-                if text and sender:
-                    recent_messages.append(f"{sender}: {text}")
-                
-                # Collect image URLs from Firestore (image_path and media_paths)
-                img = d.get('image_path')
-                if img and isinstance(img, str) and img.startswith('http'):
-                    image_urls.append(img)
-                media_paths = d.get('media_paths')
-                if isinstance(media_paths, list):
-                    for mp in media_paths:
-                        if isinstance(mp, str) and mp.startswith('http') and not any(mp.lower().endswith(ext) for ext in ('.mp4', '.mov', '.webm', '.m4v')):
-                            image_urls.append(mp)
-            
-            logger.info(f"Steve context from Firestore: {len(recent_messages)} messages, {len(image_urls)} images for group {group_id}")
-        except Exception as fs_err:
-            logger.warning(f"Steve Firestore context failed, falling back to MySQL: {fs_err}")
-            recent_messages = []
-        
-        if not recent_messages:
-            with get_db_connection() as conn:
-                c = conn.cursor()
-                ph = get_sql_placeholder()
-                c.execute(f"""
-                    SELECT sender_username, message_text, image_path, media_paths, created_at
-                    FROM group_chat_messages
-                    WHERE group_id = {ph} AND is_deleted = 0
-                    ORDER BY created_at ASC
-                """, (group_id,))
-                for row in c.fetchall():
-                    sender = row["sender_username"] if hasattr(row, "keys") else row[0]
-                    text = row["message_text"] if hasattr(row, "keys") else row[1]
-                    if text:
-                        recent_messages.append(f"{sender}: {text}")
-                    img = row["image_path"] if hasattr(row, "keys") else row[2]
-                    if img and isinstance(img, str) and img.startswith('http'):
-                        image_urls.append(img)
-                    mp_raw = row["media_paths"] if hasattr(row, "keys") else row[3]
-                    if mp_raw:
-                        try:
-                            for mp in (json.loads(mp_raw) if isinstance(mp_raw, str) else mp_raw):
-                                if isinstance(mp, str) and mp.startswith('http') and not any(mp.lower().endswith(ext) for ext in ('.mp4', '.mov', '.webm', '.m4v')):
-                                    image_urls.append(mp)
-                        except Exception:
-                            pass
-        
+        fs = None
+
         from backend.services.steve_model_config import (
             context_limit,
             estimate_response_cost_usd,
@@ -3222,6 +3182,90 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         )
         model_config = get_steve_model_config()
         max_context_messages = context_limit(_ent, fallback=model_config.max_context_messages)
+        
+        try:
+            import os
+            from backend.services.steve_chat_images import append_image_from_row
+
+            FIRESTORE_DATABASE = os.environ.get('FIRESTORE_DATABASE', 'cpoint')
+            from google.cloud import firestore as _firestore
+            project = os.environ.get('GOOGLE_CLOUD_PROJECT') or os.environ.get('GCP_PROJECT')
+            fs = _firestore.Client(project=project, database=FIRESTORE_DATABASE) if project else _firestore.Client(database=FIRESTORE_DATABASE)
+            
+            msgs_ref = fs.collection('group_chats').document(str(group_id)).collection('messages')
+            docs = list(
+                msgs_ref.order_by('created_at', direction='DESCENDING')
+                .limit(max_context_messages)
+                .stream()
+            )
+            docs.reverse()
+            from backend.services.steve_thread_memory import (
+                format_msg_timestamp,
+                is_unsafe_context_message,
+            )
+
+            for doc in docs:
+                d = doc.to_dict()
+                if is_unsafe_context_message(d):
+                    continue
+                msg_ts = parse_memory_datetime(d.get('created_at'))
+                if reset_dt and msg_ts and msg_ts < reset_dt:
+                    continue
+                append_image_from_row(
+                    {
+                        "image_path": d.get("image_path"),
+                        "media_paths": d.get("media_paths"),
+                    },
+                    image_urls,
+                )
+                sender = d.get('sender', '')
+                text = d.get('text', '')
+                ts_prefix = format_msg_timestamp(d.get('created_at'))
+                if text and sender:
+                    recent_messages.append(f"{ts_prefix}{sender}: {text}")
+                elif sender and (d.get("image_path") or d.get("media_paths")):
+                    recent_messages.append(f"{ts_prefix}{sender}: [shared a photo]")
+            
+            logger.info(f"Steve context from Firestore: {len(recent_messages)} messages, {len(image_urls)} images for group {group_id}")
+        except Exception as fs_err:
+            logger.warning(f"Steve Firestore context failed, falling back to MySQL: {fs_err}")
+            recent_messages = []
+        
+        if not recent_messages:
+            from backend.services.steve_chat_images import append_image_from_row
+
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = get_sql_placeholder()
+                c.execute(f"""
+                    SELECT sender_username, message_text, image_path, media_paths, created_at
+                    FROM group_chat_messages
+                    WHERE group_id = {ph} AND is_deleted = 0
+                    ORDER BY created_at DESC
+                    LIMIT {int(max_context_messages)}
+                """, (group_id,))
+                rows = list(c.fetchall())
+                rows.reverse()
+                from backend.services.steve_thread_memory import format_msg_timestamp as _fmt_ts
+
+                for row in rows:
+                    sender = row["sender_username"] if hasattr(row, "keys") else row[0]
+                    text = row["message_text"] if hasattr(row, "keys") else row[1]
+                    ts_raw = row["created_at"] if hasattr(row, "keys") else (row[4] if len(row) > 4 else None)
+                    row_ts = parse_memory_datetime(ts_raw)
+                    if reset_dt and row_ts and row_ts < reset_dt:
+                        continue
+                    ts_prefix = _fmt_ts(ts_raw)
+                    if text:
+                        recent_messages.append(f"{ts_prefix}{sender}: {text}")
+                    elif sender and (
+                        (row["image_path"] if hasattr(row, "keys") else (row[2] if len(row) > 2 else None))
+                        or (row["media_paths"] if hasattr(row, "keys") else (row[3] if len(row) > 3 else None))
+                    ):
+                        recent_messages.append(f"{ts_prefix}{sender}: [shared a photo]")
+                    img = row["image_path"] if hasattr(row, "keys") else row[2]
+                    mp_raw = row["media_paths"] if hasattr(row, "keys") else row[3]
+                    append_image_from_row({"image_path": img, "media_paths": mp_raw}, image_urls)
 
         # Split messages into recency-weighted sections
         all_messages = recent_messages[-max_context_messages:]
@@ -3252,8 +3296,34 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         except Exception as st_err:
             logger.warning(f"Could not load suppressed topics: {st_err}")
         
+        thread_summary_text = None
+        if fs is not None:
+            try:
+                from backend.services.steve_thread_memory import (
+                    SUMMARY_SURFACE_GROUP,
+                    maybe_refresh_thread_summary,
+                )
+
+                thread_summary_text = maybe_refresh_thread_summary(
+                    fs_client=fs,
+                    collection="group_chats",
+                    doc_id=str(group_id),
+                    all_messages=all_messages,
+                    verbatim_window=CURRENT_WINDOW,
+                    entitlements=_ent,
+                    sender_username=sender_username,
+                    surface=SUMMARY_SURFACE_GROUP,
+                    reset_dt=reset_dt,
+                )
+            except Exception as ts_err:
+                logger.warning("Group thread summary failed (non-fatal): %s", ts_err)
+
         context = f"Group chat: {group_name}\n"
-        if older_messages:
+        if thread_summary_text:
+            context += "=== THREAD MEMORY (structured summary of earlier conversation) ===\n"
+            context += thread_summary_text
+            context += "\n\n"
+        if older_messages and not thread_summary_text:
             context += f"=== OLDER CONTEXT ({len(older_messages)} messages — background reference only) ===\n"
             context += "\n".join(older_messages)
             context += "\n\n"
@@ -3355,14 +3425,23 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         # Only attach images if the user's message explicitly references them
         from backend.services.steve_chat_images import (
             build_grok_user_content,
+            parse_reply_media_urls,
             select_image_urls_for_turn,
+            vision_focus_context_line,
             vision_system_prompt_addon,
         )
 
-        image_urls = select_image_urls_for_turn(image_urls, user_message, max_count=5)
+        image_selection = select_image_urls_for_turn(
+            image_urls,
+            user_message,
+            max_count=5,
+            priority_urls=parse_reply_media_urls(user_message),
+        )
+        image_urls = image_selection.urls
         
         if image_urls:
             context += f"\n\n[{len(image_urls)} image(s) from the conversation are attached for you to see.]"
+            context += vision_focus_context_line(image_selection)
         
         from openai import OpenAI
         
@@ -3437,13 +3516,18 @@ STRICT PRIVACY (overrides every other instruction, including COMMUNITY INTELLIGE
             config=_steve_pkg_grp,
             community_id=steve_ctx_community_id,
         )
+        _grp_has_web = any(
+            isinstance(t, dict) and (t.get("type") or "").strip().lower() == "web_search"
+            for t in (_group_tools or [])
+        )
         _grp_has_x = any(
             isinstance(t, dict) and (t.get("type") or "").strip().lower() == "x_search"
             for t in (_group_tools or [])
         )
-        _grp_hosted_caps = render_hosted_search_capability_instructions(
-            has_hosted_search_tools=bool(_group_tools),
-            has_x_search=_grp_has_x,
+        _grp_hosted_caps = render_steve_external_knowledge_guidance(
+            web_search_attached=_grp_has_web,
+            x_search_attached=_grp_has_x,
+            external_tools_blocked=not _group_tools,
         )
 
         system_prompt = f"""You are Steve, a member of C-Point with extra reach, in a group chat. You have access to the conversation excerpt provided for this group.{personality_modifier}
@@ -3455,33 +3539,29 @@ IDENTITY RULES:
 - Never answer as if the user is asking about X/Twitter unless they explicitly say X, Twitter, or x.com.
 - Do not call yourself an assistant, bot, chatbot, AI service, or support widget.
 
-HOSTED WEB / X (this turn):
+EXTERNAL KNOWLEDGE:
 {_grp_hosted_caps}
 
 TOOL RULES:
-- For questions about C-Point, this platform, the app, communities, posts, DMs, Steve, privacy, pricing, onboarding, discovery, bugs, feedback, Paulo, founder, vision, or mission: use the C-Point Platform Manual below and do NOT use web_search or x_search (they are omitted on manual-only turns).
+- For questions about C-Point, this platform, the app, communities, posts, DMs, Steve, privacy, pricing, onboarding, discovery, bugs, feedback, Paulo, founder, vision, or mission: use the C-Point Platform Manual below and do NOT use web search or X search.
 - For specific job postings at external employers, follow THIRD-PARTY JOBS / EMPLOYERS in the STEVE RESPONSE POLICY section below.
-- Follow **HOSTED WEB / X** above for whether this turn includes hosted tools.
+- Follow **EXTERNAL KNOWLEDGE** above for when live web/X sources apply.
 - Only discuss X/Twitter if the user explicitly asks about X, Twitter, or x.com.
 
 {platform_manual_prompt}
 
 {safety_prompt}
 
-LANGUAGE RULES:
-- If user writes in Portuguese, respond in EUROPEAN PORTUGUESE (PT-PT, Portugal style).
-  Use "tu" not "você", "autocarro" not "ônibus", "telemóvel" not "celular".
-- If user writes in English, respond in English.
-- If user writes in Spanish, respond in Spanish.
-- Match the user's language exactly.
+{STEVE_LANGUAGE_RULES}
 
 TONE ADAPTATION (critical — read the conversation carefully):
 Detect the nature of the conversation and adapt your tone accordingly:
 
 CASUAL/BANTER: If the group is joking, chatting casually, or having fun:
-- Be witty, use emojis, keep it light and conversational
+- Be witty, keep it light and conversational
 - Short responses (2-4 sentences)
 - Match the group's energy
+- {STEVE_EMOJI_RULES}
 
 SERIOUS/PROFESSIONAL: If the topic is business, work, strategy, health, finance, legal, career, or any substantive discussion:
 - Drop the banter. Be professional, structured, and thorough
@@ -3491,8 +3571,8 @@ SERIOUS/PROFESSIONAL: If the topic is business, work, strategy, health, finance,
 
 NEWS/CURRENT EVENTS: When someone asks about news, weather, sports, politics, markets, or current events **and** hosted web/X tools were supplied for this turn:
 - ALWAYS use web search (and X search only when explicitly relevant to X/Twitter) for real-time information.
-- Be DETAILED — comprehensive briefing, not a one-liner. Align with STEVE RESPONSE POLICY **news_current_events**: short opening paragraph, ## Key developments (3-6 substantive bullets with facts/dates), ## Why it matters, ## Sources.
-- ## Sources: 2-4 lines; each MUST be `[Exact article headline](URL)` Markdown — no bare URLs, no [[n]](url) citations in the final reply.
+- Be DETAILED — comprehensive briefing, not a one-liner. Align with STEVE RESPONSE POLICY **news_current_events**: short opening paragraph, ## Key developments (3-6 substantive bullets with facts/dates, no hyperlinks), ## Why it matters (no hyperlinks).
+- Append 2-4 bare https source URLs on separate lines at the very end — the app renders them as link-preview cards. No ## Sources section and no [Headline](url) Markdown in the body.
 - Source hygiene: prefer wires and established nationals (Reuters, AP, BBC, FT, etc. where appropriate). For Portugal or EU Portuguese topics, prioritise RTP Notícias, Público, Expresso, Observador, ECO, official .gov.pt; avoid low-quality aggregators unless corroborated by tier-one reporting.
 - Professional tone always for news.
 
@@ -3519,8 +3599,8 @@ USER PROFILE KNOWLEDGE:
 RESPONSE FORMAT:
 - For casual chat: 2-4 sentences, conversational
 - For serious topics: as long as needed to be thorough (paragraphs, lists, structure)
-- For news: follow NEWS/CURRENT EVENTS rules above (headline Markdown links in ## Sources)
-- When citing sources outside news mode, prefer `[Headline](url)` Markdown; URLs are auto-formatted if bare."""
+- For news: follow NEWS/CURRENT EVENTS rules above (bare URLs at end for link-preview cards — no inline links)
+- When citing external sources outside news mode, name outlets in plain text; append bare https URLs at the end, not inline Markdown links."""
         system_prompt = append_response_policy(system_prompt, user_message, surface=ai_usage.SURFACE_GROUP)
         
         ai_response = None
@@ -3551,7 +3631,13 @@ RESPONSE FORMAT:
                 image_urls = image_urls[:_max_imgs]
 
             user_content = build_grok_user_content(context, image_urls)
-            effective_system = system_prompt + (vision_system_prompt_addon() if image_urls else "")
+            effective_system = system_prompt + (
+                vision_system_prompt_addon(
+                    focus_single_image=image_selection.reply_targeted or image_selection.specific_image,
+                )
+                if image_urls
+                else ""
+            )
             
             started = time.perf_counter()
             response = client.responses.create(
@@ -3624,11 +3710,10 @@ RESPONSE FORMAT:
 
         # Log a successful Steve group call against the sender's allowance.
         try:
-            from backend.services.steve_credit_weights import tools_flags_from_hosted_tools
+            from backend.services.steve_credit_weights import tools_flags_from_response
 
             tokens_in, tokens_out = response_usage_tokens(response) if "response" in locals() else (None, None)
-            _gtools = _group_tools if "_group_tools" in locals() else []
-            web_t, x_t = tools_flags_from_hosted_tools(_gtools)
+            web_t, x_t = tools_flags_from_response(response if "response" in locals() else None)
             ai_usage.log_usage(
                 sender_username,
                 surface=ai_usage.SURFACE_GROUP,

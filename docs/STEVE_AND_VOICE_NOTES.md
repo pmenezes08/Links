@@ -39,21 +39,9 @@ and then write the code. Do **not** silently diverge.
    tied to a community), pass **`community_id`** into `check_steve_access` /
    `gate_or_reason` so eligible members can consume the **Steve Community
    Package** monthly pool per KB flags (`community-tiers` page).
-   **Feed replies** attach Grok **`web_search`** (and **`x_search`** only when the user explicitly asks for X/Twitter) when **`steve_tool_router.resolve_steve_hosted_tools`** applies **`steve_tool_policy`** +
-   **`steve_prompt_policy`** (live-news, explicit browse intent, **or job/careers-site /
-   listing-verification wording** per **`steve_job_listing_or_employer_research_requested`**, or when
-   KB allows default-on with **`external_search_explicit_only`** OFF). If that **static** policy returns
-   no tools, a **short JSON-only router** call (same xAI stack, **no** `web_search` / `x_search` on that
-   call) may attach hosted tools for **ambiguous public web / X** phrasing; it is **skipped** for
-   platform-manual-only and professional-advice-only turns, for **profile-suppressed** cohorts (same gate
-   as static policy), and when **`STEVE_TOOL_ROUTER_DISABLED`** is set. **`detect_platform_manual_intent`**
-   strips **`@Steve`** mentions so addressing Steve does not force a platform-manual turn or strip tools.
-   **`SteveCommunityConfig`** kill-switches (**`paid_steve_package_feed_attach_*`**) still apply.
-   Platform-only and professional-advice-only turns omit tools. **THIRD-PARTY JOBS / EMPLOYERS** rules in
-   **`steve_prompt_policy`** require verifiable external postings (no fabricated listings). DM and group
-   chat use the same resolver. **@Mentioned** users on feed/group may receive gated profile context when
-   **`user_can_access_steve_kb`** allows.
-   **News and current-events** replies use **`steve_prompt_policy` `news_current_events`** mode: structured sections (Key developments, Why it matters, Sources), substantive bullets, reputable-source guidance, and **`[Article headline](URL)`** Markdown for sources where possible; bare URLs and numeric citations are normalised in **`format_steve_response_links`**. The canonical **“what Steve can do”** inventory is KB **`steve-platform-manual`** card **`steve.what_can_i_do`** (seeded from **`docs/STEVE_PLATFORM_KB.md`**).
+   **Feed / DM / group @Steve** attach Grok **`web_search`** by default (and **`x_search`** only when the user explicitly asks for X/Twitter) via **`steve_tool_router.resolve_steve_hosted_tools`**: **hard exclusions only** — platform-manual-only turns, professional-advice-only turns, profile-suppressed cohorts (same gate as **`steve_tool_policy.steve_external_tool_suppressed_for_profile_intent`**), or KB kill-switches (**`paid_steve_package_feed_attach_*`**). The model decides whether to **invoke** search (`tool_choice=auto`); xAI bills hosted search on invocation, not attachment. **`tools_flags_from_response`** drives **`ai_usage`** **`tools_web_search` / `tools_x_search`** flags (not the attached tool list). **`render_steve_external_knowledge_guidance`** in **`steve_prompt_policy`** tells Steve when to search silently and how to disclose honestly when it did not — without jargon ("web lookup", "this turn", "hosted tools"). Emergency rollback: **`STEVE_LEGACY_TOOL_GATING=1`** restores regex pre-gate + optional JSON-only router hop (logged as **`steve_tool_router`**). **`STEVE_TOOL_ROUTER_DISABLED`** applies only in legacy mode. **`detect_platform_manual_intent`** strips **`@Steve`** mentions so addressing Steve does not force a platform-manual turn or strip tools. Platform-only and professional-advice-only turns omit tools. **THIRD-PARTY JOBS / EMPLOYERS** rules in **`steve_prompt_policy`** require verifiable external postings (no fabricated listings). **@Mentioned** users on feed/group may receive gated profile context when **`user_can_access_steve_kb`** allows.
+   **News and current-events** replies use **`steve_prompt_policy` `news_current_events`** mode: structured sections (Key developments, Why it matters), substantive bullets, reputable-source guidance; **bare https URLs on separate lines at the end** for link-preview cards (no inline `[Headline](url)` or ## Sources in the body). **`format_steve_response_links`** strips legacy inline markdown and normalises URLs to that tail format.
+   **DM / group vision:** **`steve_chat_images.select_image_urls_for_turn`** parses reply-target photos from the client `[REPLY:…:📷|url|caption]` prefix and attaches **only that image** when the user asks about "this photo" / *esta foto*. Without a reply quote, "this photo" intent uses the **most recent** thread image; general compare/vision requests may still attach up to **`max_images_per_turn`**. Relative `/uploads/…` paths are normalised to absolute URLs before the Grok call.
 
 Skip any of the above and the user's "Steve uses this month" counter
 will silently lie to them. We've already fixed that bug once, don't
@@ -211,7 +199,8 @@ the user receives only a markdown **subscription CTA** pointing at **`/account_s
          return  # log_block already written
      ```
 3. **Respect the caps in `ent`.** Plumb `ent["max_output_tokens_*"]`,
-   `ent["max_context_messages"]`, `ent["max_images_per_turn"]`,
+   `ent["max_context_messages"]`, `ent["max_context_messages_peer_dm"]`,
+   `ent["max_images_per_turn"]`,
    `ent["max_tool_invocations_per_turn"]` into your LLM call. For
    community-pool feed calls, use the stricter of the user's resolved
    feed cap and the KB-backed Steve Community Package output cap.
@@ -317,7 +306,7 @@ don't build parallel queries.
 
 | Function | Window | Surface filter | Used for |
 |---|---|---|---|
-| `monthly_steve_count` | 1st of month UTC → now | `STEVE_SURFACES` | `steve_uses_per_month` cap + "Steve uses this month" UI (SUM of `credits_debited` when `STEVE_WEIGHTED_CREDITS_ENABLED` is on). KB tiers: standard through **25k** billed input tokens; **web_search** addon **0.5**; news/browse attach **web only** unless user asks for X; optional facts (podcast episodes) use confirm-then-search in DM. |
+| `monthly_steve_count` | 1st of month UTC → now | `STEVE_SURFACES` | `steve_uses_per_month` cap + "Steve uses this month" UI (SUM of `credits_debited` when `STEVE_WEIGHTED_CREDITS_ENABLED` is on). KB tiers: standard through **25k** billed input tokens; **web_search** addon **0.5** when the model **invoked** search on that turn (not merely when tools were attached). |
 | `daily_count` | Rolling 24h | `STEVE_SURFACES` | `ai_daily_limit` enforcement + "Steve uses today" UI (same weighted SUM) |
 | `community_monthly_steve_pool_usage` | Calendar month | `STEVE_SURFACES` + `community_id` | Steve Community Package pool (200 credits default); dual gate with `monthly_community_spend_usd` vs KB `$19.99` ceiling |
 | `daily_any_count` | Rolling 24h | *none* | Admin-only "all AI activity" metric |
@@ -352,7 +341,8 @@ We had a live bug because `daily_count` was unscoped and
 | `whisper_minutes_per_month` | Audio minutes. `None` = unlimited. |
 | `ai_daily_limit` | Rolling 24h Steve calls. |
 | `max_output_tokens_dm` / `_group` / `_feed` | Plumb into the LLM `max_output_tokens` call param. |
-| `max_context_messages` | Clamp the history you pass to the model. |
+| `max_context_messages` | Clamp the history you pass to the model (direct DM + group). |
+| `max_context_messages_peer_dm` | Separate window for @Steve in a human↔human DM (default 60). |
 | `max_images_per_turn` | Drop images past this count before the call. |
 | `max_tool_invocations_per_turn` | Cap tool calls per turn (web / X). |
 | `monthly_spend_ceiling_eur` | Soft-budget for the user, informational. |
@@ -362,6 +352,96 @@ We had a live bug because `daily_count` was unscoped and
 projects the per-turn caps into `ent`; `steve_model_config` reads the
 pricing fields and provides shared cost helpers for DM, feed, and group
 surfaces.
+
+### Context window assembly
+
+All surfaces read message history from Firestore (with MySQL fallback),
+bounded to `max_context_messages` (200) or `max_context_messages_peer_dm`
+(60) via `ORDER BY created_at DESC LIMIT N` + reverse. The Firestore
+query and MySQL query both use descending-then-reverse so read cost is
+O(cap) per turn, not O(thread length).
+
+| Surface | Window (msgs) | Split |
+|---------|---------------|-------|
+| Direct Steve DM | `max_context_messages` (200) | 170 older + 30 current |
+| Peer DM (@Steve in human↔human) | `max_context_messages_peer_dm` (60) | verbatim window + older when summary enabled |
+| Group chat | `max_context_messages` (200) | 170 older + 30 current |
+| Feed thread | up to 50 comments | trimmed by char budget |
+
+Both caps are KB-tunable on the `hard-limits` page. `peer_context_limit()`
+in `steve_model_config.py` reads the peer-DM cap from entitlements with
+a safe fallback of 10 (the legacy `PEER_DM_CONTEXT_LINES`) when the KB
+field is missing. When thread summary is enabled, `dm_context_read_limit()`
+extends the peer-DM read to include enough older messages for the summary
+service, capped at `max_context_messages`.
+
+### Per-message timestamps
+
+Every message line in Steve's context window now includes a compact
+timestamp prefix: `[May 29, 14:30] sender: message text`. Messages
+older than ~180 days include the year: `[Jan 12 2025, 09:15]`.
+This applies to:
+
+- DM messages (Firestore and MySQL paths)
+- Group chat messages (Firestore and MySQL paths)
+- Feed thread comments (via `sort_key` / `timestamp` / `created_at`)
+- Thread summary input lines (via `message_line_from_row(ts=...)`)
+
+The shared helper `format_msg_timestamp()` lives in
+`backend/services/steve_thread_memory.py`. If the timestamp value is
+`None` or unparseable, the prefix is silently omitted (empty string).
+
+### Rolling thread summary (optional, KB-gated)
+
+When `thread_summary_enabled` is true on the KB `hard-limits` page,
+`backend/services/steve_thread_memory.py` generates a compact structured
+summary of older messages (beyond the verbatim window). The summary is
+stored on the thread's Firestore doc (`steve_thread_summary`,
+`steve_thread_summary_msg_count`, `steve_thread_summary_through_ts`)
+and refreshed every `thread_summary_refresh_messages` new messages when
+the older-than-window count exceeds `thread_summary_trigger_messages`.
+
+The thread summary runs on all DM surfaces (both direct Steve DMs and
+peer DMs where Steve is mentioned) and group chats. Peer DMs use
+`dm_context_read_limit()` to extend the Firestore read when summary is
+enabled.
+
+Steve context assembly must skip deleted and encrypted DM/group Firestore
+messages before formatting or summarizing them. A Steve context reset clears
+the cached `steve_thread_summary*` fields and prevents stale cached summaries
+from being re-injected after the reset timestamp.
+
+Each summarize call writes exactly one `ai_usage.log_usage` row with
+`request_type="steve_thread_summary"`. The main reply's usage row is
+separate and unchanged.
+
+When disabled (default), the code path is a strict no-op — zero extra
+rows, identical context to the raw-window behaviour.
+
+### Phase 3 chat memory skeleton (disabled)
+
+`backend/services/steve_chat_memory.py` defines the PR 1 foundation for
+future hybrid chat memory: KB-backed config parsing, exact thread scope
+helpers (`dm:{conv_id}` / `group:{group_id}`), and prompt-section
+formatting for already-retrieved older chunks and structured counters.
+It does **not** read Firestore, build embeddings, call vendors, log usage,
+or inject memory into live Steve prompts yet.
+
+The rollout knobs live on KB page `hard-limits` and are projected through
+`resolve_entitlements`: `chat_memory_enabled`,
+`chat_memory_peer_dm_enabled`, `chat_memory_group_enabled`,
+`chat_memory_min_messages`, `chat_memory_chunk_messages`,
+`chat_memory_chunk_chars`, `chat_memory_top_k`,
+`chat_memory_max_prompt_chars`, `chat_memory_backfill_max_messages`,
+`chat_memory_event_ledger_enabled`, `chat_memory_embedding_model`, and
+`chat_memory_indexing_daily_budget_usd`. All feature switches default off;
+the indexing budget defaults to `$0` while embeddings and event extraction
+are not implemented.
+
+Future retrieval must stay scoped to the exact thread key and must not cross
+DM/group boundaries. Retrieval-only reads do not write `ai_usage` rows; any
+future embedding or extraction vendor call must gate first and log its own
+row before it ships.
 
 ---
 

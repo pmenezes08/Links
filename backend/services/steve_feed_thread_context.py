@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, List, Optional, Sequence, Tuple
 
+from backend.services.steve_thread_memory import format_msg_timestamp
+
 STEVE_USERNAME = "steve"
 STEVE_PRIOR_REPLY_LABEL = "[Steve — your prior reply]"
 DEFAULT_THREAD_CHARS_MAX = 12000
@@ -122,7 +124,8 @@ def _format_comment_line(
         speaker = STEVE_PRIOR_REPLY_LABEL
     else:
         speaker = comment.username
-    return f"#{number} {prefix}{speaker}: {comment.content}"
+    ts = format_msg_timestamp(comment.sort_key)
+    return f"{ts}#{number} {prefix}{speaker}: {comment.content}"
 
 
 def _trim_comments_for_budget(

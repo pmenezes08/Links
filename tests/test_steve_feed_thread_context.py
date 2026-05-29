@@ -26,6 +26,19 @@ def _desc_rows(start: int, end: int):
     return rows
 
 
+def test_format_comment_includes_timestamp():
+    """Comment lines now include a timestamp prefix from sort_key."""
+    from backend.services.steve_feed_thread_context import _format_comment_line
+    comment = ThreadComment(
+        id=1, username="paulo", content="Great post!",
+        parent_reply_id=None, sort_key="2026-05-25 14:30:00",
+    )
+    line = _format_comment_line(comment, number=1, id_to_number={1: 1})
+    assert "[May 25, 14:30]" in line
+    assert "#1" in line
+    assert "paulo: Great post!" in line
+
+
 def test_fetch_recent_post_comments_returns_tail_not_head():
     cursor = MagicMock()
     cursor.fetchall.return_value = _desc_rows(5, 12)

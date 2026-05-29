@@ -4,10 +4,12 @@ from types import SimpleNamespace
 
 from backend.services import ai_usage
 from backend.services.steve_model_config import (
+    context_limit,
     estimate_call_cost_usd,
     estimate_response_cost_usd,
     get_steve_model_config,
     output_cap_for_surface,
+    peer_context_limit,
     response_cached_input_tokens,
     response_usage_tokens,
 )
@@ -23,6 +25,7 @@ def test_model_config_defaults_match_official_xai_grok_43_pricing():
     assert cfg.tool_call_usd_per_1000 == 5.00
     assert cfg.max_output_tokens_dm == 1400
     assert cfg.max_output_tokens_feed == 1400
+    assert cfg.max_context_messages_peer_dm == 60
 
 
 def test_model_config_reads_kb_style_overrides():
@@ -51,6 +54,36 @@ def test_model_config_reads_kb_style_overrides():
     assert cfg.max_output_tokens_feed == 1300
     assert cfg.max_output_tokens_group == 1600
     assert cfg.max_context_messages == 80
+
+
+def test_model_config_reads_peer_dm_context_override():
+    cfg = get_steve_model_config(
+        credits_fields={},
+        hard_limit_fields={"max_context_messages_peer_dm": "45"},
+    )
+    assert cfg.max_context_messages_peer_dm == 45
+
+
+def test_peer_context_limit_reads_entitlements():
+    assert peer_context_limit({"max_context_messages_peer_dm": 60}) == 60
+    assert peer_context_limit({"max_context_messages_peer_dm": "40"}) == 40
+
+
+def test_peer_context_limit_fallback_when_missing():
+    assert peer_context_limit({}) == 10
+    assert peer_context_limit(None) == 10
+    assert peer_context_limit({}, fallback=60) == 60
+
+
+def test_peer_context_limit_clamps_to_one():
+    assert peer_context_limit({"max_context_messages_peer_dm": 0}) == 1
+    assert peer_context_limit({"max_context_messages_peer_dm": -5}) == 1
+
+
+def test_context_limit_unchanged():
+    assert context_limit({"max_context_messages": 200}) == 200
+    assert context_limit({}) == 200
+    assert context_limit(None, fallback=100) == 100
 
 
 def test_output_cap_for_surface_uses_resolved_entitlements():
