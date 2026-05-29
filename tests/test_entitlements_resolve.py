@@ -222,6 +222,56 @@ class TestKBDrivenConfiguration:
         assert ent["max_output_tokens_feed"] == 1345
         assert ent["max_output_tokens_group"] == 1456
 
+    def test_chat_memory_caps_come_from_kb(self, mysql_dsn):
+        from tests.fixtures import seed_kb
+        seed_kb([
+            {
+                "slug": "hard-limits",
+                "title": "Hard Limits",
+                "category": "policy",
+                "fields": [
+                    {"name": "chat_memory_enabled", "type": "boolean",
+                     "label": "chat_memory_enabled", "value": True},
+                    {"name": "chat_memory_peer_dm_enabled", "type": "boolean",
+                     "label": "chat_memory_peer_dm_enabled", "value": True},
+                    {"name": "chat_memory_group_enabled", "type": "boolean",
+                     "label": "chat_memory_group_enabled", "value": False},
+                    {"name": "chat_memory_min_messages", "type": "integer",
+                     "label": "chat_memory_min_messages", "value": 321},
+                    {"name": "chat_memory_chunk_messages", "type": "integer",
+                     "label": "chat_memory_chunk_messages", "value": 70},
+                    {"name": "chat_memory_chunk_chars", "type": "integer",
+                     "label": "chat_memory_chunk_chars", "value": 9000},
+                    {"name": "chat_memory_top_k", "type": "integer",
+                     "label": "chat_memory_top_k", "value": 3},
+                    {"name": "chat_memory_max_prompt_chars", "type": "integer",
+                     "label": "chat_memory_max_prompt_chars", "value": 3500},
+                    {"name": "chat_memory_backfill_max_messages", "type": "integer",
+                     "label": "chat_memory_backfill_max_messages", "value": 2500},
+                    {"name": "chat_memory_event_ledger_enabled", "type": "boolean",
+                     "label": "chat_memory_event_ledger_enabled", "value": True},
+                    {"name": "chat_memory_embedding_model", "type": "string",
+                     "label": "chat_memory_embedding_model", "value": "future-model"},
+                    {"name": "chat_memory_indexing_daily_budget_usd", "type": "decimal",
+                     "label": "chat_memory_indexing_daily_budget_usd", "value": 1.5},
+                ],
+            },
+        ])
+        make_user("memory_paying", subscription="premium", created_at=days_ago(30))
+        ent = resolve_entitlements("memory_paying")
+        assert ent["chat_memory_enabled"] is True
+        assert ent["chat_memory_peer_dm_enabled"] is True
+        assert ent["chat_memory_group_enabled"] is False
+        assert ent["chat_memory_min_messages"] == 321
+        assert ent["chat_memory_chunk_messages"] == 70
+        assert ent["chat_memory_chunk_chars"] == 9000
+        assert ent["chat_memory_top_k"] == 3
+        assert ent["chat_memory_max_prompt_chars"] == 3500
+        assert ent["chat_memory_backfill_max_messages"] == 2500
+        assert ent["chat_memory_event_ledger_enabled"] is True
+        assert ent["chat_memory_embedding_model"] == "future-model"
+        assert ent["chat_memory_indexing_daily_budget_usd"] == 1.5
+
     def test_special_daily_limit_is_distinct_from_premium(self, mysql_dsn):
         """Special users get ``ai_daily_limit_special`` (technical cap, still > Premium)."""
         kb_override_field("hard-limits", "ai_daily_limit", 10)
@@ -397,6 +447,7 @@ class TestCrossCuttingInvariants:
             assert ent["max_output_tokens_dm"] > 0, username
             assert ent["max_output_tokens_group"] > 0, username
             assert ent["max_context_messages"] > 0, username
+            assert ent["max_context_messages_peer_dm"] > 0, username
             assert ent["max_images_per_turn"] > 0, username
 
     def test_internal_weights_always_present(self, mysql_dsn):

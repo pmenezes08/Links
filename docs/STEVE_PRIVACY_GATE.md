@@ -46,6 +46,7 @@ These two accounts (and Steve internally) always bypass and receive full KB. No 
 - **No additions to monolith** (`bodybuilding_app.py`). Use blueprints only. Minimal wiring only where necessary.
 - **Caching**: Cache key must include viewer and root network/community context to avoid stale results. Invalidate on membership changes.
 - **Historical data**: Current root-network membership check blocks old synthesized insights from communities the user has left.
+- **Chat memory**: Future `steve_chat_memory` chunks/events are personal data scoped to the exact thread (`dm:{conv_id}` or `group:{group_id}`). Retrieval must never cross those keys. Group-chat memory injection must check current group membership/admin access before any chunk/event reaches Steve's prompt; PR 1 only adds disabled config/scope helpers and does not read or inject memory. Steve context and future indexing must exclude deleted/encrypted rows, and context resets must clear cached summaries/memory before old facts can be reused.
 - **Prompts**: Update system prompts in group chat, community reply paths, and DMs to reinforce honest "I don't have information" responses.
 - **QA**: Add test cases to `docs/QA_CHECKLIST.md` covering all scenarios, bypass users, sub-community vs parent, group intersection, DM vs community, and cache behavior.
 
