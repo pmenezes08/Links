@@ -25,9 +25,9 @@ def search_dm_thread(
     """Return ``(total_count, messages, has_more)`` for a keyword search in a DM thread."""
     try:
         from backend.services.dm_human_thread import (
-            dm_messages_where_clause,
             ensure_human_dm_thread_column,
             human_pair_thread_key,
+            is_private_steve_dm_peer,
         )
 
         ph = get_sql_placeholder()
@@ -37,9 +37,21 @@ def search_dm_thread(
             c = conn.cursor()
             ensure_human_dm_thread_column(c)
 
-            where, base_params = dm_messages_where_clause(
-                ph, viewer=viewer, peer=other_username, thr_key=thr_key,
-            )
+            # Case-insensitive WHERE clause for sender/receiver matching
+            if is_private_steve_dm_peer(other_username):
+                where = (
+                    f"((LOWER(sender) = LOWER({ph}) AND LOWER(receiver) = LOWER({ph}))"
+                    f" OR (LOWER(sender) = LOWER({ph}) AND LOWER(receiver) = LOWER({ph})"
+                    f" AND (human_dm_thread IS NULL OR human_dm_thread = '')))"
+                )
+                base_params = (viewer, other_username, other_username, viewer)
+            else:
+                where = (
+                    f"(((LOWER(sender) = LOWER({ph}) AND LOWER(receiver) = LOWER({ph}))"
+                    f" OR (LOWER(sender) = LOWER({ph}) AND LOWER(receiver) = LOWER({ph})))"
+                    f" OR (sender = 'steve' AND human_dm_thread = {ph}))"
+                )
+                base_params = (viewer, other_username, other_username, viewer, thr_key)
 
             # deleted_at filter (one-sided clear)
             deleted_clause = ""
