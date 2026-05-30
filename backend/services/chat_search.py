@@ -178,9 +178,9 @@ def search_group_thread(
         with get_db_connection() as conn:
             c = conn.cursor()
 
-            # Membership check
+            # Membership check (case-insensitive)
             c.execute(
-                f"SELECT 1 FROM group_chat_members WHERE group_id = {ph} AND username = {ph}",
+                f"SELECT 1 FROM group_chat_members WHERE group_id = {ph} AND LOWER(username) = LOWER({ph})",
                 (group_id, viewer),
             )
             if not c.fetchone():
@@ -191,7 +191,7 @@ def search_group_thread(
             try:
                 c.execute(
                     f"SELECT cleared_before_message_id FROM group_chat_read_receipts"
-                    f" WHERE group_id = {ph} AND username = {ph}",
+                    f" WHERE group_id = {ph} AND LOWER(username) = LOWER({ph})",
                     (group_id, viewer),
                 )
                 rr = c.fetchone()
@@ -260,20 +260,27 @@ def search_group_thread(
                         pass
 
                 fp = _g("file_path") if has_file_cols else None
+                sender_raw = _g("sender_username") or row[1]
+                raw_ts = _g("created_at") or (row[8] if not hasattr(row, "keys") and len(row) > 8 else None)
+                ts_str = str(raw_ts) if raw_ts else None
 
                 messages.append({
                     "id": _g("id") or row[0],
-                    "sender": _g("sender_username") or row[1],
+                    "sender": sender_raw,
+                    "sender_username": sender_raw,
                     "text": _g("message_text") or row[2],
-                    "image": _g("image_path") or row[3],
+                    "sent": sender_raw is not None and sender_raw.lower() == viewer.lower(),
+                    "time": ts_str,
+                    "image_path": _g("image_path") or row[3],
+                    "video_path": _g("video_path") or (row[5] if not hasattr(row, "keys") else None),
+                    "audio_path": _g("voice_path") or (row[4] if not hasattr(row, "keys") else None),
                     "voice": _g("voice_path") or (row[4] if not hasattr(row, "keys") else None),
-                    "video": _g("video_path") or (row[5] if not hasattr(row, "keys") else None),
                     "media_paths": media_paths_val,
                     "file_path": fp,
                     "file_name": _g("file_name") if has_file_cols else None,
                     "document": fp,
                     "client_key": _g("client_key") or (row[7] if not hasattr(row, "keys") else None),
-                    "created_at": str(_g("created_at") or row[8]) if (_g("created_at") or (not hasattr(row, "keys") and len(row) > 8)) else None,
+                    "created_at": ts_str,
                     "profile_picture": _public_profile_picture_url(
                         _g("profile_picture") or (row[9] if not hasattr(row, "keys") and len(row) > 9 else None)
                     ),
@@ -448,7 +455,7 @@ def fetch_group_messages_around(
             c = conn.cursor()
 
             c.execute(
-                f"SELECT 1 FROM group_chat_members WHERE group_id = {ph} AND username = {ph}",
+                f"SELECT 1 FROM group_chat_members WHERE group_id = {ph} AND LOWER(username) = LOWER({ph})",
                 (group_id, viewer),
             )
             if not c.fetchone():
@@ -458,7 +465,7 @@ def fetch_group_messages_around(
             try:
                 c.execute(
                     f"SELECT cleared_before_message_id FROM group_chat_read_receipts"
-                    f" WHERE group_id = {ph} AND username = {ph}",
+                    f" WHERE group_id = {ph} AND LOWER(username) = LOWER({ph})",
                     (group_id, viewer),
                 )
                 rr = c.fetchone()
