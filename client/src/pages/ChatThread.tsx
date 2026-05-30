@@ -384,6 +384,11 @@ export default function ChatThread(){
   notifyMessagesSettledRef.current = notifyMessagesSettled
 
   const [searchOpen, setSearchOpen] = useState(false)
+  const [viewingHistory, setViewingHistory] = useState(false)
+  const viewingHistoryRef = useRef(false)
+
+  const returnToLatestRef = useRef<() => void>(() => {})
+
   const handleSearchJump = useCallback(async (messageId: number | string): Promise<boolean> => {
     if (scrollToMessage(messageId)) return true
     try {
@@ -401,12 +406,15 @@ export default function ChatThread(){
       }))
       setMessages(processed)
       setHasMoreMessages(data.has_more_before ?? false)
+      viewingHistoryRef.current = true
+      setViewingHistory(true)
+      skipNextPollsUntil.current = Date.now() + 60_000
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
       return scrollToMessage(messageId)
     } catch {
       return false
     }
-  }, [scrollToMessage, username, setMessages, setHasMoreMessages])
+  }, [scrollToMessage, username, setMessages, setHasMoreMessages, skipNextPollsUntil])
 
   const mergeHydratedMessages = useCallback((processed: Message[], prev: Message[]) => {
     const serverIds = new Set(processed.map(m => String(m.id)))
@@ -422,6 +430,37 @@ export default function ChatThread(){
     if (keptOptimistic.length === 0) return processed
     return [...processed, ...keptOptimistic]
   }, [])
+
+  const returnToLatest = useCallback(() => {
+    if (!otherUserId) return
+    viewingHistoryRef.current = false
+    setViewingHistory(false)
+    skipNextPollsUntil.current = 0
+    const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
+    fetch('/get_messages', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: fd,
+    })
+      .then(r => r.json())
+      .then(j => {
+        if (j?.success && Array.isArray(j.messages)) {
+          const processed = j.messages.map((m: any) => ({ ...m, isOptimistic: false })) as Message[]
+          setMessages(prev => mergeHydratedMessages(processed, prev))
+          setHasMoreMessages(!!j.has_more)
+          let maxId = 0
+          for (const m of j.messages) {
+            const mid = typeof m.id === 'number' ? m.id : parseInt(String(m.id), 10)
+            if (!Number.isNaN(mid) && mid > maxId) maxId = mid
+          }
+          if (maxId > 0) lastKnownMessageIdRef.current = maxId
+          requestAnimationFrame(() => scrollToBottom())
+        }
+      })
+      .catch(() => {})
+  }, [otherUserId, setMessages, setHasMoreMessages, scrollToBottom, mergeHydratedMessages, skipNextPollsUntil])
+  returnToLatestRef.current = returnToLatest
 
   const focusTextarea = useCallback(() => {
     if (MIC_ENABLED && recording) return
@@ -2699,8 +2738,23 @@ export default function ChatThread(){
       />
     )}
 
-    {/* Scroll to bottom button - positioned above composer */}
-    {showScrollDown && !isMultiSelectMode && (
+    {/* Jump to latest (history mode) or scroll to bottom */}
+    {viewingHistory && !isMultiSelectMode && (
+      <button
+        className="fixed z-50 h-10 px-4 rounded-full bg-[#00cec8] text-black text-sm font-medium shadow-lg hover:brightness-110 flex items-center gap-2"
+        style={{
+          bottom: scrollButtonBottom,
+          left: '50%',
+          transform: 'translateX(-50%)',
+        }}
+        onClick={returnToLatest}
+        aria-label={t('chat.jump_to_latest', 'Jump to latest')}
+      >
+        <i className="fa-solid fa-arrow-down" />
+        {t('chat.jump_to_latest', 'Jump to latest')}
+      </button>
+    )}
+    {showScrollDown && !isMultiSelectMode && !viewingHistory && (
       <button
         className="fixed z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
         style={{ 

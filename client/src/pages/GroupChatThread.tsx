@@ -387,6 +387,9 @@ export default function GroupChatThread() {
   notifyMessagesSettledRef.current = notifyMessagesSettled
 
   const [searchOpen, setSearchOpen] = useState(false)
+  const [viewingHistory, setViewingHistory] = useState(false)
+  const viewingHistoryRef = useRef(false)
+
   const handleSearchJump = useCallback(async (messageId: number | string): Promise<boolean> => {
     if (scrollToMessage(messageId)) return true
     try {
@@ -403,12 +406,15 @@ export default function GroupChatThread() {
       }))
       setServerMessages(processed)
       setHasMoreMessages(data.has_more_before ?? false)
+      viewingHistoryRef.current = true
+      setViewingHistory(true)
+      skipNextPollsUntil.current = Date.now() + 60_000
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
       return scrollToMessage(messageId)
     } catch {
       return false
     }
-  }, [scrollToMessage, group_id, setServerMessages, setHasMoreMessages])
+  }, [scrollToMessage, group_id, setServerMessages, setHasMoreMessages, skipNextPollsUntil])
 
   // Format recording time
   const formatRecordingTime = (ms: number) => {
@@ -649,6 +655,15 @@ export default function GroupChatThread() {
       if (!silent) setLoading(false)
     }
   }, [group_id, groupChatCacheKey, t])
+
+  const returnToLatest = useCallback(() => {
+    viewingHistoryRef.current = false
+    setViewingHistory(false)
+    skipNextPollsUntil.current = 0
+    void loadMessages(false).then(() => {
+      requestAnimationFrame(() => scrollToBottomSmooth())
+    })
+  }, [loadMessages, scrollToBottomSmooth, skipNextPollsUntil])
 
   const loadOlderMessages = useCallback(async () => {
     if (loadingOlderRef.current || !hasMoreMessages) return
@@ -2432,8 +2447,24 @@ export default function GroupChatThread() {
         />
       )}
 
-      {/* Scroll to latest — above composer (matches DM ChatThread) */}
-      {showScrollDown && !selectionMode && (
+      {/* Jump to latest (history mode) or scroll to bottom */}
+      {viewingHistory && !selectionMode && (
+        <button
+          type="button"
+          className="fixed z-50 h-10 px-4 rounded-full bg-[#00cec8] text-black text-sm font-medium shadow-lg hover:brightness-110 flex items-center gap-2"
+          style={{
+            bottom: scrollButtonBottom,
+            left: '50%',
+            transform: 'translateX(-50%)',
+          }}
+          onClick={returnToLatest}
+          aria-label={t('chat.jump_to_latest', 'Jump to latest')}
+        >
+          <i className="fa-solid fa-arrow-down" />
+          {t('chat.jump_to_latest', 'Jump to latest')}
+        </button>
+      )}
+      {showScrollDown && !selectionMode && !viewingHistory && (
         <button
           type="button"
           className="fixed z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
