@@ -92,3 +92,29 @@ def ensure_messages_document_columns(cursor) -> None:
             logger.info("Added %s column to messages table", col_name)
         except Exception as e:
             logger.warning("Could not ensure %s column on messages: %s", col_name, e)
+
+
+def ensure_fulltext_search_indexes(cursor) -> None:
+    """Add FULLTEXT indexes for keyword search on DM and group-chat messages (MySQL only)."""
+    if not USE_MYSQL:
+        return
+
+    _FT_INDEXES = (
+        ("messages", "ft_message", "message"),
+        ("group_chat_messages", "ft_message_text", "message_text"),
+    )
+    for table, idx_name, column in _FT_INDEXES:
+        try:
+            cursor.execute(
+                f"SHOW INDEX FROM {table} WHERE Key_name = %s", (idx_name,)
+            )
+            if cursor.fetchone():
+                continue
+            cursor.execute(
+                f"ALTER TABLE {table} ADD FULLTEXT INDEX {idx_name} ({column})"
+            )
+            logger.info("Created FULLTEXT index %s on %s(%s)", idx_name, table, column)
+        except Exception as e:
+            logger.warning(
+                "Could not ensure FULLTEXT index %s on %s: %s", idx_name, table, e
+            )

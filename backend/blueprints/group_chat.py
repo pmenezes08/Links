@@ -2779,6 +2779,27 @@ def add_members_to_group(group_id: int):
         return jsonify({"success": False, "error": "Failed to add members"}), 500
 
 
+@group_chat_bp.route("/api/group_chat/<int:group_id>/search", methods=["GET"])
+def api_group_chat_search(group_id):
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "Login required"}), 401
+    query = request.args.get("q", "").strip()
+    if not query:
+        return jsonify({"success": False, "error": "q required"}), 400
+    try:
+        limit = min(int(request.args.get("limit", 20)), 100)
+    except (ValueError, TypeError):
+        limit = 20
+    try:
+        offset = max(int(request.args.get("offset", 0)), 0)
+    except (ValueError, TypeError):
+        offset = 0
+    from backend.services.chat_search import search_group_thread
+    total, messages, has_more = search_group_thread(username, group_id, query, limit=limit, offset=offset)
+    return jsonify({"success": True, "total": total, "messages": messages, "has_more": has_more})
+
+
 def _send_group_add_notification(cursor, ph, recipient_username: str, added_by: str, group_id: int, group_name: str):
     """Send push notification when user is added to a group.
     

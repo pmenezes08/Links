@@ -7,12 +7,14 @@ interface ChatHeaderProps {
   username?: string
   displayName?: string
   profilePicture?: string | null
+  onSearchOpen?: () => void
 }
 
 export default function ChatHeader({
   username,
   displayName,
   profilePicture,
+  onSearchOpen,
 }: ChatHeaderProps) {
   const navigate = useNavigate()
   const { t } = useTranslation()
@@ -80,6 +82,16 @@ export default function ChatHeader({
               {displayName || username || t('chat.page_title')}
             </div>
           </div>
+          {onSearchOpen && (
+            <button
+              type="button"
+              className="p-2 rounded-full hover:bg-white/10 transition-colors"
+              aria-label={t('chat.search_messages', 'Search messages')}
+              onClick={onSearchOpen}
+            >
+              <i className="fa-solid fa-magnifying-glass text-white/70" />
+            </button>
+          )}
           <button 
             type="button"
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 

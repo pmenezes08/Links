@@ -47,7 +47,7 @@ export function ChatVirtualMessageList<T>({
       {messages.map((msg, idx) => {
         const isLast = idx === messages.length - 1
         return (
-          <div key={resolveKey(msg, idx)} ref={isLast ? lastMessageRef : undefined}>
+          <div key={resolveKey(msg, idx)} ref={isLast ? lastMessageRef : undefined} data-message-id={resolveKey(msg, idx)}>
             {renderItem(msg, idx, isLast)}
           </div>
         )

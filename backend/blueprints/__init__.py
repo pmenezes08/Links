@@ -39,6 +39,7 @@ def register_blueprints(app: Flask) -> None:
     from .about_tutorials import about_tutorials_bp
     from .branding_assets import branding_assets_bp
     from .useful_resources import useful_resources_bp
+    from .admin_memory import admin_memory_bp
 
     app.register_blueprint(public_bp)
     app.register_blueprint(auth_bp)
@@ -72,6 +73,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(about_tutorials_bp)
     app.register_blueprint(branding_assets_bp)
     app.register_blueprint(useful_resources_bp)
+    app.register_blueprint(admin_memory_bp)
 
     # Make sure the Stripe/community-billing columns exist before the
     # first webhook fires. Each service's ensure_tables() is already
@@ -92,6 +94,15 @@ def register_blueprints(app: Flask) -> None:
         _media_assets.ensure_tables()
         from backend.services import remember_tokens as _remember_tokens
         _remember_tokens.ensure_tables()
+        from backend.services.dm_chats_tables import ensure_fulltext_search_indexes as _ensure_ft
+        from backend.services.database import get_db_connection as _get_db
+        try:
+            with _get_db() as _ft_conn:
+                _ft_c = _ft_conn.cursor()
+                _ensure_ft(_ft_c)
+                _ft_conn.commit()
+        except Exception:
+            pass
     except Exception:
         # Never let schema-bootstrap crash app startup — log and move on.
         import logging

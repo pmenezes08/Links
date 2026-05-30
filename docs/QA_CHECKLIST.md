@@ -309,6 +309,8 @@ retrieval, or prompt injection.
 - [ ] When later PRs enable retrieval, verify peer-DM scope
       `dm:{conv_id}` never appears in any other DM, and group scope
       `group:{group_id}` is visible only to current members/admins.
+- [ ] Enable `chat_memory_enabled=true`, `chat_memory_peer_dm_enabled=true`, `chat_memory_event_ledger_enabled=true`. Run backfill on a test DM with `--write`. Ask Steve "how many times did we talk about gym?" and "when was the last time I went to the gym?" — confirm `=== RELEVANT OLDER MEMORY ===` and `=== STRUCTURED THREAD COUNTERS ===` sections appear in the prompt (check AI usage log for `steve_chat_memory_embed` row and Firestore chunk `embedding` field). With flags off, sections do not appear and no embedding calls are made.
+- [ ] Verify `should_include_memory_record` excludes stale/invalidated/deleted records and reset timestamps.
 
 ## §12 — Steve DM Polish
 
@@ -344,7 +346,25 @@ The chat list is rendered with `flex-direction: column-reverse`, so `scrollTop =
 - [ ] **Load older trigger**: scroll up to the visual top of the loaded set. A "Load older messages" affordance appears and auto-loads when within ~100px of the top; the visible position does **not** jump after older messages prepend. (The page must not adjust `scrollTop` manually after the prepend — column-reverse preserves the anchor.)
 - [ ] **Keyboard open/close**: tap the composer, then dismiss the keyboard. Composer + inset transition smoothly; newest bubble remains visible above the composer at both states.
 
-## §13 — Steve Platform Manual KB
+## §13 — Chat Thread Search
+
+Run after any change to per-thread keyword search in DMs or Group chats.
+
+- [ ] **DM search entry point**: Open a DM thread. Tap the search icon in the header (magnifying glass, before the ellipsis). A modal search panel opens with focus on the input.
+- [ ] **DM search results**: Type a word (e.g. "dinner"). Results appear with debounced delay (~350ms). Count badge shows total matches (e.g. "47 matches").
+- [ ] **DM jump to message**: Tap a search result. Modal closes, thread scrolls to the matching message, message briefly highlights with teal animation.
+- [ ] **DM no results**: Search a word that doesn't exist. "No messages found" empty state appears.
+- [ ] **DM pagination**: In a thread with many matches, scroll to bottom of results and tap "Load more results". Additional matches load.
+- [ ] **DM cleared history respect**: If you have cleared chat history (deleted_chat_threads), search must NOT return messages before the clear timestamp.
+- [ ] **Group chat search entry point**: Open a group chat. Tap the search icon in the header. Same modal opens.
+- [ ] **Group chat search results**: Type a word. Results show sender name, message preview, and timestamp.
+- [ ] **Group chat jump to message**: Tap a result. Modal closes, thread scrolls to the matching message with highlight.
+- [ ] **Group cleared history respect**: If you have cleared group chat history (cleared_before_message_id), search must NOT return messages before the cleared ID.
+- [ ] **Non-member access**: A user who is not a group member must get 0 results (auth check in search service).
+- [ ] **Message not in loaded window**: Jump to an old message that isn't in the current loaded window. Console logs "Search target not in loaded window" (future enhancement to load window around target).
+- [ ] **Media-only messages**: Search results for messages with only images/videos/voice show appropriate media type previews ("📷 Photo", "🎬 Video", "🎤 Voice").
+
+## §13a — Steve Platform Manual KB
 
 Run after any change to Steve's platform manual, persona, platform-question routing, or feedback queue.
 

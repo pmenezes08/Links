@@ -46,13 +46,13 @@ Database name: env `FIRESTORE_DATABASE` (default **`cpoint`**).
 | `posts`, `post_views` | `init_database.py`, `post_views.py` | Feed posts + view counts. |
 | `replies`, `reactions`, `reply_reactions` | `init_database.py` | Threading and emoji reactions. |
 | `followers` | monolith | Follow graph. |
-| `messages` | `init_database.py`, monolith | DM storage (primary); Firestore mirrors. Columns include media paths and **`file_path` / `file_name`** for PDF attachments (`dm_chats_tables.ensure_messages_document_columns`). |
+| `messages` | `init_database.py`, monolith | DM storage (primary); Firestore mirrors. Columns include media paths and **`file_path` / `file_name`** for PDF attachments (`dm_chats_tables.ensure_messages_document_columns`). **FULLTEXT index `ft_message`** on `message` column for per-thread keyword search (`dm_chats_tables.ensure_fulltext_search_indexes`). |
 
 ### Group chat & DMs (SQL)
 
 | Table | Role |
 |-------|------|
-| `group_chats`, `group_chat_members`, `group_chat_messages` (incl. **`file_path` / `file_name`** for PDFs), `group_message_reactions`, `group_chat_read_receipts`, `group_chat_presence`, `steve_suppressed_topics` | Group chat + Steve-in-group (`group_chat` blueprint + monolith). |
+| `group_chats`, `group_chat_members`, `group_chat_messages` (incl. **`file_path` / `file_name`** for PDFs, **FULLTEXT index `ft_message_text`** on `message_text` for per-thread keyword search), `group_message_reactions`, `group_chat_read_receipts`, `group_chat_presence`, `steve_suppressed_topics` | Group chat + Steve-in-group (`group_chat` blueprint + monolith). |
 
 Also: **`groups`** (optional **`steve_agent_enabled`**, **`steve_agent_preset`**, **`steve_proactive_enabled`**), **`group_members`**, **`group_posts`** (optional **`ask_steve`**, **`auto_steve_used_count`**, **`agent_cap_notice_shown`**), **`group_steve_agent_schedule`** (delayed first Steve reply; `bodybuilding_app.ensure_tables`), **`group_post_views`** (group post view counts; not community `post_views` / `posts` FK), **`group_replies`**, **`group_reply_views`** (per-viewer counts for thread UI; not the community `reply_views` table), reaction tables, **`group_community_key_posts`**, **`group_user_key_posts`** (created/ensured from `backend/blueprints/group_feed.py` + monolith `ensure_tables` in `bodybuilding_app.py`). HTTP: **`group_feed`** blueprint (photos, key posts, group post/reply view APIs, reply delete — not group chat). Steve **group agent:** **`docs/STEVE_GROUP_AGENT.md`**, cron **`/api/cron/group-steve-agent-due`**.
 

@@ -29,6 +29,7 @@ import {
   shouldClientBlockSteveIntent,
 } from '../utils/steveClientGate'
 import { sendGroupImageMessage, sendGroupMultiMedia } from '../chat/groupChatMediaSenders'
+import ChatThreadSearch from '../chat/ChatThreadSearch'
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
 import { SENDING_MEDIA_LABEL, sendGroupDocumentMessage } from '../chat/mediaSenders'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
@@ -359,6 +360,7 @@ export default function GroupChatThread() {
     ensurePinnedToBottom,
     scrollToBottomSmooth,
     notifyMessagesSettled,
+    scrollToMessage,
     showScrollDown,
     lastMessageRef,
     pendingNewCount,
@@ -383,6 +385,14 @@ export default function GroupChatThread() {
 
   const notifyMessagesSettledRef = useRef(notifyMessagesSettled)
   notifyMessagesSettledRef.current = notifyMessagesSettled
+
+  const [searchOpen, setSearchOpen] = useState(false)
+  const handleSearchJump = useCallback((messageId: number | string) => {
+    const found = scrollToMessage(messageId)
+    if (!found) {
+      console.debug('Search target not in loaded window:', messageId)
+    }
+  }, [scrollToMessage])
 
   // Format recording time
   const formatRecordingTime = (ms: number) => {
@@ -2075,6 +2085,14 @@ export default function GroupChatThread() {
               {group?.members.length} members
             </div>
           </div>
+          <button
+            type="button"
+            className="p-2 rounded-full hover:bg-white/10 transition-colors"
+            aria-label="Search messages"
+            onClick={() => setSearchOpen(true)}
+          >
+            <i className="fa-solid fa-magnifying-glass text-white/70" />
+          </button>
           <button 
             type="button"
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
@@ -3613,6 +3631,14 @@ export default function GroupChatThread() {
             </button>
           </div>
         }
+      />
+
+      <ChatThreadSearch
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onJumpToMessage={handleSearchJump}
+        threadType="group"
+        threadId={group_id || ''}
       />
 
     </div>

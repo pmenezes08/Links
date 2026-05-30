@@ -36,6 +36,7 @@ import {
   chatProfileDeviceCacheKey,
 } from '../utils/chatThreadsCache'
 import { sendImageMessage, sendVideoMessage, sendMultiMediaMessage, sendDocumentMessage, SENDING_MEDIA_LABEL, type UploadProgress } from '../chat/mediaSenders'
+import ChatThreadSearch from '../chat/ChatThreadSearch'
 import type { ChatMessage } from '../types/chat'
 
 // Import utilities and components from chat module
@@ -356,6 +357,7 @@ export default function ChatThread(){
     scrollToBottomSmooth,
     ensurePinnedToBottom,
     notifyMessagesSettled,
+    scrollToMessage,
     showScrollDown,
     lastMessageRef,
     pendingNewCount,
@@ -380,6 +382,14 @@ export default function ChatThread(){
 
   const notifyMessagesSettledRef = useRef(notifyMessagesSettled)
   notifyMessagesSettledRef.current = notifyMessagesSettled
+
+  const [searchOpen, setSearchOpen] = useState(false)
+  const handleSearchJump = useCallback((messageId: number | string) => {
+    const found = scrollToMessage(messageId)
+    if (!found) {
+      console.debug('Search target not in loaded window:', messageId)
+    }
+  }, [scrollToMessage])
 
   const mergeHydratedMessages = useCallback((processed: Message[], prev: Message[]) => {
     const serverIds = new Set(processed.map(m => String(m.id)))
@@ -2279,6 +2289,14 @@ export default function ChatThread(){
             </div>
             {/* Online/typing label removed as requested */}
           </div>
+          <button
+            type="button"
+            className="p-2 rounded-full hover:bg-white/10 transition-colors"
+            aria-label="Search messages"
+            onClick={() => setSearchOpen(true)}
+          >
+            <i className="fa-solid fa-magnifying-glass text-white/70" />
+          </button>
           <button 
             type="button"
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
@@ -3792,6 +3810,14 @@ export default function ChatThread(){
         onCancel={cancelMediaPreview}
         onRemove={removeMediaFromPreview}
         onSend={confirmSendMedia}
+      />
+
+      <ChatThreadSearch
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onJumpToMessage={handleSearchJump}
+        threadType="dm"
+        threadId={username || ''}
       />
     </>
   )

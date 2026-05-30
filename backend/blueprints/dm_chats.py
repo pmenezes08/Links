@@ -602,3 +602,25 @@ def react_to_message():
         emoji=emoji,
     )
     return jsonify(payload), status
+
+
+@dm_chats_bp.route("/api/dm/search", methods=["GET"])
+@_login_required
+@_handle_broken_pipe
+def api_dm_search():
+    username = session.get("username")
+    other_user = request.args.get("other_user", "").strip()
+    query = request.args.get("q", "").strip()
+    if not other_user or not query:
+        return jsonify({"success": False, "error": "other_user and q required"}), 400
+    try:
+        limit = min(int(request.args.get("limit", 20)), 100)
+    except (ValueError, TypeError):
+        limit = 20
+    try:
+        offset = max(int(request.args.get("offset", 0)), 0)
+    except (ValueError, TypeError):
+        offset = 0
+    from backend.services.chat_search import search_dm_thread
+    total, messages, has_more = search_dm_thread(username, other_user, query, limit=limit, offset=offset)
+    return jsonify({"success": True, "total": total, "messages": messages, "has_more": has_more})

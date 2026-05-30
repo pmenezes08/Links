@@ -247,6 +247,20 @@ export function useChatThreadScroll({
     [listRef],
   )
 
+  const scrollToMessage = useCallback(
+    (targetId: string | number): boolean => {
+      const stack = messageStackRef.current
+      if (!stack) return false
+      const el = stack.querySelector(`[data-message-id="${targetId}"]`) as HTMLElement | null
+      if (!el) return false
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      el.classList.add('chat-search-highlight')
+      setTimeout(() => el.classList.remove('chat-search-highlight'), 2000)
+      return true
+    },
+    [],
+  )
+
   return {
     messageStackRef,
     lastMessageRef: setLastMessageNode,
@@ -254,6 +268,7 @@ export function useChatThreadScroll({
     scrollToBottomSmooth,
     ensurePinnedToBottom,
     notifyMessagesSettled,
+    scrollToMessage,
     userHasScrolledRef,
     showScrollDown,
     setShowScrollDown,
