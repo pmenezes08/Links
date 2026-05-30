@@ -58,12 +58,8 @@ def search_dm_thread(
             except Exception:
                 pass
 
-            if USE_MYSQL:
-                search_clause = f" AND MATCH(message) AGAINST({ph} IN NATURAL LANGUAGE MODE)"
-                search_params = (query,)
-            else:
-                search_clause = f" AND message LIKE {ph}"
-                search_params = (f"%{query}%",)
+            search_clause = f" AND message LIKE {ph}"
+            search_params = (f"%{query}%",)
 
             full_where = f"{where}{deleted_clause}{search_clause}"
             count_params = base_params + deleted_params + search_params
@@ -195,12 +191,8 @@ def search_group_thread(
                 where += f" AND m.id > {ph}"
                 params.append(cleared_before)
 
-            if USE_MYSQL:
-                where += f" AND MATCH(m.message_text) AGAINST({ph} IN NATURAL LANGUAGE MODE)"
-                params.append(query)
-            else:
-                where += f" AND m.message_text LIKE {ph}"
-                params.append(f"%{query}%")
+            where += f" AND m.message_text LIKE {ph}"
+            params.append(f"%{query}%")
 
             c.execute(
                 f"SELECT COUNT(*) FROM group_chat_messages m WHERE {where}",
