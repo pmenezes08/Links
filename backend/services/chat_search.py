@@ -23,6 +23,7 @@ def search_dm_thread(
     offset: int = 0,
 ) -> tuple[int, list[dict], bool]:
     """Return ``(total_count, messages, has_more)`` for a keyword search in a DM thread."""
+    logger.info("search_dm_thread called: viewer=%s, other=%s, query=%s", viewer, other_username, query)
     try:
         from backend.services.dm_human_thread import (
             ensure_human_dm_thread_column,
@@ -32,6 +33,7 @@ def search_dm_thread(
 
         ph = get_sql_placeholder()
         thr_key = human_pair_thread_key(viewer, other_username)
+        logger.info("search_dm_thread: ph=%s, thr_key=%s, is_steve=%s", ph, thr_key, is_private_steve_dm_peer(other_username))
 
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -52,6 +54,8 @@ def search_dm_thread(
                     f" OR (sender = 'steve' AND human_dm_thread = {ph}))"
                 )
                 base_params = (viewer, other_username, other_username, viewer, thr_key)
+            
+            logger.info("search_dm_thread: where=%s, base_params=%s", where, base_params)
 
             # deleted_at filter (one-sided clear)
             deleted_clause = ""
@@ -76,8 +80,13 @@ def search_dm_thread(
             full_where = f"{where}{deleted_clause}{search_clause}"
             count_params = base_params + deleted_params + search_params
 
-            c.execute(f"SELECT COUNT(*) FROM messages WHERE {full_where}", count_params)
+            count_sql = f"SELECT COUNT(*) FROM messages WHERE {full_where}"
+            logger.info("search_dm_thread COUNT SQL: %s", count_sql)
+            logger.info("search_dm_thread COUNT params: %s", count_params)
+            
+            c.execute(count_sql, count_params)
             total = (c.fetchone() or (0,))[0]
+            logger.info("search_dm_thread COUNT result: %s", total)
 
             has_media_paths = True
             has_file_cols = True
@@ -148,9 +157,10 @@ def search_dm_thread(
                     "file_name": _g("file_name") if has_file_cols else None,
                 })
 
+            logger.info("search_dm_thread returning: total=%s, msg_count=%s", total, len(messages))
             return total, messages, len(messages) == limit
-    except Exception:
-        logger.exception("search_dm_thread failed for %s <-> %s", viewer, other_username)
+    except Exception as e:
+        logger.exception("search_dm_thread EXCEPTION for %s <-> %s: %s", viewer, other_username, e)
         return 0, [], False
 
 
