@@ -172,6 +172,7 @@ def search_group_thread(
     offset: int = 0,
 ) -> tuple[int, list[dict], bool]:
     """Return ``(total_count, messages, has_more)`` for a keyword search in a group chat."""
+    logger.info("[GRP-SEARCH] called: viewer=%s group_id=%s query=%r", viewer, group_id, query)
     try:
         ph = get_sql_placeholder()
 
@@ -183,7 +184,10 @@ def search_group_thread(
                 f"SELECT 1 FROM group_chat_members WHERE group_id = {ph} AND LOWER(username) = LOWER({ph})",
                 (group_id, viewer),
             )
-            if not c.fetchone():
+            member_row = c.fetchone()
+            logger.info("[GRP-SEARCH] membership check: group_id=%s viewer=%s result=%s", group_id, viewer, member_row)
+            if not member_row:
+                logger.info("[GRP-SEARCH] DENIED — viewer not a member")
                 return 0, [], False
 
             # cleared_before filter
@@ -199,8 +203,10 @@ def search_group_thread(
                     cleared_before = int(
                         rr["cleared_before_message_id"] if hasattr(rr, "keys") else rr[0]
                     ) or 0
-            except Exception:
-                pass
+            except Exception as cb_err:
+                logger.warning("[GRP-SEARCH] cleared_before query error: %s", cb_err)
+
+            logger.info("[GRP-SEARCH] cleared_before=%s", cleared_before)
 
             where = f"m.group_id = {ph} AND m.is_deleted = 0"
             params: list = [group_id]
@@ -212,12 +218,15 @@ def search_group_thread(
             where += f" AND m.message_text LIKE {ph}"
             params.append(f"%{query}%")
 
+            logger.info("[GRP-SEARCH] WHERE=%s params=%s", where, params)
+
             c.execute(
                 f"SELECT COUNT(*) AS cnt FROM group_chat_messages m WHERE {where}",
                 tuple(params),
             )
             row = c.fetchone()
             total = row["cnt"] if row else 0
+            logger.info("[GRP-SEARCH] COUNT result=%s", total)
 
             has_file_cols = True
             try:
@@ -289,9 +298,10 @@ def search_group_thread(
                     "reaction": None,
                 })
 
+            logger.info("[GRP-SEARCH] returning total=%s msg_count=%s", total, len(messages))
             return total, messages, len(messages) == limit
-    except Exception:
-        logger.exception("search_group_thread failed for viewer=%s group=%s", viewer, group_id)
+    except Exception as exc:
+        logger.exception("[GRP-SEARCH] EXCEPTION viewer=%s group=%s: %s", viewer, group_id, exc)
         return 0, [], False
 
 
@@ -312,6 +322,7 @@ def fetch_dm_messages_around(
     Returns ``{"success": True, "messages": [...], "has_more_before": bool,
     "has_more_after": bool, "target_found": bool}``.
     """
+    logger.info("[DM-AROUND] called: viewer=%s other=%s around_id=%s", viewer, other_username, around_id)
     try:
         from backend.services.dm_human_thread import (
             ensure_human_dm_thread_column,
@@ -389,6 +400,14 @@ def fetch_dm_messages_around(
                 (r["id"] if hasattr(r, "keys") else r[0]) == around_id
                 for r in before_rows
             )
+
+            logger.info(
+                "[DM-AROUND] before_rows=%s after_rows=%s target_found=%s around_id=%s",
+                len(before_rows), len(after_rows), target_found, around_id,
+            )
+            if not target_found and before_rows:
+                ids_in_before = [(r["id"] if hasattr(r, "keys") else r[0]) for r in before_rows[:5]]
+                logger.info("[DM-AROUND] first IDs in before_rows: %s (type=%s), around_id type=%s", ids_in_before, type(ids_in_before[0]) if ids_in_before else None, type(around_id))
 
             all_rows = list(reversed(before_rows)) + after_rows
 

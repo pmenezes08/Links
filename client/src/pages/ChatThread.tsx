@@ -77,9 +77,7 @@ import { NativeIconButton } from '../components/NativeIconButton'
 import { mentionsSteve } from '../utils/steveClientGate'
 import SteveTypingIndicator from '../components/chat/SteveTypingIndicator'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
-import { useNativeStatusBar } from '../hooks/useNativeStatusBar'
 import { useAndroidBackButton } from '../hooks/useAndroidBackButton'
-import { Style } from '@capacitor/status-bar'
 import { hapticImpactLight } from '../utils/haptics'
 import {
   takePendingShareFilesOnce,
@@ -274,7 +272,6 @@ export default function ChatThread(){
   const shareAttachDoneRef = useRef(false)
   const composerRef = useRef<HTMLDivElement | null>(null)
 
-  useNativeStatusBar(Style.Dark)
   useResumeOutboxDrain()
 
   useAndroidBackButton({
@@ -390,7 +387,9 @@ export default function ChatThread(){
   const returnToLatestRef = useRef<() => void>(() => {})
 
   const handleSearchJump = useCallback(async (messageId: number | string): Promise<boolean> => {
-    if (scrollToMessage(messageId)) return true
+    const firstTry = scrollToMessage(messageId)
+    console.log('[SEARCH-JUMP] messageId=', messageId, 'firstTry=', firstTry, 'viewingHistory=', viewingHistoryRef.current)
+    if (firstTry) return true
     try {
       const params = new URLSearchParams({
         other_user: username || '',
@@ -398,8 +397,12 @@ export default function ChatThread(){
       })
       const res = await fetch(`/api/dm/messages_around?${params}`, { credentials: 'include' })
       const data = await res.json()
+      console.log('[SEARCH-JUMP] around_id response:', { success: data?.success, target_found: data?.target_found, msg_count: data?.messages?.length, messageId })
       if (!data?.success || !Array.isArray(data.messages)) return false
-      if (!data.target_found) return false
+      if (!data.target_found) {
+        console.warn('[SEARCH-JUMP] target_found=false, message IDs in response:', data.messages?.slice(0, 5)?.map((m: any) => m.id))
+        return false
+      }
       const processed: Message[] = data.messages.map((m: any) => ({
         ...m,
         isOptimistic: false,
@@ -410,11 +413,19 @@ export default function ChatThread(){
       setViewingHistory(true)
       skipNextPollsUntil.current = Date.now() + 60_000
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
-      return scrollToMessage(messageId)
-    } catch {
+      const retryResult = scrollToMessage(messageId)
+      console.log('[SEARCH-JUMP] retry scrollToMessage=', retryResult, 'messageId=', messageId)
+      if (!retryResult) {
+        const stack = messageStackRef?.current
+        const allIds = stack ? Array.from(stack.querySelectorAll('[data-message-id]')).slice(0, 10).map(e => e.getAttribute('data-message-id')) : []
+        console.warn('[SEARCH-JUMP] retry FAILED. First 10 DOM message IDs:', allIds, 'looking for:', String(messageId))
+      }
+      return retryResult
+    } catch (err) {
+      console.error('[SEARCH-JUMP] exception:', err)
       return false
     }
-  }, [scrollToMessage, username, setMessages, setHasMoreMessages, skipNextPollsUntil])
+  }, [scrollToMessage, username, setMessages, setHasMoreMessages, skipNextPollsUntil, messageStackRef])
 
   const mergeHydratedMessages = useCallback((processed: Message[], prev: Message[]) => {
     const serverIds = new Set(processed.map(m => String(m.id)))
@@ -2380,7 +2391,7 @@ export default function ChatThread(){
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
                   onClick={() => setHeaderMenuOpen(false)}
                 >
-                  <i className="fa-solid fa-user text-xs text-[#4db6ac]" />
+                  <i className="fa-solid fa-user text-xs text-cpoint-turquoise" />
                   <span>{t('chat.view_profile')}</span>
                 </Link>
                 <button
@@ -2390,7 +2401,7 @@ export default function ChatThread(){
                     navigate(`/chat/${username}/media`)
                   }}
                 >
-                  <i className="fa-solid fa-photo-film text-xs text-[#4db6ac]" />
+                  <i className="fa-solid fa-photo-film text-xs text-cpoint-turquoise" />
                   <span>{t('chat.view_media')}</span>
                 </button>
                 <button
@@ -2400,7 +2411,7 @@ export default function ChatThread(){
                     navigate(`/chat/${username}/documents`)
                   }}
                 >
-                  <i className="fa-solid fa-file-pdf text-xs text-[#4db6ac]" />
+                  <i className="fa-solid fa-file-pdf text-xs text-cpoint-turquoise" />
                   <span>{t('chat.view_documents')}</span>
                 </button>
                 {isSteveDm && (
@@ -2413,7 +2424,7 @@ export default function ChatThread(){
                       setEditingVaultId(null)
                     }}
                   >
-                    <i className="fa-solid fa-clock text-xs text-[#4db6ac]" aria-hidden />
+                    <i className="fa-solid fa-clock text-xs text-cpoint-turquoise" aria-hidden />
                     <span>{t('chat.reminder_vault')}</span>
                   </button>
                 )}
@@ -2440,7 +2451,7 @@ export default function ChatThread(){
                         .catch(() => alert(t('chat.reset_steve_context_failed')))
                     }}
                   >
-                    <i className="fa-solid fa-rotate text-xs text-[#4db6ac]" />
+                    <i className="fa-solid fa-rotate text-xs text-cpoint-turquoise" />
                     <span>{t('chat.reset_steve')}</span>
                   </button>
                 )}
@@ -2530,7 +2541,7 @@ export default function ChatThread(){
                   <button
                     className={`w-6 h-6 flex-shrink-0 rounded-full flex items-center justify-center border-2 transition-all ${
                       selectedMessages.has(m.id)
-                        ? 'bg-[#4db6ac] border-[#4db6ac]'
+                        ? 'bg-cpoint-turquoise border-cpoint-turquoise'
                         : 'bg-transparent border-white/40'
                     }`}
                     onClick={(e) => {
@@ -2697,12 +2708,12 @@ export default function ChatThread(){
         {/* Load older spinner / button — visually at the top of the inverted list. */}
         {loadingOlder && (
           <div className="flex justify-center py-3">
-            <i className="fa-solid fa-spinner fa-spin text-[#4db6ac] text-sm" />
+            <i className="fa-solid fa-spinner fa-spin text-cpoint-turquoise text-sm" />
           </div>
         )}
         {hasMoreMessages && !loadingOlder && (
           <div className="flex justify-center py-2">
-            <button onClick={loadOlderMessages} className="text-xs text-[#4db6ac] hover:text-[#4db6ac]/80">
+            <button onClick={loadOlderMessages} className="text-xs text-cpoint-turquoise hover:text-cpoint-turquoise/80">
               Load older messages
             </button>
           </div>
@@ -2756,7 +2767,7 @@ export default function ChatThread(){
     )}
     {showScrollDown && !isMultiSelectMode && !viewingHistory && (
       <button
-        className="fixed z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
+        className="fixed z-50 w-10 h-10 rounded-full bg-cpoint-turquoise text-black shadow-lg border border-cpoint-turquoise hover:brightness-110 flex items-center justify-center"
         style={{ 
           bottom: scrollButtonBottom,
           right: '22px'
@@ -2811,8 +2822,8 @@ export default function ChatThread(){
                 }}
               >
                 <ChatAttachMenuRow onClick={handlePhotoSelect}>
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
-                    <i className="fa-solid fa-image text-[#4db6ac] text-sm sm:text-base" />
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-cpoint-turquoise/20 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-image text-cpoint-turquoise text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
                     <div className="text-white font-medium text-sm sm:text-base">{t('chat.photos')}</div>
@@ -2820,8 +2831,8 @@ export default function ChatThread(){
                   </div>
                 </ChatAttachMenuRow>
                 <ChatAttachMenuRow onClick={handleCameraOpen}>
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
-                    <i className="fa-solid fa-camera text-[#4db6ac] text-sm sm:text-base" />
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-cpoint-turquoise/20 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-camera text-cpoint-turquoise text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
                     <div className="text-white font-medium text-sm sm:text-base">{t('chat.camera')}</div>
@@ -2829,8 +2840,8 @@ export default function ChatThread(){
                   </div>
                 </ChatAttachMenuRow>
                 <ChatAttachMenuRow onClick={() => { setShowAttachMenu(false); setGifPickerOpen(true) }}>
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
-                    <i className="fa-solid fa-images text-[#4db6ac] text-sm sm:text-base" />
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-cpoint-turquoise/20 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-images text-cpoint-turquoise text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
                     <div className="text-white font-medium text-sm sm:text-base">GIF</div>
@@ -2838,8 +2849,8 @@ export default function ChatThread(){
                   </div>
                 </ChatAttachMenuRow>
                 <ChatAttachMenuRow onClick={handleVideoSelect}>
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
-                    <i className="fa-solid fa-video text-[#4db6ac] text-sm sm:text-base" />
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-cpoint-turquoise/20 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-video text-cpoint-turquoise text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
                     <div className="text-white font-medium text-sm sm:text-base">{t('chat.video')}</div>
@@ -2847,8 +2858,8 @@ export default function ChatThread(){
                   </div>
                 </ChatAttachMenuRow>
                 <ChatAttachMenuRow onClick={handleDocumentSelect}>
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
-                    <i className="fa-solid fa-file-pdf text-[#4db6ac] text-sm sm:text-base" />
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-cpoint-turquoise/20 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-file-pdf text-cpoint-turquoise text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
                     <div className="text-white font-medium text-sm sm:text-base">{t('chat.document')}</div>
@@ -2865,7 +2876,7 @@ export default function ChatThread(){
               <div className="flex items-center gap-3">
                 <div className="flex-shrink-0">
                   {videoUploadProgress.stage === 'uploading' && (
-                    <i className="fa-solid fa-cloud-arrow-up text-[#4db6ac] animate-bounce" />
+                    <i className="fa-solid fa-cloud-arrow-up text-cpoint-turquoise animate-bounce" />
                   )}
                   {videoUploadProgress.stage === 'done' && (
                     <i className="fa-solid fa-check-circle text-green-400" />
@@ -2885,7 +2896,7 @@ export default function ChatThread(){
                   <div className="mt-1.5 h-1.5 bg-white/10 rounded-full overflow-hidden">
                     <div 
                       className={`h-full rounded-full transition-all duration-300 ${
-                        videoUploadProgress.stage === 'error' ? 'bg-red-400' : 'bg-[#4db6ac]'
+                        videoUploadProgress.stage === 'error' ? 'bg-red-400' : 'bg-cpoint-turquoise'
                       }`}
                       style={{ width: `${videoUploadProgress.progress}%` }}
                     />
@@ -2901,7 +2912,7 @@ export default function ChatThread(){
           {replyTo && (
             <div className="mb-2 flex items-stretch gap-0 bg-white/5 rounded-lg overflow-hidden">
               {/* WhatsApp-style left accent bar */}
-              <div className="w-1 bg-[#4db6ac] flex-shrink-0" />
+              <div className="w-1 bg-cpoint-turquoise flex-shrink-0" />
               <div className="flex-1 px-3 py-2 min-w-0 flex items-start gap-2">
                 {/* Media thumbnail preview */}
                 {replyTo.image_path && (
@@ -2924,7 +2935,7 @@ export default function ChatThread(){
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <div className="text-[12px] text-[#4db6ac] font-medium truncate">
+                  <div className="text-[12px] text-cpoint-turquoise font-medium truncate">
                     {replyTo.sender === 'You' ? 'You' : (otherProfile?.display_name || username || 'User')}
                   </div>
                   <div className="mt-0.5 text-[13px] text-white/70 whitespace-pre-wrap break-words leading-[1.25]">
@@ -3066,7 +3077,7 @@ export default function ChatThread(){
                   size="sm"
                   haptic="selection"
                   preventBlur
-                  className="!h-9 !w-9 !rounded-full bg-[#4db6ac] text-white hover:bg-[#45a99c]"
+                  className="!h-9 !w-9 !rounded-full bg-cpoint-turquoise text-white hover:brightness-95"
                   onPointerDown={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
@@ -3080,7 +3091,7 @@ export default function ChatThread(){
                 {/* Waveform placeholder / duration */}
                 <div className="flex-1 flex items-center gap-2">
                   <div className="flex-1 h-1.5 bg-white/20 rounded-full overflow-hidden">
-                    <div className="h-full bg-[#4db6ac] w-full" />
+                    <div className="h-full bg-cpoint-turquoise w-full" />
                   </div>
                   <span className="text-xs text-white/70 tabular-nums flex-shrink-0">
                     {formatRecordingTime(((recordingPreview as any).duration || 0) * 1000)}
@@ -3212,7 +3223,7 @@ export default function ChatThread(){
                 size="lg"
                 haptic="medium"
                 preventBlur
-                className="!bg-[#4db6ac] text-white hover:!bg-[#45a99c]"
+                className="!bg-cpoint-turquoise text-white hover:!brightness-95"
                 onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
@@ -3232,7 +3243,7 @@ export default function ChatThread(){
                 size="lg"
                 haptic="medium"
                 preventBlur
-                className="!bg-[#4db6ac] text-white hover:!bg-[#45a99c]"
+                className="!bg-cpoint-turquoise text-white hover:!brightness-95"
                 onClick={(e) => {
                   if (sending) return
                   e.preventDefault()
@@ -3258,7 +3269,7 @@ export default function ChatThread(){
                 sending 
                   ? 'bg-gray-600 text-gray-300' 
                   : draftDisplay.trim()
-                    ? 'bg-[#4db6ac] text-black'
+                    ? 'bg-cpoint-turquoise text-black'
                     : 'bg-white/12 text-white/70'
               } active:scale-95`}
               onPointerDown={(e) => {
@@ -3377,7 +3388,7 @@ export default function ChatThread(){
                   // Try again after user has potentially changed settings
                   setTimeout(() => checkMicrophonePermission(), 500)
                 }}
-                className="flex-1 px-4 py-3 bg-[#4db6ac] text-black rounded-xl hover:bg-[#45a99c] transition-colors font-medium"
+                className="flex-1 px-4 py-3 bg-cpoint-turquoise text-black rounded-xl hover:brightness-95 transition-colors font-medium"
               >
                 <i className="fa-solid fa-refresh mr-2" />
                 Try Again
@@ -3393,8 +3404,8 @@ export default function ChatThread(){
           <div className="bg-[#1a1a1a] rounded-2xl border border-white/20 p-6 max-w-sm w-full mx-4">
             {/* Header */}
             <div className="text-center mb-6">
-              <div className="w-16 h-16 bg-[#4db6ac]/20 rounded-full flex items-center justify-center mx-auto mb-3">
-                <i className="fa-solid fa-microphone text-[#4db6ac] text-2xl" />
+              <div className="w-16 h-16 bg-cpoint-turquoise/20 rounded-full flex items-center justify-center mx-auto mb-3">
+                <i className="fa-solid fa-microphone text-cpoint-turquoise text-2xl" />
               </div>
               <h3 className="text-white text-lg font-medium mb-2">{t('chat.microphone_access')}</h3>
               <p className="text-white/70 text-sm leading-relaxed">
@@ -3406,15 +3417,15 @@ export default function ChatThread(){
             {/* Features list */}
             <div className="mb-6 space-y-2">
               <div className="flex items-center gap-3 text-sm text-white/80">
-                <i className="fa-solid fa-check text-[#4db6ac] text-xs" />
+                <i className="fa-solid fa-check text-cpoint-turquoise text-xs" />
                 <span>{t('chat.mic_record_voice')}</span>
               </div>
               <div className="flex items-center gap-3 text-sm text-white/80">
-                <i className="fa-solid fa-check text-[#4db6ac] text-xs" />
+                <i className="fa-solid fa-check text-cpoint-turquoise text-xs" />
                 <span>{t('chat.mic_preview_before_send')}</span>
               </div>
               <div className="flex items-center gap-3 text-sm text-white/80">
-                <i className="fa-solid fa-check text-[#4db6ac] text-xs" />
+                <i className="fa-solid fa-check text-cpoint-turquoise text-xs" />
                 <span>{t('chat.mic_audio_private')}</span>
               </div>
             </div>
@@ -3429,7 +3440,7 @@ export default function ChatThread(){
               </button>
               <button
                 onClick={requestMicrophoneAccess}
-                className="flex-1 px-4 py-3 bg-[#4db6ac] text-black rounded-xl hover:bg-[#45a99c] transition-colors font-medium"
+                className="flex-1 px-4 py-3 bg-cpoint-turquoise text-black rounded-xl hover:brightness-95 transition-colors font-medium"
               >
                 <i className="fa-solid fa-microphone mr-2" />
                 Allow Access
@@ -3447,7 +3458,7 @@ export default function ChatThread(){
           <div className="absolute inset-0 bg-black/60" />
           <div className="relative bg-[#1a1a2e] rounded-2xl border border-white/15 w-[80%] max-w-xs p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-3">
-              <i className="fa-solid fa-globe text-[#4db6ac]" />
+              <i className="fa-solid fa-globe text-cpoint-turquoise" />
               <span className="text-white font-semibold text-sm">{t('chat.translate_to')}</span>
             </div>
             <div className="space-y-1">
@@ -3500,7 +3511,7 @@ export default function ChatThread(){
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 flex-shrink-0">
               <span className="text-white font-semibold text-sm flex items-center gap-2">
-                <i className="fa-solid fa-clock text-[#4db6ac]" aria-hidden /> Reminder Vault
+                <i className="fa-solid fa-clock text-cpoint-turquoise" aria-hidden /> Reminder Vault
               </span>
               <button
                 type="button"
@@ -3534,14 +3545,14 @@ export default function ChatThread(){
                           value={editVaultText}
                           onChange={(e) => setEditVaultText(e.target.value)}
                           rows={3}
-                          className="w-full bg-white/10 border border-white/20 rounded-lg px-2 py-2 text-white text-sm resize-none focus:outline-none focus:border-[#4db6ac]"
+                          className="w-full bg-white/10 border border-white/20 rounded-lg px-2 py-2 text-white text-sm resize-none focus:outline-none focus:border-cpoint-turquoise"
                         />
                         <label className="block text-[11px] uppercase tracking-wide text-white/45 mt-2">{t('chat.reminder_when')}</label>
                         <input
                           type="datetime-local"
                           value={editVaultIso}
                           onChange={(e) => setEditVaultIso(e.target.value)}
-                          className="w-full bg-white/10 border border-white/20 rounded-lg px-2 py-2 text-white text-sm focus:outline-none focus:border-[#4db6ac]"
+                          className="w-full bg-white/10 border border-white/20 rounded-lg px-2 py-2 text-white text-sm focus:outline-none focus:border-cpoint-turquoise"
                         />
                         <div className="flex gap-2 justify-end pt-1">
                           <button
@@ -3553,7 +3564,7 @@ export default function ChatThread(){
                           </button>
                           <button
                             type="button"
-                            className="px-3 py-1.5 text-xs rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110"
+                            className="px-3 py-1.5 text-xs rounded-lg bg-cpoint-turquoise text-black font-medium hover:brightness-110"
                             onClick={async () => {
                               try {
                                 const fireIso = editVaultIso
@@ -3624,7 +3635,7 @@ export default function ChatThread(){
                         </div>
                         <button
                           type="button"
-                          className="mt-2 text-xs text-[#4db6ac] hover:underline"
+                          className="mt-2 text-xs text-cpoint-turquoise hover:underline"
                           onClick={() => {
                             setEditingVaultId(row.id)
                             setEditVaultText(row.reminder_text)
@@ -3663,13 +3674,13 @@ export default function ChatThread(){
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-2 mb-3">
-              <i className="fa-solid fa-wand-magic-sparkles text-[#4db6ac]" />
+              <i className="fa-solid fa-wand-magic-sparkles text-cpoint-turquoise" />
               <span className="text-white font-semibold text-sm">{t('chat.edit_summary')}</span>
             </div>
             <textarea
               value={editSummaryText}
               onChange={(e) => setEditSummaryText(e.target.value)}
-              className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-3 text-sm text-white resize-none focus:outline-none focus:border-[#4db6ac] leading-relaxed"
+              className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-3 text-sm text-white resize-none focus:outline-none focus:border-cpoint-turquoise leading-relaxed"
               rows={4}
               autoFocus
               placeholder={t('chat.edit_summary_placeholder')}
@@ -3704,7 +3715,7 @@ export default function ChatThread(){
                     setMessages(prev => prev.map(m => matchMsg(m) ? { ...m, audio_summary: oldSummary } : m))
                   }
                 }}
-                className="px-4 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110"
+                className="px-4 py-2 text-sm rounded-lg bg-cpoint-turquoise text-black font-medium hover:brightness-110"
               >{t('chat.save')}</button>
             </div>
           </div>
@@ -3775,7 +3786,7 @@ export default function ChatThread(){
                       setPreviewImage(null)
                     }
                   }}
-                  className="flex-1 max-w-[140px] px-4 py-3 rounded-xl bg-[#4db6ac] text-black hover:brightness-110 text-sm font-medium flex items-center justify-center gap-2"
+                  className="flex-1 max-w-[140px] px-4 py-3 rounded-xl bg-cpoint-turquoise text-black hover:brightness-110 text-sm font-medium flex items-center justify-center gap-2"
                 >
                   <i className="fa-solid fa-paper-plane" />
                   Send
