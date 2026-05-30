@@ -387,9 +387,7 @@ export default function ChatThread(){
   const returnToLatestRef = useRef<() => void>(() => {})
 
   const handleSearchJump = useCallback(async (messageId: number | string): Promise<boolean> => {
-    const firstTry = scrollToMessage(messageId)
-    console.log('[SEARCH-JUMP] messageId=', messageId, 'firstTry=', firstTry, 'viewingHistory=', viewingHistoryRef.current)
-    if (firstTry) return true
+    if (scrollToMessage(messageId)) return true
     try {
       const params = new URLSearchParams({
         other_user: username || '',
@@ -397,12 +395,8 @@ export default function ChatThread(){
       })
       const res = await fetch(`/api/dm/messages_around?${params}`, { credentials: 'include' })
       const data = await res.json()
-      console.log('[SEARCH-JUMP] around_id response:', { success: data?.success, target_found: data?.target_found, msg_count: data?.messages?.length, messageId })
       if (!data?.success || !Array.isArray(data.messages)) return false
-      if (!data.target_found) {
-        console.warn('[SEARCH-JUMP] target_found=false, message IDs in response:', data.messages?.slice(0, 5)?.map((m: any) => m.id))
-        return false
-      }
+      if (!data.target_found) return false
       const processed: Message[] = data.messages.map((m: any) => ({
         ...m,
         isOptimistic: false,
@@ -412,20 +406,16 @@ export default function ChatThread(){
       viewingHistoryRef.current = true
       setViewingHistory(true)
       skipNextPollsUntil.current = Date.now() + 60_000
-      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
-      const retryResult = scrollToMessage(messageId)
-      console.log('[SEARCH-JUMP] retry scrollToMessage=', retryResult, 'messageId=', messageId)
-      if (!retryResult) {
-        const stack = messageStackRef?.current
-        const allIds = stack ? Array.from(stack.querySelectorAll('[data-message-id]')).slice(0, 10).map(e => e.getAttribute('data-message-id')) : []
-        console.warn('[SEARCH-JUMP] retry FAILED. First 10 DOM message IDs:', allIds, 'looking for:', String(messageId))
+      // Wait for React to commit the new DOM — retry up to 5 frames
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await new Promise(r => requestAnimationFrame(() => setTimeout(r, 50)))
+        if (scrollToMessage(messageId)) return true
       }
-      return retryResult
-    } catch (err) {
-      console.error('[SEARCH-JUMP] exception:', err)
+      return false
+    } catch {
       return false
     }
-  }, [scrollToMessage, username, setMessages, setHasMoreMessages, skipNextPollsUntil, messageStackRef])
+  }, [scrollToMessage, username, setMessages, setHasMoreMessages, skipNextPollsUntil])
 
   const mergeHydratedMessages = useCallback((processed: Message[], prev: Message[]) => {
     const serverIds = new Set(processed.map(m => String(m.id)))

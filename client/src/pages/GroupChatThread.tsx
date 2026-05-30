@@ -11,9 +11,7 @@ import { useAudioRecorder } from '../components/useAudioRecorder'
 import { GroupMessageRow } from '../chat/GroupMessageRow'
 import { getDateKey, normalizeMediaPath, useChatThreadChrome, chatHapticSend, ChatAttachMenuRow, useGroupMessagePoll, ChatMediaPreviewModal, ChatMediaViewerModal, ChatSelectionBar, NewMessagesChip, useResumeOutboxDrain, ChatComposerPortal, ChatComposerCard, ChatVirtualMessageList, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION, readStaleDeviceCache, markThreadCachePainted, isCachePaintedForGen, isUnchangedFromCacheSnapshot, hydrateThreadFromIndexedDb } from '../chat'
 import { groupChatInfoDeviceCacheKey, groupChatMessagesDeviceCacheKey } from '../utils/chatThreadsCache'
-import { useNativeStatusBar } from '../hooks/useNativeStatusBar'
 import { useAndroidBackButton } from '../hooks/useAndroidBackButton'
-import { Style } from '@capacitor/status-bar'
 import { hapticImpactLight } from '../utils/haptics'
 import { NativeIconButton } from '../components/NativeIconButton'
 import {
@@ -295,7 +293,6 @@ export default function GroupChatThread() {
   const composerRef = useRef<HTMLDivElement | null>(null)
   const draftSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  useNativeStatusBar(Style.Dark)
   useResumeOutboxDrain()
 
   useAndroidBackButton({
@@ -409,8 +406,11 @@ export default function GroupChatThread() {
       viewingHistoryRef.current = true
       setViewingHistory(true)
       skipNextPollsUntil.current = Date.now() + 60_000
-      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
-      return scrollToMessage(messageId)
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await new Promise(r => requestAnimationFrame(() => setTimeout(r, 50)))
+        if (scrollToMessage(messageId)) return true
+      }
+      return false
     } catch {
       return false
     }
@@ -2105,8 +2105,8 @@ export default function GroupChatThread() {
           >
             <i className="fa-solid fa-arrow-left text-white" />
           </button>
-          <div className="w-9 h-9 rounded-full bg-[#4db6ac]/20 flex items-center justify-center">
-            <i className="fa-solid fa-users text-[#4db6ac] text-sm" />
+          <div className="w-9 h-9 rounded-full bg-cpoint-turquoise/20 flex items-center justify-center">
+            <i className="fa-solid fa-users text-cpoint-turquoise text-sm" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-semibold truncate text-white text-sm">
@@ -2153,7 +2153,7 @@ export default function GroupChatThread() {
                     setShowMembers(true)
                   }}
                 >
-                  <i className="fa-solid fa-users text-xs text-[#4db6ac]" />
+                  <i className="fa-solid fa-users text-xs text-cpoint-turquoise" />
                   <span>{t('chat.view_members')}</span>
                 </button>
                 <button
@@ -2163,7 +2163,7 @@ export default function GroupChatThread() {
                     navigate(`/group_chat/${group_id}/media`)
                   }}
                 >
-                  <i className="fa-solid fa-photo-film text-xs text-[#4db6ac]" />
+                  <i className="fa-solid fa-photo-film text-xs text-cpoint-turquoise" />
                   <span>{t('chat.view_media')}</span>
                 </button>
                 <button
@@ -2173,7 +2173,7 @@ export default function GroupChatThread() {
                     navigate(`/group_chat/${group_id}/documents`)
                   }}
                 >
-                  <i className="fa-solid fa-file-pdf text-xs text-[#4db6ac]" />
+                  <i className="fa-solid fa-file-pdf text-xs text-cpoint-turquoise" />
                   <span>{t('chat.view_documents')}</span>
                 </button>
                 <button
@@ -2196,7 +2196,7 @@ export default function GroupChatThread() {
                       .catch(() => alert(t('chat.reset_steve_context_failed')))
                   }}
                 >
-                  <i className="fa-solid fa-rotate text-xs text-[#4db6ac]" />
+                  <i className="fa-solid fa-rotate text-xs text-cpoint-turquoise" />
                   <span>{t('chat.reset_steve')}</span>
                 </button>
                 <button
@@ -2207,7 +2207,7 @@ export default function GroupChatThread() {
                     loadAvailableMembers()
                   }}
                 >
-                  <i className="fa-solid fa-user-plus text-xs text-[#4db6ac]" />
+                  <i className="fa-solid fa-user-plus text-xs text-cpoint-turquoise" />
                   <span>{t('chat.add_members_action')}</span>
                 </button>
                 {group?.members.find(m => m.username === currentUsername)?.is_admin && (
@@ -2224,7 +2224,7 @@ export default function GroupChatThread() {
                         .catch(() => {})
                     }}
                   >
-                    <i className="fa-solid fa-gear text-xs text-[#4db6ac]" />
+                    <i className="fa-solid fa-gear text-xs text-cpoint-turquoise" />
                     <span>{t('chat.manage_group')}</span>
                   </button>
                 )}
@@ -2399,12 +2399,12 @@ export default function GroupChatThread() {
             {/* Load older / empty state — visually at the top of the inverted list. */}
             {loadingOlder && (
               <div className="flex justify-center py-3">
-                <i className="fa-solid fa-spinner fa-spin text-[#4db6ac] text-sm" />
+                <i className="fa-solid fa-spinner fa-spin text-cpoint-turquoise text-sm" />
               </div>
             )}
             {hasMoreMessages && !loadingOlder && (
               <div className="flex justify-center py-2">
-                <button onClick={loadOlderMessages} className="text-xs text-[#4db6ac] hover:text-[#4db6ac]/80">
+                <button onClick={loadOlderMessages} className="text-xs text-cpoint-turquoise hover:text-cpoint-turquoise/80">
                   Load older messages
                 </button>
               </div>
@@ -2467,7 +2467,7 @@ export default function GroupChatThread() {
       {showScrollDown && !selectionMode && !viewingHistory && (
         <button
           type="button"
-          className="fixed z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
+          className="fixed z-50 w-10 h-10 rounded-full bg-cpoint-turquoise text-black shadow-lg border border-cpoint-turquoise hover:brightness-110 flex items-center justify-center"
           style={{
             bottom: scrollButtonBottom,
             right: '22px',
@@ -2523,8 +2523,8 @@ export default function GroupChatThread() {
                 }}
               >
                 <ChatAttachMenuRow onClick={handlePhotoSelect}>
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
-                    <i className="fa-solid fa-image text-[#4db6ac] text-sm sm:text-base" />
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-cpoint-turquoise/20 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-image text-cpoint-turquoise text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
                     <div className="text-white font-medium text-sm sm:text-base">{t('chat.photos')}</div>
@@ -2532,8 +2532,8 @@ export default function GroupChatThread() {
                   </div>
                 </ChatAttachMenuRow>
                 <ChatAttachMenuRow onClick={handleCameraOpen}>
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
-                    <i className="fa-solid fa-camera text-[#4db6ac] text-sm sm:text-base" />
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-cpoint-turquoise/20 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-camera text-cpoint-turquoise text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
                     <div className="text-white font-medium text-sm sm:text-base">{t('chat.camera')}</div>
@@ -2541,8 +2541,8 @@ export default function GroupChatThread() {
                   </div>
                 </ChatAttachMenuRow>
                 <ChatAttachMenuRow onClick={handleVideoSelect}>
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
-                    <i className="fa-solid fa-video text-[#4db6ac] text-sm sm:text-base" />
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-cpoint-turquoise/20 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-video text-cpoint-turquoise text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
                     <div className="text-white font-medium text-sm sm:text-base">{t('chat.video')}</div>
@@ -2550,8 +2550,8 @@ export default function GroupChatThread() {
                   </div>
                 </ChatAttachMenuRow>
                 <ChatAttachMenuRow onClick={handleDocumentSelect}>
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
-                    <i className="fa-solid fa-file-pdf text-[#4db6ac] text-sm sm:text-base" />
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-cpoint-turquoise/20 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-file-pdf text-cpoint-turquoise text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
                     <div className="text-white font-medium text-sm sm:text-base">{t('chat.document')}</div>
@@ -2559,8 +2559,8 @@ export default function GroupChatThread() {
                   </div>
                 </ChatAttachMenuRow>
                 <ChatAttachMenuRow onClick={() => { setShowAttachMenu(false); setGifPickerOpen(true) }}>
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
-                    <i className="fa-solid fa-images text-[#4db6ac] text-sm sm:text-base" />
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-cpoint-turquoise/20 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-images text-cpoint-turquoise text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
                     <div className="text-white font-medium text-sm sm:text-base">GIF</div>
@@ -2575,7 +2575,7 @@ export default function GroupChatThread() {
           {replyTo && (
             <div className="mb-2 flex items-stretch gap-0 bg-white/5 rounded-lg overflow-hidden">
               {/* Left accent bar */}
-              <div className="w-1 bg-[#4db6ac] flex-shrink-0" />
+              <div className="w-1 bg-cpoint-turquoise flex-shrink-0" />
               <div className="flex-1 px-3 py-2 min-w-0 flex items-start gap-2">
                 {/* Media thumbnail preview */}
                 {replyTo.image && (
@@ -2602,7 +2602,7 @@ export default function GroupChatThread() {
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <div className="text-[12px] text-[#4db6ac] font-medium truncate">
+                  <div className="text-[12px] text-cpoint-turquoise font-medium truncate">
                     {replyTo.sender}
                   </div>
                   <div className="mt-0.5 text-[13px] text-white/70 whitespace-pre-wrap break-words leading-[1.25]">
@@ -2661,7 +2661,7 @@ export default function GroupChatThread() {
               <div className="flex items-center gap-3">
                 <div className="flex-shrink-0">
                   {mediaUploadBanner.stage === 'uploading' && (
-                    <i className="fa-solid fa-cloud-arrow-up text-[#4db6ac] animate-bounce" />
+                    <i className="fa-solid fa-cloud-arrow-up text-cpoint-turquoise animate-bounce" />
                   )}
                   {mediaUploadBanner.stage === 'done' && (
                     <i className="fa-solid fa-check-circle text-green-400" />
@@ -2681,7 +2681,7 @@ export default function GroupChatThread() {
                   <div className="mt-1.5 h-1.5 bg-white/10 rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all duration-300 ${
-                        mediaUploadBanner.stage === 'error' ? 'bg-red-400' : 'bg-[#4db6ac]'
+                        mediaUploadBanner.stage === 'error' ? 'bg-red-400' : 'bg-cpoint-turquoise'
                       }`}
                       style={{ width: `${mediaUploadBanner.progress}%` }}
                     />
@@ -2798,7 +2798,7 @@ export default function GroupChatThread() {
                     size="sm"
                     haptic="selection"
                     preventBlur
-                    className="!h-9 !w-9 !rounded-full bg-[#4db6ac] text-white hover:bg-[#45a99c]"
+                    className="!h-9 !w-9 !rounded-full bg-cpoint-turquoise text-white hover:brightness-95"
                     onPointerDown={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
@@ -2810,7 +2810,7 @@ export default function GroupChatThread() {
                   </NativeIconButton>
                   <div className="flex-1 flex items-center gap-2">
                     <div className="flex-1 h-1.5 bg-white/20 rounded-full overflow-hidden">
-                      <div className="h-full bg-[#4db6ac] w-full" />
+                      <div className="h-full bg-cpoint-turquoise w-full" />
                     </div>
                     <span className="text-xs text-white/70 tabular-nums flex-shrink-0">
                       {formatRecordingTime((recordingPreview.duration || 0) * 1000)}
@@ -2941,7 +2941,7 @@ export default function GroupChatThread() {
                   size="lg"
                   haptic="medium"
                   preventBlur
-                  className="!bg-[#4db6ac] text-white hover:!bg-[#45a99c]"
+                  className="!bg-cpoint-turquoise text-white hover:!brightness-95"
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
@@ -2960,7 +2960,7 @@ export default function GroupChatThread() {
                 size="lg"
                 haptic="medium"
                 preventBlur
-                className="!bg-[#4db6ac] text-white hover:!bg-[#45a99c]"
+                className="!bg-cpoint-turquoise text-white hover:!brightness-95"
                 onClick={(e) => {
                   if (sending) return
                   e.preventDefault()
@@ -2985,7 +2985,7 @@ export default function GroupChatThread() {
                   sending
                     ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
                     : draftDisplay.trim()
-                      ? 'bg-[#4db6ac] text-black'
+                      ? 'bg-cpoint-turquoise text-black'
                       : 'bg-white/12 text-white/70'
                 } ${!sending ? 'active:scale-95' : ''}`}
                 onPointerDown={(e) => {
@@ -3079,7 +3079,7 @@ export default function GroupChatThread() {
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate">{member.username}</div>
                       {member.is_admin && (
-                        <div className="text-xs text-[#4db6ac]">{t('feed.admin')}</div>
+                        <div className="text-xs text-cpoint-turquoise">{t('feed.admin')}</div>
                       )}
                     </div>
                     {group.members.find(m => m.username === currentUsername)?.is_admin && 
@@ -3154,7 +3154,7 @@ export default function GroupChatThread() {
                     value={renameText}
                     onChange={(e) => setRenameText(e.target.value)}
                     maxLength={100}
-                    className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#4db6ac]"
+                    className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cpoint-turquoise"
                   />
                   <button
                     onClick={async () => {
@@ -3174,7 +3174,7 @@ export default function GroupChatThread() {
                       finally { setRenaming(false) }
                     }}
                     disabled={renaming || renameText.trim() === group.name}
-                    className="px-4 py-2 bg-[#4db6ac] text-black rounded-lg font-medium text-sm hover:bg-[#5cc4ba] transition disabled:opacity-40"
+                    className="px-4 py-2 bg-cpoint-turquoise text-black rounded-lg font-medium text-sm hover:brightness-110 transition disabled:opacity-40"
                   >
                     {renaming ? '...' : 'Save'}
                   </button>
@@ -3188,7 +3188,7 @@ export default function GroupChatThread() {
                   <select
                     value={stevePersonality}
                     onChange={(e) => setStevePersonality(e.target.value)}
-                    className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#4db6ac] appearance-none"
+                    className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cpoint-turquoise appearance-none"
                   >
                     <option value="default">{t('chat.personality_default')}</option>
                     <option value="professional">{t('chat.personality_professional')}</option>
@@ -3214,7 +3214,7 @@ export default function GroupChatThread() {
                         else { alert(d?.error || t('chat.failed_save_personality')) }
                       } catch { alert(t('chat.failed_save_personality')) }
                     }}
-                    className="px-4 py-2 bg-[#4db6ac] text-black rounded-lg font-medium text-sm hover:bg-[#5cc4ba] transition"
+                    className="px-4 py-2 bg-cpoint-turquoise text-black rounded-lg font-medium text-sm hover:brightness-110 transition"
                   >
                     Save
                   </button>
@@ -3286,8 +3286,8 @@ export default function GroupChatThread() {
 
             {group.members.length >= 5 ? (
               <div className="p-6 text-center">
-                <div className="w-16 h-16 bg-[#4db6ac]/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <i className="fa-solid fa-users text-[#4db6ac] text-2xl" />
+                <div className="w-16 h-16 bg-cpoint-turquoise/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <i className="fa-solid fa-users text-cpoint-turquoise text-2xl" />
                 </div>
                 <h3 className="text-white font-medium mb-2">{t('chat.group_full_title')}</h3>
                 <p className="text-white/60 text-sm mb-4">
@@ -3298,7 +3298,7 @@ export default function GroupChatThread() {
                     setShowAddMembers(false)
                     navigate('/create-community')
                   }}
-                  className="px-4 py-2 bg-[#4db6ac] text-black rounded-lg font-medium"
+                  className="px-4 py-2 bg-cpoint-turquoise text-black rounded-lg font-medium"
                 >
                   Create Community
                 </button>
@@ -3314,7 +3314,7 @@ export default function GroupChatThread() {
                       placeholder={t('chat.search_members')}
                       value={memberSearchQuery}
                       onChange={(e) => setMemberSearchQuery(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]/50"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:border-cpoint-turquoise/50"
                     />
                     {memberSearchQuery && (
                       <button
@@ -3335,7 +3335,7 @@ export default function GroupChatThread() {
                       {selectedNewMembers.map((username) => (
                         <span
                           key={username}
-                          className="inline-flex items-center gap-1 px-2 py-1 bg-[#4db6ac]/20 text-[#4db6ac] rounded-full text-sm"
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-cpoint-turquoise/20 text-cpoint-turquoise rounded-full text-sm"
                         >
                           {username}
                           <button
@@ -3354,7 +3354,7 @@ export default function GroupChatThread() {
                 <div className="flex-1 overflow-y-auto min-h-0">
                   {loadingAvailable ? (
                     <div className="p-8 text-center">
-                      <i className="fa-solid fa-spinner fa-spin text-[#4db6ac] text-2xl" />
+                      <i className="fa-solid fa-spinner fa-spin text-cpoint-turquoise text-2xl" />
                       <p className="text-white/50 text-sm mt-2">{t('chat.loading_members')}</p>
                     </div>
                   ) : availableMembers.length > 0 ? (
@@ -3412,7 +3412,7 @@ export default function GroupChatThread() {
                                 className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition"
                               >
                                 <div className="flex items-center gap-2">
-                                  <i className="fa-solid fa-users text-[#4db6ac] text-sm" />
+                                  <i className="fa-solid fa-users text-cpoint-turquoise text-sm" />
                                   <span className="font-medium text-sm">{communityName}</span>
                                   <span className="text-xs text-white/40">({members.length})</span>
                                 </div>
@@ -3427,7 +3427,7 @@ export default function GroupChatThread() {
                                       key={user.username}
                                       className={`w-full flex items-center gap-3 p-2 rounded-lg transition ${
                                         selectedNewMembers.includes(user.username)
-                                          ? 'bg-[#4db6ac]/20'
+                                          ? 'bg-cpoint-turquoise/20'
                                           : 'hover:bg-white/5'
                                       }`}
                                       onClick={() => {
@@ -3452,7 +3452,7 @@ export default function GroupChatThread() {
                                         <div className="text-xs text-white/50">@{user.username}</div>
                                       </div>
                                       {selectedNewMembers.includes(user.username) && (
-                                        <i className="fa-solid fa-check text-[#4db6ac]" />
+                                        <i className="fa-solid fa-check text-cpoint-turquoise" />
                                       )}
                                     </button>
                                   ))}
@@ -3481,7 +3481,7 @@ export default function GroupChatThread() {
                     <button
                       onClick={handleAddMembers}
                       disabled={addingMembers}
-                      className="w-full px-4 py-3 bg-[#4db6ac] text-black rounded-lg font-medium hover:bg-[#3da89e] transition disabled:opacity-50"
+                      className="w-full px-4 py-3 bg-cpoint-turquoise text-black rounded-lg font-medium hover:brightness-95 transition disabled:opacity-50"
                     >
                       {addingMembers ? (
                         <><i className="fa-solid fa-spinner fa-spin mr-2" />Adding...</>
@@ -3559,7 +3559,7 @@ export default function GroupChatThread() {
                 e.stopPropagation()
                 sendPastedImage()
               }}
-              className="flex-1 max-w-[140px] px-4 py-3 rounded-xl bg-[#4db6ac] text-black hover:brightness-110 text-sm font-medium flex items-center justify-center gap-2"
+              className="flex-1 max-w-[140px] px-4 py-3 rounded-xl bg-cpoint-turquoise text-black hover:brightness-110 text-sm font-medium flex items-center justify-center gap-2"
             >
               <i className="fa-solid fa-paper-plane" />
               Send
@@ -3574,7 +3574,7 @@ export default function GroupChatThread() {
           <div className="absolute inset-0 bg-black/60" />
           <div className="relative bg-[#1a1a2e] rounded-2xl border border-white/15 w-[80%] max-w-xs p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-3">
-              <i className="fa-solid fa-globe text-[#4db6ac]" />
+              <i className="fa-solid fa-globe text-cpoint-turquoise" />
               <span className="text-white font-semibold text-sm">{t('chat.translate_to')}</span>
             </div>
             <div className="space-y-1">
@@ -3602,13 +3602,13 @@ export default function GroupChatThread() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-2 mb-3">
-              <i className="fa-solid fa-wand-magic-sparkles text-[#4db6ac]" />
+              <i className="fa-solid fa-wand-magic-sparkles text-cpoint-turquoise" />
             <span className="text-white font-semibold text-sm">{t('chat.edit_summary')}</span>
             </div>
             <textarea
               value={editSummaryText}
               onChange={(e) => setEditSummaryText(e.target.value)}
-              className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-3 text-sm text-white resize-none focus:outline-none focus:border-[#4db6ac] leading-relaxed"
+              className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-3 text-sm text-white resize-none focus:outline-none focus:border-cpoint-turquoise leading-relaxed"
               rows={4}
               autoFocus
               placeholder={t('chat.edit_summary_placeholder')}
@@ -3620,7 +3620,7 @@ export default function GroupChatThread() {
               >{t('chat.cancel')}</button>
               <button
                 onClick={() => handleSaveSummaryEdit(editingSummaryId)}
-                className="px-4 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110"
+                className="px-4 py-2 text-sm rounded-lg bg-cpoint-turquoise text-black font-medium hover:brightness-110"
               >{t('chat.save')}</button>
             </div>
           </div>

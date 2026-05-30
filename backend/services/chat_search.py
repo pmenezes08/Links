@@ -1,4 +1,4 @@
-"""Per-thread keyword search for DM and group chat messages (MySQL FULLTEXT)."""
+"""Per-thread keyword search for DM and group chat messages (MySQL LIKE)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,38 @@ from typing import Optional
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_int(val, default: int = 0) -> int:
+    """Convert *val* to int, returning *default* on None / TypeError."""
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_time(raw_time) -> Optional[str]:
+    """Normalise a raw timestamp value into an ISO-ish UTC string."""
+    if not raw_time:
+        return None
+    s = str(raw_time)
+    if not s.endswith("Z") and "+" not in s[-6:]:
+        s = s.replace(" ", "T")
+        if not s.endswith("Z"):
+            s += "Z"
+    return s
+
+
+def _parse_media_paths(raw):
+    """Parse a media_paths JSON string, returning None on failure."""
+    if not raw:
+        return None
+    try:
+        return json.loads(raw) if isinstance(raw, str) else raw
+    except (json.JSONDecodeError, TypeError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -37,7 +69,6 @@ def search_dm_thread(
             c = conn.cursor()
             ensure_human_dm_thread_column(c)
 
-            # Case-insensitive WHERE clause for sender/receiver matching
             if is_private_steve_dm_peer(other_username):
                 where = (
                     f"((LOWER(sender) = LOWER({ph}) AND LOWER(receiver) = LOWER({ph}))"
@@ -52,8 +83,7 @@ def search_dm_thread(
                     f" OR (sender = 'steve' AND human_dm_thread = {ph}))"
                 )
                 base_params = (viewer, other_username, other_username, viewer, thr_key)
-            
-            # deleted_at filter (one-sided clear)
+
             deleted_clause = ""
             deleted_params: tuple = ()
             try:
@@ -63,7 +93,7 @@ def search_dm_thread(
                 )
                 del_row = c.fetchone()
                 if del_row:
-                    da = del_row["deleted_at"] if hasattr(del_row, "keys") else del_row[0]
+                    da = del_row.get("deleted_at") if hasattr(del_row, "get") else del_row[0]
                     if da:
                         deleted_clause = f" AND timestamp > {ph}"
                         deleted_params = (str(da),)
@@ -81,7 +111,7 @@ def search_dm_thread(
                 count_params,
             )
             row = c.fetchone()
-            total = row["cnt"] if row else 0
+            total = row["cnt"] if (row and hasattr(row, "get")) else (row[0] if row else 0)
 
             has_media_paths = True
             has_file_cols = True
@@ -117,41 +147,24 @@ def search_dm_thread(
 
             messages: list[dict] = []
             for row in c.fetchall():
-                _g = (lambda k: row.get(k) if hasattr(row, "get") else None)
-
-                raw_time = _g("timestamp") or (row[8] if not hasattr(row, "keys") else None)
-                if raw_time and isinstance(raw_time, str) and not raw_time.endswith("Z") and "+" not in raw_time[-6:]:
-                    utc_time = raw_time.replace(" ", "T")
-                    if not utc_time.endswith("Z"):
-                        utc_time += "Z"
-                else:
-                    utc_time = str(raw_time) if raw_time else None
-
-                mp_raw = _g("media_paths") if has_media_paths else None
-                media_paths_val = None
-                if mp_raw:
-                    try:
-                        media_paths_val = json.loads(mp_raw) if isinstance(mp_raw, str) else mp_raw
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-
-                sender_raw = _g("sender") or row[1]
+                g = row.get if hasattr(row, "get") else (lambda k: None)
+                sender_raw = g("sender")
                 messages.append({
-                    "id": _g("id") or row[0],
+                    "id": g("id"),
                     "sender": sender_raw,
-                    "text": _g("message") or row[3],
-                    "image_path": _g("image_path") or (row[4] if not hasattr(row, "keys") else None),
-                    "video_path": _g("video_path") or (row[5] if not hasattr(row, "keys") else None),
-                    "audio_path": _g("audio_path") or (row[6] if not hasattr(row, "keys") else None),
-                    "audio_duration_seconds": _g("audio_duration_seconds") or (row[7] if not hasattr(row, "keys") else None),
-                    "sent": sender_raw == viewer,
-                    "time": utc_time,
-                    "edited_at": _g("edited_at"),
-                    "reaction": _g("reaction"),
-                    "reaction_by": _g("reaction_by"),
-                    "media_paths": media_paths_val,
-                    "file_path": _g("file_path") if has_file_cols else None,
-                    "file_name": _g("file_name") if has_file_cols else None,
+                    "text": g("message"),
+                    "image_path": g("image_path"),
+                    "video_path": g("video_path"),
+                    "audio_path": g("audio_path"),
+                    "audio_duration_seconds": g("audio_duration_seconds"),
+                    "sent": sender_raw is not None and sender_raw.lower() == viewer.lower(),
+                    "time": _parse_time(g("timestamp")),
+                    "edited_at": g("edited_at"),
+                    "reaction": g("reaction"),
+                    "reaction_by": g("reaction_by"),
+                    "media_paths": _parse_media_paths(g("media_paths")) if has_media_paths else None,
+                    "file_path": g("file_path") if has_file_cols else None,
+                    "file_name": g("file_name") if has_file_cols else None,
                 })
 
             return total, messages, len(messages) == limit
@@ -172,25 +185,19 @@ def search_group_thread(
     offset: int = 0,
 ) -> tuple[int, list[dict], bool]:
     """Return ``(total_count, messages, has_more)`` for a keyword search in a group chat."""
-    logger.info("[GRP-SEARCH] called: viewer=%s group_id=%s query=%r", viewer, group_id, query)
     try:
         ph = get_sql_placeholder()
 
         with get_db_connection() as conn:
             c = conn.cursor()
 
-            # Membership check (case-insensitive)
             c.execute(
                 f"SELECT 1 FROM group_chat_members WHERE group_id = {ph} AND LOWER(username) = LOWER({ph})",
                 (group_id, viewer),
             )
-            member_row = c.fetchone()
-            logger.info("[GRP-SEARCH] membership check: group_id=%s viewer=%s result=%s", group_id, viewer, member_row)
-            if not member_row:
-                logger.info("[GRP-SEARCH] DENIED — viewer not a member")
+            if not c.fetchone():
                 return 0, [], False
 
-            # cleared_before filter
             cleared_before: int = 0
             try:
                 c.execute(
@@ -200,13 +207,10 @@ def search_group_thread(
                 )
                 rr = c.fetchone()
                 if rr:
-                    cleared_before = int(
-                        rr["cleared_before_message_id"] if hasattr(rr, "keys") else rr[0]
-                    ) or 0
-            except Exception as cb_err:
-                logger.warning("[GRP-SEARCH] cleared_before query error: %s", cb_err)
-
-            logger.info("[GRP-SEARCH] cleared_before=%s", cleared_before)
+                    raw_val = rr.get("cleared_before_message_id") if hasattr(rr, "get") else rr[0]
+                    cleared_before = _safe_int(raw_val)
+            except Exception:
+                pass
 
             where = f"m.group_id = {ph} AND m.is_deleted = 0"
             params: list = [group_id]
@@ -218,15 +222,12 @@ def search_group_thread(
             where += f" AND m.message_text LIKE {ph}"
             params.append(f"%{query}%")
 
-            logger.info("[GRP-SEARCH] WHERE=%s params=%s", where, params)
-
             c.execute(
                 f"SELECT COUNT(*) AS cnt FROM group_chat_messages m WHERE {where}",
                 tuple(params),
             )
-            row = c.fetchone()
-            total = row["cnt"] if row else 0
-            logger.info("[GRP-SEARCH] COUNT result=%s", total)
+            cnt_row = c.fetchone()
+            total = cnt_row["cnt"] if (cnt_row and hasattr(cnt_row, "get")) else (cnt_row[0] if cnt_row else 0)
 
             has_file_cols = True
             try:
@@ -258,50 +259,37 @@ def search_group_thread(
 
             messages: list[dict] = []
             for row in c.fetchall():
-                _g = (lambda k: row.get(k) if hasattr(row, "get") else None)
-
-                mp_raw = _g("media_paths")
-                media_paths_val = None
-                if mp_raw:
-                    try:
-                        media_paths_val = json.loads(mp_raw) if isinstance(mp_raw, str) else mp_raw
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-
-                fp = _g("file_path") if has_file_cols else None
-                sender_raw = _g("sender_username") or row[1]
-                raw_ts = _g("created_at") or (row[8] if not hasattr(row, "keys") and len(row) > 8 else None)
-                ts_str = str(raw_ts) if raw_ts else None
+                g = row.get if hasattr(row, "get") else (lambda k: None)
+                sender_raw = g("sender_username")
+                fp = g("file_path") if has_file_cols else None
+                ts_str = str(g("created_at")) if g("created_at") else None
 
                 messages.append({
-                    "id": _g("id") or row[0],
+                    "id": g("id"),
                     "sender": sender_raw,
                     "sender_username": sender_raw,
-                    "text": _g("message_text") or row[2],
+                    "text": g("message_text"),
                     "sent": sender_raw is not None and sender_raw.lower() == viewer.lower(),
                     "time": ts_str,
-                    "image_path": _g("image_path") or row[3],
-                    "video_path": _g("video_path") or (row[5] if not hasattr(row, "keys") else None),
-                    "audio_path": _g("voice_path") or (row[4] if not hasattr(row, "keys") else None),
-                    "voice": _g("voice_path") or (row[4] if not hasattr(row, "keys") else None),
-                    "media_paths": media_paths_val,
+                    "image_path": g("image_path"),
+                    "video_path": g("video_path"),
+                    "audio_path": g("voice_path"),
+                    "voice": g("voice_path"),
+                    "media_paths": _parse_media_paths(g("media_paths")),
                     "file_path": fp,
-                    "file_name": _g("file_name") if has_file_cols else None,
+                    "file_name": g("file_name") if has_file_cols else None,
                     "document": fp,
-                    "client_key": _g("client_key") or (row[7] if not hasattr(row, "keys") else None),
+                    "client_key": g("client_key"),
                     "created_at": ts_str,
-                    "profile_picture": _public_profile_picture_url(
-                        _g("profile_picture") or (row[9] if not hasattr(row, "keys") and len(row) > 9 else None)
-                    ),
-                    "is_edited": bool(_g("is_edited") or (row[10] if not hasattr(row, "keys") and len(row) > 10 else 0)),
-                    "audio_summary": _g("audio_summary") or (row[11] if not hasattr(row, "keys") and len(row) > 11 else None),
+                    "profile_picture": _public_profile_picture_url(g("profile_picture")),
+                    "is_edited": bool(g("is_edited") or 0),
+                    "audio_summary": g("audio_summary"),
                     "reaction": None,
                 })
 
-            logger.info("[GRP-SEARCH] returning total=%s msg_count=%s", total, len(messages))
             return total, messages, len(messages) == limit
-    except Exception as exc:
-        logger.exception("[GRP-SEARCH] EXCEPTION viewer=%s group=%s: %s", viewer, group_id, exc)
+    except Exception:
+        logger.exception("search_group_thread failed for viewer=%s group=%s", viewer, group_id)
         return 0, [], False
 
 
@@ -322,7 +310,6 @@ def fetch_dm_messages_around(
     Returns ``{"success": True, "messages": [...], "has_more_before": bool,
     "has_more_after": bool, "target_found": bool}``.
     """
-    logger.info("[DM-AROUND] called: viewer=%s other=%s around_id=%s", viewer, other_username, around_id)
     try:
         from backend.services.dm_human_thread import (
             ensure_human_dm_thread_column,
@@ -361,7 +348,7 @@ def fetch_dm_messages_around(
                 )
                 del_row = c.fetchone()
                 if del_row:
-                    da = del_row["deleted_at"] if hasattr(del_row, "keys") else del_row[0]
+                    da = del_row.get("deleted_at") if hasattr(del_row, "get") else del_row[0]
                     if da:
                         deleted_clause = f" AND timestamp > {ph}"
                         deleted_params = (str(da),)
@@ -397,57 +384,32 @@ def fetch_dm_messages_around(
             has_more_after = len(after_rows) == _AROUND_HALF
 
             target_found = any(
-                (r["id"] if hasattr(r, "keys") else r[0]) == around_id
+                (r.get("id") if hasattr(r, "get") else r[0]) == around_id
                 for r in before_rows
             )
-
-            logger.info(
-                "[DM-AROUND] before_rows=%s after_rows=%s target_found=%s around_id=%s",
-                len(before_rows), len(after_rows), target_found, around_id,
-            )
-            if not target_found and before_rows:
-                ids_in_before = [(r["id"] if hasattr(r, "keys") else r[0]) for r in before_rows[:5]]
-                logger.info("[DM-AROUND] first IDs in before_rows: %s (type=%s), around_id type=%s", ids_in_before, type(ids_in_before[0]) if ids_in_before else None, type(around_id))
 
             all_rows = list(reversed(before_rows)) + after_rows
 
             messages: list[dict] = []
             for row in all_rows:
-                _g = lambda k: row.get(k) if hasattr(row, "get") else None  # noqa: E731
-
-                raw_time = _g("timestamp") or (row[8] if not hasattr(row, "keys") else None)
-                if raw_time and isinstance(raw_time, str) and not raw_time.endswith("Z") and "+" not in raw_time[-6:]:
-                    utc_time = raw_time.replace(" ", "T")
-                    if not utc_time.endswith("Z"):
-                        utc_time += "Z"
-                else:
-                    utc_time = str(raw_time) if raw_time else None
-
-                mp_raw = _g("media_paths")
-                media_paths_val = None
-                if mp_raw:
-                    try:
-                        media_paths_val = json.loads(mp_raw) if isinstance(mp_raw, str) else mp_raw
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-
-                sender_raw = _g("sender") or row[1]
+                g = row.get if hasattr(row, "get") else (lambda k: None)
+                sender_raw = g("sender")
                 messages.append({
-                    "id": _g("id") or row[0],
+                    "id": g("id"),
                     "sender": sender_raw,
-                    "text": _g("message") or row[3],
-                    "image_path": _g("image_path") or (row[4] if not hasattr(row, "keys") else None),
-                    "video_path": _g("video_path") or (row[5] if not hasattr(row, "keys") else None),
-                    "audio_path": _g("audio_path") or (row[6] if not hasattr(row, "keys") else None),
-                    "audio_duration_seconds": _g("audio_duration_seconds") or (row[7] if not hasattr(row, "keys") else None),
-                    "sent": sender_raw == viewer,
-                    "time": utc_time,
-                    "edited_at": _g("edited_at"),
-                    "reaction": _g("reaction"),
-                    "reaction_by": _g("reaction_by"),
-                    "media_paths": media_paths_val,
-                    "file_path": _g("file_path"),
-                    "file_name": _g("file_name"),
+                    "text": g("message"),
+                    "image_path": g("image_path"),
+                    "video_path": g("video_path"),
+                    "audio_path": g("audio_path"),
+                    "audio_duration_seconds": g("audio_duration_seconds"),
+                    "sent": sender_raw is not None and sender_raw.lower() == viewer.lower(),
+                    "time": _parse_time(g("timestamp")),
+                    "edited_at": g("edited_at"),
+                    "reaction": g("reaction"),
+                    "reaction_by": g("reaction_by"),
+                    "media_paths": _parse_media_paths(g("media_paths")),
+                    "file_path": g("file_path"),
+                    "file_name": g("file_name"),
                 })
 
             return {
@@ -489,7 +451,8 @@ def fetch_group_messages_around(
                 )
                 rr = c.fetchone()
                 if rr:
-                    cleared_before = int(rr["cleared_before_message_id"] if hasattr(rr, "keys") else rr[0]) or 0
+                    raw_val = rr.get("cleared_before_message_id") if hasattr(rr, "get") else rr[0]
+                    cleared_before = _safe_int(raw_val)
             except Exception:
                 pass
 
@@ -533,7 +496,7 @@ def fetch_group_messages_around(
             has_more_after = len(after_rows) == _AROUND_HALF
 
             target_found = any(
-                (r["id"] if hasattr(r, "keys") else r[0]) == around_id
+                (r.get("id") if hasattr(r, "get") else r[0]) == around_id
                 for r in before_rows
             )
 
@@ -542,35 +505,31 @@ def fetch_group_messages_around(
             all_rows = list(reversed(before_rows)) + after_rows
             messages: list[dict] = []
             for row in all_rows:
-                _g = lambda k: row.get(k) if hasattr(row, "get") else None  # noqa: E731
+                g = row.get if hasattr(row, "get") else (lambda k: None)
+                sender_raw = g("sender_username")
+                fp = g("file_path")
+                ts_str = str(g("created_at")) if g("created_at") else None
 
-                mp_raw = _g("media_paths")
-                media_paths_val = None
-                if mp_raw:
-                    try:
-                        media_paths_val = json.loads(mp_raw) if isinstance(mp_raw, str) else mp_raw
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-
-                fp = _g("file_path")
                 messages.append({
-                    "id": _g("id") or row[0],
-                    "sender": _g("sender_username") or row[1],
-                    "text": _g("message_text") or row[2],
-                    "image": _g("image_path") or row[3],
-                    "voice": _g("voice_path") or (row[4] if not hasattr(row, "keys") else None),
-                    "video": _g("video_path") or (row[5] if not hasattr(row, "keys") else None),
-                    "media_paths": media_paths_val,
+                    "id": g("id"),
+                    "sender": sender_raw,
+                    "sender_username": sender_raw,
+                    "text": g("message_text"),
+                    "sent": sender_raw is not None and sender_raw.lower() == viewer.lower(),
+                    "time": ts_str,
+                    "image_path": g("image_path"),
+                    "video_path": g("video_path"),
+                    "audio_path": g("voice_path"),
+                    "voice": g("voice_path"),
+                    "media_paths": _parse_media_paths(g("media_paths")),
                     "file_path": fp,
-                    "file_name": _g("file_name"),
+                    "file_name": g("file_name"),
                     "document": fp,
-                    "client_key": _g("client_key") or (row[7] if not hasattr(row, "keys") else None),
-                    "created_at": str(_g("created_at") or row[8]) if (_g("created_at") or (not hasattr(row, "keys") and len(row) > 8)) else None,
-                    "profile_picture": _public_profile_picture_url(
-                        _g("profile_picture") or (row[9] if not hasattr(row, "keys") and len(row) > 9 else None)
-                    ),
-                    "is_edited": bool(_g("is_edited") or (row[10] if not hasattr(row, "keys") and len(row) > 10 else 0)),
-                    "audio_summary": _g("audio_summary") or (row[11] if not hasattr(row, "keys") and len(row) > 11 else None),
+                    "client_key": g("client_key"),
+                    "created_at": ts_str,
+                    "profile_picture": _public_profile_picture_url(g("profile_picture")),
+                    "is_edited": bool(g("is_edited") or 0),
+                    "audio_summary": g("audio_summary"),
                     "reaction": None,
                 })
 
