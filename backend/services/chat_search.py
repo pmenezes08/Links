@@ -80,12 +80,13 @@ def search_dm_thread(
             full_where = f"{where}{deleted_clause}{search_clause}"
             count_params = base_params + deleted_params + search_params
 
-            count_sql = f"SELECT COUNT(*) FROM messages WHERE {full_where}"
+            count_sql = f"SELECT COUNT(*) AS cnt FROM messages WHERE {full_where}"
             logger.info("search_dm_thread COUNT SQL: %s", count_sql)
             logger.info("search_dm_thread COUNT params: %s", count_params)
             
             c.execute(count_sql, count_params)
-            total = (c.fetchone() or (0,))[0]
+            row = c.fetchone()
+            total = row["cnt"] if row else 0
             logger.info("search_dm_thread COUNT result: %s", total)
 
             has_media_paths = True
@@ -217,10 +218,11 @@ def search_group_thread(
             params.append(f"%{query}%")
 
             c.execute(
-                f"SELECT COUNT(*) FROM group_chat_messages m WHERE {where}",
+                f"SELECT COUNT(*) AS cnt FROM group_chat_messages m WHERE {where}",
                 tuple(params),
             )
-            total = (c.fetchone() or (0,))[0]
+            row = c.fetchone()
+            total = row["cnt"] if row else 0
 
             has_file_cols = True
             try:
