@@ -412,6 +412,15 @@
   to { opacity: 0; }
 }
 
+/* Chat search: highlight a message after jump-to */
+.chat-search-highlight {
+  animation: searchHighlight 2s ease-out;
+}
+@keyframes searchHighlight {
+  0% { background-color: rgba(0, 206, 200, 0.25); }
+  100% { background-color: transparent; }
+}
+
 /* Reduce blur cost on stacked pages during pilot transitions */
 html.page-transition-active .page-transition-outgoing .liquid-glass-surface,
 html.page-transition-active .page-transition-incoming .liquid-glass-surface {

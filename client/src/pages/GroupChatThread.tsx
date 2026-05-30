@@ -387,12 +387,28 @@ export default function GroupChatThread() {
   notifyMessagesSettledRef.current = notifyMessagesSettled
 
   const [searchOpen, setSearchOpen] = useState(false)
-  const handleSearchJump = useCallback((messageId: number | string) => {
-    const found = scrollToMessage(messageId)
-    if (!found) {
-      console.debug('Search target not in loaded window:', messageId)
+  const handleSearchJump = useCallback(async (messageId: number | string): Promise<boolean> => {
+    if (scrollToMessage(messageId)) return true
+    try {
+      const res = await fetch(
+        `/api/group_chat/${group_id}/messages_around?around_id=${messageId}`,
+        { credentials: 'include' },
+      )
+      const data = await res.json()
+      if (!data?.success || !Array.isArray(data.messages)) return false
+      if (!data.target_found) return false
+      const processed: Message[] = data.messages.map((m: any) => ({
+        ...m,
+        isOptimistic: false,
+      }))
+      setServerMessages(processed)
+      setHasMoreMessages(data.has_more_before ?? false)
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+      return scrollToMessage(messageId)
+    } catch {
+      return false
     }
-  }, [scrollToMessage])
+  }, [scrollToMessage, group_id, setServerMessages, setHasMoreMessages])
 
   // Format recording time
   const formatRecordingTime = (ms: number) => {
@@ -3639,6 +3655,7 @@ export default function GroupChatThread() {
         onJumpToMessage={handleSearchJump}
         threadType="group"
         threadId={group_id || ''}
+        currentUser={currentUsername || ''}
       />
 
     </div>

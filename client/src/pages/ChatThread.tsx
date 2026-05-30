@@ -384,12 +384,29 @@ export default function ChatThread(){
   notifyMessagesSettledRef.current = notifyMessagesSettled
 
   const [searchOpen, setSearchOpen] = useState(false)
-  const handleSearchJump = useCallback((messageId: number | string) => {
-    const found = scrollToMessage(messageId)
-    if (!found) {
-      console.debug('Search target not in loaded window:', messageId)
+  const handleSearchJump = useCallback(async (messageId: number | string): Promise<boolean> => {
+    if (scrollToMessage(messageId)) return true
+    try {
+      const params = new URLSearchParams({
+        other_user: username || '',
+        around_id: String(messageId),
+      })
+      const res = await fetch(`/api/dm/messages_around?${params}`, { credentials: 'include' })
+      const data = await res.json()
+      if (!data?.success || !Array.isArray(data.messages)) return false
+      if (!data.target_found) return false
+      const processed: Message[] = data.messages.map((m: any) => ({
+        ...m,
+        isOptimistic: false,
+      }))
+      setMessages(processed)
+      setHasMoreMessages(data.has_more_before ?? false)
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+      return scrollToMessage(messageId)
+    } catch {
+      return false
     }
-  }, [scrollToMessage])
+  }, [scrollToMessage, username, setMessages, setHasMoreMessages])
 
   const mergeHydratedMessages = useCallback((processed: Message[], prev: Message[]) => {
     const serverIds = new Set(processed.map(m => String(m.id)))
@@ -3818,6 +3835,7 @@ export default function ChatThread(){
         onJumpToMessage={handleSearchJump}
         threadType="dm"
         threadId={username || ''}
+        currentUser={viewer || ''}
       />
     </>
   )

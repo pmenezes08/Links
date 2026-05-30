@@ -2800,6 +2800,22 @@ def api_group_chat_search(group_id):
     return jsonify({"success": True, "total": total, "messages": messages, "has_more": has_more})
 
 
+@group_chat_bp.route("/api/group_chat/<int:group_id>/messages_around", methods=["GET"])
+def api_group_messages_around(group_id):
+    """Return a window of group messages centred on a given message ID."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "Login required"}), 401
+    try:
+        around_id = int(request.args.get("around_id", 0))
+    except (ValueError, TypeError):
+        around_id = 0
+    if not around_id:
+        return jsonify({"success": False, "error": "around_id required"}), 400
+    from backend.services.chat_search import fetch_group_messages_around
+    return jsonify(fetch_group_messages_around(username, group_id, around_id))
+
+
 def _send_group_add_notification(cursor, ph, recipient_username: str, added_by: str, group_id: int, group_name: str):
     """Send push notification when user is added to a group.
     

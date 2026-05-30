@@ -138,6 +138,7 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/chat/media` | GET | `get_chat_media` | `backend/blueprints/dm_chats.py:578` | get chat media | `client/src/pages/ChatMedia.tsx` (1) |
 | `/api/chat/react_to_message` | POST | `react_to_message` | `backend/blueprints/dm_chats.py:588` | react to message | `client/src/pages/ChatThread.tsx` (1) |
 | `/api/dm/search` | GET | `api_dm_search` | `backend/blueprints/dm_chats.py:607` | api dm search | `client/src/chat/ChatThreadSearch.tsx` (1) |
+| `/api/dm/messages_around` | GET | `api_dm_messages_around` | `backend/blueprints/dm_chats.py:629` | api dm messages around | `client/src/pages/ChatThread.tsx` (1) |
 | `/api/me/enterprise-seats` | GET | `me_seats` | `backend/blueprints/enterprise.py:90` | me seats | *(no exact string match — may use helpers)* |
 | `/api/me/iap-nag` | GET | `me_iap_nag` | `backend/blueprints/enterprise.py:98` | me iap nag | *(no exact string match — may use helpers)* |
 | `/api/me/iap-nag/ack` | POST | `me_iap_nag_ack` | `backend/blueprints/enterprise.py:116` | me iap nag ack | *(no exact string match — may use helpers)* |
@@ -187,6 +188,7 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/group_chat/<int:group_id>/available_members` | GET | `get_available_members` | `backend/blueprints/group_chat.py:2607` | get available members | *(no exact string match — may use helpers)* |
 | `/api/group_chat/<int:group_id>/add_members` | POST | `add_members_to_group` | `backend/blueprints/group_chat.py:2672` | add members to group | *(no exact string match — may use helpers)* |
 | `/api/group_chat/<int:group_id>/search` | GET | `api_group_chat_search` | `backend/blueprints/group_chat.py:2782` | api group chat search | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/messages_around` | GET | `api_group_messages_around` | `backend/blueprints/group_chat.py:2803` | api group messages around | *(no exact string match — may use helpers)* |
 | `/api/group_feed` | GET | `api_group_feed` | `backend/blueprints/group_feed.py:184` | api group feed | `client/src/pages/CreatePost.tsx` (1), `client/src/pages/GroupFeed.tsx` (1) |
 | `/api/group_post_view` | POST | `api_group_post_view` | `backend/blueprints/group_feed.py:196` | api group post view | `client/src/pages/PostDetail.tsx` (1) |
 | `/api/group_announcements/<int:group_id>` | GET | `api_group_announcements_list` | `backend/blueprints/group_feed.py:225` | api group announcements list | *(no exact string match — may use helpers)* |

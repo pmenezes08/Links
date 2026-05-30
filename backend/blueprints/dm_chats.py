@@ -624,3 +624,20 @@ def api_dm_search():
     from backend.services.chat_search import search_dm_thread
     total, messages, has_more = search_dm_thread(username, other_user, query, limit=limit, offset=offset)
     return jsonify({"success": True, "total": total, "messages": messages, "has_more": has_more})
+
+
+@dm_chats_bp.route("/api/dm/messages_around", methods=["GET"])
+@_login_required
+@_handle_broken_pipe
+def api_dm_messages_around():
+    """Return a window of DM messages centred on a given message ID."""
+    username = session.get("username")
+    other_user = request.args.get("other_user", "").strip()
+    try:
+        around_id = int(request.args.get("around_id", 0))
+    except (ValueError, TypeError):
+        around_id = 0
+    if not other_user or not around_id:
+        return jsonify({"success": False, "error": "other_user and around_id required"}), 400
+    from backend.services.chat_search import fetch_dm_messages_around
+    return jsonify(fetch_dm_messages_around(username, other_user, around_id))
