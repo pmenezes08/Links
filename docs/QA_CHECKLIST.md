@@ -48,6 +48,37 @@ Test accounts available after seeding:
 
 ---
 
+## Chat Media Upload v2.1 — DM/group regression
+
+Run after any deploy touching `client/src/chat/upload/`, `mediaSenders.ts`, `groupChatMediaSenders.ts`, or `backend/services/chat_uploads.py`.
+
+- [ ] DM photo on desktop Chrome: preview opens, send shows “Sending...”, message resolves once, no raw upload error is visible.
+- [ ] DM video on iOS WebView staging: Standard selected, upload completes, leaving and reopening the DM keeps or restores the pending/sent state.
+- [ ] DM video on iOS WebView staging: HD selected, upload completes and does not claim app-closed background upload.
+- [ ] Group multi-media on Android WebView: send 2 images + 1 video, order is preserved in the final collage, no duplicate message appears after polling.
+- [ ] Slow-network resume: start a video upload, interrupt network after at least one part, restore network/reopen app, and confirm the upload skips completed parts where possible.
+- [ ] Commit retry: after R2 upload completes, simulate a failed `/send_dm_media` or group `send_media`; retry should commit with the same `client_key` and not re-upload the file.
+- [ ] Size cap: attempt a file above `chat_media_max_bytes`; the limit surface appears before the user sees a generic send failure.
+- [ ] Daily cap: with a test account configured to hit `chat_media_max_daily`, the limit surface appears and no raw `upload_daily_limit` string is shown.
+- [ ] Logout/privacy: log out after queuing media; log in as another user and confirm no prior-user media outbox item resumes or appears.
+- [ ] App close honesty: background/kill the app mid-upload on iOS; on return, C-Point retries/resumes when the outbox has bytes, but no UI copy promises true app-closed background sending.
+
+## Chat Media Upload v2.2 — control follow-up
+
+Run after any deploy touching gallery media delete, upload cancel, or resume recovery.
+
+- [ ] DM media gallery: open a photo/video, tap trash, confirm the styled dialog, and verify the grid updates without a full reload.
+- [ ] DM media gallery → thread return: delete a photo/video, return to the chat, and verify the attachment is gone everywhere. If a stale cached URL is forced, verify it shows "Media deleted" / "Cannot play media" rather than a broken element.
+- [ ] DM media gallery: tap **Select**, select multiple media items you sent, delete selected, and verify only your authorized items disappear.
+- [ ] Group media gallery: repeat single and selected delete as the sender. As a non-sender, verify another member's media cannot be selected/deleted unless the account is a group admin.
+- [ ] Delete-all/selected partial failure: include at least one unauthorized item and confirm the UI reports that some items could not be deleted.
+- [ ] Cancel upload: start a large DM video upload, tap the upload banner X, and verify the optimistic bubble disappears, the outbox does not resume it, and no unhandled error is visible.
+- [ ] Group cancel upload: start a multi-media group upload, cancel halfway, and verify no message is committed.
+- [ ] Resume-on-return: start a large upload, leave the thread/app foreground, return within a few seconds, and verify the app-level resume chip/toast says it is resuming and the upload completes or becomes retryable.
+- [ ] Missing blob (unrecoverable): clear browser storage/IndexedDB after queuing an upload, return to the app, and confirm no “could not be recovered” toast appears and the stale outbox record is removed.
+
+---
+
 ## §1 — KB pages load and auto-seed
 
 - [ ] Visit admin-web → Knowledge Base.

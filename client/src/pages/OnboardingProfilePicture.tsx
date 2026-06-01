@@ -57,24 +57,24 @@ export default function OnboardingProfilePicture(){
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85">
-      <div className="w-[92%] max-w-md rounded-2xl border border-white/10 bg-[#0b0f10] p-5 text-white">
+      <div className="w-[92%] max-w-md rounded-2xl border border-c-border bg-c-bg-elevated p-5 text-c-text-primary">
         <div className="flex items-center justify-between">
           <div className="text-lg font-semibold">{t('onboarding_profile_picture.title')}</div>
-          <button className="text-[#9fb0b5] text-2xl" onClick={onSkip}>&times;</button>
+          <button className="text-c-text-tertiary text-2xl" onClick={onSkip}>&times;</button>
         </div>
-        <div className="mt-3 text-sm text-[#9fb0b5]">{t('onboarding_profile_picture.helper')}</div>
+        <div className="mt-3 text-sm text-c-text-tertiary">{t('onboarding_profile_picture.helper')}</div>
         <div className="mt-4">
-          <input type="file" accept="image/*" onChange={onFile} className="block w-full text-sm text-white/80 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-[#4db6ac] file:text-black hover:file:brightness-110" />
+          <input type="file" accept="image/*" onChange={onFile} className="block w-full text-sm text-c-text-secondary file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-cpoint-turquoise file:text-black hover:file:brightness-110" />
           {picPreview ? (
             <div className="mt-3 flex items-center justify-center">
-              <img src={picPreview} alt={t('onboarding_profile_picture.preview_alt')} className="max-h-48 rounded-lg border border-white/10" />
+              <img src={picPreview} alt={t('onboarding_profile_picture.preview_alt')} className="max-h-48 rounded-lg border border-c-border" />
             </div>
           ) : null}
           {error && <div className="mt-2 text-xs text-red-400">{error}</div>}
         </div>
         <div className="mt-4 flex gap-2 justify-end">
-          <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={onSkip} disabled={uploading}>{t('onboarding_profile_picture.skip')}</button>
-          <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={onUpload} disabled={uploading}>{uploading ? t('onboarding_profile_picture.uploading') : t('onboarding_profile_picture.upload_continue')}</button>
+          <button className="px-4 py-2 rounded-lg border border-c-border bg-c-bg-surface" onClick={onSkip} disabled={uploading}>{t('onboarding_profile_picture.skip')}</button>
+          <button className="px-4 py-2 rounded-lg bg-cpoint-turquoise text-black font-semibold" onClick={onUpload} disabled={uploading}>{uploading ? t('onboarding_profile_picture.uploading') : t('onboarding_profile_picture.upload_continue')}</button>
         </div>
       </div>
     </div>

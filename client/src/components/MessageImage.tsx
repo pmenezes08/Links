@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { optimizeMessagePhoto } from '../utils/imageOptimizer'
 
 interface MessageImageProps {
@@ -11,6 +12,7 @@ interface MessageImageProps {
 }
 
 export default function MessageImage({ src, alt, onClick, className = '', tile = false }: MessageImageProps) {
+  const { t } = useTranslation()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [retryWithOriginal, setRetryWithOriginal] = useState(false)
@@ -59,7 +61,7 @@ export default function MessageImage({ src, alt, onClick, className = '', tile =
         >
           <div className="flex flex-col items-center gap-1 text-white/40">
             <i className="fa-solid fa-image text-lg"></i>
-            <div className="text-[10px]">Unavailable</div>
+            <div className="text-[10px]">{t('chat.media_deleted')}</div>
           </div>
         </div>
       )}

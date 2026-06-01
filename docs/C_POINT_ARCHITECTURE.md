@@ -77,6 +77,7 @@ Flask blueprints are registered **without** a global URL prefix; each route decl
 | `community_stories.py` | Community stories feature API. |
 | `community_invites.py` | Invite links / email flows. |
 | `media_assets.py` | Media accounting / cleanup routes. |
+| `chat_uploads.py` | Resumable multipart chat media upload sessions (R2). |
 | `community_calendar.py` | Calendar & events API. |
 | `steve_reminders.py` | Steve Reminder Vault API. |
 | `platform_activity.py` | Aggregated activity digest (no private DMs). |
@@ -188,6 +189,7 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 | `media.py` | Upload allow-list, optimization, local paths, `save_uploaded_file`. |
 | `media_processing.py` | Processing helpers. |
 | `media_assets.py` | Tracked media assets + cleanup. |
+| `chat_uploads.py` | Resumable multipart upload session lifecycle + auth gates. |
 | `r2_storage.py` | **Cloudflare R2** (S3) upload/delete; public URL mapping. |
 | `branding_assets.py` | Branded assets metadata. |
 

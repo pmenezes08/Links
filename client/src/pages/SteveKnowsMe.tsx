@@ -275,7 +275,7 @@ export default function SteveKnowsMe() {
             {roles.map((r, i) => (
               <span
                 key={i}
-                className="text-xs px-2.5 py-1 rounded-full bg-[#4db6ac]/15 text-[#4db6ac] border border-[#4db6ac]/25"
+                className="text-xs px-2.5 py-1 rounded-full bg-cpoint-turquoise/15 text-cpoint-turquoise border border-cpoint-turquoise/25"
               >
                 {r}
               </span>
@@ -283,10 +283,10 @@ export default function SteveKnowsMe() {
           </div>
         ) : null}
         {driving ? (
-          <p className="text-sm text-white/80 leading-relaxed whitespace-pre-wrap">{driving}</p>
+          <p className="text-sm text-c-text-secondary leading-relaxed whitespace-pre-wrap">{driving}</p>
         ) : null}
         {bridge ? (
-          <p className="text-sm text-[#4db6ac]/90 leading-relaxed italic whitespace-pre-wrap">{bridge}</p>
+          <p className="text-sm text-cpoint-turquoise/90 leading-relaxed italic whitespace-pre-wrap">{bridge}</p>
         ) : null}
       </div>
     )
@@ -320,19 +320,19 @@ export default function SteveKnowsMe() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white px-4 py-6 pb-24 max-w-3xl mx-auto">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary px-4 py-6 pb-24 max-w-3xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
         <button
           type="button"
           onClick={() => navigate(-1)}
-          className="text-sm text-[#9fb0b5] hover:text-white"
+          className="text-sm text-c-text-tertiary hover:text-white"
         >
           ← Back
         </button>
       </div>
 
-      <h1 className="text-xl font-semibold text-[#4db6ac] mb-1">What Steve knows about you</h1>
-      <p className="text-sm text-[#9fb0b5] mb-4">
+      <h1 className="text-xl font-semibold text-cpoint-turquoise mb-1">What Steve knows about you</h1>
+      <p className="text-sm text-c-text-tertiary mb-4">
         This is Steve&apos;s understanding of you — not your public profile. Use it to check accuracy and suggest corrections.
       </p>
 
@@ -340,23 +340,23 @@ export default function SteveKnowsMe() {
         <button
           type="button"
           onClick={() => navigate('/profile/steve')}
-          className="text-sm text-[#4db6ac] hover:underline"
+          className="text-sm text-cpoint-turquoise hover:underline"
         >
           View Steve&apos;s public profile
         </button>
       </div>
 
       {meta.analysisInProgress ? (
-        <div className="mb-4 rounded-lg border border-[#4db6ac]/40 bg-[#4db6ac]/10 px-3 py-2 text-sm text-[#4db6ac]">
+        <div className="mb-4 rounded-lg border border-cpoint-turquoise/40 bg-cpoint-turquoise/10 px-3 py-2 text-sm text-cpoint-turquoise">
           <i className="fa-solid fa-spinner fa-spin mr-2" />
           Steve is updating your profile… refresh this page in a bit.
         </div>
       ) : null}
 
       {!meta.canRequestRefresh && !meta.analysisInProgress ? (
-        <div className="mb-4 text-sm text-[#9fb0b5]">
+        <div className="mb-4 text-sm text-c-text-tertiary">
           You&apos;ve recently asked Steve to take a fresh look. You can ask again in about{' '}
-          <span className="text-white/90">{cooldownHours}</span> hour{cooldownHours !== 1 ? 's' : ''}.
+          <span className="text-c-text-secondary">{cooldownHours}</span> hour{cooldownHours !== 1 ? 's' : ''}.
         </div>
       ) : null}
 
@@ -370,7 +370,7 @@ export default function SteveKnowsMe() {
           }
           disabled={refreshBusy || meta.analysisInProgress || !meta.canRequestRefresh}
           onClick={() => setShowRefreshExplainer(true)}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[#4db6ac]/20 border border-[#4db6ac]/40 text-[#4db6ac] hover:bg-[#4db6ac]/30 disabled:opacity-40"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-cpoint-turquoise/20 border border-cpoint-turquoise/40 text-cpoint-turquoise hover:bg-cpoint-turquoise/30 disabled:opacity-40"
           aria-label="Refresh Steve’s view"
         >
           {refreshBusy ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-arrows-rotate" />}
@@ -394,20 +394,20 @@ export default function SteveKnowsMe() {
       </div>
 
       {reviewStatus ? (
-        <p className="text-xs text-white/50 mb-4">
-          Your last review: <span className="text-white/80">{reviewStatus}</span>
+        <p className="text-xs text-c-text-tertiary mb-4">
+          Your last review: <span className="text-c-text-secondary">{reviewStatus}</span>
         </p>
       ) : null}
 
       {loading ? (
-        <div className="text-center py-16 text-white/50">
+        <div className="text-center py-16 text-c-text-tertiary">
           <i className="fa-solid fa-spinner fa-spin text-2xl mb-2" />
           <div>Loading…</div>
         </div>
       ) : error ? (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>
       ) : !profile ? (
-        <div className="space-y-4 text-sm text-[#9fb0b5]">
+        <div className="space-y-4 text-sm text-c-text-tertiary">
           <p>
             Steve doesn&apos;t have an analysis for you yet. Update your profile information, then tap the{' '}
             <strong>refresh</strong> icon above (or ask a community admin for help).
@@ -415,28 +415,28 @@ export default function SteveKnowsMe() {
         </div>
       ) : (
         <div className="space-y-6">
-          <div className="text-xs text-white/40">Last updated: {profile.lastUpdated || '—'}</div>
+          <div className="text-xs text-c-text-tertiary">Last updated: {profile.lastUpdated || '—'}</div>
 
-          <section className="rounded-xl border border-white/10 p-4 space-y-6">
-            <div className="font-semibold text-[#4db6ac]">What Steve sees</div>
+            <section className="rounded-xl border border-c-border p-4 space-y-6">
+            <div className="font-semibold text-cpoint-turquoise">What Steve sees</div>
             {visibleSectionKeys(analysis).length === 0 ? (
-              <p className="text-sm text-white/50">No sections yet. Try refreshing after updating your profile.</p>
+              <p className="text-sm text-c-text-tertiary">No sections yet. Try refreshing after updating your profile.</p>
             ) : (
               visibleSectionKeys(analysis).map(key => (
-                <div key={key} className="border-b border-white/5 pb-5 last:border-0 last:pb-0">
+                <div key={key} className="border-b border-c-border pb-5 last:border-0 last:pb-0">
                   <div className="flex items-center justify-between gap-2 mb-2">
-                    <div className="text-sm font-semibold text-white">{sectionTitle[key] ?? key}</div>
+                    <div className="text-sm font-semibold text-c-text-primary">{sectionTitle[key] ?? key}</div>
                     {(USER_EDITABLE_SECTIONS as readonly string[]).includes(key) ? (
                       <button
                         type="button"
                         onClick={() => openEdit(key)}
-                        className="text-[11px] text-[#4db6ac] hover:underline"
+                        className="text-[11px] text-cpoint-turquoise hover:underline"
                       >
                         Suggest an edit
                       </button>
                     ) : null}
                   </div>
-                  <div className="bg-white/[0.03] rounded-lg px-3.5 py-3 border border-white/5">
+                  <div className="bg-white/[0.03] rounded-lg px-3.5 py-3 border border-c-border">
                     {renderSectionBody(key, getMergedSectionValue(key, analysis))}
                   </div>
                 </div>
@@ -445,35 +445,35 @@ export default function SteveKnowsMe() {
           </section>
 
           {profile.profilingExternalSources?.items && profile.profilingExternalSources.items.length > 0 ? (
-            <section className="rounded-xl border border-white/10 p-4 space-y-3">
+            <section className="rounded-xl border border-c-border p-4 space-y-3">
               <div className="font-semibold text-cyan-400/90 text-sm">External sources Steve consulted</div>
-              <p className="text-[11px] text-[#9fb0b5]">
+              <p className="text-[11px] text-c-text-tertiary">
                 Links from your recent posts that were fetched (articles, transcripts, or audio) to build this view.
               </p>
               {profile.profilingExternalSources.updatedAt ? (
-                <div className="text-[10px] text-white/35">
+                <div className="text-[10px] text-c-text-tertiary">
                   Updated {new Date(profile.profilingExternalSources.updatedAt).toLocaleString()}
                 </div>
               ) : null}
               <ul className="space-y-2 text-[11px]">
                 {profile.profilingExternalSources.items.map((item, idx) => (
-                  <li key={`${item.url}-${idx}`} className="border-b border-white/5 last:border-0 pb-2 last:pb-0">
+                  <li key={`${item.url}-${idx}`} className="border-b border-c-border last:border-0 pb-2 last:pb-0">
                     <a
                       href={item.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[#4db6ac] hover:underline break-all"
+                      className="text-cpoint-turquoise hover:underline break-all"
                     >
                       {item.url}
                     </a>
-                    <div className="flex flex-wrap gap-1.5 mt-1 items-center text-white/45">
+                    <div className="flex flex-wrap gap-1.5 mt-1 items-center text-c-text-tertiary">
                       <span className="text-[9px] uppercase tracking-wide">{item.kind}</span>
                       {item.postDate ? <span>· post {item.postDate}</span> : null}
                       <span className={item.success ? 'text-green-400/90' : 'text-amber-400/90'}>
                         · {item.success ? 'used' : 'not used'}
                       </span>
                     </div>
-                    {item.detail ? <div className="text-[10px] text-white/35 mt-0.5">{item.detail}</div> : null}
+                    {item.detail ? <div className="text-[10px] text-c-text-tertiary mt-0.5">{item.detail}</div> : null}
                   </li>
                 ))}
               </ul>
@@ -489,11 +489,11 @@ export default function SteveKnowsMe() {
 
       {editKey ? (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 p-4">
-          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#111] p-5 space-y-3">
-            <div className="font-semibold text-white">Suggest an edit: {sectionTitle[editKey] ?? editKey}</div>
-            <p className="text-xs text-[#9fb0b5]">Your text is saved with your review so Steve can use your wording.</p>
+          <div className="w-full max-w-lg rounded-2xl border border-c-border bg-c-bg-surface p-5 space-y-3">
+            <div className="font-semibold text-c-text-primary">Suggest an edit: {sectionTitle[editKey] ?? editKey}</div>
+            <p className="text-xs text-c-text-tertiary">Your text is saved with your review so Steve can use your wording.</p>
             <textarea
-              className="w-full min-h-[140px] rounded-lg bg-black border border-white/15 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+              className="w-full min-h-[140px] rounded-lg bg-c-bg-app border border-c-border px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
               value={editText}
               onChange={e => setEditText(e.target.value)}
             />
@@ -501,7 +501,7 @@ export default function SteveKnowsMe() {
               <button
                 type="button"
                 onClick={() => setEditKey(null)}
-                className="px-3 py-2 text-sm text-white/60 hover:text-white"
+                className="px-3 py-2 text-sm text-c-text-tertiary hover:text-white"
               >
                 Cancel
               </button>
@@ -509,7 +509,7 @@ export default function SteveKnowsMe() {
                 type="button"
                 disabled={actionBusy}
                 onClick={() => void handleSaveEdit()}
-                className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-sm font-medium disabled:opacity-50"
+                className="px-4 py-2 rounded-lg bg-cpoint-turquoise text-black text-sm font-medium disabled:opacity-50"
               >
                 Save
               </button>
@@ -520,9 +520,9 @@ export default function SteveKnowsMe() {
 
       {showRefreshExplainer ? (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#111] p-5 space-y-4">
-            <div className="font-semibold text-white">Refresh Steve&apos;s view</div>
-            <p className="text-sm text-[#9fb0b5] leading-relaxed">
+          <div className="w-full max-w-md rounded-2xl border border-c-border bg-c-bg-surface p-5 space-y-4">
+            <div className="font-semibold text-c-text-primary">Refresh Steve&apos;s view</div>
+            <p className="text-sm text-c-text-tertiary leading-relaxed">
               When you refresh, Steve looks for updates to his picture of you — using your profile and public sources
               (for example the web). This can take a minute. You can only do this occasionally.
             </p>
@@ -530,7 +530,7 @@ export default function SteveKnowsMe() {
               <button
                 type="button"
                 onClick={() => setShowRefreshExplainer(false)}
-                className="px-3 py-2 text-sm text-white/60 hover:text-white"
+                className="px-3 py-2 text-sm text-c-text-tertiary hover:text-white"
               >
                 Cancel
               </button>
@@ -541,7 +541,7 @@ export default function SteveKnowsMe() {
                   setShowRefreshExplainer(false)
                   void handleRequestRefresh()
                 }}
-                className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-sm font-medium disabled:opacity-50"
+                className="px-4 py-2 rounded-lg bg-cpoint-turquoise text-black text-sm font-medium disabled:opacity-50"
               >
                 Refresh
               </button>
@@ -551,7 +551,7 @@ export default function SteveKnowsMe() {
       ) : null}
 
       {feedback ? (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full border border-white/10 bg-white/10 text-sm text-white max-w-[90vw] text-center">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full border border-c-border bg-c-active-bg text-sm text-white max-w-[90vw] text-center">
           {feedback}
         </div>
       ) : null}

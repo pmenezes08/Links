@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Iterable, List, Optional, Sequence
+from typing import Any, Iterable, List, NamedTuple, Optional, Sequence
 
 IMAGE_KEYWORDS: tuple[str, ...] = (
     "image",
@@ -25,6 +25,12 @@ IMAGE_KEYWORDS: tuple[str, ...] = (
 VIDEO_EXTENSIONS: tuple[str, ...] = (".mp4", ".mov", ".webm", ".m4v", ".avi")
 
 STEVE_SHARED_PHOTO_USER_MESSAGE = "[User shared a photo]"
+
+
+class ImageTurnSelection(NamedTuple):
+    urls: List[str]
+    reply_targeted: bool = False
+    specific_image: bool = False
 
 
 def wants_images(message: str | None, *, force: bool = False) -> bool:
@@ -90,11 +96,25 @@ def select_image_urls_for_turn(
     *,
     force: bool = False,
     max_count: int = 5,
-) -> List[str]:
+) -> ImageTurnSelection:
     capped = dedupe_and_cap_image_urls(collected, max_count=max_count)
     if not wants_images(user_message, force=force):
-        return []
-    return capped
+        return ImageTurnSelection(urls=[])
+    return ImageTurnSelection(urls=capped)
+
+
+def vision_focus_context_line(selection: ImageTurnSelection) -> str:
+    if selection.reply_targeted:
+        return (
+            "\n\nThe user quoted a specific photo in their reply and is asking about that image. "
+            "Describe that image only — not other photos from the thread."
+        )
+    if selection.specific_image:
+        return (
+            "\n\nThe user is asking about a specific recent photo in this conversation. "
+            "Focus on the most recently shared image attached below."
+        )
+    return ""
 
 
 def build_grok_user_content(context_text: str, image_urls: Sequence[str]) -> Any:

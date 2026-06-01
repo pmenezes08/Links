@@ -17,12 +17,12 @@ export default function SettingsSwitch({ checked, disabled, onChange, label, des
       className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left disabled:opacity-60"
     >
       <span className="min-w-0">
-        <span className="block text-[15px] font-semibold text-white">{label}</span>
-        {description ? <span className="mt-0.5 block text-sm text-white/45">{description}</span> : null}
+        <span className="block text-[15px] font-semibold text-c-text-primary">{label}</span>
+        {description ? <span className="mt-0.5 block text-sm text-c-text-tertiary">{description}</span> : null}
       </span>
       <span
         className={`relative h-8 w-[3.25rem] shrink-0 rounded-full transition-colors duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
-          checked ? 'bg-[#4db6ac]' : 'bg-white/14'
+          checked ? 'bg-cpoint-turquoise' : 'bg-white/14'
         }`}
       >
         <span

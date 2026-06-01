@@ -44,11 +44,10 @@ export default function HeaderBar({ title, username, displayName, avatarUrl, tit
   return (
     <>
       <div
-        className="header-with-safe-area fixed left-0 right-0 top-0 h-14 border-b border-white/10 bg-black flex items-center px-3 z-[1000] text-white will-change-transform"
-        style={{ background: '#000' }}
+        className="header-with-safe-area fixed left-0 right-0 top-0 h-14 border-b border-c-border bg-c-header-bg flex items-center px-3 z-[1000] text-c-text-primary will-change-transform"
       >
         {showBack ? (
-          <button className="mr-2 p-2 rounded-full hover:bg-white/5" onClick={goBack} aria-label={t('navigation.back')}>
+          <button className="mr-2 p-2 rounded-full hover:bg-c-hover-bg" onClick={goBack} aria-label={t('navigation.back')}>
             <i className="fa-solid fa-arrow-left" />
           </button>
         ) : (
@@ -75,7 +74,7 @@ export default function HeaderBar({ title, username, displayName, avatarUrl, tit
                 <div className="inline-flex max-w-[70%] min-w-0 items-center gap-2">
                   <div className="min-w-0 whitespace-nowrap overflow-hidden text-ellipsis">
                     <span className="font-semibold align-baseline">{left}</span>
-                    <span className="text-[#9fb0b5] text-[13px] font-normal align-baseline">{` · ${right}`}</span>
+                    <span className="text-c-text-tertiary text-[13px] font-normal align-baseline">{` · ${right}`}</span>
                   </div>
                   {titleAccessory ? <span className="flex-shrink-0">{titleAccessory}</span> : null}
                 </div>
@@ -90,11 +89,11 @@ export default function HeaderBar({ title, username, displayName, avatarUrl, tit
           })()}
         </div>
         <div className="flex items-center gap-2">
-          <button className="relative p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat')} aria-label={t('navigation.messages')}>
+          <button className="relative p-2 rounded-full hover:bg-c-hover-bg" onClick={()=> navigate('/user_chat')} aria-label={t('navigation.messages')}>
             <i className="fa-solid fa-comments" />
             {unreadMsgs > 0 ? (<span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-cpoint-turquoise text-black text-[10px] flex items-center justify-center">{unreadMsgs > 99 ? '99+' : unreadMsgs}</span>) : null}
           </button>
-          <button className="relative p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/notifications')} aria-label={t('navigation.notifications')}>
+          <button className="relative p-2 rounded-full hover:bg-c-hover-bg" onClick={()=> navigate('/notifications')} aria-label={t('navigation.notifications')}>
             <i className="fa-regular fa-bell" />
             {unreadNotifs > 0 ? (<span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-cpoint-turquoise text-black text-[10px] flex items-center justify-center">{unreadNotifs > 99 ? '99+' : unreadNotifs}</span>) : null}
           </button>
@@ -103,26 +102,26 @@ export default function HeaderBar({ title, username, displayName, avatarUrl, tit
 
       {/* Persistent left sidebar for web - matches mobile burger menu */}
       {isWeb && (
-        <div className="fixed left-0 top-14 bottom-0 w-64 hidden lg:flex flex-col z-30 bg-[#0a0a0c] border-r border-white/10 shadow-xl overflow-y-auto">
+        <div className="fixed left-0 top-14 bottom-0 w-64 hidden lg:flex flex-col z-30 bg-c-bg-elevated border-r border-c-border shadow-xl overflow-y-auto">
           <div className="p-4">
-            <div className="flex items-center gap-2 pb-4 border-b border-white/10 mb-4">
+            <div className="flex items-center gap-2 pb-4 border-b border-c-border mb-4">
               <Avatar username={username || ''} url={resolvedAvatar} size={40} />
-              <div className="font-medium truncate text-white">{displayName || username || ''}</div>
+              <div className="font-medium truncate text-c-text-primary">{displayName || username || ''}</div>
             </div>
 
             <nav className="space-y-1">
               {username === 'admin' && (
                 <>
-                  <a href="/admin_profile_react" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors">
+                  <a href="/admin_profile_react" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-c-text-primary transition-colors">
                     <i className="fa-solid fa-shield-halved w-5" /> {t('navigation.admin_profile')}
                   </a>
-                  <a href="/admin" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors">
+                  <a href="/admin" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-c-text-primary transition-colors">
                     <i className="fa-solid fa-chart-line w-5" /> {t('navigation.admin_dashboard')}
                   </a>
                 </>
               )}
 
-              <a href="/premium_dashboard" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors">
+              <a href="/premium_dashboard" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-c-text-primary transition-colors">
                 <i className="fa-solid fa-house w-5" /> {t('navigation.dashboard')}
               </a>
 
@@ -131,33 +130,33 @@ export default function HeaderBar({ title, username, displayName, avatarUrl, tit
                   if (username) navigate(`/profile/${encodeURIComponent(username)}`)
                   else navigate('/profile')
                 }}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors text-left"
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-c-text-primary transition-colors text-left"
               >
                 <i className="fa-solid fa-user w-5" /> {t('navigation.my_profile')}
               </button>
 
               <button
                 onClick={() => navigate('/followers')}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors text-left"
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-c-text-primary transition-colors text-left"
               >
                 <i className="fa-solid fa-users w-5" /> {t('navigation.followers')}
               </button>
 
               <button
                 onClick={() => navigate('/subscription_plans')}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors text-left"
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-c-text-primary transition-colors text-left"
               >
                 <i className="fa-solid fa-crown w-5" /> {t('navigation.subscriptions')}
               </button>
 
               <button
                 onClick={requestLogout}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors text-left"
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-c-text-primary transition-colors text-left"
               >
                 <i className="fa-solid fa-right-from-bracket w-5" /> {t('navigation.logout')}
               </button>
 
-              <a href="/account_settings" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors">
+              <a href="/account_settings" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-c-text-primary transition-colors">
                 <i className="fa-solid fa-cog w-5" /> {t('navigation.account_settings')}
               </a>
             </nav>

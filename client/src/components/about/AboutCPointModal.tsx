@@ -42,7 +42,7 @@ function ModalBackdrop({
 
   return (
     <div
-      className={`fixed inset-0 ${zClass} flex items-end sm:items-center justify-center sm:p-4 bg-black/70 pb-[var(--app-dashboard-bottom-nav-height)] sm:pb-4`}
+      className={`fixed inset-0 ${zClass} flex items-end sm:items-center justify-center sm:p-4 bg-c-bg-app/70 pb-[var(--app-dashboard-bottom-nav-height)] sm:pb-4`}
       role="presentation"
       onClick={onClose}
     >
@@ -50,7 +50,7 @@ function ModalBackdrop({
         role="dialog"
         aria-modal="true"
         aria-labelledby="about-cpoint-modal-title"
-        className={`grid w-full min-h-0 shrink grid-rows-[minmax(0,1fr)] overflow-hidden ${wide ? 'max-w-lg' : 'max-w-md'} max-h-[calc(100dvh-var(--app-dashboard-bottom-nav-height)-2rem)] sm:max-h-[85vh] rounded-t-2xl sm:rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-xl`}
+        className={`grid w-full min-h-0 shrink grid-rows-[minmax(0,1fr)] overflow-hidden ${wide ? 'max-w-lg' : 'max-w-md'} max-h-[calc(100dvh-var(--app-dashboard-bottom-nav-height)-2rem)] sm:max-h-[85vh] rounded-t-2xl sm:rounded-2xl border border-c-border bg-c-bg-elevated shadow-xl`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="min-h-0 overflow-y-auto overscroll-contain touch-pan-y p-4 [-webkit-overflow-scrolling:touch]">
@@ -84,14 +84,14 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
       <ModalBackdrop onClose={onClose} zClass="z-[200]">
         <div className="flex justify-between items-start gap-2 mb-2">
           <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-wider text-[#9fb0b5]/70 mb-0.5">
+            <div className="text-[10px] uppercase tracking-wider text-c-text-tertiary/70 mb-0.5">
               {t('dashboard.about_header', { current: step + 1, total: STEP_TITLE_KEYS.length })}
             </div>
-            <h2 id="about-cpoint-modal-title" className="text-base font-semibold text-white">
+            <h2 id="about-cpoint-modal-title" className="text-base font-semibold text-c-text-primary">
               {t(STEP_TITLE_KEYS[step])}
             </h2>
           </div>
-          <button type="button" className="text-xs text-[#9fb0b5] hover:text-white shrink-0" onClick={onClose}>
+          <button type="button" className="text-xs text-c-text-tertiary hover:text-white shrink-0" onClick={onClose}>
             {t('common.close')}
           </button>
         </div>
@@ -100,7 +100,7 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
           {STEP_TITLE_KEYS.map((_, i) => (
             <span
               key={i}
-              className={`h-1 flex-1 rounded-full ${i === step ? 'bg-[#4db6ac]' : 'bg-white/15'}`}
+              className={`h-1 flex-1 rounded-full ${i === step ? 'bg-cpoint-turquoise' : 'bg-white/15'}`}
             />
           ))}
         </div>
@@ -108,13 +108,13 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
         {step === 0 ? (
           <div className="space-y-3 mb-4">
             {Array.isArray(manifestoSummary) && manifestoSummary.map((p, i) => (
-              <p key={i} className="text-sm text-[#9fb0b5] leading-relaxed">
+              <p key={i} className="text-sm text-c-text-tertiary leading-relaxed">
                 {p}
               </p>
             ))}
             <button
               type="button"
-              className="text-sm font-medium text-[#4db6ac] hover:underline"
+              className="text-sm font-medium text-cpoint-turquoise hover:underline"
               onClick={() => setManifestoFullOpen(true)}
             >
               {t('dashboard.about_read_full_manifesto')}
@@ -124,15 +124,15 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
 
         {step === 1 ? (
           <div className="space-y-3 mb-4">
-            <p className="text-sm text-[#9fb0b5] leading-relaxed">{t('dashboard.about_feeds_intro')}</p>
+            <p className="text-sm text-c-text-tertiary leading-relaxed">{t('dashboard.about_feeds_intro')}</p>
             <div className="grid grid-cols-2 gap-2">
               {FEED_FEATURE_KEYS.map((feature) => (
-                <div key={feature.titleKey} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                  <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg bg-[#4db6ac]/10 text-[#4db6ac]">
+                <div key={feature.titleKey} className="rounded-xl border border-c-border bg-white/[0.03] p-3">
+                  <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg bg-cpoint-turquoise/10 text-cpoint-turquoise">
                     <i className={`${feature.icon} text-sm`} />
                   </div>
-                  <div className="text-sm font-semibold text-white">{t(feature.titleKey)}</div>
-                  <div className="mt-1 text-xs leading-relaxed text-[#9fb0b5]">{t(feature.textKey)}</div>
+                  <div className="text-sm font-semibold text-c-text-primary">{t(feature.titleKey)}</div>
+                  <div className="mt-1 text-xs leading-relaxed text-c-text-tertiary">{t(feature.textKey)}</div>
                 </div>
               ))}
             </div>
@@ -141,18 +141,18 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
 
         {step === 2 ? (
           <div className="space-y-3 mb-4">
-            <p className="text-sm text-[#9fb0b5] leading-relaxed">{t('dashboard.about_dms_para_1')}</p>
-            <p className="text-sm text-[#9fb0b5] leading-relaxed">{t('dashboard.about_dms_para_2')}</p>
+            <p className="text-sm text-c-text-tertiary leading-relaxed">{t('dashboard.about_dms_para_1')}</p>
+            <p className="text-sm text-c-text-tertiary leading-relaxed">{t('dashboard.about_dms_para_2')}</p>
           </div>
         ) : null}
 
         {step === 3 ? (
           <div className="space-y-3 mb-4">
-            <p className="text-sm text-[#9fb0b5] leading-relaxed">{t('dashboard.about_steve_para_1')}</p>
-            <p className="text-sm text-[#9fb0b5] leading-relaxed">{t('dashboard.about_steve_para_2')}</p>
+            <p className="text-sm text-c-text-tertiary leading-relaxed">{t('dashboard.about_steve_para_1')}</p>
+            <p className="text-sm text-c-text-tertiary leading-relaxed">{t('dashboard.about_steve_para_2')}</p>
             <button
               type="button"
-              className="w-full py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110"
+              className="w-full py-2.5 rounded-xl bg-cpoint-turquoise text-black text-sm font-semibold hover:brightness-110"
               onClick={() => {
                 onClose()
                 navigate(stevePrefillUrl(t('dashboard.about_talk_prefill')))
@@ -163,11 +163,11 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
           </div>
         ) : null}
 
-        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/10">
+        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-c-border">
           {step > 0 ? (
             <button
               type="button"
-              className="px-4 py-2 rounded-xl border border-white/15 text-sm text-white hover:bg-white/5"
+              className="px-4 py-2 rounded-xl border border-white/15 text-sm text-c-text-primary hover:bg-c-hover-bg"
               onClick={() => setStep((s) => Math.max(0, s - 1))}
             >
               {t('common.back')}
@@ -176,7 +176,7 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
           {step < lastStep ? (
             <button
               type="button"
-              className="ml-auto px-4 py-2 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110"
+              className="ml-auto px-4 py-2 rounded-xl bg-cpoint-turquoise text-black text-sm font-semibold hover:brightness-110"
               onClick={() => setStep((s) => Math.min(lastStep, s + 1))}
             >
               {t('common.next')}
@@ -184,7 +184,7 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
           ) : (
             <button
               type="button"
-              className="ml-auto px-4 py-2 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110"
+              className="ml-auto px-4 py-2 rounded-xl bg-cpoint-turquoise text-black text-sm font-semibold hover:brightness-110"
               onClick={onClose}
             >
               {t('common.done')}
@@ -194,7 +194,7 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
 
         <button
           type="button"
-          className="w-full mt-3 py-2 rounded-lg border border-white/12 text-xs text-[#9fb0b5] hover:text-white hover:border-white/20"
+          className="w-full mt-3 py-2 rounded-lg border border-c-border text-xs text-c-text-tertiary hover:text-white hover:border-white/20"
           onClick={() => {
             onClose()
             navigate('/about_cpoint')
@@ -207,12 +207,12 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
       {manifestoFullOpen ? (
         <ModalBackdrop onClose={() => setManifestoFullOpen(false)} wide zClass="z-[210]">
           <div className="flex justify-between items-start gap-2 mb-2">
-            <h2 className="text-base font-semibold text-white">{t('dashboard.about_full_manifesto_title')}</h2>
-            <button type="button" className="text-xs text-[#9fb0b5] shrink-0" onClick={() => setManifestoFullOpen(false)}>
+            <h2 className="text-base font-semibold text-c-text-primary">{t('dashboard.about_full_manifesto_title')}</h2>
+            <button type="button" className="text-xs text-c-text-tertiary shrink-0" onClick={() => setManifestoFullOpen(false)}>
               {t('common.close')}
             </button>
           </div>
-          <div className="whitespace-pre-wrap break-words text-sm text-[#9fb0b5] font-sans">{t('dashboard.about_manifesto_full')}</div>
+          <div className="whitespace-pre-wrap break-words text-sm text-c-text-tertiary font-sans">{t('dashboard.about_manifesto_full')}</div>
         </ModalBackdrop>
       ) : null}
     </>

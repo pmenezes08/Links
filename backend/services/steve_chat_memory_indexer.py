@@ -105,6 +105,7 @@ class BackfillStats:
     chunks_written: int = 0
     chunks_skipped_existing: int = 0
     events_written: int = 0
+    embedded_count: int = 0
     dry_run: bool = True
     elapsed_ms: int = 0
 
@@ -418,6 +419,25 @@ def backfill_peer_dm(
                 logger.warning(
                     "backfill event extraction failed for chunk %s (non-fatal): %s",
                     chunk.chunk_id, evt_err,
+                )
+
+        # Embed chunk for semantic retrieval (non-fatal)
+        if config.embedding_model or True:  # always attempt if model configured or default
+            try:
+                from backend.services.steve_chat_memory_retrieval import embed_chunks
+                # Pass dict so embed_chunks can use .get() (ChunkRecord.to_firestore_dict())
+                embedded = embed_chunks(
+                    fs_client,
+                    scope,
+                    [chunk.to_firestore_dict()],
+                    model=config.embedding_model or "text-embedding-3-small",
+                    username="system",
+                )
+                stats.embedded_count += embedded
+            except Exception as embed_err:
+                logger.warning(
+                    "backfill embedding failed for chunk %s (non-fatal): %s",
+                    chunk.chunk_id, embed_err,
                 )
 
     stats.chunks_written = written

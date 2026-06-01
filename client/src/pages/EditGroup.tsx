@@ -88,51 +88,51 @@ export default function EditGroup(){
     } catch { alert('Failed to delete group') }
   }
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">{t('communities.loading')}</div>
+  if (loading) return <div className="p-4 text-c-text-tertiary">{t('communities.loading')}</div>
   if (error) return (
     <div className="p-4">
       <div className="text-red-400 mb-3">{error}</div>
-      <button className="px-3 py-1.5 rounded-lg border border-white/10 text-sm text-white hover:bg-white/5" onClick={() => navigate(-1)}>← {t('common.back')}</button>
+      <button className="px-3 py-1.5 rounded-lg border border-c-border text-sm text-c-text-primary hover:bg-c-hover-bg" onClick={() => navigate(-1)}>← {t('common.back')}</button>
     </div>
   )
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary">
       <div className="max-w-2xl mx-auto px-3 py-4 space-y-4" style={{ paddingTop: '12px' }}>
         {/* Header */}
         <div className="flex items-center gap-3">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={() => navigate(`/group_feed_react/${group_id}`)}>
+          <button className="p-2 rounded-full hover:bg-c-hover-bg" onClick={() => navigate(`/group_feed_react/${group_id}`)}>
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="text-lg font-semibold">{t('communities.manage_group')}</div>
         </div>
 
         {successMsg && (
-          <div className="px-4 py-2 rounded-lg bg-[#4db6ac]/20 text-[#4db6ac] text-sm text-center">{successMsg}</div>
+          <div className="px-4 py-2 rounded-lg bg-cpoint-turquoise/20 text-cpoint-turquoise text-sm text-center">{successMsg}</div>
         )}
 
         {/* Group Name */}
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
-          <div className="text-sm font-medium text-white">{t('communities.group_name')}</div>
+        <div className="rounded-xl border border-c-border bg-white/[0.03] p-4 space-y-3">
+          <div className="text-sm font-medium text-c-text-primary">{t('communities.group_name')}</div>
           <input
             value={name}
             onChange={e => setName(e.target.value)}
-            className="w-full rounded-lg border border-white/15 bg-transparent px-3 py-2.5 text-sm text-white placeholder-[#6f7c81] focus:outline-none focus:border-[#4db6ac]"
+            className="w-full rounded-lg border border-c-border bg-transparent px-3 py-2.5 text-sm text-c-text-primary placeholder-[#6f7c81] focus:outline-none focus:border-cpoint-turquoise"
             placeholder={t('communities.group_name_placeholder')}
           />
         </div>
 
         {/* Approval Required */}
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+        <div className="rounded-xl border border-c-border bg-white/[0.03] p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm font-medium text-white">{t('communities.require_approval')}</div>
+              <div className="text-sm font-medium text-c-text-primary">{t('communities.require_approval')}</div>
               <div className="text-xs text-[#6f7c81] mt-0.5">New members need approval before joining</div>
             </div>
             <button
               type="button"
               onClick={() => setApprovalRequired(!approvalRequired)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ${approvalRequired ? 'bg-[#4db6ac]' : 'bg-white/20'}`}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ${approvalRequired ? 'bg-cpoint-turquoise' : 'bg-white/20'}`}
             >
               <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ${approvalRequired ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
@@ -143,7 +143,7 @@ export default function EditGroup(){
         <button
           onClick={handleSave}
           disabled={saving}
-          className="w-full py-3 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110 disabled:opacity-50 transition"
+          className="w-full py-3 rounded-xl bg-cpoint-turquoise text-black text-sm font-semibold hover:brightness-110 disabled:opacity-50 transition"
         >
           {saving ? t('account.language.saving') : t('communities.save_changes')}
         </button>
@@ -152,7 +152,7 @@ export default function EditGroup(){
         {isOwner && (
           <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 space-y-3 mt-6">
             <div className="text-sm font-medium text-red-400">{t('account.danger.section_title')}</div>
-            <div className="text-xs text-[#9fb0b5]">Deleting this group will permanently remove all posts, members, and data.</div>
+            <div className="text-xs text-c-text-tertiary">Deleting this group will permanently remove all posts, members, and data.</div>
             <button
               onClick={handleDelete}
               className="w-full py-2.5 rounded-lg border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/10 transition-colors"

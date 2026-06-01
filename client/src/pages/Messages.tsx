@@ -576,7 +576,7 @@ export default function Messages(){
             setSubCommunityFilter(node.id)
             setOpenDropdownId(null)
           }}
-          className={`flex w-full items-center gap-2 px-3 py-2 text-xs text-white/80 hover:bg-white/10 ${selected ? 'bg-white/10 text-[#4db6ac]' : ''}`}
+          className={`flex w-full items-center gap-2 px-3 py-2 text-xs text-c-text-secondary hover:bg-c-hover-bg ${selected ? 'bg-c-active-bg text-cpoint-turquoise' : ''}`}
           style={{ paddingLeft: `${padding}px` }}
         >
           <span className="truncate">{node.name}</span>
@@ -589,28 +589,28 @@ export default function Messages(){
     })
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary">
       {/* Secondary header (match Polls) */}
       <div
-        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+        className="fixed left-0 right-0 h-10 bg-c-header-bg backdrop-blur z-40 border-b border-c-border-subtle shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))' }}
       >
         <div className="max-w-3xl mx-auto h-full flex items-center gap-2 px-2">
           <button
-            className="p-2 rounded-full hover:bg-white/5"
+            className="p-2 rounded-full hover:bg-c-hover-bg"
             onClick={() => navigate('/premium_dashboard')}
             aria-label={t('common.back')}
           >
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="flex-1 h-full flex">
-            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='chats' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('chats')}>
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='chats' ? 'text-c-text-primary' : 'text-c-text-tertiary hover:text-c-text-primary'}`} onClick={()=> setActiveTab('chats')}>
               <div className="pt-2">{t('chat.tab_chats')}</div>
-              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='chats' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='chats' ? 'bg-cpoint-turquoise' : 'bg-transparent'}`} />
             </button>
-            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='new' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('new')}>
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='new' ? 'text-c-text-primary' : 'text-c-text-tertiary hover:text-c-text-primary'}`} onClick={()=> setActiveTab('new')}>
               <div className="pt-2">{t('chat.tab_new_message')}</div>
-              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='new' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='new' ? 'bg-cpoint-turquoise' : 'bg-transparent'}`} />
             </button>
           </div>
         </div>
@@ -626,30 +626,30 @@ export default function Messages(){
       >
         {(pullPx > 0 || hint === 'refreshing') && (
           <div
-            className="flex justify-center py-2 text-xs text-white/60"
+            className="flex justify-center py-2 text-xs text-c-text-tertiary"
             style={{ transform: `translateY(${Math.min(pullPx, 48)}px)` }}
           >
             {hint === 'refreshing' ? t('common.loading') : t('chat.pull_to_refresh', { defaultValue: 'Pull to refresh' })}
           </div>
         )}
         {sharePick && (
-          <div className="mb-3 px-2 py-2 rounded-xl border border-[#4db6ac]/40 bg-[#4db6ac]/10 text-sm text-white/90">
+          <div className="mb-3 px-2 py-2 rounded-xl border border-cpoint-turquoise/40 bg-cpoint-turquoise/10 text-sm text-c-text-primary">
             {t('chat.share_pick_banner')}
           </div>
         )}
         {activeTab === 'chats' ? (
           <div className="space-y-3">
-            <div className="bg-black border border-white/10 rounded-xl p-3">
+            <div className="bg-c-bg-app border border-c-border rounded-xl p-3">
               <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm font-semibold text-white/80">{t('chat.filter_by_community')}</div>
+                  <div className="text-sm font-semibold text-c-text-secondary">{t('chat.filter_by_community')}</div>
                 {communitiesLoading ? (
-                  <span className="text-xs text-white/50">{t('common.loading')}</span>
+                  <span className="text-xs text-c-text-tertiary">{t('common.loading')}</span>
                 ) : communityError ? (
                   <span className="text-xs text-red-400">{communityError}</span>
                 ) : communityTree.length === 0 ? (
-                    <span className="text-xs text-white/40">{t('chat.no_communities_available')}</span>
+                    <span className="text-xs text-c-text-tertiary">{t('chat.no_communities_available')}</span>
                 ) : (
-                    <span className="text-xs text-white/40">{filterSummary}</span>
+                    <span className="text-xs text-c-text-tertiary">{filterSummary}</span>
                 )}
                 </div>
                 <div className="flex gap-2 pb-1 overflow-x-auto overflow-y-visible no-scrollbar whitespace-nowrap">
@@ -662,8 +662,8 @@ export default function Messages(){
                     }}
                     className={`px-3 py-1.5 text-xs rounded-full border transition whitespace-nowrap flex-shrink-0 ${
                     communityFilter === 'all'
-                      ? 'border-[#4db6ac]/70 bg-[#4db6ac]/20 text-[#4db6ac]'
-                      : 'border-white/15 bg-black/60 text-white/70 hover:border-white/25'
+                      ? 'border-cpoint-turquoise/70 bg-cpoint-turquoise/20 text-cpoint-turquoise'
+                      : 'border-c-border bg-c-bg-recessed text-c-text-secondary hover:border-c-border-strong'
                   }`}
                 >
                   {t('chat.filter_all')}
@@ -683,8 +683,8 @@ export default function Messages(){
                           }}
                           className={`px-3 py-1.5 text-xs rounded-full border transition whitespace-nowrap flex items-center gap-1 ${
                             selected
-                              ? 'border-[#4db6ac]/70 bg-[#4db6ac]/20 text-[#4db6ac]'
-                              : 'border-white/15 bg-black/60 text-white/70 hover:border-white/25'
+                              ? 'border-cpoint-turquoise/70 bg-cpoint-turquoise/20 text-cpoint-turquoise'
+                              : 'border-c-border bg-c-bg-recessed text-c-text-secondary hover:border-c-border-strong'
                           }`}
                           title={comm.members.length ? t('chat.members_count', { count: comm.members.length }) : undefined}
                         >
@@ -704,8 +704,8 @@ export default function Messages(){
                 const node = nodeById.get(openDropdownId)
                 if (node && node.children.length > 0) {
                   return (
-                    <div className="rounded-xl border border-white/10 bg-black p-4 space-y-1">
-                      <div className="text-xs text-white/70 mb-2">{t('chat.filter_node', { name: node.name })}</div>
+                    <div className="rounded-xl border border-c-border bg-c-bg-app p-4 space-y-1">
+                      <div className="text-xs text-c-text-secondary mb-2">{t('chat.filter_node', { name: node.name })}</div>
                       <button
                         type="button"
                         onClick={() => {
@@ -713,7 +713,7 @@ export default function Messages(){
                           setSubCommunityFilter(null)
                           setOpenDropdownId(null)
                         }}
-                        className={`flex w-full items-center gap-2 px-3 py-2 text-xs text-white/80 hover:bg-white/10 ${subCommunityFilter === null ? 'bg-white/10 text-[#4db6ac]' : ''}`}
+                        className={`flex w-full items-center gap-2 px-3 py-2 text-xs text-c-text-secondary hover:bg-c-hover-bg ${subCommunityFilter === null ? 'bg-c-active-bg text-cpoint-turquoise' : ''}`}
                       >
                         <span className="truncate">{t('chat.filter_all_node', { name: node.name })}</span>
                       </button>
@@ -726,39 +726,39 @@ export default function Messages(){
             <>
             {/* Group Chats Section */}
             {groupChats.length > 0 && communityFilter === 'all' && (
-              <div className="rounded-xl border border-white/10 bg-black mb-3">
+              <div className="rounded-xl border border-c-border bg-c-bg-app mb-3">
                 <button
                   type="button"
                   onClick={() => setGroupChatsCollapsed(!groupChatsCollapsed)}
-                  className="w-full px-3 py-2 border-b border-white/10 flex items-center justify-between hover:bg-white/5 transition-colors"
+                  className="w-full px-3 py-2 border-b border-c-border flex items-center justify-between hover:bg-c-hover-bg transition-colors"
                 >
                   <div className="flex items-center gap-2">
-                    <i className="fa-solid fa-users text-[#4db6ac] text-sm" />
-                    <span className="text-sm font-semibold text-white/80">{t('chat.group_chats')}</span>
-                    <span className="text-xs text-white/40">({groupChats.length})</span>
+                    <i className="fa-solid fa-users text-cpoint-turquoise text-sm" />
+                    <span className="text-sm font-semibold text-c-text-secondary">{t('chat.group_chats')}</span>
+                    <span className="text-xs text-c-text-tertiary">({groupChats.length})</span>
                     {groupChats.reduce((sum, gc) => sum + gc.unread_count, 0) > 0 && (
-                      <span className="px-1.5 py-0.5 rounded-full bg-[#4db6ac] text-black text-[10px] font-medium">
+                      <span className="px-1.5 py-0.5 rounded-full bg-cpoint-turquoise text-black text-[10px] font-medium">
                         {groupChats.reduce((sum, gc) => sum + gc.unread_count, 0)}
                       </span>
                     )}
                   </div>
-                  <i className={`fa-solid fa-chevron-${groupChatsCollapsed ? 'down' : 'up'} text-xs text-white/40`} />
+                  <i className={`fa-solid fa-chevron-${groupChatsCollapsed ? 'down' : 'up'} text-xs text-c-text-tertiary`} />
                 </button>
                 {!groupChatsCollapsed && (
-                <div className="divide-y divide-white/10">
+                <div className="divide-y divide-c-border">
                   {groupChats.length > 3 && (
                     <div className="px-3 py-2">
                       <div className="relative">
-                        <i className="fa-solid fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30 text-xs" />
+                        <i className="fa-solid fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-c-text-disabled text-xs" />
                         <input
                           type="text"
                           value={groupSearchQuery}
                           onChange={e => setGroupSearchQuery(e.target.value)}
                           placeholder={t('chat.search_groups_placeholder')}
-                          className="w-full pl-8 pr-8 py-1.5 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder-white/30 outline-none focus:border-[#4db6ac]/50"
+                          className="w-full pl-8 pr-8 py-1.5 rounded-lg bg-c-hover-bg border border-c-border text-sm text-c-text-primary placeholder-c-text-disabled outline-none focus:border-cpoint-turquoise/50"
                         />
                         {groupSearchQuery && (
-                          <button type="button" onClick={() => setGroupSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60">
+                          <button type="button" onClick={() => setGroupSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-c-text-disabled hover:text-c-text-tertiary">
                             <i className="fa-solid fa-xmark text-xs" />
                           </button>
                         )}
@@ -785,7 +785,7 @@ export default function Messages(){
                           <button
                             type="button"
                             onClick={() => setChatMoreTarget({ type: 'group', groupId: gc.id, displayName: gc.name })}
-                            className="my-1 h-[44px] w-[52px] rounded-md bg-white/10 text-white/80 hover:bg-white/20 flex items-center justify-center"
+                            className="my-1 h-[44px] w-[52px] rounded-md bg-c-active-bg text-c-text-secondary hover:bg-c-hover-bg flex items-center justify-center"
                             aria-label={t('chat.more_options')}
                           >
                             <i className="fa-solid fa-ellipsis" />
@@ -802,7 +802,7 @@ export default function Messages(){
                         
                         {/* Group chat row */}
                         <div
-                          className="relative bg-black"
+                          className="relative bg-c-bg-app"
                           style={{ transform: `translateX(${gtx}px)`, transition: gTransition }}
                           onPointerDown={(e) => {
                             if (e.button !== 0) return
@@ -842,21 +842,21 @@ export default function Messages(){
                                 navigate(`/group_chat/${gc.id}${shareQuery}`)
                               }
                             }}
-                            className="w-full px-3 py-3 flex items-center gap-3 hover:bg-white/5 text-left"
+                            className="w-full px-3 py-3 flex items-center gap-3 hover:bg-c-hover-bg text-left"
                           >
-                            <div className="w-12 h-12 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
-                              <i className="fa-solid fa-users text-[#4db6ac]" />
+                            <div className="w-12 h-12 rounded-full bg-cpoint-turquoise/20 flex items-center justify-center flex-shrink-0">
+                              <i className="fa-solid fa-users text-cpoint-turquoise" />
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between">
                                 <div className="font-medium truncate">{gc.name}</div>
                                 {gc.last_message?.time && (
-                                  <div className="ml-3 flex-shrink-0 text-[11px] text-[#9fb0b5]">
+                                  <div className="ml-3 flex-shrink-0 text-[11px] text-c-text-tertiary">
                                     {new Date(gc.last_message.time).toLocaleDateString()}
                                   </div>
                                 )}
                               </div>
-                              <div className="text-[13px] text-[#9fb0b5] truncate">
+                              <div className="text-[13px] text-c-text-tertiary truncate">
                                 {gc.last_message ? (
                                   <span><span className="font-medium">{gc.last_message.sender}:</span> {formatLastMessagePreview(gc.last_message.text, t)}</span>
                                 ) : (
@@ -865,10 +865,10 @@ export default function Messages(){
                               </div>
                             </div>
                             {gc.muted && (
-                              <i className="ml-2 fa-solid fa-bell-slash text-white/40 text-xs" title={t('chat.muted_title')} />
+                              <i className="ml-2 fa-solid fa-bell-slash text-c-text-tertiary text-xs" title={t('chat.muted_title')} />
                             )}
                             {gc.unread_count > 0 && (
-                              <div className="ml-2 px-2 h-5 rounded-full bg-[#4db6ac] text-black text-[11px] flex items-center justify-center">
+                              <div className="ml-2 px-2 h-5 rounded-full bg-cpoint-turquoise text-black text-[11px] flex items-center justify-center">
                                 {gc.unread_count > 99 ? '99+' : gc.unread_count}
                               </div>
                             )}
@@ -883,29 +883,29 @@ export default function Messages(){
             )}
             
             {/* Direct Messages Section */}
-            <div className="rounded-xl border border-white/10 bg-black divide-y divide-white/10">
+            <div className="rounded-xl border border-c-border bg-c-bg-app divide-y divide-c-border">
               {groupChats.length > 0 && communityFilter === 'all' && (
                 <button
                   type="button"
                   onClick={() => setDirectMessagesCollapsed(!directMessagesCollapsed)}
-                  className="w-full px-3 py-2 border-b border-white/10 flex items-center justify-between hover:bg-white/5 transition-colors"
+                  className="w-full px-3 py-2 border-b border-c-border flex items-center justify-between hover:bg-c-hover-bg transition-colors"
                 >
                   <div className="flex items-center gap-2">
-                    <i className="fa-solid fa-user text-[#4db6ac] text-sm" />
-                    <span className="text-sm font-semibold text-white/80">{t('chat.direct_messages')}</span>
+                    <i className="fa-solid fa-user text-cpoint-turquoise text-sm" />
+                    <span className="text-sm font-semibold text-c-text-secondary">{t('chat.direct_messages')}</span>
                     {visibleThreads.reduce((sum, t) => sum + (t.unread_count || 0), 0) > 0 && (
-                      <span className="px-1.5 py-0.5 rounded-full bg-[#4db6ac] text-black text-[10px] font-medium">
+                      <span className="px-1.5 py-0.5 rounded-full bg-cpoint-turquoise text-black text-[10px] font-medium">
                         {visibleThreads.reduce((sum, t) => sum + (t.unread_count || 0), 0)}
                       </span>
                     )}
                   </div>
-                  <i className={`fa-solid fa-chevron-${directMessagesCollapsed ? 'down' : 'up'} text-xs text-white/40`} />
+                  <i className={`fa-solid fa-chevron-${directMessagesCollapsed ? 'down' : 'up'} text-xs text-c-text-tertiary`} />
                 </button>
               )}
               {!directMessagesCollapsed && (loading && visibleThreads.length === 0 ? (
                 <SkeletonList count={4} />
               ) : visibleThreads.length === 0 ? (
-                <div className="px-4 py-4 text-sm text-[#9fb0b5]">
+                <div className="px-4 py-4 text-sm text-c-text-tertiary">
                   {communityFilter === 'all'
                     ? t('chat.no_dms_yet')
                     : t('chat.no_chats_for_filter')}
@@ -915,16 +915,16 @@ export default function Messages(){
                 {visibleThreads.length > 3 && (
                   <div className="px-3 py-2">
                     <div className="relative">
-                      <i className="fa-solid fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30 text-xs" />
+                      <i className="fa-solid fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-c-text-disabled text-xs" />
                       <input
                         type="text"
                         value={dmSearchQuery}
                         onChange={e => setDmSearchQuery(e.target.value)}
                         placeholder={t('chat.search_conversations_placeholder')}
-                        className="w-full pl-8 pr-8 py-1.5 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder-white/30 outline-none focus:border-[#4db6ac]/50"
+                        className="w-full pl-8 pr-8 py-1.5 rounded-lg bg-c-hover-bg border border-c-border text-sm text-c-text-primary placeholder-c-text-disabled outline-none focus:border-cpoint-turquoise/50"
                       />
                       {dmSearchQuery && (
-                        <button type="button" onClick={() => setDmSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60">
+                        <button type="button" onClick={() => setDmSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-c-text-disabled hover:text-c-text-tertiary">
                           <i className="fa-solid fa-xmark text-xs" />
                         </button>
                       )}
@@ -944,7 +944,7 @@ export default function Messages(){
                     <button
                       type="button"
                       onClick={() => setChatMoreTarget({ type: 'dm', username: thread.other_username, displayName: thread.display_name || thread.other_username })}
-                      className="my-1 h-[44px] w-[52px] rounded-md bg-white/10 text-white/80 hover:bg-white/20 flex items-center justify-center"
+                      className="my-1 h-[44px] w-[52px] rounded-md bg-c-active-bg text-c-text-secondary hover:bg-c-hover-bg flex items-center justify-center"
                       aria-label={t('chat.more_options')}
                     >
                       <i className="fa-solid fa-ellipsis" />
@@ -1025,20 +1025,20 @@ export default function Messages(){
                       <div className="flex items-center justify-between">
                         <div className="font-medium truncate">{thread.display_name}</div>
                         {thread.last_activity_time && (
-                          <div className="ml-3 flex-shrink-0 text-[11px] text-[#9fb0b5]">
+                          <div className="ml-3 flex-shrink-0 text-[11px] text-c-text-tertiary">
                             {new Date(thread.last_activity_time).toLocaleDateString()}
                           </div>
                         )}
                       </div>
-                      <div className="text-[13px] text-[#9fb0b5] truncate">
+                      <div className="text-[13px] text-c-text-tertiary truncate">
                         {formatLastMessagePreview(thread.last_message_text, t)}
                       </div>
                     </div>
                     {isMuted && (
-                      <i className="ml-2 fa-solid fa-bell-slash text-white/40 text-xs" title={t('chat.muted_title')} />
+                      <i className="ml-2 fa-solid fa-bell-slash text-c-text-tertiary text-xs" title={t('chat.muted_title')} />
                     )}
                     {thread.unread_count && thread.unread_count > 0 ? (
-                      <div className="ml-2 px-2 h-5 rounded-full bg-[#4db6ac] text-black text-[11px] flex items-center justify-center">
+                      <div className="ml-2 px-2 h-5 rounded-full bg-cpoint-turquoise text-black text-[11px] flex items-center justify-center">
                         {thread.unread_count > 99 ? '99+' : thread.unread_count}
                       </div>
                     ) : null}
@@ -1064,27 +1064,27 @@ export default function Messages(){
                   }
                   setShowArchived(!showArchived)
                 }}
-                className="w-full px-4 py-3 flex items-center justify-between text-left border-t border-white/10"
+                className="w-full px-4 py-3 flex items-center justify-between text-left border-t border-c-border"
               >
-                <div className="flex items-center gap-2 text-[#9fb0b5]">
+                <div className="flex items-center gap-2 text-c-text-tertiary">
                   <i className="fa-solid fa-box-archive text-sm" />
                   <span className="text-sm font-medium">{t('chat.archived_chats')}</span>
                   {archivedThreads.length > 0 && (
-                    <span className="text-xs text-white/50">({archivedThreads.length})</span>
+                    <span className="text-xs text-c-text-tertiary">({archivedThreads.length})</span>
                   )}
                 </div>
-                <i className={`fa-solid fa-chevron-${showArchived ? 'up' : 'down'} text-xs text-white/40`} />
+                <i className={`fa-solid fa-chevron-${showArchived ? 'up' : 'down'} text-xs text-c-text-tertiary`} />
               </button>
               
               {showArchived && (
-                <div className="border-t border-white/5">
+                <div className="border-t border-c-border-subtle">
                   {archivedLoading ? (
-                    <div className="px-4 py-6 flex items-center justify-center text-[#9fb0b5]">
+                    <div className="px-4 py-6 flex items-center justify-center text-c-text-tertiary">
                       <i className="fa-solid fa-spinner fa-spin mr-2" />
                       {t('chat.loading_archived')}
                     </div>
                   ) : archivedThreads.length === 0 ? (
-                    <div className="px-4 py-4 text-sm text-[#9fb0b5]">
+                    <div className="px-4 py-4 text-sm text-c-text-tertiary">
                       {t('chat.no_archived')}
                     </div>
                   ) : (
@@ -1094,7 +1094,7 @@ export default function Messages(){
                       const transition = isDragging ? 'none' : 'transform 150ms ease-out'
                       const showActions = isDragging ? (dragX < -20) : (swipeId === `archived-${archivedThread.other_username}`)
                       return (
-                        <div key={`archived-${archivedThread.other_username}`} className="relative w-full overflow-hidden bg-white/5">
+                        <div key={`archived-${archivedThread.other_username}`} className="relative w-full overflow-hidden bg-c-hover-bg">
                           {/* Unarchive action */}
                           <div className="absolute inset-y-0 right-0 flex items-stretch pr-2" style={{ opacity: showActions ? 1 : 0, pointerEvents: showActions ? 'auto' : 'none', transition: 'opacity 150ms ease-out' }}>
                             <button
@@ -1140,14 +1140,14 @@ export default function Messages(){
                             <Avatar username={archivedThread.other_username} url={archivedThread.profile_picture_url || undefined} size={44} displayName={archivedThread.display_name} loading="eager" />
                             <div className="flex-1 min-w-0 text-left">
                               <div className="flex items-center justify-between">
-                                <div className="font-medium truncate text-white/70">{archivedThread.display_name}</div>
+                                <div className="font-medium truncate text-c-text-secondary">{archivedThread.display_name}</div>
                                 {archivedThread.last_activity_time && (
-                                  <div className="ml-3 flex-shrink-0 text-[11px] text-[#9fb0b5]">
+                                  <div className="ml-3 flex-shrink-0 text-[11px] text-c-text-tertiary">
                                     {new Date(archivedThread.last_activity_time).toLocaleDateString()}
                                   </div>
                                 )}
                               </div>
-                              <div className="text-[13px] text-[#9fb0b5] truncate">
+                              <div className="text-[13px] text-c-text-tertiary truncate">
                                 {formatLastMessagePreview(archivedThread.last_message_text, t)}
                               </div>
                             </div>
@@ -1165,15 +1165,15 @@ export default function Messages(){
         )}
       </div>
       {chatMoreTarget && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center" onClick={() => setChatMoreTarget(null)}>
-          <div className="w-full max-w-md bg-[#1a1a1a] border-t border-white/10 rounded-t-2xl p-4 pb-8 space-y-1" onClick={e => e.stopPropagation()} style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)' }}>
-            <div className="text-sm text-white/50 text-center mb-3">{chatMoreTarget.displayName}</div>
+        <div className="fixed inset-0 bg-c-bg-overlay z-50 flex items-end justify-center" onClick={() => setChatMoreTarget(null)}>
+          <div className="w-full max-w-md bg-c-bg-surface border-t border-c-border rounded-t-2xl p-4 pb-8 space-y-1" onClick={e => e.stopPropagation()} style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)' }}>
+            <div className="text-sm text-c-text-tertiary text-center mb-3">{chatMoreTarget.displayName}</div>
             {(() => {
               const isMuted = chatMoreTarget.type === 'dm'
                 ? threads.find(t => t.other_username === chatMoreTarget.username)?.muted
                 : groupChats.find(g => g.id === chatMoreTarget.groupId)?.muted
               return (
-                <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={async () => {
+                <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-c-text-primary" onClick={async () => {
                   const key = chatMoreTarget.type === 'dm' ? chatMoreTarget.username : undefined
                   const gid = chatMoreTarget.type === 'group' ? chatMoreTarget.groupId : undefined
                   const newMuted = !isMuted
@@ -1186,22 +1186,22 @@ export default function Messages(){
                   }
                   setChatMoreTarget(null)
                 }}>
-                  <i className={`fa-solid ${isMuted ? 'fa-bell' : 'fa-bell-slash'} text-white/60 w-6 text-center`} />
+                  <i className={`fa-solid ${isMuted ? 'fa-bell' : 'fa-bell-slash'} text-c-text-tertiary w-6 text-center`} />
                   {isMuted ? t('chat.unmute_chat') : t('chat.mute_chat')}
                 </button>
               )
             })()}
             {chatMoreTarget.type === 'dm' && (
-              <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={() => {
+              <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-c-text-primary" onClick={() => {
                 archiveChat(chatMoreTarget.username!)
                 setChatMoreTarget(null)
               }}>
-                <i className="fa-solid fa-box-archive text-white/60 w-6 text-center" />
+                <i className="fa-solid fa-box-archive text-c-text-tertiary w-6 text-center" />
                 {t('chat.archive_chat')}
               </button>
             )}
             {chatMoreTarget.type === 'dm' && (
-              <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={async () => {
+              <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-c-text-primary" onClick={async () => {
                 const u = chatMoreTarget.username
                 await fetch('/api/chat/clear_history', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ other_username: u }) }).catch(() => {})
                 setChatMoreTarget(null)
@@ -1222,42 +1222,42 @@ export default function Messages(){
                 }
                 loadThreads(true)
               }}>
-                <i className="fa-solid fa-broom text-white/60 w-6 text-center" />
+                <i className="fa-solid fa-broom text-c-text-tertiary w-6 text-center" />
                 {t('chat.clear_chat')}
               </button>
             )}
             {chatMoreTarget.type === 'dm' && (
-              <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={() => {
+              <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-c-text-primary" onClick={() => {
                 setChatMoreTarget(null)
                 navigate(`/user_chat/chat/${encodeURIComponent(chatMoreTarget.username ?? '')}${shareQuery}`)
               }}>
-                <i className="fa-solid fa-ban text-white/60 w-6 text-center" />
+                <i className="fa-solid fa-ban text-c-text-tertiary w-6 text-center" />
                 {t('chat.block_user')}
               </button>
             )}
             {chatMoreTarget.type === 'group' && chatMoreTarget.groupId && (
-              <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={async () => {
+              <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-c-text-primary" onClick={async () => {
                 await fetch(`/api/group_chat/${chatMoreTarget.groupId}/clear_history`, { method: 'POST', credentials: 'include' }).catch(() => {})
                 setChatMoreTarget(null)
                 loadGroupChats(true)
               }}>
-                <i className="fa-solid fa-broom text-white/60 w-6 text-center" />
+                <i className="fa-solid fa-broom text-c-text-tertiary w-6 text-center" />
                 {t('chat.clear_chat')}
               </button>
             )}
             {chatMoreTarget.type === 'group' && chatMoreTarget.groupId && (
-              <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={async () => {
+              <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-c-text-primary" onClick={async () => {
                 const fd = new URLSearchParams()
                 fd.append('group_id', String(chatMoreTarget.groupId))
                 await fetch('/api/groups/leave', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd }).catch(() => {})
                 setGroupChats(prev => prev.filter(g => g.id !== chatMoreTarget.groupId))
                 setChatMoreTarget(null)
               }}>
-                <i className="fa-solid fa-right-from-bracket text-white/60 w-6 text-center" />
+                <i className="fa-solid fa-right-from-bracket text-c-text-tertiary w-6 text-center" />
                 {t('chat.leave_group')}
               </button>
             )}
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-red-400" onClick={() => {
+            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-red-400" onClick={() => {
               setChatMoreTarget(null)
               if (chatMoreTarget.type === 'dm') {
                 const fd = new URLSearchParams({ other_username: chatMoreTarget.username! })
@@ -1269,7 +1269,7 @@ export default function Messages(){
               <i className="fa-solid fa-trash text-red-400/60 w-6 text-center" />
               {t('chat.delete_chat')}
             </button>
-            <button className="w-full text-center py-3 text-white/50 text-sm" onClick={() => setChatMoreTarget(null)}>{t('chat.cancel')}</button>
+            <button className="w-full text-center py-3 text-c-text-tertiary text-sm" onClick={() => setChatMoreTarget(null)}>{t('chat.cancel')}</button>
           </div>
         </div>
       )}
@@ -1284,15 +1284,15 @@ function NewMessageInline(){
   return (
     <div className="space-y-3">
       {/* Mode Toggle */}
-      <div className="rounded-xl border border-white/10 bg-black p-3">
+      <div className="rounded-xl border border-c-border bg-c-bg-app p-3">
         <div className="flex gap-2">
           <button
             type="button"
             onClick={() => setMode('direct')}
             className={`flex-1 px-3 py-2 text-sm rounded-lg transition ${
               mode === 'direct'
-                ? 'bg-[#4db6ac]/20 border border-[#4db6ac]/50 text-[#4db6ac]'
-                : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10'
+                ? 'bg-cpoint-turquoise/20 border border-cpoint-turquoise/50 text-cpoint-turquoise'
+                : 'bg-c-hover-bg border border-c-border text-c-text-secondary hover:bg-c-hover-bg'
             }`}
           >
             <i className="fa-solid fa-user mr-2" />
@@ -1303,8 +1303,8 @@ function NewMessageInline(){
             onClick={() => setMode('group')}
             className={`flex-1 px-3 py-2 text-sm rounded-lg transition ${
               mode === 'group'
-                ? 'bg-[#4db6ac]/20 border border-[#4db6ac]/50 text-[#4db6ac]'
-                : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10'
+                ? 'bg-cpoint-turquoise/20 border border-cpoint-turquoise/50 text-cpoint-turquoise'
+                : 'bg-c-hover-bg border border-c-border text-c-text-secondary hover:bg-c-hover-bg'
             }`}
           >
             <i className="fa-solid fa-users mr-2" />

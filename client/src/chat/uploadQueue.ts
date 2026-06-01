@@ -1,87 +1,79 @@
+/**
+ * Background chat media upload queue — delegates to the shared upload kernel.
+ */
+import type { UploadContext, MediaKind, UploadProgress } from './upload/types'
+import { uploadChatMediaBlob } from './upload/uploadKernel'
+
 interface UploadTask {
-  chatType: 'dm' | 'group';
-  chatId: string | number;
-  tempId: string;
-  files: Array<{file: File; type: 'image' | 'video'}>;
-  onProgress?: (progress: any) => void;
-  onComplete?: (payload: any) => void;
-  onError?: (error: any) => void;
+  chatType: 'dm' | 'group'
+  chatId: string | number
+  tempId: string
+  files: Array<{ file: File; type: 'image' | 'video' }>
+  recipientId?: string | number
+  onProgress?: (progress: UploadProgress) => void
+  onComplete?: (payload: { success: boolean; tempId: string; urls?: string[] }) => void
+  onError?: (error: unknown) => void
 }
 
 class UploadQueue {
-  private queue: UploadTask[] = [];
-  private isProcessing = false;
+  private queue: UploadTask[] = []
+  private isProcessing = false
 
   enqueue(task: UploadTask): string {
-    this.queue.push(task);
-    this.processQueue();
-    return task.tempId;
+    this.queue.push(task)
+    void this.processQueue()
+    return task.tempId
+  }
+
+  private buildContext(task: UploadTask): UploadContext {
+    if (task.chatType === 'group') {
+      return { type: 'group', groupId: task.chatId }
+    }
+    return { type: 'dm', recipientId: task.recipientId ?? task.chatId }
   }
 
   private async processQueue() {
-    if (this.isProcessing || this.queue.length === 0) return;
-
-    this.isProcessing = true;
-    const task = this.queue.shift()!;
+    if (this.isProcessing || this.queue.length === 0) return
+    this.isProcessing = true
+    const task = this.queue.shift()!
 
     try {
-      task.onProgress?.({ stage: 'uploading', progress: 20 });
-
-      // Note: The actual upload logic (R2, /send_dm_media, etc.) would be refactored here in a full implementation.
-      // For this plan, we simulate the server response. In practice, the sendMultiMediaMessage logic would be moved here.
-      const mockPayload = {
-        success: true,
-        id: Date.now(),
-        media_paths: task.files.map((_, i) => `uploads/mock/${task.tempId}_${i}.jpg`),
-        image_path: task.files[0].type === 'image' ? `uploads/mock/${task.tempId}_0.jpg` : undefined,
-        video_path: task.files[0].type === 'video' ? `uploads/mock/${task.tempId}_0.mp4` : undefined,
-        time: new Date().toISOString(),
-      };
-
-      task.onProgress?.({ stage: 'done', progress: 100, message: 'Sent!' });
-      task.onComplete?.(mockPayload);
-
-      // Fire global event so mounted chat components can update their optimistic message
-      const event = new CustomEvent('upload-complete', {
-        detail: {
-          tempId: task.tempId,
-          chatType: task.chatType,
-          chatId: task.chatId,
-          payload: mockPayload,
-        },
-      });
-      window.dispatchEvent(event);
+      const context = this.buildContext(task)
+      const urls: string[] = []
+      for (const item of task.files) {
+        const mediaKind: MediaKind = item.type === 'video' ? 'video' : 'image'
+        const result = await uploadChatMediaBlob({
+          context,
+          file: item.file,
+          mediaKind,
+          clientKey: `${task.tempId}_${urls.length}`,
+          onProgress: task.onProgress,
+        })
+        urls.push(result.publicUrl)
+      }
+      const payload = { success: true, tempId: task.tempId, urls }
+      task.onComplete?.(payload)
+      window.dispatchEvent(new CustomEvent('upload-complete', { detail: { ...payload, chatType: task.chatType, chatId: task.chatId } }))
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : 'Upload failed';
-      task.onProgress?.({ stage: 'error', progress: 0, message: errMsg });
-      task.onError?.(error);
-
-      const event = new CustomEvent('upload-error', {
-        detail: {
-          tempId: task.tempId,
-          error,
-        },
-      });
-      window.dispatchEvent(event);
+      task.onError?.(error)
+      window.dispatchEvent(new CustomEvent('upload-error', { detail: { tempId: task.tempId, error } }))
     } finally {
-      this.isProcessing = false;
-      this.processQueue(); // process next in queue
+      this.isProcessing = false
+      void this.processQueue()
     }
   }
 
-  // Helper to listen for uploads in chat components
-  onUploadComplete(callback: (detail: any) => void) {
-    const listener = (e: CustomEvent) => callback(e.detail);
-    window.addEventListener('upload-complete', listener as EventListener);
-    return () => window.removeEventListener('upload-complete', listener as EventListener);
+  onUploadComplete(callback: (detail: unknown) => void) {
+    const listener = (e: Event) => callback((e as CustomEvent).detail)
+    window.addEventListener('upload-complete', listener)
+    return () => window.removeEventListener('upload-complete', listener)
   }
 
-  onUploadError(callback: (detail: any) => void) {
-    const listener = (e: CustomEvent) => callback(e.detail);
-    window.addEventListener('upload-error', listener as EventListener);
-    return () => window.removeEventListener('upload-error', listener as EventListener);
+  onUploadError(callback: (detail: unknown) => void) {
+    const listener = (e: Event) => callback((e as CustomEvent).detail)
+    window.addEventListener('upload-error', listener)
+    return () => window.removeEventListener('upload-error', listener)
   }
 }
 
-// Module-level singleton
-export const uploadQueue = new UploadQueue();
+export const uploadQueue = new UploadQueue()

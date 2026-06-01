@@ -82,8 +82,8 @@ export function ProfileSelectField({
     <div ref={containerRef} className={`relative ${disabled ? 'opacity-60' : ''}`}>
       <button
         type="button"
-        className={`flex w-full items-center justify-between rounded-lg border border-white/12 bg-[#10131a] px-3 py-1.5 text-left transition ${
-          disabled ? 'cursor-not-allowed text-white/40' : 'text-white/80 hover:border-[#4db6ac]/60'
+        className={`flex w-full items-center justify-between rounded-lg border border-c-border bg-c-bg-elevated px-3 py-1.5 text-left transition ${
+          disabled ? 'cursor-not-allowed text-c-text-tertiary' : 'text-c-text-secondary hover:border-cpoint-turquoise/60'
         }`}
         onClick={() => {
           if (!disabled) setOpen(prev => !prev)
@@ -92,19 +92,19 @@ export function ProfileSelectField({
         aria-expanded={open}
         disabled={disabled}
       >
-        <span className={`truncate ${value ? 'text-white' : 'text-white/40'}`}>{buttonLabel}</span>
+        <span className={`truncate ${value ? 'text-c-text-primary' : 'text-c-text-tertiary'}`}>{buttonLabel}</span>
         <i
           className={`fa-solid fa-chevron-down text-[10px] transition-transform ${
-            open ? 'rotate-180 text-[#4db6ac]' : 'text-white/50'
+            open ? 'rotate-180 text-cpoint-turquoise' : 'text-c-text-tertiary'
           }`}
         />
       </button>
       {open ? (
-        <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-lg border border-white/12 bg-[#0b0d11] shadow-[0_16px_35px_rgba(2,4,8,0.55)]">
+        <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-lg border border-c-border bg-c-bg-elevated shadow-c-glass">
           {searchable ? (
             <div className="p-2">
               <input
-                className="w-full rounded-md border border-white/10 bg-[#12141a] px-2 py-1 text-xs text-white/80 outline-none focus:border-[#4db6ac]"
+                className="w-full rounded-md border border-c-border bg-c-bg-surface px-2 py-1 text-xs text-c-text-secondary outline-none focus:border-cpoint-turquoise"
                 placeholder="Search…"
                 value={query}
                 onChange={event => setQuery(event.target.value)}
@@ -113,8 +113,8 @@ export function ProfileSelectField({
             </div>
           ) : null}
           {loading ? (
-            <div className="flex items-center justify-center gap-2 px-3 py-4 text-xs text-white/60">
-              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white/20 border-t-[#4db6ac]" />
+            <div className="flex items-center justify-center gap-2 px-3 py-4 text-xs text-c-text-tertiary">
+              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-c-border border-t-cpoint-turquoise" />
               Loading…
             </div>
           ) : (
@@ -124,8 +124,8 @@ export function ProfileSelectField({
                   <button
                     key={option.value}
                     type="button"
-                    className={`flex w-full items-center justify-between px-3 py-2 text-xs text-white/80 transition hover:bg-white/10 ${
-                      option.value === value ? 'text-[#4db6ac]' : ''
+                    className={`flex w-full items-center justify-between px-3 py-2 text-xs text-c-text-secondary transition hover:bg-c-hover-bg ${
+                      option.value === value ? 'text-cpoint-turquoise' : ''
                     }`}
                     onClick={() => handleSelect(option.value)}
                   >
@@ -134,12 +134,12 @@ export function ProfileSelectField({
                   </button>
                 ))
               ) : (
-                <div className="px-3 py-3 text-xs text-white/40">{emptyMessage}</div>
+                <div className="px-3 py-3 text-xs text-c-text-tertiary">{emptyMessage}</div>
               )}
               {showCreateOption ? (
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[#4db6ac] transition hover:bg-[#4db6ac]/10"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-cpoint-turquoise transition hover:bg-cpoint-turquoise/10"
                   onClick={() => handleSelect(query.trim())}
                 >
                   <i className="fa-solid fa-plus text-[10px]" />

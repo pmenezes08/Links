@@ -174,28 +174,28 @@ export default function ParentCommunityPicker({
 
   const cardClasses =
     variant === 'compact'
-      ? 'rounded-xl border border-white/10 bg-black'
-      : 'rounded-xl border border-white/10 bg-black'
+      ? 'rounded-xl border border-c-border bg-c-bg-app'
+      : 'rounded-xl border border-c-border bg-c-bg-app'
 
   const headerClasses =
     variant === 'compact'
-      ? 'p-3 border-b border-white/10 font-semibold text-[15px]'
-      : 'p-4 border-b border-white/10 font-semibold text-[16px]'
+      ? 'p-3 border-b border-c-border font-semibold text-[15px]'
+      : 'p-4 border-b border-c-border font-semibold text-[16px]'
 
   const communityButtonClasses =
     variant === 'compact'
-      ? 'w-full px-3 py-2 text-left hover:bg-white/5 flex items-center justify-between text-[14px]'
-      : 'w-full px-4 py-3 text-left hover:bg-white/5 flex items-center justify-between'
+      ? 'w-full px-3 py-2 text-left hover:bg-c-hover-bg flex items-center justify-between text-[14px]'
+      : 'w-full px-4 py-3 text-left hover:bg-c-hover-bg flex items-center justify-between'
 
   const memberLinkClasses =
     variant === 'compact'
-      ? 'block px-3 py-2 rounded-md hover:bg-white/5 flex items-center gap-2 text-[14px]'
-      : 'block px-4 py-2 rounded-md hover:bg-white/5 flex items-center gap-2'
+      ? 'block px-3 py-2 rounded-md hover:bg-c-hover-bg flex items-center gap-2 text-[14px]'
+      : 'block px-4 py-2 rounded-md hover:bg-c-hover-bg flex items-center gap-2'
 
   const sectionPadding = variant === 'compact' ? 'px-3 pb-3' : 'px-4 pb-4'
 
   const searchInputClasses =
-    'w-full rounded-lg border border-white/12 bg-[#0f1318] pl-9 pr-3 py-2 text-sm text-white/90 outline-none focus:border-[#4db6ac]/70 focus:ring-0 transition'
+    'w-full rounded-lg border border-c-border bg-[#0f1318] pl-9 pr-3 py-2 text-sm text-c-text-secondary outline-none focus:border-cpoint-turquoise/70 focus:ring-0 transition'
 
   const filteredCommunities = useMemo(() => communities, [communities])
 
@@ -207,7 +207,7 @@ export default function ParentCommunityPicker({
       : members
 
     if (loadingMembers[commId]) {
-      return <div className="px-3 py-3 text-sm text-[#9fb0b5]">{t('communities.picker_loading_members')}</div>
+      return <div className="px-3 py-3 text-sm text-c-text-tertiary">{t('communities.picker_loading_members')}</div>
     }
 
     if (memberErrors[commId]) {
@@ -215,12 +215,12 @@ export default function ParentCommunityPicker({
     }
 
     if (!members.length) {
-      return <div className="px-3 py-3 text-sm text-[#9fb0b5]">{t('communities.picker_no_members_available')}</div>
+      return <div className="px-3 py-3 text-sm text-c-text-tertiary">{t('communities.picker_no_members_available')}</div>
     }
 
     if (!filteredMembers.length) {
       return (
-        <div className="px-3 py-3 text-sm text-[#9fb0b5]">
+        <div className="px-3 py-3 text-sm text-c-text-tertiary">
           {t('communities.picker_no_members_match', { term: searchTerms[commId]?.trim() })}
         </div>
       )
@@ -246,16 +246,16 @@ export default function ParentCommunityPicker({
     <div className={cardClasses}>
       <div className={headerClasses}>
         <div>{resolvedTitle}</div>
-        {description ? <div className="mt-1 text-xs text-[#9fb0b5]">{description}</div> : null}
+        {description ? <div className="mt-1 text-xs text-c-text-tertiary">{description}</div> : null}
       </div>
       {loading ? (
-        <div className="p-4 text-sm text-[#9fb0b5]">{t('communities.picker_loading_parents')}</div>
+        <div className="p-4 text-sm text-c-text-tertiary">{t('communities.picker_loading_parents')}</div>
       ) : error ? (
         <div className="p-4 text-sm text-red-400">{error}</div>
       ) : !filteredCommunities.length ? (
-        <div className="p-4 text-sm text-[#9fb0b5]">{t('communities.picker_no_parents')}</div>
+        <div className="p-4 text-sm text-c-text-tertiary">{t('communities.picker_no_parents')}</div>
       ) : (
-        <div className="divide-y divide-white/10">
+        <div className="divide-y divide-c-border">
           {filteredCommunities.map(comm => {
             const isOpen = !!expanded[comm.id]
             return (
@@ -263,13 +263,13 @@ export default function ParentCommunityPicker({
                 <button className={communityButtonClasses} onClick={() => handleToggle(comm.id)}>
                   <span className="font-medium">{comm.name}</span>
                   <i
-                    className={`fa-solid ${isOpen ? 'fa-chevron-down' : 'fa-chevron-right'} text-xs text-[#9fb0b5] transition-transform duration-150`}
+                    className={`fa-solid ${isOpen ? 'fa-chevron-down' : 'fa-chevron-right'} text-xs text-c-text-tertiary transition-transform duration-150`}
                   />
                 </button>
                 {isOpen && (
                   <div className={sectionPadding}>
                     <div className="relative">
-                      <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-xs" />
+                      <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-c-text-tertiary text-xs" />
                       <input
                         value={searchTerms[comm.id] || ''}
                         onChange={event =>

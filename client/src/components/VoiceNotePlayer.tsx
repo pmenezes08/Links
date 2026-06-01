@@ -303,7 +303,7 @@ export default function VoiceNotePlayer({ audioPath, durationSeconds }: VoiceNot
             e.stopPropagation()
             togglePlay()
           }}
-          className="w-9 h-9 rounded-full flex items-center justify-center transition-colors bg-[#4db6ac] hover:bg-[#45a99c] flex-shrink-0 active:scale-95"
+          className="w-9 h-9 rounded-full flex items-center justify-center transition-colors bg-cpoint-turquoise hover:bg-[#45a99c] flex-shrink-0 active:scale-95"
           style={{ WebkitTapHighlightColor: 'transparent' }}
         >
           <i className={`fa-solid ${playing ? 'fa-pause' : 'fa-play'} text-white text-xs pointer-events-none ${!playing ? 'ml-0.5' : ''}`} />
@@ -323,7 +323,7 @@ export default function VoiceNotePlayer({ audioPath, durationSeconds }: VoiceNot
           >
             <div className="w-full h-1.5 bg-white/15 rounded-full overflow-hidden relative">
               <div 
-                className="h-full bg-[#4db6ac] transition-none" 
+                className="h-full bg-cpoint-turquoise transition-none" 
                 style={{ width: `${progress}%` }} 
               />
               {/* Seek handle */}
@@ -336,7 +336,7 @@ export default function VoiceNotePlayer({ audioPath, durationSeconds }: VoiceNot
           
           {/* Time and Speed */}
           <div className="flex items-center justify-between -mt-0.5">
-            <div className="text-[10px] text-white/60 tabular-nums">
+            <div className="text-[10px] text-c-text-tertiary tabular-nums">
               {formatDuration(currentTime)} / {formatDuration(displayDuration)}
             </div>
             
@@ -347,7 +347,7 @@ export default function VoiceNotePlayer({ audioPath, durationSeconds }: VoiceNot
                 e.stopPropagation()
                 cycleSpeed()
               }}
-              className="text-[9px] px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-colors"
+              className="text-[9px] px-1.5 py-0.5 rounded bg-c-active-bg hover:bg-white/20 text-c-text-secondary hover:text-white transition-colors"
               style={{ WebkitTapHighlightColor: 'transparent' }}
             >
               {playbackSpeed}x

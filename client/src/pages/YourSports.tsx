@@ -45,10 +45,10 @@ export default function YourSports(){
 
   if (loading) {
     return (
-      <div className="fixed inset-x-0 top-14 bottom-0 bg-[#0b0f10] text-white flex items-center justify-center">
+      <div className="fixed inset-x-0 top-14 bottom-0 bg-c-bg-elevated text-c-text-primary flex items-center justify-center">
         <div className="text-center">
-          <div className="w-8 h-8 border-2 border-white/20 border-t-[#4db6ac] rounded-full animate-spin mx-auto mb-4"></div>
-          <div className="text-[#9fb0b5]">Checking access...</div>
+          <div className="w-8 h-8 border-2 border-white/20 border-t-cpoint-turquoise rounded-full animate-spin mx-auto mb-4"></div>
+          <div className="text-c-text-tertiary">Checking access...</div>
         </div>
       </div>
     )
@@ -56,14 +56,14 @@ export default function YourSports(){
 
   if (!hasGymAccess) {
     return (
-      <div className="fixed inset-x-0 top-14 bottom-0 bg-[#0b0f10] text-white flex items-center justify-center px-4">
+      <div className="fixed inset-x-0 top-14 bottom-0 bg-c-bg-elevated text-c-text-primary flex items-center justify-center px-4">
         <div className="text-center max-w-md">
-          <i className="fas fa-lock text-4xl text-[#4db6ac] mb-4"></i>
+          <i className="fas fa-lock text-4xl text-cpoint-turquoise mb-4"></i>
           <h2 className="text-xl font-semibold mb-2">Access Restricted</h2>
-          <p className="text-[#9fb0b5] mb-6">You must be a member of a gym community to access Your Sports.</p>
+          <p className="text-c-text-tertiary mb-6">You must be a member of a gym community to access Your Sports.</p>
           <button 
             onClick={() => navigate('/premium_dashboard')}
-            className="px-6 py-2 bg-[#4db6ac] text-black rounded-lg font-medium hover:brightness-110"
+            className="px-6 py-2 bg-cpoint-turquoise text-black rounded-lg font-medium hover:brightness-110"
           >
             Back to Dashboard
           </button>
@@ -73,7 +73,7 @@ export default function YourSports(){
   }
 
   return (
-    <div className="fixed inset-x-0 top-14 bottom-0 bg-[#0b0f10] text-white overflow-auto">
+    <div className="fixed inset-x-0 top-14 bottom-0 bg-c-bg-elevated text-c-text-primary overflow-auto">
       <div className="h-full flex items-center justify-center px-3">
         <div className="grid grid-cols-2 gap-3 w-full max-w-3xl">
           <Card icon="fa-dumbbell" title="Gym" subtitle="Workout tracking" onClick={() => (location.assign('/workout_tracking'))} />
@@ -89,15 +89,15 @@ export default function YourSports(){
 }
 
 function Card({ icon, title, subtitle, onClick, disabled }:{ icon:string; title:string; subtitle:string; onClick?:()=>void; disabled?:boolean }){
-  const base = "rounded-lg border border-white/10 p-4 w-full text-left transition-colors"
-  const state = disabled ? " opacity-50 cursor-not-allowed" : " hover:bg-white/5 cursor-pointer"
+  const base = "rounded-lg border border-c-border p-4 w-full text-left transition-colors"
+  const state = disabled ? " opacity-50 cursor-not-allowed" : " hover:bg-c-hover-bg cursor-pointer"
   return (
     <button className={base + state} onClick={disabled ? undefined : onClick} disabled={disabled}>
       <div className="flex items-center">
         <i className={`fas ${icon} mr-3`} />
         <div>
           <div className="font-semibold">{title}</div>
-          <div className="text-sm text-[#9fb0b5]">{subtitle}</div>
+          <div className="text-sm text-c-text-tertiary">{subtitle}</div>
         </div>
         {!disabled && <i className="fas fa-chevron-right ml-auto" />}
       </div>

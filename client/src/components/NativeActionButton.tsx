@@ -10,11 +10,11 @@ type NativeActionButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const VARIANT_CLASS: Record<'primary' | 'secondary' | 'composer', string> = {
   primary:
-    'bg-[#4db6ac] text-black hover:bg-[#45a99c] active:bg-[#3d9a91] active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100',
+    'bg-cpoint-turquoise text-black hover:brightness-95 active:brightness-90 active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100',
   secondary:
-    'bg-white/5 border border-white/10 text-white/70 hover:text-white hover:bg-white/10 active:bg-white/15 active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100',
+    'bg-c-hover-bg border border-c-border text-c-text-secondary hover:text-white hover:bg-c-hover-bg active:bg-white/15 active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100',
   composer:
-    'bg-[#4db6ac] text-white hover:bg-[#45a99c] active:bg-[#3d9a91] active:scale-95 disabled:opacity-50 disabled:active:scale-100',
+    'bg-cpoint-turquoise text-white hover:brightness-95 active:brightness-90 active:scale-95 disabled:opacity-50 disabled:active:scale-100',
 }
 
 /** Primary action control with instant touch feedback (matches ChatThread send buttons). */

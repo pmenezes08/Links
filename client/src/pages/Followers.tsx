@@ -296,18 +296,18 @@ export default function Followers() {
     }
     switch (activeTab) {
       case 'followers':
-        return <div className="text-[#9fb0b5]">No followers yet.</div>
+        return <div className="text-c-text-tertiary">No followers yet.</div>
       case 'following':
-        return <div className="text-[#9fb0b5]">You are not following anyone yet.</div>
+        return <div className="text-c-text-tertiary">You are not following anyone yet.</div>
       case 'requests':
-        return <div className="text-[#9fb0b5]">No pending follow requests.</div>
+        return <div className="text-c-text-tertiary">No pending follow requests.</div>
       default:
         return null
     }
   }
 
   const renderRequestsList = () => (
-    <ul className="divide-y divide-white/5 rounded-xl border border-white/10 bg-white/[0.02]">
+              <ul className="divide-y divide-c-border rounded-xl border border-c-border bg-transparent">
       {items.map(entry => {
         const actionKeyAccept = `accept:${entry.username.toLowerCase()}`
         const actionKeyDecline = `decline:${entry.username.toLowerCase()}`
@@ -317,24 +317,24 @@ export default function Followers() {
           <li key={entry.username} className="flex items-center gap-3 px-3.5 py-2.5">
             <Avatar username={entry.username} url={normalizeAvatar(entry.profile_picture)} size={40} />
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold truncate text-white">
+              <div className="text-sm font-semibold truncate text-c-text-primary">
                 {entry.display_name || entry.username}
-                <span className="ml-1 text-xs font-normal text-[#6f7c81]">@{entry.username}</span>
+                <span className="ml-1 text-xs font-normal text-c-text-tertiary">@{entry.username}</span>
               </div>
               {entry.created_at ? (
-                <div className="text-xs text-[#6f7c81]">Requested {formatRelative(entry.created_at)}</div>
+                <div className="text-xs text-c-text-tertiary">Requested {formatRelative(entry.created_at)}</div>
               ) : null}
             </div>
             <div className="flex items-center gap-1.5">
               <button
-                className="h-8 rounded-full bg-[#4db6ac] px-3 text-xs font-semibold text-black hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                className="h-8 rounded-full bg-cpoint-turquoise px-3 text-xs font-semibold text-black hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isAccepting}
                 onClick={() => handleAccept(entry.username)}
               >
                 {isAccepting ? 'Accepting…' : 'Accept'}
               </button>
               <button
-                className="h-8 rounded-full border border-white/20 px-3 text-xs font-medium text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                className="h-8 rounded-full border border-c-border px-3 text-xs font-medium text-c-text-primary hover:bg-c-hover-bg disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isDeclining}
                 onClick={() => handleDecline(entry.username)}
               >
@@ -352,27 +352,27 @@ export default function Followers() {
       {items.map(entry => (
         <div
           key={entry.username}
-          className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-3.5 py-2.5"
+              className="flex items-center gap-3 rounded-xl border border-c-border bg-transparent px-3.5 py-2.5"
         >
           <Avatar username={entry.username} url={normalizeAvatar(entry.profile_picture)} size={44} />
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold truncate text-white">{entry.display_name || entry.username}</div>
-            <div className="text-xs text-[#6f7c81]">@{entry.username}</div>
+            <div className="text-sm font-semibold truncate text-c-text-primary">{entry.display_name || entry.username}</div>
+            <div className="text-xs text-c-text-tertiary">@{entry.username}</div>
             {entry.created_at ? (
-              <div className="text-xs text-[#6f7c81] mt-0.5">
+              <div className="text-xs text-c-text-tertiary mt-0.5">
                 {activeTab === 'followers' ? 'Following since' : 'Since'} {formatRelative(entry.created_at)}
               </div>
             ) : null}
           </div>
           <div className="flex flex-col items-stretch gap-1.5 sm:flex-row sm:items-center">
             <button
-              className="rounded-full border border-white/15 px-3 py-1 text-xs font-medium text-white hover:border-white/40"
+              className="rounded-full border border-c-border px-3 py-1 text-xs font-medium text-c-text-primary hover:border-c-border"
               onClick={() => navigate(`/profile/${encodeURIComponent(entry.username)}`)}
             >
               View
             </button>
             <button
-              className="rounded-full border border-white/15 px-3 py-1 text-xs font-medium text-white hover:border-white/40"
+              className="rounded-full border border-c-border px-3 py-1 text-xs font-medium text-c-text-primary hover:border-c-border"
               onClick={() => navigate(`/user_chat/chat/${encodeURIComponent(entry.username)}`)}
             >
               Message
@@ -386,16 +386,16 @@ export default function Followers() {
   const renderManageSection = () => (
     <section
       id="manage-followers"
-      className="rounded-xl border border-white/10 bg-black p-3 space-y-2.5"
+      className="rounded-xl border border-c-border bg-c-bg-app p-3 space-y-2.5"
     >
       <div className="space-y-2">
         <div className="space-y-1.5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8ca0a8]">Manage Followers</p>
-          <h1 className="text-xl font-semibold tracking-tight text-white">Stay in control of your network</h1>
-          <p className="text-[13px] leading-relaxed text-[#a7b8be]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-c-text-tertiary">Manage Followers</p>
+          <h1 className="text-xl font-semibold tracking-tight text-c-text-primary">Stay in control of your network</h1>
+          <p className="text-[13px] leading-relaxed text-c-text-secondary">
             Approve follow requests, review your followers, and keep tabs on who you follow.
           </p>
-          <div className="text-[11px] text-[#6f7c81]">
+          <div className="text-[11px] text-c-text-tertiary">
             {counts.followers} followers · {counts.following} following · {counts.requests} requests
           </div>
         </div>
@@ -410,8 +410,8 @@ export default function Followers() {
                   ? counts.following
                   : counts.requests
             const activeClasses = isActive
-              ? 'border-white bg-white text-black shadow-[0_8px_20px_rgba(255,255,255,0.18)]'
-              : 'border-white/15 text-[#9fb0b5] hover:border-white/35 hover:text-white'
+              ? 'border-cpoint-turquoise bg-cpoint-turquoise text-black'
+              : 'border-c-border text-c-text-tertiary hover:border-c-border hover:text-c-text-primary'
             return (
               <button
                 key={def.key}
@@ -422,7 +422,7 @@ export default function Followers() {
               >
                 <span>{def.label}</span>
                 <span
-                  className={`ml-1 rounded-full px-1 py-0.5 text-[9px] ${isActive ? 'text-black/60' : 'text-[#8ca0a8]'}`}
+                  className={`ml-1 rounded-full px-1 py-0.5 text-[9px] ${isActive ? 'text-black/60' : 'text-c-text-tertiary'}`}
                 >
                   {countValue}
                 </span>
@@ -431,7 +431,7 @@ export default function Followers() {
           })}
         </div>
 
-        <div className="rounded-xl border border-white/10 bg-black/50 p-3">
+        <div className="rounded-xl border border-c-border bg-c-bg-app p-3">
           {loading && items.length === 0 ? (
             <SkeletonFollowerList />
           ) : error ? (
@@ -451,18 +451,18 @@ export default function Followers() {
   const renderFeedSection = () => (
     <section
       id="followers-feed"
-      className="rounded-xl border border-white/10 bg-black p-3 space-y-2.5"
+      className="rounded-xl border border-c-border bg-c-bg-app p-3 space-y-2.5"
     >
       <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8ca0a8]">Followers Feed</p>
-          <h2 className="text-xl font-semibold text-white">See what your circle is up to</h2>
-          <p className="text-[13px] text-[#a7b8be]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-c-text-tertiary">Followers Feed</p>
+          <h2 className="text-xl font-semibold text-c-text-primary">See what your circle is up to</h2>
+          <p className="text-[13px] text-c-text-secondary">
             Browse posts your followers created or recently reacted to.
           </p>
         </div>
         <button
-          className="self-start rounded-full border border-white/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-white hover:border-white/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:opacity-60"
+          className="self-start rounded-full border border-c-border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-c-text-primary hover:border-c-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-c-border disabled:opacity-60"
           onClick={() => setFeedRefreshKey(prev => prev + 1)}
           disabled={feedLoading}
         >
@@ -472,11 +472,11 @@ export default function Followers() {
 
       <div className="mt-3">
         {feedLoading ? (
-          <div className="text-[#9fb0b5]">Loading feed…</div>
+          <div className="text-c-text-tertiary">Loading feed…</div>
         ) : feedError ? (
           <div className="text-red-400">{feedError}</div>
         ) : feedPosts.length === 0 ? (
-          <div className="text-[#9fb0b5]">No recent activity from the people you follow.</div>
+          <div className="text-c-text-tertiary">No recent activity from the people you follow.</div>
         ) : (
           <div className="flex flex-col gap-2.5">
             {feedPosts.map(post => {
@@ -497,33 +497,33 @@ export default function Followers() {
               const image = normalizeMediaPath(post.image_path || undefined)
               const video = normalizeMediaPath(post.video_path || undefined)
               return (
-                <article key={post.id} className="rounded-xl border border-white/10 bg-black/50 p-2.5">
+                <article key={post.id} className="rounded-xl border border-c-border bg-c-bg-app p-2.5">
                   <div className="flex items-center gap-2.5">
                     <Avatar username={post.username} url={normalizeAvatar(post.profile_picture)} size={36} />
                     <div className="min-w-0 flex-1">
                       <button
-                        className="text-left text-[13px] font-semibold text-white hover:underline"
+                        className="text-left text-[13px] font-semibold text-c-text-primary hover:underline"
                         onClick={() => navigate(`/profile/${encodeURIComponent(post.username)}`)}
                       >
                         {post.username}
                       </button>
                       {post.community_name ? (
-                        <div className="text-[11px] text-[#9fb0b5]">in {post.community_name}</div>
+                        <div className="text-[11px] text-c-text-tertiary">in {post.community_name}</div>
                       ) : null}
                     </div>
-                    <div className="text-[11px] text-[#7d8a91] whitespace-nowrap">{formatRelative(timestamp)}</div>
+                    <div className="text-[11px] text-c-text-tertiary whitespace-nowrap">{formatRelative(timestamp)}</div>
                   </div>
                   {badges.length ? (
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {badges.map(badge => (
-                        <span key={badge} className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-[#9fb0b5]">
+                        <span key={badge} className="rounded-full bg-c-hover-bg px-2 py-0.5 text-[10px] text-c-text-tertiary">
                           {badge}
                         </span>
                       ))}
                     </div>
                   ) : null}
                   {content && (
-                    <div className="mt-2 whitespace-pre-line text-[13px] leading-relaxed text-white/90">
+                    <div className="mt-2 whitespace-pre-line text-[13px] leading-relaxed text-c-text-primary">
                       {content}
                     </div>
                   )}
@@ -531,20 +531,20 @@ export default function Followers() {
                     <img
                       src={image}
                       alt="Post attachment"
-                      className="mt-2.5 max-h-56 w-full rounded-lg border border-white/10 object-cover"
+                      className="mt-2.5 max-h-56 w-full rounded-lg border border-c-border object-cover"
                       loading="lazy"
                     />
                   ) : null}
                   {video ? (
                     <video
-                      className="mt-2.5 w-full rounded-lg border border-white/10 bg-black"
+                      className="mt-2.5 w-full rounded-lg border border-c-border bg-black"
                       src={video}
                       controls
                       playsInline
                     />
                   ) : null}
-                  <div className="mt-2.5 flex flex-wrap gap-2 text-[11px] text-[#9fb0b5]">
-                    <button className="font-semibold text-[#4db6ac] hover:underline" onClick={() => navigate(`/post/${post.id}`)}>
+                  <div className="mt-2.5 flex flex-wrap gap-2 text-[11px] text-c-text-tertiary">
+                    <button className="font-semibold text-cpoint-turquoise hover:underline" onClick={() => navigate(`/post/${post.id}`)}>
                       View post →
                     </button>
                   </div>
@@ -558,9 +558,9 @@ export default function Followers() {
   )
 
   return (
-    <div className="glass-page min-h-screen text-white">
+    <div className="glass-page min-h-screen bg-c-bg-app text-c-text-primary">
       <div
-        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+        className="fixed left-0 right-0 h-10 bg-c-bg-app/70 backdrop-blur z-40"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))' }}
       >
         <div className="max-w-3xl mx-auto h-full flex items-center px-2">
@@ -572,14 +572,14 @@ export default function Followers() {
                   key={section.key}
                   type="button"
                   className={`flex-1 text-center text-sm font-medium ${
-                    isActive ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
+                    isActive ? 'text-c-text-primary' : 'text-c-text-tertiary hover:text-c-text-primary'
                   }`}
                   onClick={() => setActiveSection(section.key)}
                 >
                   <div className="pt-2">{section.label}</div>
                   <div
                     className={`h-0.5 rounded-full w-20 mx-auto mt-1 ${
-                      isActive ? 'bg-[#4db6ac]' : 'bg-transparent'
+                      isActive ? 'bg-cpoint-turquoise' : 'bg-transparent'
                     }`}
                   />
                 </button>

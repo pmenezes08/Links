@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 from typing import Any, Optional
 from urllib.parse import urlparse
 
+from backend.services.media import resolve_upload_abspath
+from backend.services.media_assets import object_key_from_path
+from backend.services.r2_storage import R2_ENABLED, delete_from_r2
+
 IMAGE_EXT = (".png", ".jpg", ".jpeg", ".gif", ".webp")
 VIDEO_EXT = (".mp4", ".mov", ".m4v", ".webm", ".avi")
+
+logger = logging.getLogger(__name__)
 
 
 def parse_media_paths(raw: Any) -> list[str]:
@@ -83,3 +91,33 @@ def media_paths_json(paths: list[str]) -> Optional[str]:
     if not paths:
         return None
     return json.dumps(paths)
+
+
+def purge_media_file(path_or_url: str) -> bool:
+    """Best-effort physical purge for a chat media URL/path after auth is confirmed."""
+    target = (path_or_url or "").strip()
+    if not target:
+        return False
+
+    deleted = False
+    key = object_key_from_path(target)
+    if key and R2_ENABLED:
+        deleted = delete_from_r2(key) or deleted
+
+    try:
+        local_path = resolve_upload_abspath(target)
+    except Exception as exc:
+        logger.debug("Could not resolve local upload path for purge target=%s: %s", target, exc)
+        local_path = None
+
+    if local_path and os.path.exists(local_path):
+        try:
+            os.remove(local_path)
+            deleted = True
+            logger.info("Deleted local chat media file: %s", local_path)
+        except OSError as exc:
+            logger.warning("Failed deleting local chat media file %s: %s", local_path, exc)
+
+    if not deleted:
+        logger.info("Chat media purge no-op or object already unavailable: %s", target)
+    return deleted

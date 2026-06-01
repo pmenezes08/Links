@@ -26,14 +26,14 @@ export function ChatSelectionBar({
     >
       <button
         type="button"
-        className="flex items-center gap-2 text-white/70 hover:text-white transition-colors"
+        className="flex items-center gap-2 text-c-text-secondary hover:text-c-text-primary transition-colors"
         onClick={onCancel}
       >
         <i className="fa-solid fa-xmark text-lg" />
         <span className="text-sm">{t('chat.cancel')}</span>
       </button>
 
-      <div className="text-white/80 text-sm font-medium">
+      <div className="text-c-text-secondary text-sm font-medium">
         {selectedCount} selected
       </div>
 
@@ -42,7 +42,7 @@ export function ChatSelectionBar({
         className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
           selectedCount > 0 && !deleteDisabled
             ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-            : 'bg-white/5 text-white/30'
+            : 'bg-c-hover-bg text-c-text-disabled'
         }`}
         onClick={onDelete}
         disabled={selectedCount === 0 || deleteDisabled}
@@ -56,9 +56,8 @@ export function ChatSelectionBar({
   if (!fixed) {
     return (
       <div
-        className="w-full rounded-[16px]"
+        className="w-full rounded-[16px] bg-c-bg-elevated"
         style={{
-          background: '#0a0a0c',
           paddingLeft: 'max(10px, env(safe-area-inset-left, 0px))',
           paddingRight: 'max(10px, env(safe-area-inset-right, 0px))',
         }}
@@ -70,7 +69,7 @@ export function ChatSelectionBar({
 
   return (
     <div
-      className="fixed left-0 right-0 z-[1001] bg-[#1a1a1a]/95 backdrop-blur-md border-t border-white/10"
+      className="fixed left-0 right-0 z-[1001] bg-c-bg-surface/95 backdrop-blur-md border-t border-c-border"
       style={{ bottom: 0 }}
     >
       {inner}

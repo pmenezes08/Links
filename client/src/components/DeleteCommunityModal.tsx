@@ -84,8 +84,8 @@ export default function DeleteCommunityModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-stretch justify-center bg-black/80 backdrop-blur sm:items-center sm:p-6">
-      <div className="flex h-full w-full flex-col border-white/10 bg-black text-white shadow-2xl sm:h-auto sm:max-w-lg sm:rounded-2xl sm:border">
-        <div className="border-b border-white/10 px-5 py-4">
+      <div className="flex h-full w-full flex-col border-c-border bg-c-bg-app text-c-text-primary shadow-2xl sm:h-auto sm:max-w-lg sm:rounded-2xl sm:border">
+        <div className="border-b border-c-border px-5 py-4">
           <div className="text-xs uppercase tracking-[0.22em] text-cpoint-turquoise">{t('communities.delete_modal_danger_zone')}</div>
           <h2 className="mt-2 text-xl font-semibold">
             {step === 'active_subscription' ? t('communities.delete_modal_active_subscription_title') : t('communities.delete_modal_title')}
@@ -95,7 +95,7 @@ export default function DeleteCommunityModal({
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
           {step === 'confirm' ? (
             <>
-              <p className="text-sm leading-6 text-white/70">
+              <p className="text-sm leading-6 text-c-text-secondary">
                 {t('communities.delete_modal_body', { name: displayName })}
               </p>
               <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-100">
@@ -106,12 +106,12 @@ export default function DeleteCommunityModal({
                 value={typed}
                 onChange={(event) => setTyped(event.target.value)}
                 placeholder={t('communities.delete_modal_type_delete_placeholder')}
-                className="w-full rounded-xl border border-white/15 bg-white/[0.03] px-4 py-3 text-[16px] text-white outline-none transition placeholder:text-white/30 focus:border-cpoint-turquoise"
+                className="w-full rounded-xl border border-c-border bg-white/[0.03] px-4 py-3 text-[16px] text-c-text-primary outline-none transition placeholder:text-white/30 focus:border-cpoint-turquoise"
               />
             </>
           ) : (
             <>
-              <p className="text-sm leading-6 text-white/70">
+              <p className="text-sm leading-6 text-c-text-secondary">
                 {t('communities.delete_modal_active_subscription_body')}
               </p>
               <div className="space-y-2">
@@ -129,7 +129,7 @@ export default function DeleteCommunityModal({
                     )}
                   </div>
                 )) : (
-                  <div className="rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 p-3 text-sm text-white/70">
+                  <div className="rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 p-3 text-sm text-c-text-secondary">
                     {t('communities.delete_modal_cancel_at_period_end')}
                   </div>
                 )}
@@ -144,12 +144,12 @@ export default function DeleteCommunityModal({
           )}
         </div>
 
-        <div className="flex flex-col-reverse gap-3 border-t border-white/10 px-5 py-4 sm:flex-row sm:justify-end">
+        <div className="flex flex-col-reverse gap-3 border-t border-c-border px-5 py-4 sm:flex-row sm:justify-end">
           <button
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="rounded-full border border-white/15 px-5 py-2.5 text-sm text-white/75 transition hover:bg-white/5 disabled:opacity-50"
+            className="rounded-full border border-c-border px-5 py-2.5 text-sm text-c-text-secondary transition hover:bg-c-hover-bg disabled:opacity-50"
           >
             {t('common.cancel')}
           </button>

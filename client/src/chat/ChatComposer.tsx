@@ -49,9 +49,8 @@ export function ChatComposerCard({ composerCardRef, isWeb = false, children }: C
   return (
     <div
       ref={composerCardRef}
-      className={`relative ${isWeb ? 'w-full mx-auto' : 'w-full'} rounded-[16px] px-2 sm:px-2.5 py-2.5 sm:py-3`}
+      className={`relative ${isWeb ? 'w-full mx-auto' : 'w-full'} rounded-[16px] px-2 sm:px-2.5 py-2.5 sm:py-3 bg-c-composer-bg`}
       style={{
-        background: '#0a0a0c',
         marginBottom: 0,
         paddingLeft: 'max(10px, env(safe-area-inset-left, 0px))',
         paddingRight: 'max(10px, env(safe-area-inset-right, 0px))',

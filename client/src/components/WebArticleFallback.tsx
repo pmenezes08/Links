@@ -25,7 +25,7 @@ export default function WebArticleFallback({ url, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[200] bg-black"
+      className="fixed inset-0 z-[200] bg-c-bg-app"
       role="dialog"
       aria-modal="true"
       aria-label="Article"
@@ -44,7 +44,7 @@ export default function WebArticleFallback({ url, onClose }: Props) {
         <button
           type="button"
           onClick={onClose}
-          className="pointer-events-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/15 bg-zinc-950/75 text-white shadow-lg backdrop-blur-md transition-colors hover:bg-zinc-900/90"
+          className="pointer-events-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-c-border bg-c-bg-elevated/75 text-c-text-primary shadow-lg backdrop-blur-md transition-colors hover:bg-c-bg-elevated/90"
           aria-label="Close"
         >
           <i className="fa-solid fa-xmark text-lg" aria-hidden />

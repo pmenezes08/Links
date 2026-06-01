@@ -190,8 +190,8 @@ export default function WorkoutTracking(){
         {
           label: 'Weight (kg)',
           data: weights,
-          borderColor: '#4db6ac',
-          backgroundColor: 'rgba(77,182,172,0.15)',
+          borderColor: '#00CEC8',
+          backgroundColor: 'rgba(0,206,200,0.15)',
           pointRadius: 3,
           pointHoverRadius: 4,
           tension: 0.35,
@@ -236,15 +236,15 @@ export default function WorkoutTracking(){
   }
 
   return (
-    <div className="app-content min-h-screen bg-black text-white">
+    <div className="app-content min-h-screen bg-c-bg-app text-c-text-primary">
       <div
-        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+        className="fixed left-0 right-0 h-10 bg-c-bg-app/70 backdrop-blur z-40"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))' }}
       >
         <div className="max-w-3xl mx-auto h-full flex items-center px-3">
           <button
             type="button"
-            className="mr-2 p-2 rounded-full hover:bg-white/5"
+            className="mr-2 p-2 rounded-full hover:bg-c-hover-bg"
             onClick={()=> {
               if (parentId) window.location.href = `/communities?parent_id=${parentId}`
               else window.history.back()
@@ -253,12 +253,12 @@ export default function WorkoutTracking(){
           >
             <i className="fa-solid fa-arrow-left" />
           </button>
-          <div className="text-sm text-white/90">Back</div>
+          <div className="text-sm text-c-text-secondary">Back</div>
         </div>
       </div>
       <div className="max-w-3xl mx-auto px-3 pt-0 pb-4">
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-white/10 mt-12 mb-2 overflow-x-auto no-scrollbar flex-nowrap">
+        <div className="flex gap-1 border-b border-c-border mt-12 mb-2 overflow-x-auto no-scrollbar flex-nowrap">
           <TabButton active={activeTab==='performance'} onClick={()=> setActiveTab('performance')} icon="fa-chart-line" label="Performance Tracking" />
           <TabButton active={activeTab==='exercise'} onClick={()=> setActiveTab('exercise')} icon="fa-dumbbell" label="Exercise Management" />
           <TabButton active={activeTab==='workouts'} onClick={()=> setActiveTab('workouts')} icon="fa-calendar-alt" label="Workouts" />
@@ -270,29 +270,29 @@ export default function WorkoutTracking(){
           <div className="space-y-4">
 
             {/* Analytics */}
-            <div className="rounded-xl border border-white/10 bg-white/5 mt-2">
-              <div className="flex flex-wrap gap-2 items-center p-3 border-b border-white/10">
+            <div className="rounded-xl border border-c-border bg-c-hover-bg mt-2">
+              <div className="flex flex-wrap gap-2 items-center p-3 border-b border-c-border">
                 <div className="font-semibold text-sm">Progress Analytics</div>
-                <select value={selectedExerciseId as any} onChange={e=> setSelectedExerciseId(e.target.value ? Number(e.target.value) : '')} className="bg-black border border-white/15 rounded-md px-2 py-1 text-sm">
+                <select value={selectedExerciseId as any} onChange={e=> setSelectedExerciseId(e.target.value ? Number(e.target.value) : '')} className="bg-c-bg-app border border-c-border rounded-md px-2 py-1 text-sm">
                   <option value="">Select Exercise</option>
                   {exercises.map(ex => (
                     <option key={ex.id} value={ex.id}>{ex.name} ({ex.muscle_group})</option>
                   ))}
                 </select>
-                <select value={timeRange} onChange={e=> setTimeRange(e.target.value as any)} className="bg-black border border-white/15 rounded-md px-2 py-1 text-sm">
+                <select value={timeRange} onChange={e=> setTimeRange(e.target.value as any)} className="bg-c-bg-app border border-c-border rounded-md px-2 py-1 text-sm">
                   <option value="30">Last 30 days</option>
                   <option value="90">Last 90 days</option>
                   <option value="180">Last 6 months</option>
                   <option value="365">Last year</option>
                   <option value="all">All time</option>
                 </select>
-                <button className="ml-auto p-2 rounded-md hover:bg-white/5" title="Share Progress"><i className="fa-solid fa-share-nodes"/></button>
+                <button className="ml-auto p-2 rounded-md hover:bg-c-hover-bg" title="Share Progress"><i className="fa-solid fa-share-nodes"/></button>
               </div>
               <div className="h-64 p-3">
                 {chartData.labels.length ? (
                   <Line data={chartData as any} options={chartOptions}/>
                 ) : (
-                  <div className="h-full flex items-center justify-center text-[#9fb0b5] text-sm">Select an exercise to see progress</div>
+                  <div className="h-full flex items-center justify-center text-c-text-tertiary text-sm">Select an exercise to see progress</div>
                 )}
               </div>
             </div>
@@ -300,16 +300,16 @@ export default function WorkoutTracking(){
             {/* Muscle groups */}
             <div className="space-y-2">
               {Object.keys(muscleGroupToExercises).length === 0 ? (
-                <div className="text-[#9fb0b5] text-sm text-center py-4">No exercises found. Add exercises to see your 1RM data here.</div>
+                <div className="text-c-text-tertiary text-sm text-center py-4">No exercises found. Add exercises to see your 1RM data here.</div>
               ) : (
                 Object.entries(muscleGroupToExercises).map(([group, list]) => {
                   const maxWeight = Math.max(...list.map(ex => (ex.sets_data||[]).reduce((m,s)=> Math.max(m, s.weight||0), 0)))
                   const isOpen = !!expandedGroups[group]
                   return (
-                    <div key={group} className="rounded-xl border border-white/10 bg-white/5">
+                    <div key={group} className="rounded-xl border border-c-border bg-c-hover-bg">
                       <button className="w-full p-3 flex items-center justify-between" onClick={()=> setExpandedGroups(prev=> ({...prev, [group]: !isOpen}))}>
                         <div className="font-semibold text-left">{group}</div>
-                        <div className="text-xs text-[#9fb0b5]">{list.length} exercises • Max {maxWeight>0? `${maxWeight} kg` : 'No data'}</div>
+                        <div className="text-xs text-c-text-tertiary">{list.length} exercises • Max {maxWeight>0? `${maxWeight} kg` : 'No data'}</div>
                       </button>
                       {isOpen && (
                         <div className="px-3 pb-3 space-y-2">
@@ -322,9 +322,9 @@ export default function WorkoutTracking(){
                               if (w >= max){ max = w; maxDate = String(s.created_at || s.date || '') }
                             }
                             return (
-                              <div key={ex.id} className="flex items-center justify-between rounded-lg border border-white/10 bg-black/40 px-3 py-2">
+                              <div key={ex.id} className="flex items-center justify-between rounded-lg border border-c-border bg-c-hover-bg px-3 py-2">
                                 <div className="font-medium">{ex.name}</div>
-                                <div className="text-xs text-[#9fb0b5]">{max>0? `${max} kg` : 'No data'}{maxDate ? ` • ${formatMonthDay(maxDate)}` : ''}</div>
+                                <div className="text-xs text-c-text-tertiary">{max>0? `${max} kg` : 'No data'}{maxDate ? ` • ${formatMonthDay(maxDate)}` : ''}</div>
                               </div>
                             )
                           })}
@@ -340,12 +340,12 @@ export default function WorkoutTracking(){
 
         {/* Exercise Management */}
         {activeTab==='exercise' && (
-          <div className="rounded-xl border border-white/10 bg-white/5 mt-2">
-            <div className="flex flex-wrap gap-2 items-center p-3 border-b border-white/10">
+          <div className="rounded-xl border border-c-border bg-c-hover-bg mt-2">
+            <div className="flex flex-wrap gap-2 items-center p-3 border-b border-c-border">
               <div className="font-semibold text-sm">Exercise Management</div>
               <div className="ml-auto flex items-center gap-2">
-                <button className="w-8 h-8 rounded-md bg-[#4db6ac] text-black hover:brightness-110 flex items-center justify-center" onClick={openAddExercise} title="Add Exercise"><i className="fa-solid fa-plus"/></button>
-                <button className="w-8 h-8 rounded-md bg-white/10 hover:bg-white/15 flex items-center justify-center" title="Toggle All Groups" onClick={()=>{
+                <button className="w-8 h-8 rounded-md bg-cpoint-turquoise text-black hover:brightness-110 flex items-center justify-center" onClick={openAddExercise} title="Add Exercise"><i className="fa-solid fa-plus"/></button>
+                <button className="w-8 h-8 rounded-md bg-c-active-bg hover:bg-white/15 flex items-center justify-center" title="Toggle All Groups" onClick={()=>{
                   const groupKeys = Object.keys(muscleGroupToExercises)
                   const anyOpen = groupKeys.some(g => expandedGroups[g])
                   if (anyOpen) setExpandedGroups({})
@@ -358,19 +358,19 @@ export default function WorkoutTracking(){
                 {/* Group button removed */}
               </div>
             </div>
-            <div className="divide-y divide-white/10 text-[13px]">
+            <div className="divide-y divide-c-border text-[13px]">
               {Object.keys(muscleGroupToExercises).length === 0 ? (
-                <div className="text-[#9fb0b5] text-sm px-3 py-3">No exercises found.</div>
+                <div className="text-c-text-tertiary text-sm px-3 py-3">No exercises found.</div>
               ) : (
                 Object.entries(muscleGroupToExercises).map(([group, list]) => (
                   <div key={group} className="">
                     {/* Removed muscle group header label per request */}
                     {/* Group helicopter view: expand group to see exercises; exercises are single-row items */}
-                    <button className="w-full px-3 py-2 flex items-center justify-between hover:bg-white/5 text-left"
+                    <button className="w-full px-3 py-2 flex items-center justify-between hover:bg-c-hover-bg text-left"
                       onClick={()=> setExpandedGroups(prev=> ({...prev, [group]: !expandedGroups[group]}))}
                       title="Toggle group">
                       <div className="font-medium text-sm">{group}</div>
-                      <i className={`fa-solid ${expandedGroups[group] ? 'fa-chevron-down' : 'fa-chevron-right'} text-xs text-[#9fb0b5]`} />
+                      <i className={`fa-solid ${expandedGroups[group] ? 'fa-chevron-down' : 'fa-chevron-right'} text-xs text-c-text-tertiary`} />
                     </button>
                     {expandedGroups[group] && (
                       <div className="pb-1">
@@ -392,7 +392,7 @@ export default function WorkoutTracking(){
                             trendUp = last >= first
                           }
                           return (
-                            <div key={ex.id} className="w-full pl-6 pr-3 py-1.5 flex items-center justify-between hover:bg-white/5"
+                            <div key={ex.id} className="w-full pl-6 pr-3 py-1.5 flex items-center justify-between hover:bg-c-hover-bg"
                               onClick={()=> {
                                 setSelectedExerciseId(ex.id)
                                 setLogsExerciseName(ex.name)
@@ -403,10 +403,10 @@ export default function WorkoutTracking(){
                                 setShowLogsModal(true)
                               }}
                               title="View logs">
-                              <div className="text-xs text-[#cfd8dc] truncate mr-2">{ex.name}</div>
+                              <div className="text-xs text-c-text-secondary truncate mr-2">{ex.name}</div>
                               <div className="flex items-center gap-2">
-                                <i className={`fa-solid ${trendUp ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down'} text-xs`} style={{ color: trendUp ? '#4db6ac' : '#e53935' }} />
-                                <button className="p-1 rounded hover:bg-white/5 text-red-400" title="Delete exercise" aria-label="Delete exercise"
+                                <i className={`fa-solid ${trendUp ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down'} text-xs`} style={{ color: trendUp ? '#00CEC8' : '#e53935' }} />
+                                <button className="p-1 rounded hover:bg-c-hover-bg text-red-400" title="Delete exercise" aria-label="Delete exercise"
                                   onClick={async (ev)=>{
                                     ev.stopPropagation()
                                     if (!confirm('Delete this exercise and all its logs?')) return
@@ -438,23 +438,23 @@ export default function WorkoutTracking(){
 
         {/* Workouts */}
         {activeTab==='workouts' && (
-          <div className="rounded-xl border border-white/10 bg-white/5 mt-2">
-            <div className="flex items-center justify-between p-3 border-b border-white/10">
+          <div className="rounded-xl border border-c-border bg-c-hover-bg mt-2">
+            <div className="flex items-center justify-between p-3 border-b border-c-border">
               <div className="font-semibold text-sm">Workouts</div>
-              <button type="button" className="w-8 h-8 p-0 rounded-md bg-[#4db6ac] text-black hover:brightness-110 flex items-center justify-center" title="Create Workout" onClick={(e)=> { e.preventDefault(); e.stopPropagation(); setNewWorkoutName(''); setNewWorkoutDate(new Date().toISOString().slice(0,10)); setShowCreateWorkoutModal(true) }}>
+              <button type="button" className="w-8 h-8 p-0 rounded-md bg-cpoint-turquoise text-black hover:brightness-110 flex items-center justify-center" title="Create Workout" onClick={(e)=> { e.preventDefault(); e.stopPropagation(); setNewWorkoutName(''); setNewWorkoutDate(new Date().toISOString().slice(0,10)); setShowCreateWorkoutModal(true) }}>
                 <i className="fa-solid fa-plus" />
               </button>
             </div>
-            <div className="divide-y divide-white/10">
+            <div className="divide-y divide-c-border">
               {workouts.length===0 ? (
-                <div className="px-3 py-3 text-[#9fb0b5] text-sm">No workouts found.</div>
+                <div className="px-3 py-3 text-c-text-tertiary text-sm">No workouts found.</div>
               ) : workouts.map(w => (
                 <div key={w.id} className="px-3 py-2 flex items-center justify-between">
                   <div>
                     <div className="font-medium leading-tight">{w.name}</div>
-                    <div className="text-xs text-[#9fb0b5]">{formatDate(w.date)} • Exercises {w.exercise_count ?? 0}</div>
+                    <div className="text-xs text-c-text-tertiary">{formatDate(w.date)} • Exercises {w.exercise_count ?? 0}</div>
                   </div>
-                  <button className="p-2 rounded-md hover:bg-white/10" title="Share"><i className="fa-solid fa-share-nodes"/></button>
+                  <button className="p-2 rounded-md hover:bg-c-hover-bg" title="Share"><i className="fa-solid fa-share-nodes"/></button>
                 </div>
               ))}
             </div>
@@ -463,30 +463,30 @@ export default function WorkoutTracking(){
 
         {/* Community Leaderboard */}
         {activeTab==='leaderboard' && (
-          <div className="rounded-xl border border-white/10 bg-white/5 mt-2">
-            <div className="flex items-center justify-between p-3 border-b border-white/10">
+          <div className="rounded-xl border border-c-border bg-c-hover-bg mt-2">
+            <div className="flex items-center justify-between p-3 border-b border-c-border">
               <div className="font-semibold text-sm">Community Leaderboard</div>
-              <button className="w-8 h-8 p-0 rounded-md bg-white/10 hover:bg-white/15 flex items-center justify-center" onClick={loadLeaderboard} title="Load Leaderboard">
+              <button className="w-8 h-8 p-0 rounded-md bg-c-active-bg hover:bg-white/15 flex items-center justify-center" onClick={loadLeaderboard} title="Load Leaderboard">
                 <i className="fa-solid fa-list-ol" />
               </button>
             </div>
             <div className="p-3 flex flex-wrap items-center gap-2">
-              <select value={lbCommunityId as any} onChange={e=> setLbCommunityId(e.target.value ? Number(e.target.value) : '')} className="bg-black border border-white/15 rounded-md px-2 py-1 text-sm">
+              <select value={lbCommunityId as any} onChange={e=> setLbCommunityId(e.target.value ? Number(e.target.value) : '')} className="bg-c-bg-app border border-c-border rounded-md px-2 py-1 text-sm">
                 <option value="">Select Community</option>
                 {communities.filter((c:any)=> (c.type||'').toLowerCase()==='gym').map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-              <select value={lbExerciseId as any} onChange={e=> setLbExerciseId(e.target.value ? Number(e.target.value) : '')} className="bg-black border border-white/15 rounded-md px-2 py-1 text-sm">
+              <select value={lbExerciseId as any} onChange={e=> setLbExerciseId(e.target.value ? Number(e.target.value) : '')} className="bg-c-bg-app border border-c-border rounded-md px-2 py-1 text-sm">
                 <option value="">Select Exercise</option>
                 {userExercises.map(ex=> <option key={ex.id} value={ex.id}>{ex.name} ({ex.muscle_group})</option>)}
               </select>
             </div>
-            <div className="divide-y divide-white/10">
+            <div className="divide-y divide-c-border">
               {leaderboardRows.length===0 ? (
-                <div className="px-3 py-3 text-[#9fb0b5] text-sm">No entries yet.</div>
+                <div className="px-3 py-3 text-c-text-tertiary text-sm">No entries yet.</div>
               ) : leaderboardRows.map((r, idx) => (
                 <div key={idx} className="px-3 py-2 flex items-center justify-between">
                   <div className="font-medium">#{idx+1} {r.username}</div>
-                  <div className="text-[#9fb0b5]">{r.max} kg</div>
+                  <div className="text-c-text-tertiary">{r.max} kg</div>
                 </div>
               ))}
             </div>
@@ -497,19 +497,19 @@ export default function WorkoutTracking(){
       {/* Add Exercise Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-[90%] max-w-md rounded-xl border border-white/10 bg-black p-4">
+          <div className="w-[90%] max-w-md rounded-xl border border-c-border bg-c-bg-app p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="font-semibold">Add New Exercise</div>
-              <button className="p-2 rounded-md hover:bg-white/5" onClick={()=> setShowAddModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+              <button className="p-2 rounded-md hover:bg-c-hover-bg" onClick={()=> setShowAddModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="text-sm text-[#9fb0b5]">Exercise Name</label>
-                <input value={newName} onChange={e=> setNewName(e.target.value)} placeholder="e.g., Bench Press" className="mt-1 w-full px-3 py-2 rounded-md bg-black border border-white/15" />
+                <label className="text-sm text-c-text-tertiary">Exercise Name</label>
+                <input value={newName} onChange={e=> setNewName(e.target.value)} placeholder="e.g., Bench Press" className="mt-1 w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border" />
               </div>
               <div>
-                <label className="text-sm text-[#9fb0b5]">Muscle Group</label>
-                <select value={newGroup} onChange={e=> setNewGroup(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-md bg-black border border-white/15">
+                <label className="text-sm text-c-text-tertiary">Muscle Group</label>
+                <select value={newGroup} onChange={e=> setNewGroup(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border">
                   <option value="">Select muscle group</option>
                   <option value="Chest">Chest</option>
                   <option value="Back">Back</option>
@@ -524,21 +524,21 @@ export default function WorkoutTracking(){
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-sm text-[#9fb0b5]">Weight (kg)</label>
-                  <input type="number" step="0.1" value={newWeight} onChange={e=> setNewWeight(e.target.value)} placeholder="e.g., 80" className="mt-1 w-full px-3 py-2 rounded-md bg-black border border-white/15" />
+                  <label className="text-sm text-c-text-tertiary">Weight (kg)</label>
+                  <input type="number" step="0.1" value={newWeight} onChange={e=> setNewWeight(e.target.value)} placeholder="e.g., 80" className="mt-1 w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border" />
                 </div>
                 <div>
-                  <label className="text-sm text-[#9fb0b5]">Reps</label>
-                  <input type="number" value={newReps} onChange={e=> setNewReps(e.target.value)} placeholder="e.g., 8" className="mt-1 w-full px-3 py-2 rounded-md bg-black border border-white/15" />
+                  <label className="text-sm text-c-text-tertiary">Reps</label>
+                  <input type="number" value={newReps} onChange={e=> setNewReps(e.target.value)} placeholder="e.g., 8" className="mt-1 w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border" />
                 </div>
               </div>
               <div>
-                <label className="text-sm text-[#9fb0b5]">Date</label>
-                <input type="date" max={new Date().toISOString().slice(0,10)} value={newDate} onChange={e=> setNewDate(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-md bg-black border border-white/15" />
+                <label className="text-sm text-c-text-tertiary">Date</label>
+                <input type="date" max={new Date().toISOString().slice(0,10)} value={newDate} onChange={e=> setNewDate(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border" />
               </div>
               <div className="flex items-center justify-end gap-2 pt-1">
-                <button className="px-3 py-2 rounded-md bg-white/10 hover:bg-white/15" onClick={()=> setShowAddModal(false)}>Cancel</button>
-                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={submitNewExercise}><i className="fa-solid fa-plus mr-2"/>Add Exercise</button>
+                <button className="px-3 py-2 rounded-md bg-c-active-bg hover:bg-white/15" onClick={()=> setShowAddModal(false)}>Cancel</button>
+                <button className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black hover:brightness-110" onClick={submitNewExercise}><i className="fa-solid fa-plus mr-2"/>Add Exercise</button>
               </div>
             </div>
           </div>
@@ -547,10 +547,10 @@ export default function WorkoutTracking(){
       {/* Exercise Logs Modal */}
       {showLogsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-3">
+          <div className="w-[92%] max-w-md rounded-xl border border-c-border bg-c-bg-app p-3">
             <div className="flex items-center justify-between mb-2">
               <div className="font-semibold text-sm">{logsExerciseName}</div>
-              <button className="p-1.5 rounded-md hover:bg-white/5" onClick={()=> setShowLogsModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+              <button className="p-1.5 rounded-md hover:bg-c-hover-bg" onClick={()=> setShowLogsModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
             </div>
             <div>
               {/* Add entry row */}
@@ -564,7 +564,7 @@ export default function WorkoutTracking(){
                     value={newLogWeight}
                     onChange={e=> setNewLogWeight(e.target.value)}
                     placeholder="Weight (kg)"
-                    className="block w-36 h-9 px-3 rounded-md bg-black border border-white/15 text-base focus:outline-none focus:ring-2 focus:ring-[#4db6ac] focus:border-[#4db6ac] focus:bg-teal-900/20"
+                    className="block w-36 h-9 px-3 rounded-md bg-c-bg-app border border-c-border text-base focus:outline-none focus:ring-2 focus:ring-cpoint-turquoise focus:border-cpoint-turquoise focus:bg-teal-900/20"
                   />
                   <label className="sr-only">Reps</label>
                   <input
@@ -573,7 +573,7 @@ export default function WorkoutTracking(){
                     value={newLogSets}
                     onChange={e=> setNewLogSets(e.target.value)}
                     placeholder="Reps"
-                    className="block w-36 h-9 px-3 rounded-md bg-black border border-white/15 text-base focus:outline-none focus:ring-2 focus:ring-[#4db6ac] focus:border-[#4db6ac]"
+                    className="block w-36 h-9 px-3 rounded-md bg-c-bg-app border border-c-border text-base focus:outline-none focus:ring-2 focus:ring-cpoint-turquoise focus:border-cpoint-turquoise"
                   />
                 </div>
                 {/* Right column: Date (borderless) on top with calendar icon; + button below centered */}
@@ -586,7 +586,7 @@ export default function WorkoutTracking(){
                     onChange={e=> setNewLogDate(e.target.value)}
                     className="block w-40 h-9 px-0 bg-transparent border-0 outline-none focus:outline-none ring-0 text-sm text-center [text-align-last:center] appearance-none"
                   />
-                  <button className="w-8 h-8 p-0 rounded-md bg-[#4db6ac] text-black hover:brightness-110 flex items-center justify-center" aria-label="Add entry" onClick={async()=>{
+                  <button className="w-8 h-8 p-0 rounded-md bg-cpoint-turquoise text-black hover:brightness-110 flex items-center justify-center" aria-label="Add entry" onClick={async()=>{
                   if (!logsExerciseId || !newLogWeight || !newLogDate) return
                   const repsVal = newLogSets && Number(newLogSets) > 0 ? String(Number(newLogSets)) : '1'
                   const fd = new URLSearchParams({ exercise_id: String(logsExerciseId), weight: newLogWeight, reps: repsVal, date: newLogDate })
@@ -609,7 +609,7 @@ export default function WorkoutTracking(){
                 </div>
               </div>
               {logsEntries.length === 0 ? (
-                <div className="text-sm text-[#9fb0b5]">No logs yet.</div>
+                <div className="text-sm text-c-text-tertiary">No logs yet.</div>
               ) : (
                 (() => {
                   const monthMap: Record<string, Array<{ date:string; weight:number; reps:number }>> = {}
@@ -620,7 +620,7 @@ export default function WorkoutTracking(){
                   }
                   const keys = Object.keys(monthMap).sort().reverse()
                   return (
-                    <div className="divide-y divide-white/10">
+                    <div className="divide-y divide-c-border">
                       {keys.map(k => (
                         <div key={k}>
                           <div className="py-1.5 px-1 flex items-center justify-between text-xs">
@@ -631,8 +631,8 @@ export default function WorkoutTracking(){
                               <div key={idx} className="py-0.5 flex items-center justify-between text-xs">
                                 <div>{formatMonthDay(e.date)}</div>
                                 <div className="flex items-center gap-2">
-                                  <div className="text-[#9fb0b5]">{e.weight} kg × {e.reps}</div>
-                                  <button className="p-0.5 rounded hover:bg-white/5" title="Edit" onClick={async()=>{
+                                  <div className="text-c-text-tertiary">{e.weight} kg × {e.reps}</div>
+                                  <button className="p-0.5 rounded hover:bg-c-hover-bg" title="Edit" onClick={async()=>{
                                     const newW = prompt('New weight (kg):', String(e.weight))
                                     if (!newW || !logsExerciseId) return
                                     const fd = new URLSearchParams({ exercise_id: String(logsExerciseId), set_id: '', weight: newW })
@@ -651,7 +651,7 @@ export default function WorkoutTracking(){
                                       }))
                                     } else alert(j?.error||'Failed to edit entry')
                                   }}><i className="fa-solid fa-pen"/></button>
-                                  <button className="p-0.5 rounded hover:bg-white/5" title="Delete" onClick={async()=>{
+                                  <button className="p-0.5 rounded hover:bg-c-hover-bg" title="Delete" onClick={async()=>{
                                     if (!confirm('Delete this entry?')) return
                                     if (!logsExerciseId) return
                                     const fd = new URLSearchParams({ exercise_id: String(logsExerciseId), date: e.date, weight: String(e.weight), reps: String(e.reps) })
@@ -686,23 +686,23 @@ export default function WorkoutTracking(){
       {/* Create Workout Modal */}
       {showCreateWorkoutModal && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60">
-          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-3">
+          <div className="w-[92%] max-w-md rounded-xl border border-c-border bg-c-bg-app p-3">
             <div className="flex items-center justify-between mb-2">
               <div className="font-semibold text-sm">Create New Workout</div>
-              <button className="p-1.5 rounded-md hover:bg-white/5" onClick={()=> setShowCreateWorkoutModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+              <button className="p-1.5 rounded-md hover:bg-c-hover-bg" onClick={()=> setShowCreateWorkoutModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
             </div>
             <div className="flex flex-col gap-3">
               <div>
-                <label className="text-xs text-[#9fb0b5]">Workout Name</label>
-                <input value={newWorkoutName} onChange={e=> setNewWorkoutName(e.target.value)} placeholder="e.g., Push Day" className="mt-1 w-full h-9 px-3 rounded-md bg-black border border-white/15 text-sm" />
+                <label className="text-xs text-c-text-tertiary">Workout Name</label>
+                <input value={newWorkoutName} onChange={e=> setNewWorkoutName(e.target.value)} placeholder="e.g., Push Day" className="mt-1 w-full h-9 px-3 rounded-md bg-c-bg-app border border-c-border text-sm" />
               </div>
               <div>
-                <label className="text-xs text-[#9fb0b5]">Date</label>
-                <input type="date" value={newWorkoutDate} max={new Date().toISOString().slice(0,10)} onChange={e=> setNewWorkoutDate(e.target.value)} className="mt-1 w-48 h-9 px-3 rounded-md bg-black border border-white/15 text-sm text-center [text-align-last:center]" />
+                <label className="text-xs text-c-text-tertiary">Date</label>
+                <input type="date" value={newWorkoutDate} max={new Date().toISOString().slice(0,10)} onChange={e=> setNewWorkoutDate(e.target.value)} className="mt-1 w-48 h-9 px-3 rounded-md bg-c-bg-app border border-c-border text-sm text-center [text-align-last:center]" />
               </div>
               <div className="flex items-center justify-end gap-2">
-                <button className="px-3 py-2 rounded-md bg-white/10 hover:bg-white/15" onClick={()=> setShowCreateWorkoutModal(false)}>Cancel</button>
-                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=>{
+                <button className="px-3 py-2 rounded-md bg-c-active-bg hover:bg-white/15" onClick={()=> setShowCreateWorkoutModal(false)}>Cancel</button>
+                <button className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black hover:brightness-110" onClick={async()=>{
                   if (!newWorkoutName || !newWorkoutDate) return
                   const fd = new URLSearchParams({ name: newWorkoutName, date: newWorkoutDate })
                   const r = await fetch('/create_workout', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
@@ -724,7 +724,7 @@ export default function WorkoutTracking(){
 
 function TabButton({ active, onClick, icon, label }:{ active:boolean; onClick:()=>void; icon:string; label:string }){
   return (
-    <button onClick={onClick} className={`px-2.5 py-1.5 rounded-t-md text-[13px] whitespace-nowrap ${active ? 'text-white border-b-2 border-[#4db6ac] bg-white/5' : 'text-[#9fb0b5] hover:text-white/90'}`}>
+    <button onClick={onClick} className={`px-2.5 py-1.5 rounded-t-md text-[13px] whitespace-nowrap ${active ? 'text-c-text-primary border-b-2 border-cpoint-turquoise bg-c-hover-bg' : 'text-c-text-tertiary hover:text-white/90'}`}>
       <i className={`fa-solid ${icon} mr-2`} />{label}
     </button>
   )

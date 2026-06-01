@@ -42,7 +42,7 @@ export default function LanguageSettingsPanel({ onDone, onToast }: LanguageSetti
   }
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-white/[0.06] bg-white/[0.055]">
+    <div className="overflow-hidden rounded-3xl border border-c-border bg-c-bg-surface">
       {LOCALE_OPTIONS.filter(opt => supported.includes(opt.value)).map((opt, index, options) => {
         const checked = draftLocale === opt.value
         return (
@@ -51,14 +51,14 @@ export default function LanguageSettingsPanel({ onDone, onToast }: LanguageSetti
             type="button"
             disabled={saving}
             onClick={() => void selectLocale(opt.value)}
-            className={`flex w-full items-center justify-between px-4 py-4 text-left transition-colors active:bg-white/[0.08] ${
-              index < options.length - 1 ? 'border-b border-white/[0.055]' : ''
+            className={`flex w-full items-center justify-between px-4 py-4 text-left transition-colors active:bg-c-active-bg ${
+              index < options.length - 1 ? 'border-b border-c-border-subtle' : ''
             }`}
           >
-            <span className="text-base font-semibold text-white">{t(opt.labelKey)}</span>
-            <span className="flex items-center gap-3 text-sm text-white/38">
-              {checked ? <i className="fa-solid fa-check text-[#4db6ac]" /> : null}
-              {saving && checked ? <i className="fa-solid fa-spinner fa-spin text-white/35" /> : null}
+            <span className="text-base font-semibold text-c-text-primary">{t(opt.labelKey)}</span>
+            <span className="flex items-center gap-3 text-sm text-c-text-tertiary">
+              {checked ? <i className="fa-solid fa-check text-cpoint-turquoise" /> : null}
+              {saving && checked ? <i className="fa-solid fa-spinner fa-spin text-c-text-tertiary" /> : null}
             </span>
           </button>
         )

@@ -65,7 +65,7 @@ export default function Crossfit() {
     return {
       labels,
       datasets: [
-        { label: `You (${d.unit})`, data: userValues, backgroundColor: 'rgba(77, 182, 172, 0.6)', borderColor: '#4db6ac', borderWidth: 1 },
+        { label: `You (${d.unit})`, data: userValues, backgroundColor: 'rgba(0, 206, 200, 0.6)', borderColor: '#00CEC8', borderWidth: 1 },
         { label: `Avg (${d.unit})`, data: avgValues, backgroundColor: 'rgba(176, 184, 185, 0.5)', borderColor: '#9fb0b5', borderWidth: 1 },
       ],
     }
@@ -92,9 +92,9 @@ export default function Crossfit() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0b0f10] text-white">
-      <div className="fixed left-0 right-0 top-0 h-14 border-b border-[#333] flex items-center px-3 z-40 bg-black/50 backdrop-blur">
-        <button className="px-3 py-2 rounded border border-[#333] bg-[#1a1a1a]" onClick={() => history.back()}>
+    <div className="min-h-screen bg-c-bg-elevated text-c-text-primary">
+      <div className="fixed left-0 right-0 top-0 h-14 border-b border-[#333] flex items-center px-3 z-40 bg-c-bg-app/50 backdrop-blur">
+        <button className="px-3 py-2 rounded border border-[#333] bg-c-bg-surface" onClick={() => history.back()}>
           <i className="fa-solid fa-arrow-left" /> Back
         </button>
         <h1 className="ml-3 text-lg font-semibold">Crossfit Tracking</h1>
@@ -121,7 +121,7 @@ export default function Crossfit() {
                 <i className="fas fa-plus" /> Add Entry
               </button>
             </div>
-            <div className="rounded-lg border border-white/10 p-3">
+            <div className="rounded-lg border border-c-border p-3">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-sm font-medium">Progress Analytics</h4>
                 <div className="flex gap-2">
@@ -139,7 +139,7 @@ export default function Crossfit() {
                   </select>
                 </div>
               </div>
-              <div className="h-64 flex items-center justify-center text-[#9fb0b5] text-sm">
+              <div className="h-64 flex items-center justify-center text-c-text-tertiary text-sm">
                 Select a lift or WOD to view your progress.
               </div>
             </div>
@@ -170,7 +170,7 @@ export default function Crossfit() {
                 </button>
               </div>
             </div>
-            <div className="rounded-lg border border-white/10 p-3">
+            <div className="rounded-lg border border-c-border p-3">
               <div className="muscle-groups-view">
                 <div className="muscle-group-section">
                   <div className="flex items-center justify-between cursor-pointer py-1.5">
@@ -192,7 +192,7 @@ export default function Crossfit() {
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold">You vs Your Box</h3>
             </div>
-            <div className="rounded-lg border border-white/10 p-3">
+            <div className="rounded-lg border border-c-border p-3">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-sm font-medium">Select Community and Item</h4>
                 <div className="flex gap-2 items-center">
@@ -212,7 +212,7 @@ export default function Crossfit() {
                   <Bar options={chartOptions} data={chartData} />
                 </div>
               ) : (
-                <div className="h-64 flex items-center justify-center text-[#9fb0b5] text-sm">Select community and item to compare.</div>
+                <div className="h-64 flex items-center justify-center text-c-text-tertiary text-sm">Select community and item to compare.</div>
               )}
             </div>
           </div>
@@ -222,29 +222,29 @@ export default function Crossfit() {
       {modalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur" onClick={(e) => e.currentTarget === e.target && setModalOpen(false)}>
           <form onSubmit={submitEntry} className="w-[90%] max-w-[480px] rounded-xl bg-[#2d3839] shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-teal-700/30 bg-black">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-teal-700/30 bg-c-bg-app">
               <h3 className="text-base font-semibold">Add Crossfit Entry</h3>
-              <button type="button" className="text-2xl text-[#9fb0b5] hover:text-white" onClick={() => setModalOpen(false)}>&times;</button>
+              <button type="button" className="text-2xl text-c-text-tertiary hover:text-white" onClick={() => setModalOpen(false)}>&times;</button>
             </div>
             <div className="p-4">
               <div className="grid grid-cols-1 gap-3">
                 <label className="text-sm">Type
-                  <select className="w-full mt-1 p-2 rounded bg-[#1a1a1a] border border-[#333]" value={type} onChange={(e)=> setType(e.target.value as 'lift'|'wod')}>
+                  <select className="w-full mt-1 p-2 rounded bg-c-bg-surface border border-[#333]" value={type} onChange={(e)=> setType(e.target.value as 'lift'|'wod')}>
                     <option value="lift">Lift</option>
                     <option value="wod">WOD</option>
                   </select>
                 </label>
                 <label className="text-sm">Name
-                  <input className="w-full mt-1 p-2 rounded bg-[#1a1a1a] border border-[#333]" value={name} onChange={(e)=> setName(e.target.value)} placeholder="e.g., Fran / Clean & Jerk" required />
+                  <input className="w-full mt-1 p-2 rounded bg-c-bg-surface border border-[#333]" value={name} onChange={(e)=> setName(e.target.value)} placeholder="e.g., Fran / Clean & Jerk" required />
                 </label>
                 <label className="text-sm">Weight (kg) (for lifts)
-                  <input type="number" className="w-full mt-1 p-2 rounded bg-[#1a1a1a] border border-[#333]" value={weight} onChange={(e)=> setWeight(e.target.value)} min={0} step={0.1} />
+                  <input type="number" className="w-full mt-1 p-2 rounded bg-c-bg-surface border border-[#333]" value={weight} onChange={(e)=> setWeight(e.target.value)} min={0} step={0.1} />
                 </label>
                 <label className="text-sm">Reps (for lifts) or Time/Score (for WODs)
-                  <input className="w-full mt-1 p-2 rounded bg-[#1a1a1a] border border-[#333]" value={reps} onChange={(e)=> setReps(e.target.value)} placeholder="e.g., 5x3, or 5:12" />
+                  <input className="w-full mt-1 p-2 rounded bg-c-bg-surface border border-[#333]" value={reps} onChange={(e)=> setReps(e.target.value)} placeholder="e.g., 5x3, or 5:12" />
                 </label>
                 <label className="text-sm">Date
-                  <input type="date" className="w-full mt-1 p-2 rounded bg-[#1a1a1a] border border-[#333]" value={date} onChange={(e)=> setDate(e.target.value)} required />
+                  <input type="date" className="w-full mt-1 p-2 rounded bg-c-bg-surface border border-[#333]" value={date} onChange={(e)=> setDate(e.target.value)} required />
                 </label>
               </div>
               <div className="mt-4 flex justify-end gap-2">

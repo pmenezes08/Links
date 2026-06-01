@@ -1,0 +1,12 @@
+{
+  "plugins": {
+    "redis-development": {
+      "enabled": true
+    },
+    "understand-anything/understand-anything": {
+      "enabled": true,
+      "gitUrl": "https://github.com/Lum1104/Understand-Anything",
+      "gitRef": "main"
+    }
+  }
+}

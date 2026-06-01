@@ -754,16 +754,16 @@ export default function CommentReply() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <i className="fa-solid fa-spinner fa-spin text-2xl text-[#4db6ac]" />
+      <div className="min-h-screen bg-c-bg-app text-c-text-primary flex items-center justify-center">
+        <i className="fa-solid fa-spinner fa-spin text-2xl text-cpoint-turquoise" />
       </div>
     )
   }
 
   if (!reply) {
     return (
-      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center gap-4">
-        <p className="text-white/60">{t('feed.reply_not_found')}</p>
+      <div className="min-h-screen bg-c-bg-app text-c-text-primary flex flex-col items-center justify-center gap-4">
+        <p className="text-c-text-tertiary">{t('feed.reply_not_found')}</p>
         <button
           onClick={() => {
             // Simple approach: always go to the post (PostDetail will handle community context)
@@ -773,7 +773,7 @@ export default function CommentReply() {
               navigate(-1)
             }
           }}
-          className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-medium"
+          className="px-4 py-2 rounded-lg bg-cpoint-turquoise text-black font-medium"
         >
           {t('navigation.back')}
         </button>
@@ -793,7 +793,7 @@ export default function CommentReply() {
 
   return (
     <div
-      className="min-h-screen bg-black text-white flex flex-col"
+      className="min-h-screen bg-c-bg-app text-c-text-primary flex flex-col"
       style={{
         position: 'fixed',
         top: 0,
@@ -804,15 +804,14 @@ export default function CommentReply() {
     >
       {/* Fixed Header - exactly like PostDetail */}
       <div
-        className="flex-shrink-0 border-b border-white/10 z-50"
+        className="flex-shrink-0 border-b border-c-border z-50 bg-c-header-bg"
         style={{
           paddingTop: 'env(safe-area-inset-top, 0px)',
-          background: '#000',
         }}
       >
         <div className="h-14 flex items-center gap-2 px-3">
           <button
-            className="p-2 rounded-full hover:bg-white/10 transition-colors"
+            className="p-2 rounded-full hover:bg-c-hover-bg transition-colors"
             onClick={() => {
               hapticImpactLight()
               // Simple approach: always go to the post. PostDetail will handle
@@ -825,10 +824,10 @@ export default function CommentReply() {
             }}
             aria-label={t('navigation.back')}
           >
-            <i className="fa-solid fa-arrow-left text-white text-lg" />
+            <i className="fa-solid fa-arrow-left text-c-text-primary text-lg" />
           </button>
           <div className="flex-1 min-w-0">
-            <div className="font-semibold tracking-[-0.01em] text-sm text-white">{t('feed.thread')}</div>
+            <div className="font-semibold tracking-[-0.01em] text-sm text-c-text-primary">{t('feed.thread')}</div>
           </div>
         </div>
       </div>
@@ -848,7 +847,7 @@ export default function CommentReply() {
           {/* Original Post Context */}
           {post && (
             <div
-              className="px-4 py-4 border-b border-white/10 cursor-pointer hover:bg-white/[0.02]"
+              className="px-4 py-4 border-b border-c-border cursor-pointer hover:bg-white/[0.02]"
               onClick={() => navigate(`/post/${post.id}`)}
             >
               <div className="flex gap-3">
@@ -860,9 +859,9 @@ export default function CommentReply() {
                 <div className="flex-1 min-w-0 pb-2">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-sm">{post.username}</span>
-                    <span className="text-xs text-white/40">{formatSmartTime(post.timestamp)}</span>
+                    <span className="text-xs text-c-text-tertiary">{formatSmartTime(post.timestamp)}</span>
                   </div>
-                  <div className="mt-1 text-[14px] text-white/70 line-clamp-3">
+                  <div className="mt-1 text-[14px] text-c-text-secondary line-clamp-3">
                     {renderRichText(post.content, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`), openArticleReader)}
                   </div>
                   {post.image_path && !isVideoAttachmentPath(post.image_path) && (
@@ -895,7 +894,7 @@ export default function CommentReply() {
           {parentChain.map((parent) => (
             <div
               key={parent.id}
-              className="px-4 py-3 border-b border-white/10 cursor-pointer hover:bg-white/[0.02]"
+              className="px-4 py-3 border-b border-c-border cursor-pointer hover:bg-white/[0.02]"
               onClick={() => navigate(threadPath(parent.id))}
             >
               <div className="flex gap-3">
@@ -907,9 +906,9 @@ export default function CommentReply() {
                 <div className="flex-1 min-w-0 pb-2">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm">{parent.username}</span>
-                    <span className="text-xs text-white/40">{formatSmartTime(parent.timestamp)}</span>
+                    <span className="text-xs text-c-text-tertiary">{formatSmartTime(parent.timestamp)}</span>
                   </div>
-                  <div className="mt-1 text-[13px] text-white/60 line-clamp-2">
+                  <div className="mt-1 text-[13px] text-c-text-tertiary line-clamp-2">
                     {renderRichText(parent.content, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`), openArticleReader)}
                   </div>
                   {parent.image_path && !isVideoAttachmentPath(parent.image_path) && (
@@ -936,14 +935,14 @@ export default function CommentReply() {
                   {parent.audio_path && (
                     <div className="mt-2 space-y-1" onClick={(e) => e.stopPropagation()}>
                       {parent.audio_summary ? (
-                        <p className="text-[12px] text-white/70 italic line-clamp-4">{parent.audio_summary}</p>
+                        <p className="text-[12px] text-c-text-secondary italic line-clamp-4">{parent.audio_summary}</p>
                       ) : (() => {
                         const timestampMs = parseFlexibleDate(parent.timestamp)?.getTime()
                         if (timestampMs != null && !Number.isNaN(timestampMs) && Date.now() - timestampMs < 120000) {
                           return (
                             <div className="flex items-center gap-1">
-                              <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-white/40" />
-                              <span className="text-[11px] text-white/40">{t('feed.steve_summary_generating')}</span>
+                              <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-c-text-tertiary" />
+                              <span className="text-[11px] text-c-text-tertiary">{t('feed.steve_summary_generating')}</span>
                             </div>
                           )
                         }
@@ -962,18 +961,18 @@ export default function CommentReply() {
           ))}
 
           {/* Main Reply (the focus of this page) */}
-          <div ref={mainReplyRef} className="px-4 py-4 border-b border-white/10 bg-white/[0.02]">
+          <div ref={mainReplyRef} className="px-4 py-4 border-b border-c-border bg-white/[0.02]">
             <div className="flex gap-3">
               <Avatar username={reply.username} url={reply.profile_picture || undefined} size={44} linkToProfile />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold">{reply.username}</span>
-                  <span className="text-sm text-white/40">{formatSmartTime(reply.timestamp)}</span>
+                  <span className="text-sm text-c-text-tertiary">{formatSmartTime(reply.timestamp)}</span>
                   {/* Edit/Delete buttons for main reply - show for author or admin */}
                   {(currentUser === reply.username || currentUser === 'admin') ? (
                     <>
                       <button
-                        className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]"
+                        className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-cpoint-turquoise"
                         title={t('feed.edit_reply')}
                         onClick={() => {
                           setEditMainText(reply.content)
@@ -997,7 +996,7 @@ export default function CommentReply() {
                 {!isEditingMain ? (
                   <>
                     {reply.content && (
-                      <div className="mt-2 text-[15px] whitespace-pre-wrap break-words text-white/90">
+                      <div className="mt-2 text-[15px] whitespace-pre-wrap break-words text-c-text-primary">
                         {renderRichText(reply.content, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`), openArticleReader)}
                       </div>
                     )}
@@ -1005,20 +1004,20 @@ export default function CommentReply() {
                 ) : (
                   <div className="mt-2">
                     <textarea
-                      className="w-full resize-none max-h-60 min-h-[100px] px-3 py-2 rounded-md bg-black border border-[#4db6ac] text-[14px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+                      className="w-full resize-none max-h-60 min-h-[100px] px-3 py-2 rounded-md bg-c-bg-app border border-cpoint-turquoise text-[14px] focus:outline-none focus:ring-1 focus:ring-cpoint-turquoise"
                       value={editMainText}
                       onChange={(e) => setEditMainText(e.target.value)}
                       autoFocus
                     />
                     <div className="mt-2 flex gap-2">
                       <button
-                        className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm font-medium"
+                        className="px-3 py-1.5 rounded-md bg-cpoint-turquoise text-black text-sm font-medium"
                         onClick={handleEditMain}
                       >
                         {t('common.save')}
                       </button>
                       <button
-                        className="px-3 py-1.5 rounded-md border border-white/10 text-sm"
+                        className="px-3 py-1.5 rounded-md border border-c-border text-sm"
                         onClick={() => {
                           setIsEditingMain(false)
                           setEditMainText(reply.content)
@@ -1055,7 +1054,7 @@ export default function CommentReply() {
                       />
                       <button
                         type="button"
-                        className="text-sm text-[#4db6ac] hover:underline"
+                        className="text-sm text-cpoint-turquoise hover:underline"
                         onClick={() =>
                           setLightboxVideoSrc(
                             replyDisplayUrl((reply.video_path || reply.image_path) as string)
@@ -1084,12 +1083,12 @@ export default function CommentReply() {
                       if (timestampMs != null && !Number.isNaN(timestampMs) && Date.now() - timestampMs < 120000) {
                         return (
                           <div className="flex items-center gap-1">
-                            <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-white/40" />
-                            <span className="text-[11px] text-white/40">{t('feed.steve_summary_generating')}</span>
+                            <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-c-text-tertiary" />
+                            <span className="text-[11px] text-c-text-tertiary">{t('feed.steve_summary_generating')}</span>
                             <span className="flex gap-0.5 ml-0.5">
-                              <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                              <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                              <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                              <span className="w-1 h-1 bg-cpoint-turquoise rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                              <span className="w-1 h-1 bg-cpoint-turquoise rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                              <span className="w-1 h-1 bg-cpoint-turquoise rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                             </span>
                           </div>
                         )
@@ -1113,34 +1112,34 @@ export default function CommentReply() {
                   <div className="mt-3 flex items-center gap-3">
                     <button
                       onClick={() => handleReaction(reply.id, 'heart')}
-                      className={`flex items-center gap-1 text-sm transition ${isHeartActive ? 'text-red-400' : 'text-white/40 hover:text-red-400'}`}
+                      className={`flex items-center gap-1 text-sm transition ${isHeartActive ? 'text-red-400' : 'text-c-text-tertiary hover:text-red-400'}`}
                     >
                       <i className={`${isHeartActive ? 'fa-solid' : 'fa-regular'} fa-heart`} />
                       {heartCount > 0 && <span>{heartCount}</span>}
                     </button>
                     <button
                       onClick={() => handleReaction(reply.id, 'thumbs-up')}
-                      className={`flex items-center gap-1 text-sm transition ${isThumbsUpActive ? 'text-[#4db6ac]' : 'text-white/40 hover:text-[#4db6ac]'}`}
+                      className={`flex items-center gap-1 text-sm transition ${isThumbsUpActive ? 'text-cpoint-turquoise' : 'text-c-text-tertiary hover:text-cpoint-turquoise'}`}
                     >
                       <i className={`${isThumbsUpActive ? 'fa-solid' : 'fa-regular'} fa-thumbs-up`} />
                       {thumbsUpCount > 0 && <span>{thumbsUpCount}</span>}
                     </button>
                     <button
                       onClick={() => handleReaction(reply.id, 'thumbs-down')}
-                      className={`flex items-center gap-1 text-sm transition ${isThumbsDownActive ? 'text-orange-400' : 'text-white/40 hover:text-orange-400'}`}
+                      className={`flex items-center gap-1 text-sm transition ${isThumbsDownActive ? 'text-orange-400' : 'text-c-text-tertiary hover:text-orange-400'}`}
                     >
                       <i className={`${isThumbsDownActive ? 'fa-solid' : 'fa-regular'} fa-thumbs-down`} />
                       {thumbsDownCount > 0 && <span>{thumbsDownCount}</span>}
                     </button>
                     <button
-                      className="flex items-center gap-1 text-sm text-white/40 hover:text-white transition"
+                      className="flex items-center gap-1 text-sm text-c-text-tertiary hover:text-c-text-primary transition"
                       onClick={() => openReplyReactorsModal(reply.id)}
                       title={t('feed.view_reactions_viewers')}
                     >
                       <i className="fa-regular fa-eye" />
                       <span>{typeof reply.view_count === 'number' ? reply.view_count : 0}</span>
                     </button>
-                    <span className="flex items-center gap-1.5 text-sm text-white/40">
+                    <span className="flex items-center gap-1.5 text-sm text-c-text-tertiary">
                       <i className="fa-regular fa-comment" />
                       {reply.reply_count || 0}
                     </span>
@@ -1176,12 +1175,12 @@ export default function CommentReply() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-sm">{nr.username}</span>
-                          <span className="text-xs text-white/40">{formatSmartTime(nr.timestamp)}</span>
+                          <span className="text-xs text-c-text-tertiary">{formatSmartTime(nr.timestamp)}</span>
                           {/* Edit/Delete buttons for nested reply - show for author or admin */}
                           {(currentUser === nr.username || currentUser === 'admin') ? (
                             <div onClick={(e) => e.stopPropagation()}>
                               <button
-                                className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]"
+                                className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-cpoint-turquoise"
                                 title={t('feed.edit_reply')}
                                 onClick={() => {
                                   setEditNestedText(nr.content)
@@ -1205,7 +1204,7 @@ export default function CommentReply() {
                         {!isEditingThis ? (
                           <>
                             {nr.content && (
-                              <div className="mt-1 text-[14px] whitespace-pre-wrap break-words text-white/80">
+                              <div className="mt-1 text-[14px] whitespace-pre-wrap break-words text-c-text-secondary">
                                 {renderRichText(nr.content, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`), openArticleReader)}
                               </div>
                             )}
@@ -1213,20 +1212,20 @@ export default function CommentReply() {
                         ) : (
                           <div className="mt-2" onClick={(e) => e.stopPropagation()}>
                             <textarea
-                              className="w-full resize-none max-h-40 min-h-[80px] px-3 py-2 rounded-md bg-black border border-[#4db6ac] text-[13px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+                              className="w-full resize-none max-h-40 min-h-[80px] px-3 py-2 rounded-md bg-c-bg-app border border-cpoint-turquoise text-[13px] focus:outline-none focus:ring-1 focus:ring-cpoint-turquoise"
                               value={editNestedText}
                               onChange={(e) => setEditNestedText(e.target.value)}
                               autoFocus
                             />
                             <div className="mt-2 flex gap-2">
                               <button
-                                className="px-3 py-1 rounded-md bg-[#4db6ac] text-black text-xs font-medium"
+                                className="px-3 py-1 rounded-md bg-cpoint-turquoise text-black text-xs font-medium"
                                 onClick={() => handleEditNested(nr.id)}
                               >
                                 {t('common.save')}
                               </button>
                               <button
-                                className="px-3 py-1 rounded-md border border-white/10 text-xs"
+                                className="px-3 py-1 rounded-md border border-c-border text-xs"
                                 onClick={() => {
                                   setEditingNestedId(null)
                                   setEditNestedText('')
@@ -1264,7 +1263,7 @@ export default function CommentReply() {
                               />
                               <button
                                 type="button"
-                                className="text-xs text-[#4db6ac] hover:underline"
+                                className="text-xs text-cpoint-turquoise hover:underline"
                                 onClick={() =>
                                   setLightboxVideoSrc(
                                     replyDisplayUrl((nr.video_path || nr.image_path) as string)
@@ -1299,7 +1298,7 @@ export default function CommentReply() {
                               const timestampMs = parseFlexibleDate(nr.timestamp)?.getTime()
                               if (timestampMs != null && !Number.isNaN(timestampMs) && Date.now() - timestampMs < 120000) {
                                 return (
-                                  <div className="flex items-center gap-1 text-[11px] text-white/40">
+                                  <div className="flex items-center gap-1 text-[11px] text-c-text-tertiary">
                                     <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
                                     {t('feed.steve_summary_generating')}
                                   </div>
@@ -1324,34 +1323,34 @@ export default function CommentReply() {
                           <div className="mt-2 flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
                             <button
                               onClick={() => handleReaction(nr.id, 'heart')}
-                              className={`flex items-center gap-1 text-xs transition ${nrIsHeartActive ? 'text-red-400' : 'text-white/40 hover:text-red-400'}`}
+                              className={`flex items-center gap-1 text-xs transition ${nrIsHeartActive ? 'text-red-400' : 'text-c-text-tertiary hover:text-red-400'}`}
                             >
                               <i className={`${nrIsHeartActive ? 'fa-solid' : 'fa-regular'} fa-heart`} />
                               {nrHeartCount > 0 && <span>{nrHeartCount}</span>}
                             </button>
                             <button
                               onClick={() => handleReaction(nr.id, 'thumbs-up')}
-                              className={`flex items-center gap-1 text-xs transition ${nrIsThumbsUpActive ? 'text-[#4db6ac]' : 'text-white/40 hover:text-[#4db6ac]'}`}
+                              className={`flex items-center gap-1 text-xs transition ${nrIsThumbsUpActive ? 'text-cpoint-turquoise' : 'text-c-text-tertiary hover:text-cpoint-turquoise'}`}
                             >
                               <i className={`${nrIsThumbsUpActive ? 'fa-solid' : 'fa-regular'} fa-thumbs-up`} />
                               {nrThumbsUpCount > 0 && <span>{nrThumbsUpCount}</span>}
                             </button>
                             <button
                               onClick={() => handleReaction(nr.id, 'thumbs-down')}
-                              className={`flex items-center gap-1 text-xs transition ${nrIsThumbsDownActive ? 'text-orange-400' : 'text-white/40 hover:text-orange-400'}`}
+                              className={`flex items-center gap-1 text-xs transition ${nrIsThumbsDownActive ? 'text-orange-400' : 'text-c-text-tertiary hover:text-orange-400'}`}
                             >
                               <i className={`${nrIsThumbsDownActive ? 'fa-solid' : 'fa-regular'} fa-thumbs-down`} />
                               {nrThumbsDownCount > 0 && <span>{nrThumbsDownCount}</span>}
                             </button>
                             <button
-                              className="flex items-center gap-1 text-xs text-white/40 hover:text-white transition"
+                              className="flex items-center gap-1 text-xs text-c-text-tertiary hover:text-c-text-primary transition"
                               onClick={() => openReplyReactorsModal(nr.id)}
                               title={t('feed.view_reactions_viewers')}
                             >
                               <i className="fa-regular fa-eye" />
                               <span>{typeof nr.view_count === 'number' ? nr.view_count : 0}</span>
                             </button>
-                            <span className="flex items-center gap-1 text-xs text-white/40">
+                            <span className="flex items-center gap-1 text-xs text-c-text-tertiary">
                               <i className="fa-regular fa-comment" />
                               {nrReplyCount}
                             </span>
@@ -1367,8 +1366,8 @@ export default function CommentReply() {
 
           {/* Steve is typing indicator */}
           {steveIsTyping && (
-            <div className="px-4 py-3 border-t border-white/5 flex items-center gap-2 text-xs text-white/60">
-              <span className="font-medium text-[#4db6ac]">Steve</span>
+            <div className="px-4 py-3 border-t border-c-border flex items-center gap-2 text-xs text-c-text-tertiary">
+              <span className="font-medium text-cpoint-turquoise">Steve</span>
               <span>{t('feed.is_typing')}</span>
               <span className="inline-flex gap-0.5">
                 <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -1380,7 +1379,7 @@ export default function CommentReply() {
 
           {/* Empty state */}
           {(!reply.nested_replies || reply.nested_replies.length === 0) && !steveIsTyping && (
-            <div className="px-4 py-16 text-center text-white/30">
+            <div className="px-4 py-16 text-center text-c-text-tertiary">
               <i className="fa-regular fa-comments text-3xl mb-3 block" />
               <p className="text-sm">{t('feed.no_replies_yet')}</p>
             </div>
@@ -1394,14 +1393,14 @@ export default function CommentReply() {
       <FixedComposerShell
         keyboardLift={keyboardLift}
         safeBottomPx={safeBottomPx}
-        className="fixed left-0 right-0 z-[100] bg-black border-t border-white/10"
+        className="fixed left-0 right-0 z-[100] bg-c-bg-app border-t border-c-border"
       >
         <div className="max-w-2xl mx-auto px-3 py-2 w-full">
           {(file || selectedGif || replyPreview) && (
             <div className="mb-2 flex items-center gap-2 flex-wrap">
               {file && filePreviewUrl && (
                 <div className="flex items-center gap-2">
-                  <div className="w-12 h-12 rounded-md overflow-hidden border border-white/10">
+                  <div className="w-12 h-12 rounded-md overflow-hidden border border-c-border">
                     {typeof file.type === 'string' && file.type.startsWith('video/') ? (
                       <video src={filePreviewUrl} className="w-full h-full object-cover" muted playsInline />
                     ) : (
@@ -1420,7 +1419,7 @@ export default function CommentReply() {
               )}
               {selectedGif && (
                 <div className="flex items-center gap-2">
-                  <div className="w-12 h-12 rounded-md overflow-hidden border border-white/10">
+                  <div className="w-12 h-12 rounded-md overflow-hidden border border-c-border">
                     <img src={selectedGif.previewUrl} alt={t('feed.selected_gif_alt')} className="w-full h-full object-cover" loading="lazy" />
                   </div>
                   <button type="button" onClick={() => setSelectedGif(null)} className="text-red-400 hover:text-red-300" aria-label={t('feed.remove_gif')}>
@@ -1431,7 +1430,7 @@ export default function CommentReply() {
               {replyPreview && (
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <audio controls className="flex-1 h-8" playsInline webkit-playsinline="true" src={replyPreview.url} />
-                  <button type="button" onClick={() => clearReplyPreview()} className="text-[#9fb0b5] hover:text-white" aria-label={t('feed.remove_audio')}>
+                  <button type="button" onClick={() => clearReplyPreview()} className="text-c-text-tertiary hover:text-c-text-primary" aria-label={t('feed.remove_audio')}>
                     <i className="fa-regular fa-trash-can" />
                   </button>
                 </div>
@@ -1441,11 +1440,11 @@ export default function CommentReply() {
 
           {recording && (
             <div className="mb-2 flex items-center gap-3 px-1">
-              <span className="inline-block w-2 h-2 bg-[#4db6ac] rounded-full animate-pulse" />
-              <div className="flex-1 h-2 bg-white/10 rounded overflow-hidden">
+              <span className="inline-block w-2 h-2 bg-cpoint-turquoise rounded-full animate-pulse" />
+              <div className="flex-1 h-2 bg-c-active-bg rounded overflow-hidden">
                 <div className="h-full bg-[#7fe7df] transition-all" style={{ width: `${Math.max(6, Math.min(96, (level || 0) * 100))}%` }} />
               </div>
-              <div className="text-xs text-white/70">{Math.min(60, Math.round((recordMs || 0) / 1000))}s</div>
+              <div className="text-xs text-c-text-secondary">{Math.min(60, Math.round((recordMs || 0) / 1000))}s</div>
             </div>
           )}
 
@@ -1462,28 +1461,28 @@ export default function CommentReply() {
                 <i className={`fa-solid ${showAttachMenu ? 'fa-times' : 'fa-plus'} text-sm`} style={{ color: (file || selectedGif) ? '#7fe7df' : '#fff' }} />
               </NativeIconButton>
               {showAttachMenu && (
-                <div className="absolute bottom-full left-0 mb-2 w-40 rounded-xl bg-[#1a1a1c] border border-white/10 shadow-xl overflow-hidden z-10">
+                <div className="absolute bottom-full left-0 mb-2 w-40 rounded-xl bg-c-bg-surface border border-c-border shadow-xl overflow-hidden z-10">
                   <button
                     type="button"
-                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-left"
+                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-c-hover-bg transition-colors text-left"
                     onClick={() => {
                       fileInputRef.current?.click()
                       setShowAttachMenu(false)
                     }}
                   >
-                    <i className="fa-solid fa-image text-[#4db6ac]" />
-                    <span className="text-sm text-white">{t('feed.photo_video')}</span>
+                    <i className="fa-solid fa-image text-cpoint-turquoise" />
+                    <span className="text-sm text-c-text-primary">{t('feed.photo_video')}</span>
                   </button>
                   <button
                     type="button"
-                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-left border-t border-white/5"
+                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-c-hover-bg transition-colors text-left border-t border-c-border"
                     onClick={() => {
                       setShowGifPicker(true)
                       setShowAttachMenu(false)
                     }}
                   >
-                    <i className="fa-solid fa-images text-[#4db6ac]" />
-                    <span className="text-sm text-white">GIF</span>
+                    <i className="fa-solid fa-images text-cpoint-turquoise" />
+                    <span className="text-sm text-c-text-primary">GIF</span>
                   </button>
                 </div>
               )}
@@ -1502,7 +1501,7 @@ export default function CommentReply() {
               className="hidden"
             />
 
-            <div className="flex-1 min-w-0 flex min-h-9 items-center rounded-lg border border-[#4db6ac] bg-white/8">
+            <div className="flex-1 min-w-0 flex min-h-9 items-center rounded-lg border border-cpoint-turquoise bg-white/8">
               <MentionTextarea
                 value={replyText}
                 onChange={setReplyText}
@@ -1510,7 +1509,7 @@ export default function CommentReply() {
                 postId={post?.id}
                 replyId={reply.id}
                 placeholder={t('feed.reply_to_user_ellipsis', { username: reply.username })}
-                className="w-full bg-transparent px-3 py-1 text-[15px] leading-5 text-white placeholder-white/40 outline-none resize-none max-h-24 min-h-0"
+                className="w-full bg-transparent px-3 py-1 text-[15px] leading-5 text-c-text-primary placeholder-white/40 outline-none resize-none max-h-24 min-h-0"
                 rows={1}
                 autoExpand
                 perfDegraded={!!uploadFile}
@@ -1526,7 +1525,7 @@ export default function CommentReply() {
               title={t('feed.expand_reply_composer')}
               onClick={openExpandedReplyComposer}
             >
-              <i className="fa-solid fa-up-right-and-down-left-from-center text-xs text-white/80" />
+              <i className="fa-solid fa-up-right-and-down-left-from-center text-xs text-c-text-secondary" />
             </NativeIconButton>
 
             {!recording && !replyText.trim() && (
@@ -1538,7 +1537,7 @@ export default function CommentReply() {
                 aria-label={t('feed.record_audio')}
                 onClick={() => startRec()}
               >
-                <i className="fa-solid fa-microphone text-sm text-white/70" />
+                <i className="fa-solid fa-microphone text-sm text-c-text-secondary" />
               </NativeIconButton>
             )}
 
@@ -1546,7 +1545,7 @@ export default function CommentReply() {
               <NativeIconButton
                 preventBlur
                 size="md"
-                className="rounded-lg bg-[#4db6ac] text-white"
+                className="rounded-lg bg-cpoint-turquoise text-c-text-primary"
                 aria-label={t('feed.stop_recording')}
                 onClick={async () => {
                   const p = await stopRec()
@@ -1591,7 +1590,7 @@ export default function CommentReply() {
         >
           <div
             ref={expandedComposerRef}
-            className="absolute left-0 right-0 mx-auto flex max-w-2xl flex-col overflow-hidden bg-black text-white sm:rounded-3xl sm:bg-[#050607]/95"
+            className="absolute left-0 right-0 mx-auto flex max-w-2xl flex-col overflow-hidden bg-c-bg-app text-c-text-primary sm:rounded-3xl sm:bg-c-bg-elevated/95"
             style={{
               top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
               bottom: expandedComposerKeyboardOpen
@@ -1605,13 +1604,13 @@ export default function CommentReply() {
                 <h2 id="expanded-nested-reply-composer-title" className="text-base font-semibold">
                   {t('feed.write_reply_modal_title')}
                 </h2>
-                <p className="mt-1 text-xs leading-relaxed text-[#9fb0b5]">
+                <p className="mt-1 text-xs leading-relaxed text-c-text-tertiary">
                   {t('feed.write_reply_modal_hint')}
                 </p>
               </div>
               <button
                 type="button"
-                className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-c-active-bg text-c-text-primary transition hover:bg-white/20"
                 onClick={() => setReplyComposerExpanded(false)}
                 aria-label={t('feed.close_reply_composer')}
               >
@@ -1623,7 +1622,7 @@ export default function CommentReply() {
               <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
                 {file && (
                   <div className="flex items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-2">
-                    <div className="h-12 w-12 overflow-hidden rounded-md border border-white/10">
+                    <div className="h-12 w-12 overflow-hidden rounded-md border border-c-border">
                       {filePreviewUrl ? (
                         typeof file.type === 'string' && file.type.startsWith('video/') ? (
                           <video src={filePreviewUrl} className="h-full w-full object-cover" muted playsInline />
@@ -1631,7 +1630,7 @@ export default function CommentReply() {
                           <img src={filePreviewUrl} alt={t('feed.preview_alt', { number: '' })} className="h-full w-full object-cover" />
                         )
                       ) : (
-                        <div className="flex h-full w-full items-center justify-center text-white/50">
+                        <div className="flex h-full w-full items-center justify-center text-c-text-tertiary">
                           <i className="fa-solid fa-file" />
                         </div>
                       )}
@@ -1653,7 +1652,7 @@ export default function CommentReply() {
                 )}
                 {selectedGif && (
                   <div className="flex items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-2">
-                    <div className="h-12 w-12 overflow-hidden rounded-md border border-white/10">
+                    <div className="h-12 w-12 overflow-hidden rounded-md border border-c-border">
                       <img src={selectedGif.previewUrl} alt={t('feed.selected_gif_alt')} className="h-full w-full object-cover" loading="lazy" />
                     </div>
                     <button
@@ -1671,7 +1670,7 @@ export default function CommentReply() {
                     <audio controls className="h-8 flex-1" playsInline webkit-playsinline="true" src={replyPreview.url} />
                     <button
                       type="button"
-                      className="text-[#9fb0b5] hover:text-white"
+                      className="text-c-text-tertiary hover:text-c-text-primary"
                       onClick={() => clearReplyPreview()}
                       aria-label={t('feed.remove_audio')}
                     >
@@ -1683,7 +1682,7 @@ export default function CommentReply() {
             )}
 
             <div className="flex min-h-0 flex-1 px-5 pb-3">
-              <div className="flex min-h-0 flex-1 rounded-2xl border border-white/10 bg-white/[0.035] transition-colors focus-within:border-[#4db6ac]/60">
+              <div className="flex min-h-0 flex-1 rounded-2xl border border-c-border bg-white/[0.035] transition-colors focus-within:border-cpoint-turquoise/60">
                 <MentionTextarea
                   value={replyText}
                   onChange={setReplyText}
@@ -1691,7 +1690,7 @@ export default function CommentReply() {
                   postId={post.id}
                   replyId={reply.id}
                   placeholder={t('feed.reply_to_user_ellipsis', { username: reply.username })}
-                  className="h-full min-h-0 resize-none overflow-y-auto bg-transparent px-4 py-4 text-[16px] leading-relaxed text-white outline-none placeholder-white/45"
+                  className="h-full min-h-0 resize-none overflow-y-auto bg-transparent px-4 py-4 text-[16px] leading-relaxed text-c-text-primary outline-none placeholder-white/45"
                   rows={10}
                   perfDegraded={!!uploadFile}
                 />
@@ -1701,14 +1700,14 @@ export default function CommentReply() {
             <footer className="flex items-center justify-between gap-3 px-5 pb-2 pt-1">
               <button
                 type="button"
-                className="rounded-full px-2 py-2 text-sm font-medium text-[#9fb0b5] transition hover:text-white"
+                className="rounded-full px-2 py-2 text-sm font-medium text-c-text-tertiary transition hover:text-c-text-primary"
                 onClick={() => setReplyComposerExpanded(false)}
               >
                 {t('common.cancel')}
               </button>
               <NativeActionButton
                 variant="composer"
-                className="h-10 w-10 rounded-full shadow-[0_10px_28px_rgba(77,182,172,0.22)]"
+                className="h-10 w-10 rounded-full shadow-[0_10px_28px_rgba(0,206,200,0.22)]"
                 onClick={handleSubmitReply}
                 aria-label={t('feed.send_reply')}
                 disabled={sendingReply || (!replyText.trim() && !file && !replyPreview && !selectedGif)}
@@ -1731,7 +1730,7 @@ export default function CommentReply() {
         >
           <button
             type="button"
-            className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center z-10"
+            className="absolute top-3 right-3 w-10 h-10 rounded-full bg-c-active-bg hover:bg-c-hover-bg border border-c-border text-c-text-primary flex items-center justify-center z-10"
             onClick={() => setLightboxImageSrc(null)}
             aria-label={t('feed.close_preview')}
           >
@@ -1755,7 +1754,7 @@ export default function CommentReply() {
         >
           <button
             type="button"
-            className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center z-10"
+            className="absolute top-3 right-3 w-10 h-10 rounded-full bg-c-active-bg hover:bg-c-hover-bg border border-c-border text-c-text-primary flex items-center justify-center z-10"
             onClick={() => setLightboxVideoSrc(null)}
             aria-label={t('feed.close_video')}
           >
@@ -1791,11 +1790,11 @@ export default function CommentReply() {
           className="fixed inset-0 z-[95] bg-black/70 backdrop-blur flex items-center justify-center"
           onClick={(e) => e.currentTarget === e.target && setShowReactorsModal(false)}
         >
-          <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
+          <div className="w-[92%] max-w-[560px] rounded-2xl border border-c-border bg-c-bg-app p-3">
             <div className="flex items-center justify-between mb-2">
               <div className="font-semibold">{t('feed.views_reactions')}</div>
               <button
-                className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center text-sm text-white/80 hover:bg-white/10"
+                className="w-8 h-8 rounded-full border border-c-border flex items-center justify-center text-sm text-c-text-secondary hover:bg-c-hover-bg"
                 onClick={() => setShowReactorsModal(false)}
                 aria-label={t('common.close')}
               >
@@ -1803,25 +1802,25 @@ export default function CommentReply() {
               </button>
             </div>
             {reactorsLoading ? (
-              <div className="text-[#9fb0b5] text-sm py-4 text-center">{t('common.loading')}</div>
+              <div className="text-c-text-tertiary text-sm py-4 text-center">{t('common.loading')}</div>
             ) : (
               <div className="space-y-3 max-h-[420px] overflow-y-auto">
-                <div className="rounded-lg border border-white/10 p-2">
-                  <div className="flex items-center justify-between text-xs text-white/80 uppercase tracking-wide">
+                <div className="rounded-lg border border-c-border p-2">
+                  <div className="flex items-center justify-between text-xs text-c-text-secondary uppercase tracking-wide">
                     <span>{t('feed.views')}</span>
-                    <span className="text-sm font-semibold text-white">{reactorViewCount ?? 0}</span>
+                    <span className="text-sm font-semibold text-c-text-primary">{reactorViewCount ?? 0}</span>
                   </div>
                   {reactorViewers.length === 0 ? (
-                    <div className="mt-2 text-xs text-[#9fb0b5]">{t('feed.no_views_yet')}</div>
+                    <div className="mt-2 text-xs text-c-text-tertiary">{t('feed.no_views_yet')}</div>
                   ) : (
                     <div className="mt-2 flex flex-col gap-1">
                       {reactorViewers.map((viewer) => {
                         const viewedLabel = formatViewerRelative(viewer.viewed_at)
                         return (
-                          <div key={`rv-${viewer.username}-${viewer.viewed_at ?? ''}`} className="flex items-center gap-2 text-xs text-[#9fb0b5]">
+                          <div key={`rv-${viewer.username}-${viewer.viewed_at ?? ''}`} className="flex items-center gap-2 text-xs text-c-text-tertiary">
                             <Avatar username={viewer.username} url={viewer.profile_picture || undefined} size={18} linkToProfile />
                             <div className="flex-1 truncate">@{viewer.username}</div>
-                            {viewedLabel && <div className="text-[10px] text-white/40">{viewedLabel}</div>}
+                            {viewedLabel && <div className="text-[10px] text-c-text-tertiary">{viewedLabel}</div>}
                           </div>
                         )
                       })}
@@ -1829,13 +1828,13 @@ export default function CommentReply() {
                   )}
                 </div>
                 {reactorGroups.length === 0 ? (
-                  <div className="text-sm text-[#9fb0b5]">{t('feed.no_reactions_yet')}</div>
+                  <div className="text-sm text-c-text-tertiary">{t('feed.no_reactions_yet')}</div>
                 ) : reactorGroups.map((group) => (
-                  <div key={group.reaction_type} className="rounded-lg border border-white/10 p-2">
-                    <div className="text-xs text-white/80 mb-1 capitalize">{group.reaction_type.replace('-', ' ')}</div>
+                  <div key={group.reaction_type} className="rounded-lg border border-c-border p-2">
+                    <div className="text-xs text-c-text-secondary mb-1 capitalize">{group.reaction_type.replace('-', ' ')}</div>
                     <div className="flex flex-col gap-1">
                       {(group.users || []).map((u) => (
-                        <div key={`${group.reaction_type}-${u.username}`} className="flex items-center gap-2 text-xs text-[#9fb0b5]">
+                        <div key={`${group.reaction_type}-${u.username}`} className="flex items-center gap-2 text-xs text-c-text-tertiary">
                           <Avatar username={u.username} url={u.profile_picture || undefined} size={18} linkToProfile />
                           <div className="flex-1 truncate">@{u.username}</div>
                         </div>

@@ -80,7 +80,7 @@ export default function MembershipAIUsage() {
 
   const renderBar = (label: string, used: number, cap: number | null) => {
     const pct = cap && cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : used > 0 ? 100 : 0
-    const color = pct >= 100 ? '#e57373' : pct >= 95 ? '#ff8a65' : pct >= 80 ? '#ffb74d' : '#4db6ac'
+    const color = pct >= 100 ? '#e57373' : pct >= 95 ? '#ff8a65' : pct >= 80 ? '#ffb74d' : '#00CEC8'
     return (
       <div style={{ marginBottom: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#fff', marginBottom: 6 }}>
@@ -103,7 +103,7 @@ export default function MembershipAIUsage() {
         <div style={{ fontSize: 18, fontWeight: 600, textTransform: 'capitalize' }}>
           {entitlements?.tier || 'Unknown'}
           {entitlements?.is_special ? (
-            <span style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 999, background: 'rgba(77,182,172,0.2)', color: '#4db6ac', fontSize: 12 }}>
+            <span style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 999, background: 'rgba(0,206,200,0.2)', color: '#00CEC8', fontSize: 12 }}>
               Special
             </span>
           ) : null}
@@ -153,7 +153,7 @@ export default function MembershipAIUsage() {
         {entitlements?.tier === 'free' || entitlements?.tier === 'trial' ? (
           <button
             onClick={() => navigate('/subscription')}
-            style={{ flex: 1, padding: '12px 0', borderRadius: 12, background: '#4db6ac', color: '#000', fontWeight: 600, border: 'none', cursor: 'pointer' }}
+            style={{ flex: 1, padding: '12px 0', borderRadius: 12, background: '#00CEC8', color: '#000', fontWeight: 600, border: 'none', cursor: 'pointer' }}
           >
             Upgrade
           </button>

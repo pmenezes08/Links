@@ -52,10 +52,10 @@ function TierPickRow({
   return (
     <div className="flex items-center gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
-        <div className="text-[15px] font-semibold text-white">
+        <div className="text-[15px] font-semibold text-c-text-primary">
           {t('subscriptions.tier_paid_label', { level: tier.level_label })}
         </div>
-        <div className="mt-0.5 text-sm text-white/45">{subtitle}</div>
+        <div className="mt-0.5 text-sm text-c-text-tertiary">{subtitle}</div>
       </div>
       <button
         type="button"
@@ -65,10 +65,10 @@ function TierPickRow({
         className={
           'shrink-0 rounded-2xl px-4 py-2 text-xs font-bold active:opacity-80 ' +
           (!canPurchase
-            ? 'cursor-not-allowed border border-white/15 bg-white/5 text-white/40'
+            ? 'cursor-not-allowed border border-c-border bg-c-hover-bg text-c-text-tertiary'
             : loading
-              ? 'cursor-wait bg-[#4db6ac]/60 text-black'
-              : 'bg-[#4db6ac] text-black')
+              ? 'cursor-wait bg-cpoint-turquoise/60 text-black'
+              : 'bg-cpoint-turquoise text-black')
         }
       >
         {loading ? t('subscriptions.starting') : canPurchase ? label : t('subscriptions.coming_soon')}
@@ -92,7 +92,7 @@ export default function CommunityTiersPanel({
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-white/45">{t('subscriptions.modal_tier_billing_hint')}</p>
+      <p className="text-sm text-c-text-tertiary">{t('subscriptions.modal_tier_billing_hint')}</p>
 
       {error ? (
         <div className="rounded-2xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -104,7 +104,7 @@ export default function CommunityTiersPanel({
         <button
           type="button"
           onClick={() => openExternalBillingUrl(webBillingUrl)}
-          className="block text-left text-sm text-[#4db6ac] underline"
+          className="block text-left text-sm text-cpoint-turquoise underline"
         >
           {t('subscriptions.open_web_billing', { url: webBillingUrl })}
         </button>
@@ -127,14 +127,14 @@ export default function CommunityTiersPanel({
         <SettingsDivider />
         <div className="flex items-center gap-3 px-4 py-3">
           <div className="min-w-0 flex-1">
-            <div className="text-[15px] font-semibold text-white">{t('subscriptions.enterprise')}</div>
-            <div className="mt-0.5 text-sm text-white/45">
+            <div className="text-[15px] font-semibold text-c-text-primary">{t('subscriptions.enterprise')}</div>
+            <div className="mt-0.5 text-sm text-c-text-tertiary">
               {t('subscriptions.enterprise_members')} · {t('subscriptions.enterprise_custom_pricing')}
             </div>
           </div>
           <a
             href={`mailto:${SALES_EMAIL}?subject=${encodeURIComponent(t('subscriptions.mailto_enterprise_subject'))}`}
-            className="shrink-0 rounded-2xl border border-[#4db6ac]/40 px-4 py-2 text-xs font-bold text-[#4db6ac] active:bg-[#4db6ac]/10"
+            className="shrink-0 rounded-2xl border border-cpoint-turquoise/40 px-4 py-2 text-xs font-bold text-cpoint-turquoise active:bg-cpoint-turquoise/10"
           >
             {t('subscriptions.contact_us')}
           </a>

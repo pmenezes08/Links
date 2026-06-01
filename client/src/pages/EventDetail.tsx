@@ -30,7 +30,7 @@ type RSVPDetails = {
 }
 
 const glassPanel =
-  'relative rounded-2xl overflow-hidden liquid-glass-surface border border-white/15 shadow-[0_24px_56px_rgba(0,0,0,0.48)]'
+  'relative rounded-2xl overflow-hidden liquid-glass-surface border border-c-border shadow-c-glass'
 
 export default function EventDetail(){
   const { t } = useTranslation()
@@ -176,7 +176,7 @@ export default function EventDetail(){
   if (loading) {
     return (
       <div className="min-h-screen chat-thread-bg flex items-center justify-center px-4">
-        <div className="text-[#9fb0b5] text-sm">{t('calendar.loading_event')}</div>
+        <div className="text-c-text-tertiary text-sm">{t('calendar.loading_event')}</div>
       </div>
     )
   }
@@ -189,12 +189,12 @@ export default function EventDetail(){
   }
 
   return (
-    <div className="min-h-screen chat-thread-bg text-white">
+    <div className="min-h-screen chat-thread-bg text-c-text-primary">
       <div className="max-w-2xl mx-auto px-3 pb-24 pt-2">
         <header className="mb-2 flex items-center">
           <button
             type="button"
-            className="rounded-full p-2 text-[#cfe7e4] hover:bg-white/5"
+            className="rounded-full p-2 text-c-text-secondary hover:bg-c-hover-bg"
             onClick={() => navigate(-1)}
             aria-label={t('common.back')}
           >
@@ -204,8 +204,8 @@ export default function EventDetail(){
 
         <div className={`${glassPanel} mb-3`}>
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-teal-300/60 to-transparent opacity-80 pointer-events-none" />
-          <div className="relative px-4 py-3 border-b border-[#4db6ac]/30 bg-gradient-to-r from-[#4db6ac]/12 via-[#4db6ac]/6 to-transparent flex items-start justify-between gap-2">
-            <h1 className="text-base sm:text-lg font-semibold text-white tracking-tight leading-snug min-w-0 flex-1">{event.title}</h1>
+          <div className="relative px-4 py-3 border-b border-cpoint-turquoise/30 bg-gradient-to-r from-cpoint-turquoise/12 via-cpoint-turquoise/6 to-transparent flex items-start justify-between gap-2">
+            <h1 className="text-base sm:text-lg font-semibold text-c-text-primary tracking-tight leading-snug min-w-0 flex-1">{event.title}</h1>
             {canDelete ? (
               <button
                 type="button"
@@ -224,10 +224,10 @@ export default function EventDetail(){
 
           <div className="p-4 space-y-3">
             <div className="flex items-start gap-3">
-              <i className="fa-solid fa-calendar text-[#4db6ac] w-4 pt-0.5 text-sm shrink-0" />
+              <i className="fa-solid fa-calendar text-cpoint-turquoise w-4 pt-0.5 text-sm shrink-0" />
               <div className="flex-1 min-w-0">
-                <div className="text-xs text-[#9fb0b5] mb-0.5">{t('calendar.date_label')}</div>
-                <div className="text-white/90 text-sm">
+                <div className="text-xs text-c-text-tertiary mb-0.5">{t('calendar.date_label')}</div>
+                <div className="text-c-text-secondary text-sm">
                   {event.date}
                   {event.end_date && event.end_date !== event.date && event.end_date !== '0000-00-00' && (
                     <> → {event.end_date}</>
@@ -238,10 +238,10 @@ export default function EventDetail(){
 
             {(event.start_time || event.end_time) && (
               <div className="flex items-start gap-3">
-                <i className="fa-solid fa-clock text-[#4db6ac] w-4 pt-0.5 text-sm shrink-0" />
+                <i className="fa-solid fa-clock text-cpoint-turquoise w-4 pt-0.5 text-sm shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs text-[#9fb0b5] mb-0.5">{t('calendar.time_label')}</div>
-                  <div className="text-white/90 text-sm">
+                  <div className="text-xs text-c-text-tertiary mb-0.5">{t('calendar.time_label')}</div>
+                  <div className="text-c-text-secondary text-sm">
                     {(() => {
                       const times = [event.start_time, event.end_time]
                         .filter(tval => tval && tval !== '0000-00-00 00:00:00' && tval !== '00:00:00' && tval !== '00:00')
@@ -255,26 +255,26 @@ export default function EventDetail(){
 
             {event.description && (
               <div className="flex items-start gap-3">
-                <i className="fa-solid fa-info-circle text-[#4db6ac] w-4 pt-0.5 text-sm shrink-0" />
+                <i className="fa-solid fa-info-circle text-cpoint-turquoise w-4 pt-0.5 text-sm shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs text-[#9fb0b5] mb-0.5">{t('calendar.description')}</div>
-                  <div className="text-white/90 text-sm whitespace-pre-wrap leading-relaxed">{event.description}</div>
+                  <div className="text-xs text-c-text-tertiary mb-0.5">{t('calendar.description')}</div>
+                  <div className="text-c-text-secondary text-sm whitespace-pre-wrap leading-relaxed">{event.description}</div>
                 </div>
               </div>
             )}
 
             <div className="flex items-start gap-3">
-              <i className="fa-solid fa-user text-[#4db6ac] w-4 pt-0.5 text-sm shrink-0" />
+              <i className="fa-solid fa-user text-cpoint-turquoise w-4 pt-0.5 text-sm shrink-0" />
               <div className="flex-1 min-w-0">
-                <div className="text-xs text-[#9fb0b5] mb-0.5">{t('calendar.organizer')}</div>
-                <div className="text-white/90 text-sm">{event.username}</div>
+                <div className="text-xs text-c-text-tertiary mb-0.5">{t('calendar.organizer')}</div>
+                <div className="text-c-text-secondary text-sm">{event.username}</div>
               </div>
             </div>
 
             <div className="pt-1">
               <button
                 type="button"
-                className="w-full min-h-[44px] py-2.5 rounded-xl border border-[#4db6ac]/40 bg-[#4db6ac]/10 text-sm font-medium text-[#8ff4e9] hover:bg-[#4db6ac]/20 transition-all disabled:opacity-50"
+                className="w-full min-h-[44px] py-2.5 rounded-xl border border-cpoint-turquoise/40 bg-cpoint-turquoise/10 text-sm font-medium text-c-accent-ink hover:bg-cpoint-turquoise/20 transition-all disabled:opacity-50"
                 disabled={calExporting}
                 onClick={() => void addToDeviceCalendar()}
               >
@@ -296,34 +296,34 @@ export default function EventDetail(){
           <div className="grid grid-cols-3 gap-3 text-center">
             <div>
               <div className="text-lg font-semibold text-green-400 tabular-nums">{event.rsvp_counts?.going || 0}</div>
-              <div className="text-[11px] text-[#9fb0b5] mt-0.5">{t('calendar.going')}</div>
+              <div className="text-[11px] text-c-text-tertiary mt-0.5">{t('calendar.going')}</div>
             </div>
             <div>
               <div className="text-lg font-semibold text-yellow-400 tabular-nums">{event.rsvp_counts?.maybe || 0}</div>
-              <div className="text-[11px] text-[#9fb0b5] mt-0.5">{t('calendar.maybe')}</div>
+              <div className="text-[11px] text-c-text-tertiary mt-0.5">{t('calendar.maybe')}</div>
             </div>
             <div>
               <div className="text-lg font-semibold text-red-400/90 tabular-nums">{event.rsvp_counts?.not_going || 0}</div>
-              <div className="text-[11px] text-[#9fb0b5] mt-0.5">{t('calendar.cant_go')}</div>
+              <div className="text-[11px] text-c-text-tertiary mt-0.5">{t('calendar.cant_go')}</div>
             </div>
           </div>
           {typeof event.rsvp_counts?.no_response === 'number' && event.rsvp_counts.no_response > 0 && (
-            <div className="mt-3 pt-3 border-t border-white/10 text-center">
-              <div className="text-xs text-[#9fb0b5]">{t('calendar.havent_responded', { count: event.rsvp_counts.no_response })}</div>
+            <div className="mt-3 pt-3 border-t border-c-border text-center">
+              <div className="text-xs text-c-text-tertiary">{t('calendar.havent_responded', { count: event.rsvp_counts.no_response })}</div>
             </div>
           )}
         </div>
 
         <div className={`${glassPanel} p-4 mb-3 relative`}>
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-teal-300/50 to-transparent opacity-70 pointer-events-none" />
-          <div className="text-center mb-3 text-white/90 text-sm font-medium">{t('calendar.will_you_attend')}</div>
+          <div className="text-center mb-3 text-c-text-secondary text-sm font-medium">{t('calendar.will_you_attend')}</div>
           <div className="grid grid-cols-3 gap-2">
             <button
               type="button"
               className={`min-h-[44px] py-2.5 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${
                 event.user_rsvp==='going'
                   ? 'border-green-500/60 bg-green-500/10 text-green-400'
-                  : 'border-white/12 text-white/80 hover:border-teal-400/35 hover:bg-white/[0.04]'
+                  : 'border-c-border text-c-text-secondary hover:border-teal-400/35 hover:bg-c-hover-bg'
               }`}
               onClick={()=> rsvp('going')}
             >
@@ -335,7 +335,7 @@ export default function EventDetail(){
               className={`min-h-[44px] py-2.5 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${
                 event.user_rsvp==='maybe'
                   ? 'border-yellow-500/60 bg-yellow-500/10 text-yellow-400'
-                  : 'border-white/12 text-white/80 hover:border-teal-400/35 hover:bg-white/[0.04]'
+                  : 'border-c-border text-c-text-secondary hover:border-teal-400/35 hover:bg-c-hover-bg'
               }`}
               onClick={()=> rsvp('maybe')}
             >
@@ -347,7 +347,7 @@ export default function EventDetail(){
               className={`min-h-[44px] py-2.5 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${
                 event.user_rsvp==='not_going'
                   ? 'border-red-500/55 bg-red-500/10 text-red-400'
-                  : 'border-white/12 text-white/80 hover:border-teal-400/35 hover:bg-white/[0.04]'
+                  : 'border-c-border text-c-text-secondary hover:border-teal-400/35 hover:bg-c-hover-bg'
               }`}
               onClick={()=> rsvp('not_going')}
             >
@@ -359,7 +359,7 @@ export default function EventDetail(){
 
         <button
           type="button"
-          className="w-full min-h-[44px] py-2.5 rounded-xl border border-white/15 liquid-glass-surface hover:border-teal-400/35 text-sm text-white/90 mb-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)] transition-all"
+          className="w-full min-h-[44px] py-2.5 rounded-xl border border-c-border liquid-glass-surface hover:border-teal-400/35 text-sm text-c-text-secondary mb-3 shadow-c-glass transition-all"
           onClick={()=> loadAttendees()}
         >
           {t('calendar.view_whos_coming')}
@@ -368,14 +368,14 @@ export default function EventDetail(){
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
-            className="min-h-[44px] py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 shadow-[0_12px_28px_rgba(77,182,172,0.25)]"
+            className="min-h-[44px] py-2.5 rounded-xl bg-cpoint-turquoise text-black text-sm font-medium hover:brightness-110 shadow-[0_12px_28px_rgba(0,206,200,0.25)]"
             onClick={()=> navigate(event.community_id ? `/community/${event.community_id}/calendar_react` : '/premium_dashboard')}
           >
             {t('calendar.view_events')}
           </button>
           <button
             type="button"
-            className="min-h-[44px] py-2.5 rounded-xl border border-white/15 liquid-glass-surface text-sm text-white/90 hover:border-teal-400/35"
+            className="min-h-[44px] py-2.5 rounded-xl border border-c-border liquid-glass-surface text-sm text-c-text-secondary hover:border-teal-400/35"
             onClick={()=> navigate(event.community_id ? `/community_feed_react/${event.community_id}` : '/premium_dashboard')}
           >
             {t('calendar.back_to_community')}
@@ -385,7 +385,7 @@ export default function EventDetail(){
 
       {showAttendees && (
         <div
-          className="fixed left-0 right-0 bottom-0 z-[100] bg-black/60 backdrop-blur-md flex items-center justify-center px-4"
+          className="fixed left-0 right-0 bottom-0 z-[100] bg-c-bg-overlay backdrop-blur-md flex items-center justify-center px-4"
           style={{
             top: 'calc(56px + env(safe-area-inset-top, 0px))',
             paddingTop: '16px',
@@ -400,12 +400,12 @@ export default function EventDetail(){
           >
             <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-teal-300/55 to-transparent opacity-80 pointer-events-none" />
             <div className="flex items-center justify-between gap-3 mb-3 flex-shrink-0">
-              <div className="font-semibold text-sm text-white">{t('calendar.whos_coming')}</div>
+              <div className="font-semibold text-sm text-c-text-primary">{t('calendar.whos_coming')}</div>
               <div className="flex items-center gap-2">
                 <select
                   value={attendeeFilter}
                   onChange={(e)=> setAttendeeFilter(e.target.value as 'going'|'maybe'|'not_going'|'no_response')}
-                  className="rounded-lg liquid-glass-surface border border-white/12 px-2 py-1.5 text-xs text-white/90 focus:border-[#4db6ac]/50 outline-none"
+                  className="rounded-lg liquid-glass-surface border border-c-border px-2 py-1.5 text-xs text-c-text-secondary focus:border-cpoint-turquoise/50 outline-none"
                 >
                   <option value="going">{t('calendar.going')}</option>
                   <option value="maybe">{t('calendar.maybe')}</option>
@@ -414,7 +414,7 @@ export default function EventDetail(){
                 </select>
                 <button
                   type="button"
-                  className="px-2 py-1 rounded-full border border-white/12 text-xs text-white/80 hover:bg-white/5"
+                  className="px-2 py-1 rounded-full border border-c-border text-xs text-c-text-secondary hover:bg-c-hover-bg"
                   onClick={()=> setShowAttendees(false)}
                 >
                   ✕
@@ -423,7 +423,7 @@ export default function EventDetail(){
             </div>
 
             {!rsvpDetails ? (
-              <div className="text-[#9fb0b5] text-sm">{t('common.loading')}</div>
+              <div className="text-c-text-tertiary text-sm">{t('common.loading')}</div>
             ) : (
               (() => {
                 const list =
@@ -442,15 +442,15 @@ export default function EventDetail(){
                   attendeeFilter === 'going' ? 'text-green-400' :
                   attendeeFilter === 'maybe' ? 'text-yellow-400' :
                   attendeeFilter === 'not_going' ? 'text-red-400' :
-                  'text-[#9fb0b5]'
+                  'text-c-text-tertiary'
 
                 return (
-                  <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-white/10 liquid-glass-surface p-3">
+                  <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-c-border liquid-glass-surface p-3">
                     <div className={`font-medium text-xs mb-2 ${labelClass}`}>{label} ({list.length})</div>
                     {list.length === 0 ? (
-                      <div className="text-xs text-[#9fb0b5]">{t('calendar.no_users_category')}</div>
+                      <div className="text-xs text-c-text-tertiary">{t('calendar.no_users_category')}</div>
                     ) : (
-                      <ul className="space-y-1 text-sm text-white/88">
+                      <ul className="space-y-1 text-sm text-c-text-primary">
                         {list.map((u, idx) => (<li key={`${attendeeFilter}-${idx}`}>{u.username}</li>))}
                       </ul>
                     )}
@@ -464,7 +464,7 @@ export default function EventDetail(){
 
       {showDeleteConfirm && (
         <div
-          className="fixed inset-0 z-[110] bg-black/75 backdrop-blur-md flex items-center justify-center px-4"
+          className="fixed inset-0 z-[110] bg-c-bg-overlay backdrop-blur-md flex items-center justify-center px-4"
           onClick={(e)=> e.currentTarget===e.target && setShowDeleteConfirm(false)}
         >
           <div className={`w-full max-w-sm ${glassPanel} p-5 relative`} onClick={(e) => e.stopPropagation()}>
@@ -473,15 +473,15 @@ export default function EventDetail(){
               <div className="w-9 h-9 rounded-full bg-red-500/18 flex items-center justify-center shrink-0">
                 <i className="fa-solid fa-trash text-red-400 text-sm" />
               </div>
-              <div className="font-semibold text-base text-white">{t('calendar.delete_event')}</div>
+              <div className="font-semibold text-base text-c-text-primary">{t('calendar.delete_event')}</div>
             </div>
-            <p className="text-xs text-[#9fb0b5] mb-4 leading-relaxed">
+            <p className="text-xs text-c-text-tertiary mb-4 leading-relaxed">
               {t('calendar.delete_event_confirm_body', { title: event?.title ?? '' })}
             </p>
             <div className="flex gap-2">
               <button
                 type="button"
-                className="flex-1 min-h-[44px] py-2 rounded-xl border border-white/12 text-sm text-white/90 hover:bg-white/[0.05] transition-colors"
+                className="flex-1 min-h-[44px] py-2 rounded-xl border border-c-border text-sm text-c-text-secondary hover:bg-c-hover-bg transition-colors"
                 onClick={() => setShowDeleteConfirm(false)}
                 disabled={deleting}
               >

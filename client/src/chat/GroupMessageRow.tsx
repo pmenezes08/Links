@@ -9,6 +9,7 @@ import LongPressActionable from './LongPressActionable'
 import { SwipeToReply } from './SwipeToReply'
 import { formatDateLabel, normalizeMediaPath, resolveDocUrl } from './index'
 import MessageImage from '../components/MessageImage'
+import MessageVideo from '../components/MessageVideo'
 import VoiceNotePlayer from '../components/VoiceNotePlayer'
 import LinkPreview, { stripExtractedUrlsFromText, feedLinkPreviewUrls } from '../components/LinkPreview'
 import VideoEmbed from '../components/VideoEmbed'
@@ -69,7 +70,7 @@ export type GroupMessageRowProps = {
   onSaveEdit: () => void
   editingSaving: boolean
   formatTime: (dateStr: string) => string
-  renderMessageText: (text: string) => ReactNode
+  renderMessageText: (text: string, isSent?: boolean) => ReactNode
   currentUsername: string
   translationForMessage?: string
   translatingThis: boolean
@@ -172,7 +173,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
     <div>
       {showDateSeparator && (
         <div className="flex justify-center my-3">
-          <div className="liquid-glass-chip px-3 py-1 text-xs text-white/80 border">{formatDateLabel(msg.created_at)}</div>
+          <div className="liquid-glass-chip px-3 py-1 text-xs text-c-text-secondary border">{formatDateLabel(msg.created_at)}</div>
         </div>
       )}
       <SwipeToReply
@@ -188,8 +189,8 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
         <div className={`flex-1 min-w-0 ${isSentByMe ? 'flex flex-col items-end' : ''}`}>
           {showAvatar && msg.sender && !isSentByMe && (
             <div className="flex items-baseline gap-2 mb-0.5">
-              <span className="text-sm font-medium text-white/90">{msg.sender}</span>
-              <span className="text-[11px] text-[#9fb0b5]">{formatTime(msg.created_at)}</span>
+              <span className="text-sm font-medium text-c-text-primary">{msg.sender}</span>
+              <span className="text-[11px] text-c-text-tertiary">{formatTime(msg.created_at)}</span>
             </div>
           )}
           <div className={`flex items-end gap-2 ${isSentByMe ? 'flex-row-reverse' : ''}`}>
@@ -198,7 +199,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                 type="button"
                 onClick={onToggleSelect}
                 className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                  isSelected ? 'bg-[#4db6ac] border-[#4db6ac]' : 'border-white/40 bg-transparent'
+                  isSelected ? 'bg-cpoint-turquoise border-cpoint-turquoise' : 'border-white/40 bg-transparent'
                 }`}
               >
                 {isSelected && <i className="fa-solid fa-check text-black text-xs" />}
@@ -220,7 +221,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                     <textarea
                       value={editText}
                       onChange={e => onEditTextChange(e.target.value)}
-                      className="w-full bg-white/10 border border-[#4db6ac] rounded-lg px-3 py-2 text-[14px] text-white resize-none focus:outline-none"
+                      className="w-full bg-c-bg-recessed border border-cpoint-turquoise rounded-lg px-3 py-2 text-[14px] text-c-text-primary resize-none focus:outline-none"
                       rows={3}
                       autoFocus
                     />
@@ -228,7 +229,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                       <button
                         type="button"
                         onClick={onCancelEdit}
-                        className="px-3 py-1 text-xs text-white/60 hover:text-white"
+                        className="px-3 py-1 text-xs text-c-text-tertiary hover:text-c-text-primary"
                         disabled={editingSaving}
                       >
                         {t('chat.cancel')}
@@ -237,7 +238,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                         type="button"
                         onClick={onSaveEdit}
                         disabled={editingSaving || !editText.trim()}
-                        className="px-3 py-1 text-xs bg-[#4db6ac] text-black rounded-lg disabled:opacity-50"
+                        className="px-3 py-1 text-xs bg-cpoint-turquoise text-black rounded-lg disabled:opacity-50"
                       >
                         {editingSaving ? <i className="fa-solid fa-spinner fa-spin" /> : t('chat.save')}
                       </button>
@@ -248,17 +249,17 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                     <div
                       className={`rounded-2xl max-w-[280px] ${isSentByMe ? 'rounded-br-lg' : 'rounded-bl-lg'} ${
                         isOptimistic
-                          ? 'bg-[#4db6ac]/40 border border-[#4db6ac]/30'
+                          ? 'bg-cpoint-turquoise/40 border border-cpoint-turquoise/30'
                           : `liquid-glass-bubble ${isSentByMe ? 'liquid-glass-bubble--sent' : 'liquid-glass-bubble--received'}`
                       }`}
                     >
                       {replySnippet && (
-                        <div className="px-3 pt-2 pb-1 border-b border-white/10">
-                          <div className="flex items-stretch gap-0 bg-black/20 rounded overflow-hidden">
-                            <div className="w-0.5 bg-[#4db6ac] flex-shrink-0" />
+                        <div className="px-3 pt-2 pb-1 border-b border-c-border">
+                          <div className="flex items-stretch gap-0 bg-c-bg-reply rounded overflow-hidden">
+                            <div className="w-0.5 bg-cpoint-turquoise flex-shrink-0" />
                             <div className="px-2 py-1 min-w-0">
-                              <div className="text-[10px] text-[#4db6ac] font-medium truncate">{replySender}</div>
-                              <div className="text-[11px] text-white/60 whitespace-pre-wrap break-words leading-[1.25]">
+                              <div className="text-[10px] text-cpoint-turquoise font-medium truncate">{replySender}</div>
+                              <div className="text-[11px] text-c-text-secondary whitespace-pre-wrap break-words leading-[1.25]">
                                 {(() => {
                                   if (replySnippet.startsWith('📷|') || replySnippet.startsWith('🎥|')) {
                                     const parts = replySnippet.split('|')
@@ -289,8 +290,8 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                         </div>
                       )}
                       {bubbleTextWithoutUrls?.trim() && (
-                        <div className="text-[14px] text-white whitespace-pre-wrap break-words px-3 py-2">
-                          {renderMessageText(bubbleTextWithoutUrls)}
+                        <div className={`text-[14px] ${isSentByMe ? 'text-white' : 'text-c-text-primary'} whitespace-pre-wrap break-words px-3 py-2`}>
+                          {renderMessageText(bubbleTextWithoutUrls, isSentByMe)}
                           {isOptimistic && (
                             <span className="ml-2 text-[10px] text-white/60">
                               <i className="fa-solid fa-clock text-[8px] mr-1" />
@@ -330,13 +331,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                     >
                       {msg.media_paths[0].match(/\.(mp4|mov|webm|m4v)$/i) ? (
                         <div className="relative">
-                          <video
-                            src={normalizeMediaPath(msg.media_paths[0]) + '#t=0.1'}
-                            className="w-full rounded-lg"
-                            muted
-                            preload="metadata"
-                            playsInline
-                          />
+                          <MessageVideo src={normalizeMediaPath(msg.media_paths[0])} />
                           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                             <div className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center">
                               <i className="fa-solid fa-play text-white text-lg ml-0.5" />
@@ -384,13 +379,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                           onOpenVideo(normalizeMediaPath(msg.video!))
                         }}
                       >
-                        <video
-                          src={normalizeMediaPath(msg.video) + '#t=0.1'}
-                          preload="metadata"
-                          playsInline
-                          muted
-                          className="w-full rounded-lg"
-                        />
+                        <MessageVideo src={normalizeMediaPath(msg.video)} />
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                           <div className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center">
                             <i className="fa-solid fa-play text-white text-lg ml-0.5" />
@@ -405,19 +394,19 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                     href={resolveDocUrl(msg.file_path || msg.document || '')}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="mt-1 flex items-center gap-3 max-w-[280px] rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2.5 hover:bg-white/[0.1] transition-colors"
+                    className="mt-1 flex items-center gap-3 max-w-[280px] rounded-xl border border-c-border bg-white/[0.06] px-3 py-2.5 hover:bg-c-hover-bg transition-colors"
                     onClick={e => e.stopPropagation()}
                   >
-                    <div className="w-10 h-10 rounded-lg bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
-                      <i className="fa-solid fa-file-pdf text-[#4db6ac] text-lg" />
+                    <div className="w-10 h-10 rounded-lg bg-cpoint-turquoise/20 flex items-center justify-center flex-shrink-0">
+                      <i className="fa-solid fa-file-pdf text-cpoint-turquoise text-lg" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm text-white font-medium truncate">
+                      <div className="text-sm text-c-text-primary font-medium truncate">
                         {msg.file_name || t('chat.pdf_document')}
                       </div>
-                      <div className="text-[10px] text-white/50">PDF</div>
+                      <div className="text-[10px] text-c-text-tertiary">PDF</div>
                     </div>
-                    <i className="fa-solid fa-arrow-up-right-from-square text-white/40 text-xs flex-shrink-0" />
+                    <i className="fa-solid fa-arrow-up-right-from-square text-c-text-tertiary text-xs flex-shrink-0" />
                   </a>
                 )}
                 {msg.voice && (
@@ -425,7 +414,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                     <VoiceNotePlayer audioPath={normalizeMediaPath(msg.voice)} durationSeconds={msg.audio_duration_seconds} />
                     {msg.audio_summary ? (
                       <div className="px-2 pb-1 pt-0.5">
-                        <div className="text-[11px] text-white/50 flex items-center gap-1 mb-0.5">
+                        <div className="text-[11px] text-c-text-tertiary flex items-center gap-1 mb-0.5">
                           <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
                           <span>{translationForMessage ? t('feed.steve_summary_translated') : t('feed.steve_summary')}</span>
                           <div className="ml-auto flex items-center gap-1">
@@ -436,7 +425,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                                   e.stopPropagation()
                                   onClearTranslation()
                                 }}
-                                className="text-white/30 hover:text-white/50 px-0.5"
+                                className="text-c-text-disabled hover:text-c-text-tertiary px-0.5"
                               >
                                 <i className="fa-solid fa-rotate-left text-[8px]" />
                               </button>
@@ -447,7 +436,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                                 e.stopPropagation()
                                 onTranslatePress()
                               }}
-                              className="text-white/30 hover:text-white/50 px-0.5"
+                              className="text-c-text-disabled hover:text-c-text-tertiary px-0.5"
                               disabled={translatingThis}
                             >
                               {translatingThis ? (
@@ -463,14 +452,14 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                                   e.stopPropagation()
                                   onEditSummaryPress()
                                 }}
-                                className="text-white/30 hover:text-white/50 px-0.5"
+                                className="text-c-text-disabled hover:text-c-text-tertiary px-0.5"
                               >
                                 <i className="fa-solid fa-pen text-[8px]" />
                               </button>
                             )}
                           </div>
                         </div>
-                        <p className="text-[12px] text-white/80 leading-relaxed italic">
+                        <p className="text-[12px] text-c-text-secondary leading-relaxed italic">
                           {translationForMessage || msg.audio_summary}
                         </p>
                       </div>
@@ -482,19 +471,19 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                             return (
                               <div className="px-2 pb-1 pt-0.5">
                                 <div className="flex items-center gap-1">
-                                  <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-white/40" />
-                                  <span className="text-[11px] text-white/40">{t('feed.steve_summary_generating')}</span>
+                                  <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-c-text-tertiary" />
+                                  <span className="text-[11px] text-c-text-tertiary">{t('feed.steve_summary_generating')}</span>
                                   <span className="flex gap-0.5 ml-0.5">
                                     <span
-                                      className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce"
+                                      className="w-1 h-1 bg-cpoint-turquoise rounded-full animate-bounce"
                                       style={{ animationDelay: '0ms' }}
                                     />
                                     <span
-                                      className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce"
+                                      className="w-1 h-1 bg-cpoint-turquoise rounded-full animate-bounce"
                                       style={{ animationDelay: '150ms' }}
                                     />
                                     <span
-                                      className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce"
+                                      className="w-1 h-1 bg-cpoint-turquoise rounded-full animate-bounce"
                                       style={{ animationDelay: '300ms' }}
                                     />
                                   </span>
@@ -511,7 +500,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                 )}
                 {messageReaction && (
                   <div
-                    className="absolute -bottom-5 left-0 bg-[#1a1a1a] border border-white/10 rounded-full px-1.5 py-0.5 text-sm cursor-pointer hover:bg-white/10 chat-reaction-pop"
+                    className="absolute -bottom-5 left-0 bg-c-bg-surface border border-c-border rounded-full px-1.5 py-0.5 text-sm cursor-pointer hover:bg-c-hover-bg chat-reaction-pop"
                     role="presentation"
                     onClick={e => {
                       e.stopPropagation()
@@ -524,7 +513,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
               </div>
             </LongPressActionable>
             {!showAvatar && showTime && (
-              <span className="text-[10px] text-[#9fb0b5]/60 flex-shrink-0 pb-0.5">
+              <span className="text-[10px] text-c-text-tertiary flex-shrink-0 pb-0.5">
                 {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </span>
             )}

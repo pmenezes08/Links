@@ -76,21 +76,21 @@ export default function ChatDocuments() {
     return { keys: formatted, map, originalKeys: keys }
   }, [items, t])
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">{t('common.loading')}</div>
+  if (loading) return <div className="p-4 text-c-text-tertiary">{t('common.loading')}</div>
   if (error) return <div className="p-4 text-red-400">{error}</div>
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary">
       <div
-        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40 border-b border-white/10"
+        className="fixed left-0 right-0 h-10 bg-c-bg-app/70 backdrop-blur z-40 border-b border-c-border"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
       >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={() => navigate(-1)} aria-label={t('common.back')}>
+          <button className="p-2 rounded-full hover:bg-c-hover-bg" onClick={() => navigate(-1)} aria-label={t('common.back')}>
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="flex-1 font-medium">{t('chat.documents_title')}</div>
-          <div className="text-sm text-[#9fb0b5]">{t('chat.item_count', { count: items.length })}</div>
+          <div className="text-sm text-c-text-tertiary">{t('chat.item_count', { count: items.length })}</div>
         </div>
       </div>
 
@@ -100,8 +100,8 @@ export default function ChatDocuments() {
       >
         {items.length === 0 ? (
           <div className="text-center py-12">
-            <i className="fa-solid fa-file-pdf text-4xl mb-3 block opacity-50 text-[#9fb0b5]" />
-            <p className="text-lg font-medium text-[#9fb0b5]">{t('chat.no_documents')}</p>
+            <i className="fa-solid fa-file-pdf text-4xl mb-3 block opacity-50 text-c-text-tertiary" />
+            <p className="text-lg font-medium text-c-text-tertiary">{t('chat.no_documents')}</p>
           </div>
         ) : (
           <div className="space-y-8 pt-4">
@@ -109,7 +109,7 @@ export default function ChatDocuments() {
               const docsForDate = groups.map[groups.originalKeys[index]] || []
               return (
                 <div key={label} className="space-y-3">
-                  <div className="text-sm text-[#9fb0b5] font-medium border-b border-white/10 pb-2">
+                  <div className="text-sm text-c-text-tertiary font-medium border-b border-c-border pb-2">
                     {label} ({docsForDate.length})
                   </div>
                   <div className="space-y-2">
@@ -119,18 +119,18 @@ export default function ChatDocuments() {
                         href={resolveDocUrl(doc.url)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 hover:bg-white/[0.08] transition-colors"
+                        className="flex items-center gap-3 rounded-xl border border-c-border bg-white/[0.04] px-3 py-3 hover:bg-white/[0.08] transition-colors"
                       >
-                        <div className="w-10 h-10 rounded-lg bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
-                          <i className="fa-solid fa-file-pdf text-[#4db6ac]" />
+                        <div className="w-10 h-10 rounded-lg bg-cpoint-turquoise/20 flex items-center justify-center flex-shrink-0">
+                          <i className="fa-solid fa-file-pdf text-cpoint-turquoise" />
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="text-sm font-medium truncate">{doc.file_name || t('chat.pdf_document')}</div>
-                          <div className="text-[11px] text-white/50">
+                          <div className="text-[11px] text-c-text-tertiary">
                             {doc.sender} · {formatSmartTime(doc.created_at)}
                           </div>
                         </div>
-                        <i className="fa-solid fa-arrow-up-right-from-square text-white/40 text-xs flex-shrink-0" />
+                        <i className="fa-solid fa-arrow-up-right-from-square text-c-text-tertiary text-xs flex-shrink-0" />
                       </a>
                     ))}
                   </div>

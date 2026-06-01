@@ -53,10 +53,10 @@ export default function FeedBottomNav({
       }}
     >
       <div
-        className="liquid-glass-surface border border-white/10 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.55)] max-w-2xl mx-auto"
+        className="liquid-glass-surface border border-c-border rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.55)] max-w-2xl mx-auto"
         style={{ pointerEvents: 'auto' }}
       >
-        <div className="h-14 px-2 sm:px-6 flex items-center justify-between text-[#cfd8dc]">
+          <div className="h-14 px-2 sm:px-6 flex items-center justify-between text-c-text-secondary">
           <button
             type="button"
             className="p-3 rounded-full bg-white/10 transition-colors touch-manipulation"

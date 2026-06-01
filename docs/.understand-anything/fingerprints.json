@@ -1,0 +1,367 @@
+{
+  "version": "1.0.0",
+  "gitCommitHash": "64dc60869f0894176ad9109100dc1c4f57078079",
+  "generatedAt": "2026-06-01T00:06:47.750Z",
+  "files": {
+    "ACCOUNT_ISOLATION_INVENTORY.md": {
+      "filePath": "ACCOUNT_ISOLATION_INVENTORY.md",
+      "contentHash": "6f6cbd14b9608b9a00262053686384094e1bef3b9aa1dcd6e60cf3ffe26feb78",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 198,
+      "hasStructuralAnalysis": true
+    },
+    "AGENT_TASK_CHECKLIST.md": {
+      "filePath": "AGENT_TASK_CHECKLIST.md",
+      "contentHash": "43cf2dd28c78b90667a5c632cce1d10ed9af643bdf3bed8f21a6b74f13253ecc",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 82,
+      "hasStructuralAnalysis": true
+    },
+    "audit/android_logout_audit.md": {
+      "filePath": "audit/android_logout_audit.md",
+      "contentHash": "5463e3e80f7b197d52f95c81c8d60bf1d3e2cbc7cde028398e264026bab1b286",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 253,
+      "hasStructuralAnalysis": true
+    },
+    "audit/ios_logout_audit.md": {
+      "filePath": "audit/ios_logout_audit.md",
+      "contentHash": "aa994661e9af1c4bfbae94e736b914334dede39bf2593db7cf7448245ecf3326",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 177,
+      "hasStructuralAnalysis": true
+    },
+    "audit/LOGOUT_REMEDIATION_PLAN.md": {
+      "filePath": "audit/LOGOUT_REMEDIATION_PLAN.md",
+      "contentHash": "f25815643e543af94de71053b91a9e4155cabb291a1c048c3a5123e530c6862b",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 333,
+      "hasStructuralAnalysis": true
+    },
+    "audit/LOGOUT_SECURITY_REVIEW.md": {
+      "filePath": "audit/LOGOUT_SECURITY_REVIEW.md",
+      "contentHash": "79339fe4544eb3904fa526926ecba552d97a92b00640c3bc245db93d0ee73ad7",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 209,
+      "hasStructuralAnalysis": true
+    },
+    "BACKEND_ROUTES.md": {
+      "filePath": "BACKEND_ROUTES.md",
+      "contentHash": "c111d0610b7c1fc9b287cf3f3c55f886cd4b23a84216af5ff720fca8fd304335",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 1910,
+      "hasStructuralAnalysis": true
+    },
+    "C_POINT_ARCHITECTURE.md": {
+      "filePath": "C_POINT_ARCHITECTURE.md",
+      "contentHash": "f171cf249fe1c42dd751d0d12213385e6950aab452e5de419bda604432963de7",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 411,
+      "hasStructuralAnalysis": true
+    },
+    "CHAT_MEDIA_UPLOAD_V2.md": {
+      "filePath": "CHAT_MEDIA_UPLOAD_V2.md",
+      "contentHash": "9d40287b9a1c386ba29dac4b6ee68a893cacb6ab9594c60928ae2f5dc3d411fe",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 70,
+      "hasStructuralAnalysis": true
+    },
+    "cloud-scheduler-cron.md": {
+      "filePath": "cloud-scheduler-cron.md",
+      "contentHash": "7c2dfb59ee7a595fadd50545077224acb7ed9fee53c2d3bdb90287420e67c0b9",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 431,
+      "hasStructuralAnalysis": true
+    },
+    "DEPLOYMENT_INSTANCES.md": {
+      "filePath": "DEPLOYMENT_INSTANCES.md",
+      "contentHash": "e60b9e3b9199b3d216a03fbccf903cfb58281e37c943644b5e4b582aa4d9685c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 84,
+      "hasStructuralAnalysis": true
+    },
+    "DESIGN.md": {
+      "filePath": "DESIGN.md",
+      "contentHash": "3438796c6f5f85efa9f53d42b8395e2710a99673d44cc6f1560f0e97f5181886",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 76,
+      "hasStructuralAnalysis": true
+    },
+    "design/gif_picker_spec.md": {
+      "filePath": "design/gif_picker_spec.md",
+      "contentHash": "a5c3325e4b9a4d6ba90f21535ebe1dc184bf2d342c0a324328e3044e9923001c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 385,
+      "hasStructuralAnalysis": true
+    },
+    "I18N_ROADMAP.md": {
+      "filePath": "I18N_ROADMAP.md",
+      "contentHash": "b33f4a9af4abed0655d6dc3ccb4d19ff05f3befe5858552f208389911a7eab53",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 418,
+      "hasStructuralAnalysis": true
+    },
+    "LIGHT_MODE_BRAND_SIGNOFF.md": {
+      "filePath": "LIGHT_MODE_BRAND_SIGNOFF.md",
+      "contentHash": "6e7978093a4f61237426cb3f88f5da693b109fc7e394dec498875010038a871f",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 201,
+      "hasStructuralAnalysis": true
+    },
+    "LIGHT_MODE_TOKENS.md": {
+      "filePath": "LIGHT_MODE_TOKENS.md",
+      "contentHash": "e92803f1cb8f075371adc7e68064653381f788cd1ddef4a5ae77c7670141f802",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 667,
+      "hasStructuralAnalysis": true
+    },
+    "MONOLITH_REDUCTION_ROADMAP.md": {
+      "filePath": "MONOLITH_REDUCTION_ROADMAP.md",
+      "contentHash": "ec3c65a65cc644e98e2f2185f2d9d6f19a8d36bc61569dcb296b8e9e877e7ef0",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 62,
+      "hasStructuralAnalysis": true
+    },
+    "MYSQL_AND_FIRESTORE.md": {
+      "filePath": "MYSQL_AND_FIRESTORE.md",
+      "contentHash": "663cff1e22036997f44963d293b2d066e293932f889394fff8ed19fbe5f5e601",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 152,
+      "hasStructuralAnalysis": true
+    },
+    "OPERATIONS.md": {
+      "filePath": "OPERATIONS.md",
+      "contentHash": "31ca953a7132bd58c3f6265bc8e0a9c61ad7a156bdd95ed003eecbca7526d253",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 832,
+      "hasStructuralAnalysis": true
+    },
+    "PROD_CLOUD_RUN_RECOVERY.md": {
+      "filePath": "PROD_CLOUD_RUN_RECOVERY.md",
+      "contentHash": "044164a5cf4ef6861e229e4839fb320ce32b1d4fcdf9829ed0ac3f1c85de63fc",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 157,
+      "hasStructuralAnalysis": true
+    },
+    "PRODUCT_JOURNEYS.md": {
+      "filePath": "PRODUCT_JOURNEYS.md",
+      "contentHash": "700b1fc891deca41b49523867a4ca8e16202c109887197f4e0e4ce79d931258d",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 318,
+      "hasStructuralAnalysis": true
+    },
+    "QA_CHECKLIST.md": {
+      "filePath": "QA_CHECKLIST.md",
+      "contentHash": "e0e4405e64b92024bafcfa7641b00b3c4ea7d82bca022ad9f91e9d0e675744fb",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 768,
+      "hasStructuralAnalysis": true
+    },
+    "release/LAUNCH_CHECKLIST.md": {
+      "filePath": "release/LAUNCH_CHECKLIST.md",
+      "contentHash": "fa00b01c9aa00ef52f638ad73c11ef7da8bcff078efa567da7c28ffd43f52bd2",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 44,
+      "hasStructuralAnalysis": true
+    },
+    "release/PERF_RELIABILITY_SIGNOFF.md": {
+      "filePath": "release/PERF_RELIABILITY_SIGNOFF.md",
+      "contentHash": "9a5898d4abee31db7a5e7eedd532f16ef59468ad86a0e5725291fc708e55f45f",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 236,
+      "hasStructuralAnalysis": true
+    },
+    "release/SCALE_AND_ECONOMICS_AUDIT.md": {
+      "filePath": "release/SCALE_AND_ECONOMICS_AUDIT.md",
+      "contentHash": "491e3d9d893119d6c7c3255e066a1ca6f9ff5d50848ccdc489aa5acefcc9e91e",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 356,
+      "hasStructuralAnalysis": true
+    },
+    "release/STORE_RELEASE_AUDIT.md": {
+      "filePath": "release/STORE_RELEASE_AUDIT.md",
+      "contentHash": "ce148d0851ae353baf88ed52abac53ecbe046f5f5c56c896f42288ed112ec1fa",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 271,
+      "hasStructuralAnalysis": true
+    },
+    "STAGING_BACKUP_SNAPSHOT.md": {
+      "filePath": "STAGING_BACKUP_SNAPSHOT.md",
+      "contentHash": "542c700ca7080beec505214a2ba80c6fdf21f3b2c2259ebbfdf9215f3c805b44",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 37,
+      "hasStructuralAnalysis": true
+    },
+    "STEVE_AND_VOICE_NOTES.md": {
+      "filePath": "STEVE_AND_VOICE_NOTES.md",
+      "contentHash": "f6735c1c409df280b887417358d93809314022da8fd55c421beb2104ae9cd3ec",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 550,
+      "hasStructuralAnalysis": true
+    },
+    "STEVE_COMMUNITY_WELCOME.md": {
+      "filePath": "STEVE_COMMUNITY_WELCOME.md",
+      "contentHash": "606c8aacdc092ba51a30f7ce0910ea32c68824f0f2943c18f9716fce80b288e0",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 245,
+      "hasStructuralAnalysis": true
+    },
+    "STEVE_GROUP_AGENT.md": {
+      "filePath": "STEVE_GROUP_AGENT.md",
+      "contentHash": "1d6a160270fb60cc44182874be2683f5eaca1e00a0bd415e28ffc9e108cc68ef",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 58,
+      "hasStructuralAnalysis": true
+    },
+    "STEVE_PERSONA.md": {
+      "filePath": "STEVE_PERSONA.md",
+      "contentHash": "05f31d1048bb5b06ee9ff6d1738917043555848cd3b11f959d8c098eb73975c6",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 104,
+      "hasStructuralAnalysis": true
+    },
+    "STEVE_PLATFORM_KB.md": {
+      "filePath": "STEVE_PLATFORM_KB.md",
+      "contentHash": "efdb4e60543445ac62c6d9131dac7e07e1ce54f70de54bdfe7e23abc762e275d",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 479,
+      "hasStructuralAnalysis": true
+    },
+    "STEVE_PRIVACY_GATE.md": {
+      "filePath": "STEVE_PRIVACY_GATE.md",
+      "contentHash": "df7684412d95364a1b31f7438ad04b41b4d94e008e9e58a0d7011214d90e5f34",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 85,
+      "hasStructuralAnalysis": true
+    },
+    "STORE_BILLING_SETUP.md": {
+      "filePath": "STORE_BILLING_SETUP.md",
+      "contentHash": "2c7060a7cadfa4f1295eaebe96e560d9aa45b6401e6d09d61a629c6ea4c438d1",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 69,
+      "hasStructuralAnalysis": true
+    },
+    "workflow-state-wave-2.md": {
+      "filePath": "workflow-state-wave-2.md",
+      "contentHash": "d60583057ad1d5c6f98fc4039731054340aab954af4816e48502eb9ccbaa940d",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 135,
+      "hasStructuralAnalysis": true
+    },
+    "workflow-state.md": {
+      "filePath": "workflow-state.md",
+      "contentHash": "ff92234331c51ac6bf8fb1e4d8f92f0cad1e6d829031f02ca527132cb3190f2c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 47,
+      "hasStructuralAnalysis": true
+    }
+  }
+}

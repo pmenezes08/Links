@@ -1420,6 +1420,13 @@ def _seed_pages() -> List[Dict[str, Any]]:
                  "help": "Separate window for peer DMs where Steve is mentioned. Kept lower than the full cap to control cost in threads Steve doesn't own.", "group": "per_turn"},
                 {"name": "max_images_per_turn", "label": "Max images per turn", "type": "integer", "value": 5, "group": "per_turn"},
 
+                {"name": "chat_media_max_bytes", "label": "Chat media max file size (bytes)", "type": "integer", "value": 524288000,
+                 "help": "Max single chat upload file size (500 MB default). Enforced at multipart init.", "group": "per_turn"},
+                {"name": "chat_media_max_daily", "label": "Chat media max uploads per 24h", "type": "integer", "value": 50,
+                 "help": "Max chat upload sessions per user per rolling 24h.", "group": "per_turn"},
+                {"name": "chat_media_default_quality", "label": "Chat media default quality", "type": "string", "value": "standard",
+                 "help": "Default video quality option for chat media preview. Client persists the user's Standard/HD choice locally.", "group": "per_turn"},
+
                 # Thread summary (rolling memory for long conversations)
                 {"name": "thread_summary_enabled", "label": "Thread summary enabled (master switch)", "type": "boolean", "value": False,
                  "help": "When OFF, Steve uses only the raw verbatim context window. Turn ON to add a rolling summary of older messages.", "group": "per_turn"},
@@ -1430,12 +1437,12 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "thread_summary_max_chars", "label": "Thread summary max characters", "type": "integer", "value": 2000,
                  "help": "Cap on the stored summary length. Keeps token cost bounded.", "group": "per_turn"},
 
-                # Steve chat memory (Phase 3 skeleton; disabled until indexing/retrieval ships)
-                {"name": "chat_memory_enabled", "label": "Chat memory enabled (master switch)", "type": "boolean", "value": False,
+                # Steve chat memory (Phase 3 - ENABLED for testing on staging and local)
+                {"name": "chat_memory_enabled", "label": "Chat memory enabled (master switch)", "type": "boolean", "value": True,
                  "help": "Master kill-switch for Phase 3 chat memory. PR 1 exposes config only; no retrieval runs while disabled.", "group": "chat_memory"},
-                {"name": "chat_memory_peer_dm_enabled", "label": "Chat memory enabled — peer DMs", "type": "boolean", "value": False,
+                {"name": "chat_memory_peer_dm_enabled", "label": "Chat memory enabled — peer DMs", "type": "boolean", "value": True,
                  "help": "Allows scoped long-memory retrieval for @Steve in human-human DMs after retrieval ships.", "group": "chat_memory"},
-                {"name": "chat_memory_group_enabled", "label": "Chat memory enabled — group chats", "type": "boolean", "value": False,
+                {"name": "chat_memory_group_enabled", "label": "Chat memory enabled — group chats", "type": "boolean", "value": True,
                  "help": "Allows scoped long-memory retrieval for group chats after membership/privacy checks ship.", "group": "chat_memory"},
                 {"name": "chat_memory_min_messages", "label": "Minimum messages before indexing", "type": "integer", "value": 200,
                  "help": "Thread must have at least this many messages before Phase 3 memory indexing is considered.", "group": "chat_memory"},
@@ -1449,10 +1456,10 @@ def _seed_pages() -> List[Dict[str, Any]]:
                  "help": "Max characters for all Phase 3 chat-memory prompt sections combined.", "group": "chat_memory"},
                 {"name": "chat_memory_backfill_max_messages", "label": "Backfill max messages per thread", "type": "integer", "value": 4000,
                  "help": "Upper bound for targeted backfill jobs. No backfill script ships in PR 1.", "group": "chat_memory"},
-                {"name": "chat_memory_event_ledger_enabled", "label": "Structured event ledger enabled", "type": "boolean", "value": False,
+                {"name": "chat_memory_event_ledger_enabled", "label": "Structured event ledger enabled", "type": "boolean", "value": True,
                  "help": "Controls conceptual counter/event-ledger injection after that later PR ships.", "group": "chat_memory"},
-                {"name": "chat_memory_embedding_model", "label": "Chat memory embedding model", "type": "string", "value": "",
-                 "help": "Operator-selected embedding model for future retrieval. Empty while embeddings are not implemented.", "group": "chat_memory"},
+                {"name": "chat_memory_embedding_model", "label": "Chat memory embedding model", "type": "string", "value": "text-embedding-3-small",
+                 "help": "Embedding model used for semantic retrieval (text-embedding-3-small recommended). Used by embed_chunks and retrieve_relevant_chunks.", "group": "chat_memory"},
                 {"name": "chat_memory_indexing_daily_budget_usd", "label": "Chat memory indexing daily budget", "type": "decimal", "prefix": "$", "value": 0,
                  "help": "Daily provider-spend budget for future indexing jobs. Kept at 0 while PR 1 has no vendor calls.", "group": "chat_memory"},
 
@@ -1938,6 +1945,7 @@ def _seed_pages() -> List[Dict[str, Any]]:
                     ],
                     "value": [
                         # Area values match Notion Product roadmap → Area select (client, admin, backend, infra, AI, iOS, Android, Steve, Subscriptions).
+                        {"title": "Chat Media Upload v2.1 — trustworthy resume + quality", "area": "client", "phase": "now", "status": "ongoing", "effort": "L", "target_quarter": "2026-Q2", "notes": "Multipart R2 uploads with app-level outbox resume, Standard/HD quality choice, cap UX, and client-key idempotent media commits. See `docs/CHAT_MEDIA_UPLOAD_V2.md`.", "test": "chat:media-upload-v2", "test_status": "not_run"},
                         {"title": "Admin-web: Knowledge Base (this system)", "area": "admin", "phase": "now", "status": "completed", "effort": "M", "target_quarter": "2026-Q2", "notes": "The page you're reading. Seeded + editable + changelog. Kept in sync with Notion **Product roadmap** (team hub) — see `docs/AGENT_TASK_CHECKLIST.md` § Product roadmap."},
                         {"title": "KB: field groups, networking page, Steve package, content-gen safety, special users", "area": "admin", "phase": "now", "status": "ongoing", "effort": "M", "target_quarter": "2026-Q2", "notes": "Round 2 of KB content."},
                         {"title": "Monolith reduction — shared chat UI (DM + group threads)", "area": "backend", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q4", "notes": "Repo epic: `docs/MONOLITH_REDUCTION_ROADMAP.md` § Chat UI kernel. Cursor: `.cursor/rules/chat-surfaces.mdc`."},

@@ -84,7 +84,7 @@ export default function NotificationPrompt() {
       >
         <div style={{ textAlign: 'center', marginBottom: 16 }}>
           <div style={{ width: 56, height: 56, margin: '0 auto 12px', borderRadius: '50%', background: 'rgba(77,182,172,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <i className="fa-solid fa-bell" style={{ color: '#4db6ac', fontSize: 24 }} />
+            <i className="fa-solid fa-bell" style={{ color: '#00CEC8', fontSize: 24 }} />
           </div>
           <h3 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>Turn On Notifications</h3>
         </div>
@@ -96,7 +96,7 @@ export default function NotificationPrompt() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button
             onClick={handleEnable}
-            style={{ width: '100%', padding: '12px 0', borderRadius: 12, background: '#4db6ac', color: '#000', fontWeight: 600, fontSize: 14, border: 'none', cursor: 'pointer' }}
+            style={{ width: '100%', padding: '12px 0', borderRadius: 12, background: '#00CEC8', color: '#000', fontWeight: 600, fontSize: 14, border: 'none', cursor: 'pointer' }}
           >
             Enable Notifications
           </button>

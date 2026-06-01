@@ -76,7 +76,7 @@ export default function CrossfitExact() {
         data: {
           labels,
           datasets: [
-            { label: `You (${d.unit})`, data: userValues, backgroundColor: 'rgba(77, 182, 172, 0.6)', borderColor: '#4db6ac', borderWidth: 1 },
+            { label: `You (${d.unit})`, data: userValues, backgroundColor: 'rgba(0, 206, 200, 0.6)', borderColor: '#00CEC8', borderWidth: 1 },
             { label: `Avg (${d.unit})`, data: avgValues, backgroundColor: 'rgba(176, 184, 185, 0.5)', borderColor: '#9fb0b5', borderWidth: 1 },
           ]
         },

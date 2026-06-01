@@ -52,11 +52,11 @@ export default function AccountDangerZone() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary">
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
         <button
           type="button"
-          className="inline-flex items-center gap-2 text-sm text-[#9fb0b5] hover:text-white"
+          className="inline-flex items-center gap-2 text-sm text-c-text-tertiary hover:text-white"
           onClick={() => navigate('/account_settings')}
         >
           <i className="fa-solid fa-arrow-left" />
@@ -92,7 +92,7 @@ export default function AccountDangerZone() {
               type="text"
               value={confirmation}
               onChange={e => setConfirmation(e.target.value)}
-              className="w-full rounded-lg border border-red-500/40 bg-black px-4 py-3 text-white focus:border-red-300 focus:outline-none"
+              className="w-full rounded-lg border border-red-500/40 bg-c-bg-app px-4 py-3 text-white focus:border-red-300 focus:outline-none"
               placeholder="DELETE"
               disabled={loading}
             />

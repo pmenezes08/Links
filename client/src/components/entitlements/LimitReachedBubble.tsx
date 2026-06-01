@@ -35,7 +35,10 @@ export default function LimitReachedBubble({ err, onClose, compact = false }: Pr
       case 'premium_required':
         return 'fa-crown'
       case 'daily_cap':
+      case 'upload_daily_limit':
         return 'fa-clock'
+      case 'upload_size_limit':
+        return 'fa-file-video'
       case 'monthly_steve_cap':
       case 'monthly_whisper_cap':
         return 'fa-hourglass-half'
@@ -56,6 +59,10 @@ export default function LimitReachedBubble({ err, onClose, compact = false }: Pr
         return 'Steve is a Premium feature'
       case 'daily_cap':
         return '24-hour limit reached'
+      case 'upload_daily_limit':
+        return 'Daily media limit reached'
+      case 'upload_size_limit':
+        return 'Media is too large'
       case 'monthly_steve_cap':
         return 'Monthly allowance reached'
       case 'monthly_whisper_cap':
@@ -81,9 +88,9 @@ export default function LimitReachedBubble({ err, onClose, compact = false }: Pr
         padding: compact ? 12 : 14,
         margin: compact ? '6px 0' : '10px 0',
         borderRadius: 12,
-        background: 'rgba(77, 182, 172, 0.08)',
-        border: '1px solid rgba(77, 182, 172, 0.25)',
-        color: 'rgba(255,255,255,0.88)',
+        background: 'var(--c-hover-accent)',
+        border: '1px solid var(--c-border-accent)',
+        color: 'var(--c-text-primary)',
       }}
     >
       <div
@@ -92,11 +99,11 @@ export default function LimitReachedBubble({ err, onClose, compact = false }: Pr
           width: 36,
           height: 36,
           borderRadius: '50%',
-          background: 'rgba(77, 182, 172, 0.15)',
+          background: 'var(--c-accent-muted)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          color: '#4db6ac',
+          color: 'var(--c-accent)',
         }}
       >
         <i className={`fa-solid ${iconForReason()}`} style={{ fontSize: 15 }} />
@@ -105,7 +112,7 @@ export default function LimitReachedBubble({ err, onClose, compact = false }: Pr
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
           {titleForReason()}
         </div>
-        <div style={{ fontSize: 13, lineHeight: 1.45, color: 'rgba(255,255,255,0.75)' }}>
+        <div style={{ fontSize: 13, lineHeight: 1.45, color: 'var(--c-text-secondary)' }}>
           {err.message}
         </div>
         {err.cta?.label ? (
@@ -115,7 +122,7 @@ export default function LimitReachedBubble({ err, onClose, compact = false }: Pr
               marginTop: 10,
               padding: '8px 14px',
               borderRadius: 10,
-              background: '#4db6ac',
+              background: 'var(--c-accent)',
               color: '#000',
               fontWeight: 600,
               fontSize: 13,
@@ -134,7 +141,7 @@ export default function LimitReachedBubble({ err, onClose, compact = false }: Pr
           style={{
             background: 'transparent',
             border: 'none',
-            color: 'rgba(255,255,255,0.4)',
+            color: 'var(--c-text-tertiary)',
             cursor: 'pointer',
             padding: 4,
           }}

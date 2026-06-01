@@ -156,12 +156,12 @@ export default function PrivacySecurityPanel() {
 
   const tabClass = (tab: 'security' | 'privacy') =>
     `flex-1 rounded-full px-3 py-2 text-sm font-semibold transition-colors ${
-      activeTab === tab ? 'bg-white text-black' : 'text-white/55 active:bg-white/10'
+      activeTab === tab ? 'bg-c-bg-surface text-c-text-primary' : 'text-c-text-secondary active:bg-c-active-bg'
     }`
 
   return (
     <div className="space-y-5">
-      <div className="rounded-full border border-white/[0.06] bg-white/[0.055] p-1">
+      <div className="rounded-full border border-c-border bg-c-bg-surface p-1">
         <button type="button" className={tabClass('security')} onClick={() => { setActiveTab('security'); void triggerHaptic('selection') }}>
           Security
         </button>
@@ -176,7 +176,7 @@ export default function PrivacySecurityPanel() {
             <div
               className={`rounded-2xl border px-4 py-3 text-sm ${
                 passwordMessage.type === 'success'
-                  ? 'border-white/10 bg-white/[0.055] text-white/75'
+                  ? 'border-c-border bg-c-bg-surface text-c-text-secondary'
                   : 'border-red-400/25 bg-red-500/10 text-red-200'
               }`}
             >
@@ -188,21 +188,21 @@ export default function PrivacySecurityPanel() {
             ['New Password', newPassword, setNewPassword, 'Enter new password'],
             ['Confirm New Password', confirmPassword, setConfirmPassword, 'Confirm new password'],
           ].map(([label, value, setter, placeholder]) => (
-            <label key={label as string} className="block rounded-3xl border border-white/[0.06] bg-white/[0.055] p-4">
-              <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/28">{label as string}</span>
+            <label key={label as string} className="block rounded-3xl border border-c-border bg-c-bg-surface p-4">
+              <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-c-text-tertiary">{label as string}</span>
               <input
                 type="password"
                 value={value as string}
                 onChange={e => (setter as (v: string) => void)(e.target.value)}
                 placeholder={placeholder as string}
-                className="mt-2 w-full rounded-2xl border border-white/[0.08] bg-white/[0.08] px-4 py-3 text-white placeholder:text-white/25 focus:border-[#4db6ac] focus:outline-none"
+                className="mt-2 w-full rounded-2xl border border-c-border bg-c-hover-bg px-4 py-3 text-c-text-primary placeholder:text-c-text-tertiary focus:border-cpoint-turquoise focus:outline-none"
               />
             </label>
           ))}
           <button
             type="button"
             onClick={handlePasswordUpdate}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#4db6ac] px-4 py-3 font-bold text-black active:opacity-80"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-cpoint-turquoise px-4 py-3 font-bold text-black active:opacity-80"
           >
             <i className="fa-solid fa-lock" />
             Update password
@@ -210,22 +210,22 @@ export default function PrivacySecurityPanel() {
         </div>
       ) : (
         <div className="space-y-5">
-          <section className="rounded-3xl border border-white/[0.06] bg-white/[0.055] p-4">
-            <h3 className="text-base font-bold text-white">Blocked Users</h3>
-            <p className="mt-1 text-sm text-white/45">Blocked users can't see your posts or send you messages.</p>
+          <section className="rounded-3xl border border-c-border bg-c-bg-surface p-4">
+            <h3 className="text-base font-bold text-c-text-primary">Blocked Users</h3>
+            <p className="mt-1 text-sm text-c-text-tertiary">Blocked users can't see your posts or send you messages.</p>
             <div className="mt-4 space-y-2">
               {blockedUsersLoading ? (
-                <div className="py-6 text-center text-white/45"><i className="fa-solid fa-spinner fa-spin" /></div>
+                <div className="py-6 text-center text-c-text-tertiary"><i className="fa-solid fa-spinner fa-spin" /></div>
               ) : blockedUsers.length === 0 ? (
-                <div className="rounded-2xl border border-white/[0.06] bg-black/25 px-4 py-4 text-center text-sm text-white/45">You haven't blocked anyone</div>
+                <div className="rounded-2xl border border-c-border bg-c-hover-bg px-4 py-4 text-center text-sm text-c-text-tertiary">You haven't blocked anyone</div>
               ) : (
                 blockedUsers.map(user => (
-                  <div key={user.username} className="flex items-center justify-between gap-3 rounded-2xl border border-white/[0.06] bg-black/25 p-3">
+                  <div key={user.username} className="flex items-center justify-between gap-3 rounded-2xl border border-c-border bg-c-hover-bg p-3">
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-white">@{user.username}</div>
-                      <div className="truncate text-xs text-white/35">{user.reason && `${user.reason} · `}{new Date(user.blocked_at).toLocaleDateString()}</div>
+                      <div className="truncate text-sm font-semibold text-c-text-primary">@{user.username}</div>
+                      <div className="truncate text-xs text-c-text-tertiary">{user.reason && `${user.reason} · `}{new Date(user.blocked_at).toLocaleDateString()}</div>
                     </div>
-                    <button type="button" onClick={() => void handleUnblock(user.username)} disabled={unblocking === user.username} className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-semibold text-white/70 disabled:opacity-50">
+                    <button type="button" onClick={() => void handleUnblock(user.username)} disabled={unblocking === user.username} className="rounded-full border border-c-border px-3 py-1.5 text-xs font-semibold text-c-text-secondary disabled:opacity-50">
                       {unblocking === user.username ? <i className="fa-solid fa-spinner fa-spin" /> : 'Unblock'}
                     </button>
                   </div>
@@ -234,22 +234,22 @@ export default function PrivacySecurityPanel() {
             </div>
           </section>
 
-          <section className="rounded-3xl border border-white/[0.06] bg-white/[0.055] p-4">
-            <h3 className="text-base font-bold text-white">Hidden Posts</h3>
-            <p className="mt-1 text-sm text-white/45">Posts you've hidden from your feed. Unhide them to see them again.</p>
+          <section className="rounded-3xl border border-c-border bg-c-bg-surface p-4">
+            <h3 className="text-base font-bold text-c-text-primary">Hidden Posts</h3>
+            <p className="mt-1 text-sm text-c-text-tertiary">Posts you've hidden from your feed. Unhide them to see them again.</p>
             <div className="mt-4 space-y-2">
               {hiddenPostsLoading ? (
-                <div className="py-6 text-center text-white/45"><i className="fa-solid fa-spinner fa-spin" /></div>
+                <div className="py-6 text-center text-c-text-tertiary"><i className="fa-solid fa-spinner fa-spin" /></div>
               ) : hiddenPosts.length === 0 ? (
-                <div className="rounded-2xl border border-white/[0.06] bg-black/25 px-4 py-4 text-center text-sm text-white/45">You haven't hidden any posts</div>
+                <div className="rounded-2xl border border-c-border bg-c-hover-bg px-4 py-4 text-center text-sm text-c-text-tertiary">You haven't hidden any posts</div>
               ) : (
                 hiddenPosts.map(post => (
-                  <div key={post.post_id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/[0.06] bg-black/25 p-3">
+                  <div key={post.post_id} className="flex items-center justify-between gap-3 rounded-2xl border border-c-border bg-c-hover-bg p-3">
                     <div className="min-w-0">
-                      <div className="truncate text-xs font-semibold text-white/70">@{post.author} · {new Date(post.hidden_at).toLocaleDateString()}</div>
-                      <div className="truncate text-sm text-white/45">{post.preview}</div>
+                      <div className="truncate text-xs font-semibold text-c-text-secondary">@{post.author} · {new Date(post.hidden_at).toLocaleDateString()}</div>
+                      <div className="truncate text-sm text-c-text-tertiary">{post.preview}</div>
                     </div>
-                    <button type="button" onClick={() => void handleUnhide(post.post_id)} disabled={unhiding === post.post_id} className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-semibold text-white/70 disabled:opacity-50">
+                    <button type="button" onClick={() => void handleUnhide(post.post_id)} disabled={unhiding === post.post_id} className="rounded-full border border-c-border px-3 py-1.5 text-xs font-semibold text-c-text-secondary disabled:opacity-50">
                       {unhiding === post.post_id ? <i className="fa-solid fa-spinner fa-spin" /> : 'Unhide'}
                     </button>
                   </div>

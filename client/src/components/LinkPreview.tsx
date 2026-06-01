@@ -226,7 +226,7 @@ function getDomainColor(domain: string): string {
   if (domain.includes('facebook')) return '#1877f2'
   if (domain.includes('github')) return '#ffffff'
   if (domain.includes('spotify')) return '#1db954'
-  return '#4db6ac'
+  return '#00CEC8'
 }
 
 function LinkPreviewCard({ url, sent, deferFetch = false }: Props) {
@@ -280,7 +280,7 @@ function LinkPreviewCard({ url, sent, deferFetch = false }: Props) {
     return (
       <div
         ref={rootRef}
-        className="mt-1.5 rounded-xl overflow-hidden border border-white/10 bg-white/[0.04] min-h-[52px]"
+        className="mt-1.5 rounded-xl overflow-hidden border border-c-border bg-white/[0.04] min-h-[52px]"
         aria-hidden
       />
     )
@@ -288,7 +288,7 @@ function LinkPreviewCard({ url, sent, deferFetch = false }: Props) {
 
   if (loading) {
     return (
-      <div ref={rootRef} className="mt-1.5 rounded-xl overflow-hidden border border-white/10 bg-white/[0.04] animate-pulse min-h-[52px]">
+      <div ref={rootRef} className="mt-1.5 rounded-xl overflow-hidden border border-c-border bg-white/[0.04] animate-pulse min-h-[52px]">
         <div className="flex items-center gap-2 px-3 py-2.5">
           <div className="w-4 h-4 rounded bg-white/10" />
           <div className="flex-1 h-3 rounded bg-white/10" />
@@ -320,7 +320,7 @@ function LinkPreviewCard({ url, sent, deferFetch = false }: Props) {
           href={openUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="block mt-1.5 rounded-xl overflow-hidden border border-white/10 hover:border-white/20 transition-colors no-underline"
+          className="block mt-1.5 rounded-xl overflow-hidden border border-c-border hover:border-white/20 transition-colors no-underline"
           style={{ background: 'rgba(255,255,255,0.04)' }}
           onClick={(e) => {
             e.preventDefault()
@@ -331,9 +331,9 @@ function LinkPreviewCard({ url, sent, deferFetch = false }: Props) {
           <div className="px-3 py-2">
             <div className="flex items-center gap-1.5 mb-0.5">
               <i className={`${fIcon} text-[11px]`} style={{ color: fColor }} />
-              <span className="text-[11px] text-white/50 truncate">{fallbackDomain || 'Link'}</span>
+              <span className="text-[11px] text-c-text-tertiary truncate">{fallbackDomain || 'Link'}</span>
             </div>
-            <div className={`text-[12px] ${sent ? 'text-white/80' : 'text-white/70'} break-all line-clamp-2`}>
+            <div className={`text-[12px] ${sent ? 'text-white/80' : 'text-c-text-secondary'} break-all line-clamp-2`}>
               {url}
             </div>
           </div>
@@ -355,7 +355,7 @@ function LinkPreviewCard({ url, sent, deferFetch = false }: Props) {
         href={openUrl}
       target="_blank"
       rel="noopener noreferrer"
-      className="block mt-1.5 rounded-xl overflow-hidden border border-white/10 hover:border-white/20 transition-colors no-underline"
+      className="block mt-1.5 rounded-xl overflow-hidden border border-c-border hover:border-white/20 transition-colors no-underline"
       style={{ background: 'rgba(255,255,255,0.04)' }}
       onClick={(e) => {
         e.preventDefault()
@@ -385,7 +385,7 @@ function LinkPreviewCard({ url, sent, deferFetch = false }: Props) {
       <div className="px-3 py-2">
         <div className="flex items-center gap-1.5 mb-1">
           <i className={`${icon} text-[11px]`} style={{ color }} />
-          <span className="text-[11px] text-white/50 truncate">{displayDomain}</span>
+          <span className="text-[11px] text-c-text-tertiary truncate">{displayDomain}</span>
         </div>
         {data.title && (
           <div className={`text-[13px] font-medium leading-snug line-clamp-2 ${sent ? 'text-white/90' : 'text-white/85'}`}>
@@ -393,7 +393,7 @@ function LinkPreviewCard({ url, sent, deferFetch = false }: Props) {
           </div>
         )}
         {data.description && (
-          <div className="text-[12px] text-white/50 leading-snug mt-0.5 line-clamp-2">
+          <div className="text-[12px] text-c-text-tertiary leading-snug mt-0.5 line-clamp-2">
             {data.description}
           </div>
         )}

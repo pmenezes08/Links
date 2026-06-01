@@ -239,6 +239,7 @@ def remove_dm_message_media():
         find_media_index,
         first_image_and_video,
         media_paths_json,
+        purge_media_file,
     )
     from backend.services.firestore_writes import delete_dm_message, update_dm_message_media
 
@@ -275,7 +276,8 @@ def remove_dm_message_media():
             if idx < 0:
                 return api_errors.error_response("chat.dm.attachment_not_found", 404)
 
-            paths.pop(idx)
+            removed_path = paths.pop(idx)
+            purge_media_file(removed_path)
             text_empty = not (msg_body or "").strip()
 
             if not paths:
@@ -335,6 +337,134 @@ def remove_dm_message_media():
     except Exception as e:
         logger.error("remove_dm_message_media: %s", e, exc_info=True)
         return api_errors.error_response("chat.dm.failed_to_update_message", 500)
+
+
+def _remove_dm_media_item(c, ph: str, username: str, mid: int, media_url: str) -> tuple[bool, str | None]:
+    from backend.services.message_media_utils import (
+        find_media_index,
+        first_image_and_video,
+        media_paths_json,
+        parse_media_paths,
+        purge_media_file,
+    )
+    from backend.services.firestore_writes import delete_dm_message, update_dm_message_media
+
+    c.execute(
+        f"""
+        SELECT sender, receiver, message, image_path, video_path, media_paths
+        FROM messages
+        WHERE id = {ph} AND (sender = {ph} OR receiver = {ph})
+        """,
+        (mid, username, username),
+    )
+    row = c.fetchone()
+    if not row:
+        return False, "not_found"
+
+    sender = row["sender"] if hasattr(row, "keys") else row[0]
+    receiver = row["receiver"] if hasattr(row, "keys") else row[1]
+    msg_body = row["message"] if hasattr(row, "keys") else row[2]
+    image_path = row["image_path"] if hasattr(row, "keys") else row[3]
+    video_path = row["video_path"] if hasattr(row, "keys") else row[4]
+    media_raw = row["media_paths"] if hasattr(row, "keys") else row[5]
+
+    if sender != username:
+        return False, "forbidden"
+
+    paths = parse_media_paths(media_raw)
+    if not paths:
+        paths = [p for p in (image_path, video_path) if p]
+
+    idx = find_media_index(paths, media_url)
+    if idx < 0:
+        return False, "missing"
+
+    removed_path = paths.pop(idx)
+    purge_media_file(removed_path)
+    text_empty = not (msg_body or "").strip()
+
+    if not paths:
+        if text_empty:
+            c.execute(f"DELETE FROM messages WHERE id = {ph}", (mid,))
+            try:
+                delete_dm_message(sender, receiver, mid)
+            except Exception:
+                pass
+        else:
+            c.execute(
+                f"""
+                UPDATE messages
+                SET media_paths = NULL, image_path = NULL, video_path = NULL
+                WHERE id = {ph}
+                """,
+                (mid,),
+            )
+            try:
+                update_dm_message_media(sender, receiver, mid, None, None, None)
+            except Exception:
+                pass
+    else:
+        mp_json = media_paths_json(paths)
+        first_img, first_vid = first_image_and_video(paths)
+        c.execute(
+            f"""
+            UPDATE messages
+            SET media_paths = {ph}, image_path = {ph}, video_path = {ph}
+            WHERE id = {ph}
+            """,
+            (mp_json, first_img, first_vid, mid),
+        )
+        try:
+            update_dm_message_media(sender, receiver, mid, paths, first_img, first_vid)
+        except Exception:
+            pass
+
+    try:
+        invalidate_message_cache(sender, receiver)
+    except Exception:
+        pass
+    return True, None
+
+
+@dm_chats_bp.route("/api/chat/dm/remove_media_bulk", methods=["POST"])
+@_login_required
+def remove_dm_media_bulk():
+    username = session.get("username")
+    data = request.get_json() or {}
+    items = data.get("items") or []
+    if not isinstance(items, list) or not items:
+        return jsonify({"success": False, "error": "items required"}), 400
+
+    removed_items: list[dict] = []
+    failed_items: list[dict] = []
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            for item in items:
+                try:
+                    mid = int(item.get("message_id"))
+                    media_url = (item.get("media_url") or "").strip()
+                    if not media_url:
+                        raise ValueError("media_url required")
+                    ok, reason = _remove_dm_media_item(c, ph, username, mid, media_url)
+                    if ok:
+                        removed_items.append({"message_id": mid, "media_url": media_url})
+                    else:
+                        failed_items.append({"message_id": mid, "media_url": media_url, "reason": reason or "failed"})
+                except Exception as item_err:
+                    failed_items.append({"message_id": item.get("message_id"), "media_url": item.get("media_url"), "reason": str(item_err)})
+            conn.commit()
+        return jsonify({
+            "success": True,
+            "removed": len(removed_items),
+            "failed": len(failed_items),
+            "removed_items": removed_items,
+            "failed_items": failed_items,
+        })
+    except Exception as e:
+        logger.error("remove_dm_media_bulk: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": "Failed to delete media"}), 500
 
 
 @dm_chats_bp.route("/api/chat/dm/send_document", methods=["POST"])
@@ -428,6 +558,7 @@ def send_dm_media():
         media_files=files_to_upload,
         media_urls=media_urls,
         upload_only=upload_only,
+        client_key=(request.form.get("client_key", "").strip() or None),
     )
     return jsonify(payload), status
 
@@ -443,6 +574,7 @@ def send_video_message():
         message=request.form.get("message", ""),
         video=request.files.get("video"),
         video_url=request.form.get("video_url", ""),
+        client_key=(request.form.get("client_key", "").strip() or None),
     )
     return jsonify(payload)
 

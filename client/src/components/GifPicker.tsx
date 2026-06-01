@@ -556,7 +556,6 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
       // glass material so any caller that forgets to hide its composer still
       // gets an opaque sheet (no bleed-through). The liquid-glass-surface
       // ::before highlight still renders on top via CSS specificity.
-      backgroundColor: '#0b0f10',
       // Respect the iOS status bar / notch so the search row never tucks
       // under the system UI. Pairs with the sheetHeight clamp above.
       paddingTop: 'env(safe-area-inset-top, 0px)',
@@ -599,7 +598,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
   return (
     <>
       <div
-        className="fixed inset-0 z-[1399] bg-black/40 backdrop-blur-sm"
+        className="fixed inset-0 z-[1399] bg-c-hover-bg backdrop-blur-sm"
         style={backdropStyle}
         onClick={onClose}
         aria-hidden="true"
@@ -609,7 +608,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
         role="dialog"
         aria-modal="true"
         aria-label={ariaLabel}
-        className="fixed left-0 right-0 z-[1400] mx-auto sm:max-w-2xl rounded-t-2xl liquid-glass-surface border-0 border-t border-white/8 flex flex-col overflow-hidden"
+        className="fixed left-0 right-0 z-[1400] mx-auto sm:max-w-2xl rounded-t-2xl liquid-glass-surface bg-c-bg-elevated border-0 border-t border-c-border flex flex-col overflow-hidden"
         style={sheetStyle}
       >
         {/* Drag-affordance area: handle pill + search row. Pointer-down here
@@ -623,8 +622,8 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
         >
           <div className="mx-auto mt-2 mb-1 h-1 w-7 rounded-full bg-white/20" aria-hidden="true" />
           <div className="px-3 pt-1 pb-2 flex items-center">
-            <div className="flex-1 min-w-0 min-h-9 rounded-lg border border-white/15 bg-white/8 flex items-center transition-colors focus-within:border-[#4db6ac]">
-              <i className="fa-solid fa-magnifying-glass text-[12px] text-white/45 ml-2.5" aria-hidden="true" />
+            <div className="flex-1 min-w-0 min-h-9 rounded-lg border border-c-border bg-white/8 flex items-center transition-colors focus-within:border-cpoint-turquoise">
+              <i className="fa-solid fa-magnifying-glass text-[12px] text-c-text-tertiary ml-2.5" aria-hidden="true" />
               <input
                 ref={inputRef}
                 type="text"
@@ -633,7 +632,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t('shared.search_gifs') || 'Search GIFs'}
                 aria-label={t('shared.search_gifs') || 'Search GIFs'}
-                className="flex-1 min-w-0 bg-transparent px-2 py-1 text-[13px] text-white placeholder-white/40 outline-none"
+                className="flex-1 min-w-0 bg-transparent px-2 py-1 text-[13px] text-c-text-primary placeholder-white/40 outline-none"
                 style={{ touchAction: 'auto' }}
               />
               {query && (
@@ -649,18 +648,18 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
                 </NativeIconButton>
               )}
             </div>
-            <span className="text-[10px] text-white/40 tracking-wide uppercase shrink-0 ml-2 mr-2">via GIPHY</span>
+            <span className="text-[10px] text-c-text-tertiary tracking-wide uppercase shrink-0 ml-2 mr-2">via GIPHY</span>
           </div>
         </div>
 
         <div ref={gridRef} className="flex-1 overflow-y-auto px-3 pb-3">
           <div className="flex items-center justify-between gap-2 mb-2">
-            <div className="text-[11px] font-medium uppercase tracking-wider text-white/45 px-1">
+            <div className="text-[11px] font-medium uppercase tracking-wider text-c-text-tertiary px-1">
               {headerLabel}
             </div>
             {showInlineLoadingDot && (
               <div
-                className="flex items-center gap-1 text-[11px] text-white/45"
+                className="flex items-center gap-1 text-[11px] text-c-text-tertiary"
                 role="status"
                 aria-live="polite"
               >
@@ -681,7 +680,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
               {Array.from({ length: 12 }).map((_, i) => (
                 <div
                   key={`skeleton-${i}`}
-                  className="aspect-[4/3] rounded-md bg-white/5 animate-pulse"
+                  className="aspect-[4/3] rounded-md bg-c-hover-bg animate-pulse"
                 />
               ))}
             </div>
@@ -695,7 +694,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
                 <button
                   key={gif.id}
                   type="button"
-                  className="relative group aspect-[4/3] rounded-md overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4db6ac] focus-visible:ring-offset-1 focus-visible:ring-offset-transparent"
+                  className="relative group aspect-[4/3] rounded-md overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise focus-visible:ring-offset-1 focus-visible:ring-offset-transparent"
                   onClick={() => {
                     // Fire selection haptic before onSelect so the tap feels
                     // immediate; selection cue maps to a soft tick on iOS /
@@ -716,7 +715,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
                     className="w-full h-full object-cover"
                   />
                   <div
-                    className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                    className="absolute inset-0 bg-c-hover-bg opacity-0 group-hover:opacity-100 transition-opacity duration-150"
                     aria-hidden="true"
                   />
                 </button>
@@ -724,7 +723,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
             </div>
           ) : showEmpty ? (
             <div className="min-h-[160px] flex items-center justify-center">
-              <p className="text-[13px] text-white/50 text-center">
+              <p className="text-[13px] text-c-text-tertiary text-center">
                 {t('shared.no_gifs_found_friendly', { defaultValue: 'Nothing matched — try a different search' })}
               </p>
             </div>

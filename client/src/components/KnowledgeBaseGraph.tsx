@@ -78,7 +78,7 @@ function renderValue(val: unknown, depth = 0): React.ReactNode {
     return (
       <div className="space-y-1.5">
         {val.map((item, i) => (
-          <div key={i} className="pl-3 border-l border-white/10">
+          <div key={i} className="pl-3 border-l border-c-border">
             {renderValue(item, depth + 1)}
           </div>
         ))}
@@ -89,11 +89,11 @@ function renderValue(val: unknown, depth = 0): React.ReactNode {
     const entries = Object.entries(val as Record<string, unknown>)
     if (entries.length === 0) return '—'
     return (
-      <div className={depth > 0 ? 'pl-3 border-l border-white/10 space-y-1' : 'space-y-2'}>
+      <div className={depth > 0 ? 'pl-3 border-l border-c-border space-y-1' : 'space-y-2'}>
         {entries.map(([k, v]) => (
           <div key={k}>
-            <span className="text-white/40 text-[11px] uppercase tracking-wide">{k.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ')}</span>
-            <div className="text-white/80 text-xs mt-0.5">{renderValue(v, depth + 1)}</div>
+            <span className="text-c-text-tertiary text-[11px] uppercase tracking-wide">{k.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ')}</span>
+            <div className="text-c-text-secondary text-xs mt-0.5">{renderValue(v, depth + 1)}</div>
           </div>
         ))}
       </div>
@@ -131,7 +131,7 @@ function formatCompanyIntelField(val: unknown): React.ReactNode {
     if (val.length === 0) return '—'
     if (val.every(x => typeof x === 'string')) {
       return (
-        <ul className="list-disc list-inside space-y-0.5 text-white/80">
+        <ul className="list-disc list-inside space-y-0.5 text-c-text-secondary">
           {(val as string[]).map((s, i) => (
             <li key={i}>{s}</li>
           ))}
@@ -167,11 +167,11 @@ function renderCompanyIntelContent(content: Record<string, unknown>): React.Reac
             key={`${title}-${idx}`}
             className="rounded-lg border border-teal-500/25 bg-teal-950/20 p-3.5 space-y-2.5"
           >
-            <div className="text-sm font-semibold text-teal-200/95 border-b border-white/10 pb-2">{title}</div>
+            <div className="text-sm font-semibold text-teal-200/95 border-b border-c-border pb-2">{title}</div>
             {keys.map(key => (
               <div key={key}>
-                <div className="text-[10px] uppercase tracking-wide text-white/45">{humanizeFieldLabel(key)}</div>
-                <div className="text-xs text-white/85 mt-0.5 leading-relaxed">{formatCompanyIntelField(co[key])}</div>
+                <div className="text-[10px] uppercase tracking-wide text-c-text-tertiary">{humanizeFieldLabel(key)}</div>
+                <div className="text-xs text-c-text-secondary mt-0.5 leading-relaxed">{formatCompanyIntelField(co[key])}</div>
               </div>
             ))}
           </div>
@@ -353,41 +353,41 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
   return (
     <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="bg-[#1a1a1a] rounded-xl w-full max-w-5xl max-h-[90vh] border border-white/10 flex flex-col overflow-hidden"
+        className="bg-c-bg-surface rounded-xl w-full max-w-5xl max-h-[90vh] border border-c-border flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 flex-shrink-0">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-c-border flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-7 h-7 bg-[#6366f1] rounded-full flex items-center justify-center text-[11px] font-bold text-white">
               {isNetwork ? '🌐' : (username?.[0]?.toUpperCase() || '?')}
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white">{isNetwork ? 'Network Knowledge Base' : 'Knowledge Base'}</h2>
-              <p className="text-[11px] text-white/40">@{displayName}</p>
+              <h2 className="text-sm font-semibold text-c-text-primary">{isNetwork ? 'Network Knowledge Base' : 'Knowledge Base'}</h2>
+              <p className="text-[11px] text-c-text-tertiary">@{displayName}</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="flex bg-white/5 rounded-lg p-0.5 border border-white/10">
+            <div className="flex bg-c-hover-bg rounded-lg p-0.5 border border-c-border">
               {isNetwork && (
                 <button
                   onClick={() => setActiveView('analytics')}
                   className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                    activeView === 'analytics' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/60'
+                    activeView === 'analytics' ? 'bg-c-active-bg text-c-text-primary' : 'text-c-text-tertiary hover:text-white/60'
                   }`}
                 >Analytics</button>
               )}
               <button
                 onClick={() => setActiveView('graph')}
                 className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                  activeView === 'graph' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/60'
+                  activeView === 'graph' ? 'bg-c-active-bg text-c-text-primary' : 'text-c-text-tertiary hover:text-white/60'
                 }`}
               >Graph</button>
               <button
                 onClick={() => setActiveView('notes')}
                 className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                  activeView === 'notes' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/60'
+                  activeView === 'notes' ? 'bg-c-active-bg text-c-text-primary' : 'text-c-text-tertiary hover:text-white/60'
                 }`}
               >Notes</button>
             </div>
@@ -409,7 +409,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
               Reset KB
             </button>
 
-            <button onClick={onClose} className="ml-1 p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors">
+            <button onClick={onClose} className="ml-1 p-1.5 rounded-lg text-c-text-tertiary hover:text-c-text-primary hover:bg-c-hover-bg transition-colors">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
             </button>
           </div>
@@ -425,10 +425,10 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
 
           {!loading && !hasKnowledge && (
             <div className="h-full flex flex-col items-center justify-center text-center px-6">
-              <div className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
+              <div className="w-12 h-12 rounded-full bg-c-hover-bg border border-c-border flex items-center justify-center mb-4">
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 11.5a.75.75 0 110-1.5.75.75 0 010 1.5zM10.75 9a.75.75 0 01-1.5 0V6.5a.75.75 0 011.5 0V9z" fill="currentColor" className="text-white/30"/></svg>
               </div>
-              <p className="text-sm text-white/50">No knowledge base data yet</p>
+              <p className="text-sm text-c-text-tertiary">No knowledge base data yet</p>
               <p className="text-xs text-white/30 mt-1">Click Synthesize to generate from existing profile data</p>
             </div>
           )}
@@ -459,7 +459,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                 tooltip: { backgroundColor: '#1a1a1a', titleColor: '#fff', bodyColor: '#ccc' },
               },
             }
-            const palette = ['#4db6ac', '#6366f1', '#ef4444', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#f97316', '#06b6d4', '#22d3ee', '#a855f7', '#14b8a6']
+            const palette = ['#00CEC8', '#6366f1', '#ef4444', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#f97316', '#06b6d4', '#22d3ee', '#a855f7', '#14b8a6']
 
             const expertiseDist = exp.primaryDomains || idx.expertiseDistribution || {}
             const expertiseLabels = Object.keys(expertiseDist).slice(0, 10)
@@ -501,40 +501,40 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
               <div className="h-full overflow-y-auto p-5 space-y-6">
                 {/* KPI Cards */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="bg-white/5 rounded-xl border border-white/10 p-4">
-                    <div className="text-2xl font-bold text-[#4db6ac]">{memberCount}</div>
-                    <div className="text-[11px] text-white/50 mt-1">Total Members</div>
+                  <div className="bg-c-hover-bg rounded-xl border border-c-border p-4">
+                    <div className="text-2xl font-bold text-cpoint-turquoise">{memberCount}</div>
+                    <div className="text-[11px] text-c-text-tertiary mt-1">Total Members</div>
                   </div>
-                  <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+                  <div className="bg-c-hover-bg rounded-xl border border-c-border p-4">
                     <div className="text-2xl font-bold text-[#6366f1]">{kbCount}</div>
-                    <div className="text-[11px] text-white/50 mt-1">With Knowledge Base</div>
+                    <div className="text-[11px] text-c-text-tertiary mt-1">With Knowledge Base</div>
                   </div>
-                  <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+                  <div className="bg-c-hover-bg rounded-xl border border-c-border p-4">
                     <div className="text-2xl font-bold text-[#f59e0b]">{ci.totalCompanies || '—'}</div>
-                    <div className="text-[11px] text-white/50 mt-1">Companies Tracked</div>
+                    <div className="text-[11px] text-c-text-tertiary mt-1">Companies Tracked</div>
                   </div>
-                  <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+                  <div className="bg-c-hover-bg rounded-xl border border-c-border p-4">
                     <div className="text-2xl font-bold text-[#10b981]">{ci.avgSize != null ? `~${ci.avgSize}` : '—'}</div>
-                    <div className="text-[11px] text-white/50 mt-1">Avg Company Size</div>
+                    <div className="text-[11px] text-c-text-tertiary mt-1">Avg Company Size</div>
                   </div>
                 </div>
 
                 {/* Synthesis narrative */}
                 {idx.currentSynthesis && (
-                  <div className="bg-white/[0.03] rounded-xl border border-white/10 p-4">
+                  <div className="bg-white/[0.03] rounded-xl border border-c-border p-4">
                     <div className="text-[10px] uppercase tracking-wider text-white/30 font-medium mb-2">Network Overview</div>
-                    <p className="text-sm text-white/70 leading-relaxed">{String(idx.currentSynthesis)}</p>
+                    <p className="text-sm text-c-text-secondary leading-relaxed">{String(idx.currentSynthesis)}</p>
                   </div>
                 )}
 
                 {/* Professional Section */}
                 <div>
-                  <div className="text-xs font-semibold text-white/50 uppercase tracking-wide mb-3">Professional Intelligence</div>
+                  <div className="text-xs font-semibold text-c-text-tertiary uppercase tracking-wide mb-3">Professional Intelligence</div>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     {/* Expertise Distribution */}
                     {expertiseLabels.length > 0 && (
-                      <div className="bg-white/5 rounded-xl border border-white/10 p-4">
-                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-3">Expertise Domains</div>
+                      <div className="bg-c-hover-bg rounded-xl border border-c-border p-4">
+                        <div className="text-[11px] text-c-text-tertiary uppercase tracking-wide mb-3">Expertise Domains</div>
                         <div className="h-48">
                           <Bar data={{
                             labels: expertiseLabels,
@@ -546,8 +546,8 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
 
                     {/* Industry Distribution */}
                     {industryLabels.length > 0 && (
-                      <div className="bg-white/5 rounded-xl border border-white/10 p-4">
-                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-3">Industry Mix</div>
+                      <div className="bg-c-hover-bg rounded-xl border border-c-border p-4">
+                        <div className="text-[11px] text-c-text-tertiary uppercase tracking-wide mb-3">Industry Mix</div>
                         <div className="h-48">
                           <Bar data={{
                             labels: industryLabels.map(l => l.charAt(0).toUpperCase() + l.slice(1)),
@@ -559,12 +559,12 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
 
                     {/* Company Intel: Global vs Regional vs Local */}
                     {gpLabels.length > 0 && (
-                      <div className="bg-white/5 rounded-xl border border-white/10 p-4">
-                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-3">Global Presence</div>
+                      <div className="bg-c-hover-bg rounded-xl border border-c-border p-4">
+                        <div className="text-[11px] text-c-text-tertiary uppercase tracking-wide mb-3">Global Presence</div>
                         <div className="h-48">
                           <Doughnut data={{
                             labels: gpLabels.map(l => l.charAt(0).toUpperCase() + l.slice(1)),
-                            datasets: [{ data: gpValues, backgroundColor: ['#4db6ac', '#6366f1', '#f59e0b'], borderWidth: 0 }],
+                            datasets: [{ data: gpValues, backgroundColor: ['#00CEC8', '#6366f1', '#f59e0b'], borderWidth: 0 }],
                           }} options={doughnutOpts} />
                         </div>
                       </div>
@@ -572,8 +572,8 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
 
                     {/* Company Intel: Public vs Private */}
                     {ppLabels.length > 0 && (
-                      <div className="bg-white/5 rounded-xl border border-white/10 p-4">
-                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-3">Public vs Private</div>
+                      <div className="bg-c-hover-bg rounded-xl border border-c-border p-4">
+                        <div className="text-[11px] text-c-text-tertiary uppercase tracking-wide mb-3">Public vs Private</div>
                         <div className="h-48">
                           <Doughnut data={{
                             labels: ppLabels.map(l => l.charAt(0).toUpperCase() + l.slice(1)),
@@ -585,8 +585,8 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
 
                     {/* Valuation Tiers */}
                     {valLabels.length > 0 && (
-                      <div className="bg-white/5 rounded-xl border border-white/10 p-4">
-                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-3">Valuation Tiers</div>
+                      <div className="bg-c-hover-bg rounded-xl border border-c-border p-4">
+                        <div className="text-[11px] text-c-text-tertiary uppercase tracking-wide mb-3">Valuation Tiers</div>
                         <div className="h-48">
                           <Bar data={{
                             labels: valLabels.map(l => l.replace(/_/g, ' ')),
@@ -598,8 +598,8 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
 
                     {/* Sector Breakdown */}
                     {sectorLabels.length > 0 && (
-                      <div className="bg-white/5 rounded-xl border border-white/10 p-4">
-                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-3">Sector Breakdown</div>
+                      <div className="bg-c-hover-bg rounded-xl border border-c-border p-4">
+                        <div className="text-[11px] text-c-text-tertiary uppercase tracking-wide mb-3">Sector Breakdown</div>
                         <div className="h-48">
                           <Bar data={{
                             labels: sectorLabels,
@@ -614,8 +614,8 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                 {/* Geography Section */}
                 {locLabels.length > 0 && (
                   <div>
-                    <div className="text-xs font-semibold text-white/50 uppercase tracking-wide mb-3">Geographic Distribution</div>
-                    <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+                    <div className="text-xs font-semibold text-c-text-tertiary uppercase tracking-wide mb-3">Geographic Distribution</div>
+                    <div className="bg-c-hover-bg rounded-xl border border-c-border p-4">
                       <div className="h-52">
                         <Bar data={{
                           labels: locLabels,
@@ -628,12 +628,12 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
 
                 {/* Personal Section */}
                 <div>
-                  <div className="text-xs font-semibold text-white/50 uppercase tracking-wide mb-3">Personal Intelligence</div>
+                  <div className="text-xs font-semibold text-c-text-tertiary uppercase tracking-wide mb-3">Personal Intelligence</div>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     {/* Trait Distribution */}
                     {traitLabels.length > 0 && (
-                      <div className="bg-white/5 rounded-xl border border-white/10 p-4">
-                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-3">Personality Traits</div>
+                      <div className="bg-c-hover-bg rounded-xl border border-c-border p-4">
+                        <div className="text-[11px] text-c-text-tertiary uppercase tracking-wide mb-3">Personality Traits</div>
                         <div className="h-52">
                           <Bar data={{
                             labels: traitLabels,
@@ -648,8 +648,8 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
 
                     {/* Core Values */}
                     {valueLabels.length > 0 && (
-                      <div className="bg-white/5 rounded-xl border border-white/10 p-4">
-                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-3">Core Values</div>
+                      <div className="bg-c-hover-bg rounded-xl border border-c-border p-4">
+                        <div className="text-[11px] text-c-text-tertiary uppercase tracking-wide mb-3">Core Values</div>
                         <div className="h-52">
                           <Bar data={{
                             labels: valueLabels,
@@ -664,11 +664,11 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
 
                     {/* Energy Patterns */}
                     {(pp.energyPatterns || []).length > 0 && (
-                      <div className="bg-white/5 rounded-xl border border-white/10 p-4 lg:col-span-2">
-                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-2">Collective Energy Patterns</div>
+                      <div className="bg-c-hover-bg rounded-xl border border-c-border p-4 lg:col-span-2">
+                        <div className="text-[11px] text-c-text-tertiary uppercase tracking-wide mb-2">Collective Energy Patterns</div>
                         <div className="space-y-1.5">
                           {(pp.energyPatterns as string[]).slice(0, 6).map((ep: string, i: number) => (
-                            <div key={i} className="text-xs text-white/60 pl-3 border-l-2 border-[#ec4899]/30">{ep}</div>
+                            <div key={i} className="text-xs text-c-text-tertiary pl-3 border-l-2 border-[#ec4899]/30">{ep}</div>
                           ))}
                         </div>
                       </div>
@@ -678,21 +678,21 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
 
                 {/* Unique Fingerprint & Bridging */}
                 {(fp.whatMakesThisNetworkSpecial || fp.bridgingCapability) && (
-                  <div className="bg-gradient-to-r from-[#6366f1]/10 to-[#4db6ac]/10 rounded-xl border border-white/10 p-5">
-                    <div className="text-xs font-semibold text-white/50 uppercase tracking-wide mb-3">Network Fingerprint</div>
+                  <div className="bg-gradient-to-r from-[#6366f1]/10 to-cpoint-turquoise/10 rounded-xl border border-c-border p-5">
+                    <div className="text-xs font-semibold text-c-text-tertiary uppercase tracking-wide mb-3">Network Fingerprint</div>
                     {fp.whatMakesThisNetworkSpecial && (
-                      <p className="text-sm text-white/70 leading-relaxed mb-3">{String(fp.whatMakesThisNetworkSpecial)}</p>
+                      <p className="text-sm text-c-text-secondary leading-relaxed mb-3">{String(fp.whatMakesThisNetworkSpecial)}</p>
                     )}
                     {fp.bridgingCapability && (
                       <div>
-                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-1">Bridging Capability</div>
-                        <p className="text-xs text-white/60">{String(fp.bridgingCapability)}</p>
+                        <div className="text-[11px] text-c-text-tertiary uppercase tracking-wide mb-1">Bridging Capability</div>
+                        <p className="text-xs text-c-text-tertiary">{String(fp.bridgingCapability)}</p>
                       </div>
                     )}
                     {fp.rareQualities && Array.isArray(fp.rareQualities) && fp.rareQualities.length > 0 && (
                       <div className="mt-3 flex flex-wrap gap-1.5">
                         {(fp.rareQualities as string[]).slice(0, 8).map((q: string, i: number) => (
-                          <span key={i} className="px-2 py-0.5 bg-white/5 border border-white/10 rounded-full text-[10px] text-white/50">{q}</span>
+                          <span key={i} className="px-2 py-0.5 bg-c-hover-bg border border-c-border rounded-full text-[10px] text-c-text-tertiary">{q}</span>
                         ))}
                       </div>
                     )}
@@ -701,15 +701,15 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
 
                 {/* Strategic Value & Inferred Context */}
                 {(inf.strategicValue || inf.bridgingOpportunities) && (
-                  <div className="bg-white/[0.03] rounded-xl border border-white/10 p-5">
-                    <div className="text-xs font-semibold text-white/50 uppercase tracking-wide mb-3">Strategic Intelligence</div>
+                  <div className="bg-white/[0.03] rounded-xl border border-c-border p-5">
+                    <div className="text-xs font-semibold text-c-text-tertiary uppercase tracking-wide mb-3">Strategic Intelligence</div>
                     {inf.strategicValue && (
-                      <p className="text-sm text-white/70 leading-relaxed mb-3">{String(inf.strategicValue)}</p>
+                      <p className="text-sm text-c-text-secondary leading-relaxed mb-3">{String(inf.strategicValue)}</p>
                     )}
                     {inf.bridgingOpportunities && (
                       <div>
-                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-1">Bridging Opportunities</div>
-                        <p className="text-xs text-white/60">{String(inf.bridgingOpportunities)}</p>
+                        <div className="text-[11px] text-c-text-tertiary uppercase tracking-wide mb-1">Bridging Opportunities</div>
+                        <p className="text-xs text-c-text-tertiary">{String(inf.bridgingOpportunities)}</p>
                       </div>
                     )}
                   </div>
@@ -717,11 +717,11 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
 
                 {/* Top Companies */}
                 {comp.topCompanies && Object.keys(comp.topCompanies).length > 0 && (
-                  <div className="bg-white/5 rounded-xl border border-white/10 p-4">
-                    <div className="text-[11px] text-white/40 uppercase tracking-wide mb-3">Top Companies in Network</div>
+                  <div className="bg-c-hover-bg rounded-xl border border-c-border p-4">
+                    <div className="text-[11px] text-c-text-tertiary uppercase tracking-wide mb-3">Top Companies in Network</div>
                     <div className="flex flex-wrap gap-2">
                       {Object.entries(comp.topCompanies as Record<string, number>).slice(0, 12).map(([name, count]) => (
-                        <span key={name} className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-lg text-xs text-white/60">
+                        <span key={name} className="px-2.5 py-1 bg-c-hover-bg border border-c-border rounded-lg text-xs text-c-text-tertiary">
                           {name} <span className="text-white/30">({count})</span>
                         </span>
                       ))}
@@ -735,7 +735,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
           {/* Graph View */}
           {!loading && hasKnowledge && activeView === 'graph' && (
             <div className="h-full p-6 overflow-auto">
-              <div className="bg-white/5 rounded-xl border border-white/10 p-6">
+              <div className="bg-c-hover-bg rounded-xl border border-c-border p-6">
                 <svg width="100%" height="380" viewBox="0 0 800 380">
                   {graphData.edges.map((edge, i) => {
                     const sourceNode = graphData.nodes.find(n => n.id === edge.source || n.noteType === edge.source)
@@ -775,7 +775,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                 </svg>
                 <div className="flex gap-3 flex-wrap mt-4 justify-center">
                   {Object.entries(DIMENSION_COLORS).map(([dim, color]) => (
-                    <div key={dim} className="flex items-center gap-1.5 text-[11px] text-white/50">
+                    <div key={dim} className="flex items-center gap-1.5 text-[11px] text-c-text-tertiary">
                       <div className="w-2 h-2 rounded-full" style={{ background: color }} />
                       {dim}
                     </div>
@@ -789,7 +789,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
           {!loading && hasKnowledge && activeView === 'notes' && (
             <div className="flex h-full">
               {/* Sidebar */}
-              <div className="w-48 flex-shrink-0 border-r border-white/10 p-3 overflow-y-auto">
+              <div className="w-48 flex-shrink-0 border-r border-c-border p-3 overflow-y-auto">
                 <p className="text-[10px] uppercase tracking-wider text-white/30 font-medium mb-2 px-1">Dimensions</p>
                 {noteKeys.map(key => {
                   const data = knowledge[key]
@@ -801,7 +801,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                       key={key}
                       onClick={() => setSelectedNote(key)}
                       className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs mb-0.5 transition-colors flex items-center gap-2 ${
-                        active ? 'bg-white/10 text-white' : 'text-white/50 hover:bg-white/5 hover:text-white/70'
+                        active ? 'bg-c-active-bg text-c-text-primary' : 'text-c-text-tertiary hover:bg-c-hover-bg hover:text-c-text-secondary'
                       }`}
                     >
                       <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: color }} />
@@ -828,7 +828,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                       Updated {selected.updatedAt ? new Date(selected.updatedAt).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A'}
                     </p>
 
-                    <div className="bg-white/5 rounded-lg border border-white/10 p-4 max-h-[50vh] overflow-y-auto">
+                    <div className="bg-c-hover-bg rounded-lg border border-c-border p-4 max-h-[50vh] overflow-y-auto">
                       {selected.noteType === 'CompanyIntel' && selected.content && typeof selected.content === 'object'
                         ? renderCompanyIntelContent(selected.content as Record<string, unknown>)
                         : renderValue(selected.content)}
@@ -853,7 +853,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                       </div>
                     )}
 
-                    <div className="mt-4 border-t border-white/5 pt-3">
+                    <div className="mt-4 border-t border-c-border pt-3">
                       <p className="text-[10px] uppercase tracking-wider text-white/30 font-medium mb-2">Feedback</p>
                       <div className="flex gap-1.5 mb-2">
                         <button
@@ -861,7 +861,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                           className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
                             feedbackStatus === 'approved'
                               ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                              : 'bg-white/5 text-white/40 border border-white/10 hover:bg-white/10'
+                              : 'bg-c-hover-bg text-c-text-tertiary border border-c-border hover:bg-c-hover-bg'
                           }`}
                         >Approve</button>
                         <button
@@ -869,7 +869,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                           className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
                             feedbackStatus === 'needs_correction'
                               ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                              : 'bg-white/5 text-white/40 border border-white/10 hover:bg-white/10'
+                              : 'bg-c-hover-bg text-c-text-tertiary border border-c-border hover:bg-c-hover-bg'
                           }`}
                         >Wrong Info</button>
                         <button
@@ -877,7 +877,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                           className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
                             feedbackStatus === 'missing_info'
                               ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                              : 'bg-white/5 text-white/40 border border-white/10 hover:bg-white/10'
+                              : 'bg-c-hover-bg text-c-text-tertiary border border-c-border hover:bg-c-hover-bg'
                           }`}
                         >Missing Info</button>
                       </div>
@@ -887,7 +887,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                           onChange={e => setFeedbackNote(e.target.value)}
                           placeholder="What's wrong? What should it say instead? (required)"
                           rows={2}
-                          className="w-full px-2.5 py-2 bg-white/5 border border-red-500/20 rounded-lg text-xs text-white/80 placeholder-white/25 focus:outline-none focus:border-red-500/40 resize-none mb-2"
+                          className="w-full px-2.5 py-2 bg-c-hover-bg border border-red-500/20 rounded-lg text-xs text-c-text-secondary placeholder-white/25 focus:outline-none focus:border-red-500/40 resize-none mb-2"
                         />
                       )}
                       {feedbackStatus === 'missing_info' && (
@@ -896,7 +896,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                           onChange={e => setFeedbackNote(e.target.value)}
                           placeholder='What info is missing? e.g. "Spent 7 years at Deloitte in consulting" (required)'
                           rows={2}
-                          className="w-full px-2.5 py-2 bg-white/5 border border-amber-500/20 rounded-lg text-xs text-white/80 placeholder-white/25 focus:outline-none focus:border-amber-500/40 resize-none mb-2"
+                          className="w-full px-2.5 py-2 bg-c-hover-bg border border-amber-500/20 rounded-lg text-xs text-c-text-secondary placeholder-white/25 focus:outline-none focus:border-amber-500/40 resize-none mb-2"
                         />
                       )}
                       {feedbackStatus === 'approved' && (
@@ -904,7 +904,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                           value={feedbackNote}
                           onChange={e => setFeedbackNote(e.target.value)}
                           placeholder="Optional note..."
-                          className="w-full px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs text-white/80 placeholder-white/25 focus:outline-none focus:border-[#4db6ac] mb-2"
+                          className="w-full px-2.5 py-1.5 bg-c-hover-bg border border-c-border rounded-lg text-xs text-c-text-secondary placeholder-white/25 focus:outline-none focus:border-cpoint-turquoise mb-2"
                         />
                       )}
                       <button
@@ -912,7 +912,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                         disabled={feedbackSubmitting || ((feedbackStatus === 'needs_correction' || feedbackStatus === 'missing_info') && !feedbackNote.trim())}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                           feedbackSubmitting || ((feedbackStatus === 'needs_correction' || feedbackStatus === 'missing_info') && !feedbackNote.trim())
-                            ? 'bg-white/5 text-white/20 cursor-not-allowed'
+                            ? 'bg-c-hover-bg text-white/20 cursor-not-allowed'
                             : 'bg-[#6366f1]/20 text-[#a5b4fc] border border-[#6366f1]/30 hover:bg-[#6366f1]/30'
                         }`}
                       >{feedbackSubmitting ? 'Saving...' : 'Submit Feedback'}</button>

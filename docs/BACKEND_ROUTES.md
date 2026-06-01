@@ -40,6 +40,11 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/admin/upload_onboarding_welcome_video` | POST | `admin_upload_onboarding_welcome_video` | `backend/blueprints/branding_assets.py:48` | admin upload onboarding welcome video | `client/src/pages/AdminDashboard.tsx` (1) |
 | `/admin/remove_onboarding_welcome_video` | POST | `admin_remove_onboarding_welcome_video` | `backend/blueprints/branding_assets.py:79` | admin remove onboarding welcome video | `client/src/pages/AdminDashboard.tsx` (1) |
 | `/api/public/onboarding_welcome_video` | GET | `api_public_onboarding_welcome_video` | `backend/blueprints/branding_assets.py:90` | api public onboarding welcome video | `client/src/components/onboarding/OnboardingIntroGate.test.tsx` (2), `client/src/components/onboarding/OnboardingIntroGate.tsx` (1) |
+| `/api/chat/uploads/init` | POST | `api_chat_uploads_init` | `backend/blueprints/chat_uploads.py:28` | api chat uploads init | `client/src/chat/upload/multipartUploader.ts` (1) |
+| `/api/chat/uploads/part-url` | POST | `api_chat_uploads_part_url` | `backend/blueprints/chat_uploads.py:45` | api chat uploads part url | `client/src/chat/upload/multipartUploader.test.ts` (1), `client/src/chat/upload/multipartUploader.ts` (1) |
+| `/api/chat/uploads/complete` | POST | `api_chat_uploads_complete` | `backend/blueprints/chat_uploads.py:62` | api chat uploads complete | `client/src/chat/upload/multipartUploader.test.ts` (1), `client/src/chat/upload/multipartUploader.ts` (1) |
+| `/api/chat/uploads/abort` | POST | `api_chat_uploads_abort` | `backend/blueprints/chat_uploads.py:76` | api chat uploads abort | `client/src/chat/upload/multipartUploader.ts` (1) |
+| `/api/cron/chat-uploads-janitor` | POST | `cron_chat_uploads_janitor` | `backend/blueprints/chat_uploads.py:89` | cron chat uploads janitor | *(no exact string match — may use helpers)* |
 | `/communities` | GET (default) | `communities_list` | `backend/blueprints/communities.py:109` | communities list | `client/src/pages/CommunityFeed.tsx` (3), `client/src/pages/EditCommunity.tsx` (3), `client/src/pages/PremiumDashboard.tsx` (3), `client/src/components/pageTransition.test.ts` (2), `client/src/components/community/CommunityOwnerSetupIntro.tsx` (2), `admin-web/src/pages/CommunitiesDirectory.tsx` (2), `admin-web/src/pages/Subscriptions.tsx` (2), `admin-web/src/pages/Tenants.tsx` (2) |
 | `/delete_community` | POST | `delete_community` | `backend/blueprints/communities.py:320` | delete community | `client/src/pages/Communities.tsx` (2), `client/src/pages/AdminDashboard.tsx` (1), `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/EditCommunity.tsx` (1), `admin-web/src/pages/NetworkInsights.tsx` (1) |
 | `/api/admin/delete_community` | POST | `admin_delete_community` | `backend/blueprints/communities.py:337` | admin delete community | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/NetworkInsights.tsx` (1) |
@@ -119,26 +124,27 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/chat/clear_history` | POST | `clear_chat_history` | `backend/blueprints/dm_chats.py:137` | clear chat history | `client/src/pages/Messages.tsx` (1) |
 | `/delete_chat_thread` | POST | `delete_chat_thread` | `backend/blueprints/dm_chats.py:176` | delete chat thread | `client/src/pages/Messages.tsx` (2) |
 | `/api/chat/dm/remove_message_media` | POST | `remove_dm_message_media` | `backend/blueprints/dm_chats.py:222` | remove dm message media | `client/src/pages/ChatThread.tsx` (1) |
-| `/api/chat/dm/send_document` | POST | `send_dm_document` | `backend/blueprints/dm_chats.py:340` | send dm document | `client/src/chat/mediaSenders.ts` (1) |
-| `/api/chat/documents` | GET | `get_dm_documents` | `backend/blueprints/dm_chats.py:373` | get dm documents | `client/src/pages/ChatDocuments.tsx` (1) |
-| `/send_message` | POST | `send_message` | `backend/blueprints/dm_chats.py:388` | send message | `client/src/pages/ChatThread.tsx` (2), `client/src/pages/CommunityFeed.tsx` (1), `client/src/utils/outboxDrain.ts` (1) |
-| `/send_photo_message` | POST | `send_photo_message` | `backend/blueprints/dm_chats.py:405` | send photo message | `client/src/chat/groupChatMediaSenders.ts` (1), `client/src/chat/mediaSenders.ts` (1) |
-| `/send_dm_media` | POST | `send_dm_media` | `backend/blueprints/dm_chats.py:419` | send dm media | `client/src/chat/mediaSenders.ts` (1), `client/src/chat/uploadQueue.ts` (1) |
-| `/send_video_message` | POST | `send_video_message` | `backend/blueprints/dm_chats.py:435` | send video message | `client/src/chat/mediaSenders.ts` (2) |
-| `/send_audio_message` | POST | `send_audio_message` | `backend/blueprints/dm_chats.py:450` | send audio message | `client/src/pages/ChatThread.tsx` (3) |
-| `/get_messages` | POST | `get_messages` | `backend/blueprints/dm_chats.py:470` | get messages | `client/src/pages/ChatThread.tsx` (3), `client/src/chat/useDmMessagePoll.ts` (2) |
-| `/api/chat/mute` | POST | `mute_chat` | `backend/blueprints/dm_chats.py:484` | mute chat | `client/src/pages/Messages.tsx` (1) |
-| `/api/archive_chat` | POST | `archive_chat` | `backend/blueprints/dm_chats.py:499` | archive chat | `client/src/pages/Messages.tsx` (1) |
-| `/api/unarchive_chat` | POST | `unarchive_chat` | `backend/blueprints/dm_chats.py:508` | unarchive chat | `client/src/pages/Messages.tsx` (1) |
-| `/api/archived_chats` | GET (default) | `api_archived_chats` | `backend/blueprints/dm_chats.py:517` | api archived chats | `client/src/pages/Messages.tsx` (1) |
-| `/api/active_chat` | POST | `api_active_chat` | `backend/blueprints/dm_chats.py:528` | api active chat | `client/src/chat/useDmMessagePoll.ts` (1) |
-| `/delete_message` | POST | `delete_message` | `backend/blueprints/dm_chats.py:540` | delete message | `client/src/pages/ChatThread.tsx` (2) |
-| `/api/chat/edit_message` | POST | `edit_message_api` | `backend/blueprints/dm_chats.py:548` | edit message api | `client/src/pages/ChatThread.tsx` (1) |
-| `/api/chat/update_audio_summary` | POST | `update_dm_audio_summary_route` | `backend/blueprints/dm_chats.py:564` | update dm audio summary route | `client/src/pages/ChatThread.tsx` (1) |
-| `/api/chat/media` | GET | `get_chat_media` | `backend/blueprints/dm_chats.py:578` | get chat media | `client/src/pages/ChatMedia.tsx` (1) |
-| `/api/chat/react_to_message` | POST | `react_to_message` | `backend/blueprints/dm_chats.py:588` | react to message | `client/src/pages/ChatThread.tsx` (1) |
-| `/api/dm/search` | GET | `api_dm_search` | `backend/blueprints/dm_chats.py:607` | api dm search | `client/src/chat/ChatThreadSearch.tsx` (1) |
-| `/api/dm/messages_around` | GET | `api_dm_messages_around` | `backend/blueprints/dm_chats.py:629` | api dm messages around | `client/src/pages/ChatThread.tsx` (1) |
+| `/api/chat/dm/remove_media_bulk` | POST | `remove_dm_media_bulk` | `backend/blueprints/dm_chats.py:425` | remove dm media bulk | `client/src/chat/MediaGalleryPage.tsx` (1) |
+| `/api/chat/dm/send_document` | POST | `send_dm_document` | `backend/blueprints/dm_chats.py:466` | send dm document | `client/src/chat/mediaSenders.ts` (1) |
+| `/api/chat/documents` | GET | `get_dm_documents` | `backend/blueprints/dm_chats.py:499` | get dm documents | `client/src/pages/ChatDocuments.tsx` (1) |
+| `/send_message` | POST | `send_message` | `backend/blueprints/dm_chats.py:514` | send message | `client/src/pages/ChatThread.tsx` (2), `client/src/pages/CommunityFeed.tsx` (1), `client/src/utils/outboxDrain.ts` (1) |
+| `/send_photo_message` | POST | `send_photo_message` | `backend/blueprints/dm_chats.py:531` | send photo message | `client/src/chat/groupChatMediaSenders.ts` (1), `client/src/chat/mediaSenders.ts` (1) |
+| `/send_dm_media` | POST | `send_dm_media` | `backend/blueprints/dm_chats.py:545` | send dm media | `client/src/chat/mediaSenders.ts` (3), `client/src/hooks/useMediaUploadResume.ts` (1) |
+| `/send_video_message` | POST | `send_video_message` | `backend/blueprints/dm_chats.py:562` | send video message | `client/src/chat/mediaSenders.ts` (3) |
+| `/send_audio_message` | POST | `send_audio_message` | `backend/blueprints/dm_chats.py:578` | send audio message | `client/src/pages/ChatThread.tsx` (3) |
+| `/get_messages` | POST | `get_messages` | `backend/blueprints/dm_chats.py:598` | get messages | `client/src/pages/ChatThread.tsx` (4), `client/src/chat/useDmMessagePoll.ts` (2) |
+| `/api/chat/mute` | POST | `mute_chat` | `backend/blueprints/dm_chats.py:612` | mute chat | `client/src/pages/Messages.tsx` (1) |
+| `/api/archive_chat` | POST | `archive_chat` | `backend/blueprints/dm_chats.py:627` | archive chat | `client/src/pages/Messages.tsx` (1) |
+| `/api/unarchive_chat` | POST | `unarchive_chat` | `backend/blueprints/dm_chats.py:636` | unarchive chat | `client/src/pages/Messages.tsx` (1) |
+| `/api/archived_chats` | GET (default) | `api_archived_chats` | `backend/blueprints/dm_chats.py:645` | api archived chats | `client/src/pages/Messages.tsx` (1) |
+| `/api/active_chat` | POST | `api_active_chat` | `backend/blueprints/dm_chats.py:656` | api active chat | `client/src/chat/useDmMessagePoll.ts` (1) |
+| `/delete_message` | POST | `delete_message` | `backend/blueprints/dm_chats.py:668` | delete message | `client/src/pages/ChatThread.tsx` (2) |
+| `/api/chat/edit_message` | POST | `edit_message_api` | `backend/blueprints/dm_chats.py:676` | edit message api | `client/src/pages/ChatThread.tsx` (1) |
+| `/api/chat/update_audio_summary` | POST | `update_dm_audio_summary_route` | `backend/blueprints/dm_chats.py:692` | update dm audio summary route | `client/src/pages/ChatThread.tsx` (1) |
+| `/api/chat/media` | GET | `get_chat_media` | `backend/blueprints/dm_chats.py:706` | get chat media | `client/src/chat/MediaGalleryPage.tsx` (1) |
+| `/api/chat/react_to_message` | POST | `react_to_message` | `backend/blueprints/dm_chats.py:716` | react to message | `client/src/pages/ChatThread.tsx` (1) |
+| `/api/dm/search` | GET | `api_dm_search` | `backend/blueprints/dm_chats.py:735` | api dm search | `client/src/chat/ChatThreadSearch.tsx` (1) |
+| `/api/dm/messages_around` | GET | `api_dm_messages_around` | `backend/blueprints/dm_chats.py:757` | api dm messages around | `client/src/pages/ChatThread.tsx` (1) |
 | `/api/me/enterprise-seats` | GET | `me_seats` | `backend/blueprints/enterprise.py:90` | me seats | *(no exact string match — may use helpers)* |
 | `/api/me/iap-nag` | GET | `me_iap_nag` | `backend/blueprints/enterprise.py:98` | me iap nag | *(no exact string match — may use helpers)* |
 | `/api/me/iap-nag/ack` | POST | `me_iap_nag_ack` | `backend/blueprints/enterprise.py:116` | me iap nag ack | *(no exact string match — may use helpers)* |
@@ -158,37 +164,36 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/cron/ai-usage/daily-rollup` | POST | `cron_ai_usage_daily_rollup` | `backend/blueprints/enterprise.py:558` | cron ai usage daily rollup | *(no exact string match — may use helpers)* |
 | `/api/cron/usage/cycle-notify` | POST | `cron_usage_cycle_notify` | `backend/blueprints/enterprise.py:569` | cron usage cycle notify | *(no exact string match — may use helpers)* |
 | `/api/upload_chat_media` | POST | `upload_chat_media` | `backend/blueprints/group_chat.py:526` | upload chat media | *(no exact string match — may use helpers)* |
-| `/api/upload_chat_image` | POST | `upload_chat_image` | `backend/blueprints/group_chat.py:577` | upload chat image | *(no exact string match — may use helpers)* |
-| `/api/group_chat/create` | POST | `create_group_chat` | `backend/blueprints/group_chat.py:584` | create group chat | `client/src/components/GroupChatCreator.tsx` (1) |
-| `/api/group_chat/list` | GET | `list_group_chats` | `backend/blueprints/group_chat.py:682` | list group chats | `client/src/pages/Messages.tsx` (1) |
-| `/api/group_chat/<int:group_id>` | GET | `get_group_chat` | `backend/blueprints/group_chat.py:824` | get group chat | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/presence` | POST | `update_group_presence` | `backend/blueprints/group_chat.py:902` | update group presence | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/messages` | GET | `get_group_messages` | `backend/blueprints/group_chat.py:973` | get group messages | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/media` | GET | `get_group_media` | `backend/blueprints/group_chat.py:988` | get group media | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/documents` | GET | `get_group_documents` | `backend/blueprints/group_chat.py:1085` | get group documents | *(no exact string match — may use helpers)* |
-| `/api/upload_voice_message` | POST | `upload_voice_message` | `backend/blueprints/group_chat.py:1117` | upload voice message | `client/src/pages/GroupChatThread.tsx` (3) |
-| `/api/group_chat/<int:group_id>/send_media` | POST | `send_group_media` | `backend/blueprints/group_chat.py:1150` | send group media | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/send_document` | POST | `send_group_document` | `backend/blueprints/group_chat.py:1365` | send group document | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/send` | POST | `send_group_message` | `backend/blueprints/group_chat.py:1438` | send group message | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/leave` | POST | `leave_group_chat` | `backend/blueprints/group_chat.py:1783` | leave group chat | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/delete` | POST | `delete_group_chat` | `backend/blueprints/group_chat.py:1846` | delete group chat | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/clear_history` | POST | `clear_group_chat_history` | `backend/blueprints/group_chat.py:1891` | clear group chat history | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/remove_member` | POST | `remove_group_member` | `backend/blueprints/group_chat.py:1950` | remove group member | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/rename` | POST | `rename_group_chat` | `backend/blueprints/group_chat.py:2000` | rename group chat | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/video_upload_url` | POST | `group_video_upload_url` | `backend/blueprints/group_chat.py:2037` | group video upload url | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/image_upload_url` | POST | `group_image_upload_url` | `backend/blueprints/group_chat.py:2085` | group image upload url | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/steve_personality` | GET, POST | `group_steve_personality` | `backend/blueprints/group_chat.py:2133` | group steve personality | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/steve_reset_context` | POST | `reset_steve_context` | `backend/blueprints/group_chat.py:2174` | reset steve context | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/message/<int:message_id>/delete` | POST | `delete_group_message` | `backend/blueprints/group_chat.py:2217` | delete group message | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/remove_message_media` | POST | `remove_group_message_media` | `backend/blueprints/group_chat.py:2271` | remove group message media | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/message/<int:message_id>/update_summary` | POST | `update_group_audio_summary` | `backend/blueprints/group_chat.py:2384` | update group audio summary | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/messages/bulk_delete` | POST | `bulk_delete_group_messages` | `backend/blueprints/group_chat.py:2423` | bulk delete group messages | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/message/<int:message_id>/edit` | POST | `edit_group_message` | `backend/blueprints/group_chat.py:2487` | edit group message | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/message/<int:message_id>/react` | POST | `react_to_group_message` | `backend/blueprints/group_chat.py:2542` | react to group message | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/available_members` | GET | `get_available_members` | `backend/blueprints/group_chat.py:2607` | get available members | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/add_members` | POST | `add_members_to_group` | `backend/blueprints/group_chat.py:2672` | add members to group | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/search` | GET | `api_group_chat_search` | `backend/blueprints/group_chat.py:2782` | api group chat search | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/messages_around` | GET | `api_group_messages_around` | `backend/blueprints/group_chat.py:2803` | api group messages around | *(no exact string match — may use helpers)* |
+| `/api/upload_chat_image` | POST | `upload_chat_image` | `backend/blueprints/group_chat.py:578` | upload chat image | *(no exact string match — may use helpers)* |
+| `/api/group_chat/create` | POST | `create_group_chat` | `backend/blueprints/group_chat.py:585` | create group chat | `client/src/components/GroupChatCreator.tsx` (1) |
+| `/api/group_chat/list` | GET | `list_group_chats` | `backend/blueprints/group_chat.py:683` | list group chats | `client/src/pages/Messages.tsx` (1) |
+| `/api/group_chat/<int:group_id>` | GET | `get_group_chat` | `backend/blueprints/group_chat.py:825` | get group chat | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/presence` | POST | `update_group_presence` | `backend/blueprints/group_chat.py:903` | update group presence | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/messages` | GET | `get_group_messages` | `backend/blueprints/group_chat.py:974` | get group messages | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/media` | GET | `get_group_media` | `backend/blueprints/group_chat.py:989` | get group media | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/documents` | GET | `get_group_documents` | `backend/blueprints/group_chat.py:1086` | get group documents | *(no exact string match — may use helpers)* |
+| `/api/upload_voice_message` | POST | `upload_voice_message` | `backend/blueprints/group_chat.py:1118` | upload voice message | `client/src/pages/GroupChatThread.tsx` (3) |
+| `/api/group_chat/<int:group_id>/send_media` | POST | `send_group_media` | `backend/blueprints/group_chat.py:1151` | send group media | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/send_document` | POST | `send_group_document` | `backend/blueprints/group_chat.py:1394` | send group document | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/send` | POST | `send_group_message` | `backend/blueprints/group_chat.py:1467` | send group message | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/leave` | POST | `leave_group_chat` | `backend/blueprints/group_chat.py:1812` | leave group chat | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/delete` | POST | `delete_group_chat` | `backend/blueprints/group_chat.py:1875` | delete group chat | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/clear_history` | POST | `clear_group_chat_history` | `backend/blueprints/group_chat.py:1920` | clear group chat history | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/remove_member` | POST | `remove_group_member` | `backend/blueprints/group_chat.py:1979` | remove group member | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/rename` | POST | `rename_group_chat` | `backend/blueprints/group_chat.py:2029` | rename group chat | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/steve_personality` | GET, POST | `group_steve_personality` | `backend/blueprints/group_chat.py:2070` | group steve personality | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/steve_reset_context` | POST | `reset_steve_context` | `backend/blueprints/group_chat.py:2111` | reset steve context | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/message/<int:message_id>/delete` | POST | `delete_group_message` | `backend/blueprints/group_chat.py:2154` | delete group message | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/remove_message_media` | POST | `remove_group_message_media` | `backend/blueprints/group_chat.py:2208` | remove group message media | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/remove_media_bulk` | POST | `remove_group_media_bulk` | `backend/blueprints/group_chat.py:2406` | remove group media bulk | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/message/<int:message_id>/update_summary` | POST | `update_group_audio_summary` | `backend/blueprints/group_chat.py:2448` | update group audio summary | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/messages/bulk_delete` | POST | `bulk_delete_group_messages` | `backend/blueprints/group_chat.py:2487` | bulk delete group messages | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/message/<int:message_id>/edit` | POST | `edit_group_message` | `backend/blueprints/group_chat.py:2551` | edit group message | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/message/<int:message_id>/react` | POST | `react_to_group_message` | `backend/blueprints/group_chat.py:2606` | react to group message | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/available_members` | GET | `get_available_members` | `backend/blueprints/group_chat.py:2671` | get available members | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/add_members` | POST | `add_members_to_group` | `backend/blueprints/group_chat.py:2736` | add members to group | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/search` | GET | `api_group_chat_search` | `backend/blueprints/group_chat.py:2846` | api group chat search | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/messages_around` | GET | `api_group_messages_around` | `backend/blueprints/group_chat.py:2867` | api group messages around | *(no exact string match — may use helpers)* |
 | `/api/group_feed` | GET | `api_group_feed` | `backend/blueprints/group_feed.py:184` | api group feed | `client/src/pages/CreatePost.tsx` (1), `client/src/pages/GroupFeed.tsx` (1) |
 | `/api/group_post_view` | POST | `api_group_post_view` | `backend/blueprints/group_feed.py:196` | api group post view | `client/src/pages/PostDetail.tsx` (1) |
 | `/api/group_announcements/<int:group_id>` | GET | `api_group_announcements_list` | `backend/blueprints/group_feed.py:225` | api group announcements list | *(no exact string match — may use helpers)* |

@@ -503,11 +503,11 @@ export default function CreatePost(){
 
   return (
     <>
-    <div className="glass-page text-white">
+    <div className="glass-page min-h-screen bg-c-bg-app text-c-text-primary">
       {/* Full-screen loading overlay when submitting */}
       {submitting && (
-        <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center">
-          <div className="w-16 h-16 border-4 border-white/20 border-t-[#4db6ac] rounded-full animate-spin mb-4" />
+        <div className="fixed inset-0 z-[200] bg-c-bg-overlay backdrop-blur-sm flex flex-col items-center justify-center">
+          <div className="w-16 h-16 border-4 border-white/20 border-t-cpoint-turquoise rounded-full animate-spin mb-4" />
           <div className="text-white font-medium">{t('feed.posting_overlay')}</div>
           {mediaFiles.length > 0 && (
             <div className="text-white/60 text-sm mt-2">{t('feed.uploading_files', { count: mediaFiles.length })}</div>
@@ -518,19 +518,19 @@ export default function CreatePost(){
       {/* Praise notification */}
       {showPraise && (
         <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50 pointer-events-none">
-          <div className="px-6 py-3 rounded-full border border-[#4db6ac]/40 bg-black/90 backdrop-blur-sm shadow-lg">
-            <div className="text-sm font-medium text-white">
-              {t('feed.first_post_praise')} <span className="text-[#4db6ac]">{t('feed.first_post_created')}</span>
+          <div className="px-6 py-3 rounded-full border border-cpoint-turquoise/40 bg-c-bg-elevated backdrop-blur-sm shadow-lg">
+            <div className="text-sm font-medium text-c-text-primary">
+              {t('feed.first_post_praise')} <span className="text-cpoint-turquoise">{t('feed.first_post_created')}</span>
             </div>
           </div>
         </div>
       )}
       <div 
-        className="fixed left-0 right-0 h-12 border-b border-white/10 bg-black/90 backdrop-blur flex items-center justify-between px-3 z-50"
+        className="fixed left-0 right-0 h-12 border-b border-c-border bg-c-bg-app/90 backdrop-blur flex items-center justify-between px-3 z-50"
         style={{ top: 'calc(env(safe-area-inset-top, 0px) + 56px)' }}
       >
         <button 
-          className="flex items-center gap-2 px-3 py-2 rounded-full text-white hover:text-[#4db6ac] hover:bg-white/10 transition-colors" 
+          className="flex items-center gap-2 px-3 py-2 rounded-full text-c-text-primary hover:text-cpoint-turquoise hover:bg-c-hover-bg transition-colors" 
           onClick={() => {
             if (groupId) navigate(`/group_feed_react/${groupId}`)
             else if (communityId) navigate(`/community_feed_react/${communityId}`)
@@ -541,7 +541,7 @@ export default function CreatePost(){
           <i className="fa-solid fa-arrow-left" />
           <span className="text-sm font-medium">{t('common.back')}</span>
         </button>
-        <span className="text-sm font-semibold text-white">{t('feed.create_post_title')}</span>
+        <span className="text-sm font-semibold text-c-text-primary">{t('feed.create_post_title')}</span>
         <div className="w-20" /> {/* Spacer for centering */}
       </div>
       <div className="app-content px-0" style={{ paddingTop: contentPaddingTop, paddingBottom: contentPaddingBottom }}>
@@ -555,12 +555,12 @@ export default function CreatePost(){
           onChange={setContent}
           communityId={communityId ? Number(communityId) : undefined}
           placeholder={t('feed.create_post_placeholder')}
-          className="w-full min-h-[180px] p-3 rounded-xl bg-black border border-white/10 text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+          className="w-full min-h-[180px] p-3 rounded-xl bg-c-bg-app border border-c-border text-sm focus:outline-none focus:ring-1 focus:ring-cpoint-turquoise"
           rows={8}
         />
 
         {groupId && groupFeedMeta?.steve_agent_enabled && groupFeedMeta?.steve_agent_preset === 'career_expert' && (
-          <label className="flex items-start gap-3 px-1 py-2 rounded-lg border border-white/10 bg-white/5">
+          <label className="flex items-start gap-3 px-1 py-2 rounded-lg border border-c-border bg-c-hover-bg">
             <input
               type="checkbox"
               className="mt-1"
@@ -568,8 +568,8 @@ export default function CreatePost(){
               onChange={(e) => setAskSteveOnPost(e.target.checked)}
             />
             <div>
-              <div className="text-sm text-white font-medium">{t('feed.ask_steve')}</div>
-              <div className="text-xs text-[#9fb0b5] mt-0.5">
+              <div className="text-sm text-c-text-primary font-medium">{t('feed.ask_steve')}</div>
+              <div className="text-xs text-c-text-tertiary mt-0.5">
                 {t('feed.ask_steve_helper')}
               </div>
             </div>
@@ -579,17 +579,17 @@ export default function CreatePost(){
         {/* Detected links */}
         {detectedLinks.length > 0 && (
           <div className="mt-3 space-y-2">
-            <div className="text-xs text-[#9fb0b5] font-medium">{t('feed.detected_links')}</div>
+            <div className="text-xs text-c-text-tertiary font-medium">{t('feed.detected_links')}</div>
             {detectedLinks.map((link, idx) => (
-              <div key={idx} className="flex items-center gap-2 p-2 rounded-lg border border-white/10 bg-white/5">
+              <div key={idx} className="flex items-center gap-2 p-2 rounded-lg border border-c-border bg-c-hover-bg">
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs text-[#4db6ac] truncate">{link.displayText}</div>
+                  <div className="text-xs text-cpoint-turquoise truncate">{link.displayText}</div>
                   {link.displayText !== link.url && (
-                    <div className="text-xs text-white/50 truncate">{link.url}</div>
+                    <div className="text-xs text-c-text-tertiary truncate">{link.url}</div>
                   )}
                 </div>
                 <button
-                  className="px-2 py-1 rounded text-xs border border-[#4db6ac]/30 text-[#4db6ac] hover:bg-[#4db6ac]/10"
+                  className="px-2 py-1 rounded text-xs border border-cpoint-turquoise/30 text-cpoint-turquoise hover:bg-cpoint-turquoise/10"
                   onClick={() => startRenamingLink(link)}
                 >
                   {t('feed.rename')}
@@ -601,7 +601,7 @@ export default function CreatePost(){
 
         {/* Media carousel preview */}
         {mediaPreviewUrls.length > 0 && (
-          <div className="mt-3 rounded-xl overflow-hidden border border-white/10 bg-black">
+          <div className="mt-3 rounded-xl overflow-hidden border border-c-border bg-black">
             {/* Carousel */}
             <div className="relative">
               {/* Current media item */}
@@ -657,8 +657,8 @@ export default function CreatePost(){
             </div>
             
             {/* Carousel indicators and info */}
-            <div className="px-3 py-2 flex items-center justify-between bg-white/5 border-t border-white/10">
-              <div className="flex items-center gap-2 text-xs text-white/70">
+            <div className="px-3 py-2 flex items-center justify-between bg-c-hover-bg border-t border-c-border">
+              <div className="flex items-center gap-2 text-xs text-c-text-secondary">
                 <span className="flex items-center gap-1.5 text-[#7fe7df]">
                   <i className={`fa-solid ${
                     mediaPreviewUrls[mediaCarouselIndex]?.type === 'video'
@@ -677,7 +677,7 @@ export default function CreatePost(){
                     <button
                       key={idx}
                       type="button"
-                      className={`w-2 h-2 rounded-full transition-colors ${idx === mediaCarouselIndex ? 'bg-[#4db6ac]' : 'bg-white/30'}`}
+                      className={`w-2 h-2 rounded-full transition-colors ${idx === mediaCarouselIndex ? 'bg-cpoint-turquoise' : 'bg-white/30'}`}
                       onClick={() => setMediaCarouselIndex(idx)}
                     />
                   ))}
@@ -694,7 +694,7 @@ export default function CreatePost(){
         )}
 
         {selectedGif ? (
-          <div className="mt-3 inline-flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
+          <div className="mt-3 inline-flex items-center gap-3 rounded-xl border border-c-border bg-c-hover-bg p-3">
             <img src={selectedGif.previewUrl} alt={t('feed.selected_gif_alt')} className="w-16 h-16 rounded object-cover" loading="lazy" />
             <div className="flex items-center gap-2 text-xs text-[#7fe7df]">
               <i className="fa-solid fa-images" />
@@ -710,17 +710,17 @@ export default function CreatePost(){
           </div>
         ) : null}
         {preview ? (
-          <div className="mt-3 rounded-xl border border-white/10 p-3 bg-white/[0.03] space-y-2">
+          <div className="mt-3 rounded-xl border border-c-border p-3 bg-white/[0.03] space-y-2">
             <audio controls src={preview.url} className="w-full" playsInline webkit-playsinline="true" />
           </div>
         ) : null}
         {recording && (
           <div className="mt-3 px-3">
-            <div className="text-xs text-[#9fb0b5] mb-1">{t('feed.recording', { seconds: Math.min(60, Math.round((recordMs||0)/1000)) })}</div>
-            <div className="h-2 w-full bg-white/5 rounded overflow-hidden">
-              <div className="h-full bg-[#4db6ac] transition-all" style={{ width: `${Math.min(100, ((recordMs||0)/600) )}%`, opacity: 0.9 }} />
+            <div className="text-xs text-c-text-tertiary mb-1">{t('feed.recording', { seconds: Math.min(60, Math.round((recordMs||0)/1000)) })}</div>
+            <div className="h-2 w-full bg-c-hover-bg rounded overflow-hidden">
+              <div className="h-full bg-cpoint-turquoise transition-all" style={{ width: `${Math.min(100, ((recordMs||0)/600) )}%`, opacity: 0.9 }} />
             </div>
-            <div className="mt-2 h-8 w-full bg-white/5 rounded flex items-center">
+            <div className="mt-2 h-8 w-full bg-c-hover-bg rounded flex items-center">
               <div className="h-2 bg-[#7fe7df] rounded transition-all" style={{ width: `${Math.max(6, Math.min(96, level*100))}%`, marginLeft: '2%' }} />
             </div>
           </div>
@@ -730,23 +730,23 @@ export default function CreatePost(){
       
       {/* Rename link modal */}
       {renamingLink && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm">
-          <div className="w-[90%] max-w-md rounded-2xl border border-[#4db6ac]/30 bg-[#0b0b0b] p-6 shadow-[0_0_40px_rgba(77,182,172,0.3)]">
-            <h3 className="text-lg font-bold text-white mb-4">{t('feed.rename_link')}</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-c-bg-overlay backdrop-blur-sm">
+          <div className="w-[90%] max-w-md rounded-2xl border border-cpoint-turquoise/30 bg-c-bg-elevated p-6 shadow-[0_0_40px_rgba(0,206,200,0.3)]">
+            <h3 className="text-lg font-bold text-c-text-primary mb-4">{t('feed.rename_link')}</h3>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-[#9fb0b5] mb-1 block">{t('feed.original_url')}</label>
-                <div className="text-xs text-white/70 truncate p-2 rounded bg-white/5 border border-white/10">
+                <label className="text-xs text-c-text-tertiary mb-1 block">{t('feed.original_url')}</label>
+                <div className="text-xs text-c-text-secondary truncate p-2 rounded bg-c-hover-bg border border-c-border">
                   {renamingLink.url}
                 </div>
               </div>
               <div>
-                <label className="text-xs text-[#9fb0b5] mb-1 block">{t('feed.display_as')}</label>
+                <label className="text-xs text-c-text-tertiary mb-1 block">{t('feed.display_as')}</label>
                 <input
                   type="text"
                   value={linkDisplayName}
                   onChange={(e) => setLinkDisplayName(e.target.value)}
-                  className="w-full p-2 rounded bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+                  className="w-full p-2 rounded bg-c-hover-bg border border-c-border text-sm text-c-text-primary focus:outline-none focus:ring-1 focus:ring-cpoint-turquoise"
                   placeholder={t('feed.display_name_placeholder')}
                   autoFocus
                 />
@@ -754,13 +754,13 @@ export default function CreatePost(){
             </div>
             <div className="flex gap-2 mt-6">
               <button
-                className="flex-1 px-4 py-2 rounded-lg border border-white/20 text-white/80 text-sm hover:bg-white/5"
+                className="flex-1 px-4 py-2 rounded-lg border border-white/20 text-c-text-secondary text-sm hover:bg-c-hover-bg"
                 onClick={cancelRenaming}
               >
                 {t('common.cancel')}
               </button>
               <button
-                className="flex-1 px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110"
+                className="flex-1 px-4 py-2 rounded-lg bg-cpoint-turquoise text-black font-medium hover:brightness-110"
                 onClick={saveRenamedLink}
               >
                 {t('common.save')}
@@ -776,7 +776,7 @@ export default function CreatePost(){
     {!gifPickerOpen && typeof document !== 'undefined' && createPortal(
     <div 
       ref={composerRef}
-      className="fixed left-0 right-0"
+      className="fixed left-0 right-0 bg-gradient-to-b from-transparent to-c-bg-app"
       style={{
         bottom: showKeyboard ? `${keyboardLift}px` : 0,
         zIndex: 1000,
@@ -787,7 +787,6 @@ export default function CreatePost(){
         paddingBottom: showKeyboard ? '4px' : `calc(var(--sab-px, 0px) + 6px)`,
         paddingLeft: 'var(--sal-px, 0px)',
         paddingRight: 'var(--sar-px, 0px)',
-        background: 'linear-gradient(180deg, rgba(3,3,4,0) 0%, rgba(3,3,4,0.65) 30%, rgba(3,3,4,0.9) 65%, #000 90%)',
         transition: 'transform 140ms ease-out',
         touchAction: 'manipulation',
         pointerEvents: 'auto',
@@ -795,16 +794,15 @@ export default function CreatePost(){
     >
       <div
         ref={composerCardRef}
-        className="relative max-w-2xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-3.5 sm:px-4.5 py-2.5 sm:py-3"
-        style={{ background: '#0a0a0c' }}
+        className="relative max-w-2xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-3.5 sm:px-4.5 py-2.5 sm:py-3 bg-c-composer-bg"
       >
         <div
           className="grid gap-3"
           style={{ gridTemplateColumns: '1fr auto', alignItems: 'center' }}
         >
           <div className="flex flex-wrap items-center gap-3">
-            <label className="px-3 py-2 rounded-full hover:bg-white/5 cursor-pointer" aria-label={t('feed.add_photos_videos')}>
-              <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
+            <label className="px-3 py-2 rounded-full hover:bg-c-hover-bg cursor-pointer" aria-label={t('feed.add_photos_videos')}>
+              <i className="fa-regular fa-image" style={{ color: '#00CEC8' }} />
               <input
                 ref={fileInputRef}
                 type="file"
@@ -839,7 +837,7 @@ export default function CreatePost(){
             <NativeIconButton
               preventBlur
               variant="muted"
-              className="rounded-full px-3 py-2 h-auto w-auto text-[#4db6ac] bg-transparent hover:bg-white/5"
+              className="rounded-full px-3 py-2 h-auto w-auto text-cpoint-turquoise bg-transparent hover:bg-c-hover-bg"
               aria-label={t('feed.add_gif')}
               onClick={() => setGifPickerOpen(true)}
             >
@@ -848,7 +846,7 @@ export default function CreatePost(){
             <NativeIconButton
               preventBlur
               variant="muted"
-              className={`rounded-full px-3 py-2 h-auto w-auto text-[#4db6ac] bg-transparent hover:bg-white/5 ${recording ? 'brightness-125' : ''}`}
+              className={`rounded-full px-3 py-2 h-auto w-auto text-cpoint-turquoise bg-transparent hover:bg-c-hover-bg ${recording ? 'brightness-125' : ''}`}
               aria-label={recording ? t('feed.stop_recording') : t('feed.record_audio')}
               onClick={handleMicButton}
             >
@@ -858,7 +856,7 @@ export default function CreatePost(){
               <NativeIconButton
                 preventBlur
                 variant="muted"
-                className="rounded-full px-3 py-2 h-auto w-auto text-white/70 bg-transparent hover:bg-white/5"
+                className="rounded-full px-3 py-2 h-auto w-auto text-c-text-secondary bg-transparent hover:bg-c-hover-bg"
                 onClick={clearPreview}
                 aria-label={t('feed.discard_audio')}
               >
@@ -867,7 +865,7 @@ export default function CreatePost(){
             )}
           </div>
           <NativeActionButton
-            className={`px-4 py-2 rounded-full font-semibold ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed active:scale-100' : ''}`}
+            className={`px-4 py-2 rounded-full font-semibold ${submitting ? 'bg-white/20 text-c-text-secondary cursor-not-allowed active:scale-100' : ''}`}
             onClick={submit}
             disabled={submitting || (!content && !hasMediaAttachment && !gifFile && !preview)}
           >
@@ -876,9 +874,9 @@ export default function CreatePost(){
         </div>
       </div>
       <div 
+        className="bg-c-bg-app"
         style={{
           height: showKeyboard ? '4px' : 'var(--sab-px, 0px)',
-          background: '#000',
           flexShrink: 0,
         }}
       />

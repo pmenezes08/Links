@@ -82,6 +82,7 @@ export function SmartLink({
   onJoinCommunity,
   onExternalClick,
   linkClassName,
+  isSent = false,
 }: { 
   href: string
   displayText: string
@@ -89,6 +90,8 @@ export function SmartLink({
   onExternalClick?: (url: string) => void
   /** Extra classes for the anchor (e.g. smaller text in SOURCES block). */
   linkClassName?: string
+  /** When rendered inside a sent (teal) chat bubble, use white instead of turquoise. */
+  isSent?: boolean
 }) {
   const navigate = useNavigate()
   const [processing, setProcessing] = useState(false)
@@ -182,7 +185,7 @@ export function SmartLink({
     <a
       href={href}
       onClick={handleClick}
-      className={`text-[#4db6ac] underline inline py-0.5 break-all ${processing ? 'opacity-50 cursor-wait' : ''} ${linkClassName || ''}`}
+      className={`${isSent ? 'text-white' : 'text-cpoint-turquoise'} underline inline py-0.5 break-all ${processing ? 'opacity-50 cursor-wait' : ''} ${linkClassName || ''}`}
       style={{ minHeight: '32px', lineHeight: '1.6' }}
     >
       {displayText}
@@ -238,7 +241,7 @@ export function replaceFaIcons(nodes: React.ReactNode[]): React.ReactNode[] {
  * Colorizes @mentions in an array of React nodes.
  * When onMentionClick is provided, mentions become clickable (e.g. navigate to public profile).
  */
-export function colorizeMentions(nodes: React.ReactNode[], onMentionClick?: (username: string) => void): React.ReactNode[] {
+export function colorizeMentions(nodes: React.ReactNode[], onMentionClick?: (username: string) => void, isSent: boolean = false): React.ReactNode[] {
   const out: React.ReactNode[] = []
   const mentionRe = /(^|\s)(@([a-zA-Z0-9_]{1,30}))/g
   nodes.forEach((n, idx) => {
@@ -257,14 +260,14 @@ export function colorizeMentions(nodes: React.ReactNode[], onMentionClick?: (use
         segs.push(
           <span
             key={`men-${idx}-${start}`}
-            className="text-[#4db6ac] cursor-pointer hover:underline"
+            className={isSent ? "text-white font-semibold hover:underline cursor-pointer" : "text-cpoint-turquoise cursor-pointer hover:underline"}
             onClick={(e) => { e.stopPropagation(); onMentionClick(username) }}
             role="link"
             tabIndex={0}
           >{full}</span>
         )
       } else {
-        segs.push(<span key={`men-${idx}-${start}`} className="text-[#4db6ac]">{full}</span>)
+        segs.push(<span key={`men-${idx}-${start}`} className={isSent ? "text-white font-semibold" : "text-cpoint-turquoise"}>{full}</span>)
       }
       last = start + lead.length + full.length
     }
@@ -298,6 +301,7 @@ export function renderTextWithSourceLinks(
   shortenUrls: boolean = false,
   onMentionClick?: (username: string) => void,
   onExternalClick?: (url: string) => void,
+  isSent: boolean = false,
 ): React.ReactNode {
   if (!text) return null
   
@@ -316,7 +320,7 @@ export function renderTextWithSourceLinks(
 
     if (effectiveStart > lastIndex) {
       const textBefore = text.substring(lastIndex, effectiveStart)
-      parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(textBefore, lastIndex))), onMentionClick))
+      parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(textBefore, lastIndex))), onMentionClick, isSent))
     }
 
     let url: string
@@ -344,6 +348,7 @@ export function renderTextWithSourceLinks(
         href={url}
         displayText={displayText}
         onExternalClick={onExternalClick}
+        isSent={isSent}
       />,
     )
     
@@ -352,7 +357,7 @@ export function renderTextWithSourceLinks(
   
   if (lastIndex < text.length) {
     const remainingText = text.substring(lastIndex)
-    parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(remainingText, lastIndex))), onMentionClick))
+    parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(remainingText, lastIndex))), onMentionClick, isSent))
   }
   
   return parts.length > 0 ? <>{parts}</> : text

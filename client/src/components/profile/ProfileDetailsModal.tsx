@@ -110,19 +110,19 @@ export function ProfileDetailsModal({
       aria-modal="true"
       aria-labelledby="profile-details-title"
     >
-      <div className="relative flex max-h-[min(720px,calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1.5rem))] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#111] shadow-xl">
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 px-4 py-3">
+      <div className="relative flex max-h-[min(720px,calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1.5rem))] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-c-border bg-c-bg-surface shadow-xl">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-c-border px-4 py-3">
           <div>
-            <h2 id="profile-details-title" className="text-base font-semibold text-white">
+            <h2 id="profile-details-title" className="text-base font-semibold text-c-text-primary">
               {t('profile.spotlight.title')}
             </h2>
-            <p className="text-[11px] text-[#9fb0b5]">
+            <p className="text-[11px] text-c-text-tertiary">
               {t('profile.details_modal.step', { page, step_name: stepName })}
             </p>
           </div>
           <button
             type="button"
-            className="rounded-lg p-2 text-white/50 hover:bg-white/10 hover:text-white"
+            className="rounded-lg p-2 text-c-text-tertiary hover:bg-c-hover-bg hover:text-c-text-primary"
             onClick={requestClose}
             aria-label={t('profile.aria.close')}
           >
@@ -133,15 +133,15 @@ export function ProfileDetailsModal({
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3">
           {page === 1 ? (
             <form id="form-personal-modal" className="space-y-4" onSubmit={onSavePersonal}>
-              <p className="text-xs leading-relaxed text-[#b8c8cc] border border-[#4db6ac]/25 rounded-lg px-3 py-2 bg-[#4db6ac]/5">
-                <span className="font-medium text-[#4db6ac]">{t('profile.details_modal.steve_label')}</span>{' '}
+              <p className="text-xs leading-relaxed text-[#b8c8cc] border border-cpoint-turquoise/25 rounded-lg px-3 py-2 bg-cpoint-turquoise/5">
+                <span className="font-medium text-cpoint-turquoise">{t('profile.details_modal.steve_label')}</span>{' '}
                 {t('profile.details_modal.steve_page1')}
               </p>
               {PERSONAL_FIELDS.map(field => (
                 <label key={field.key} className="text-sm block">
-                  <span className="text-white/90">{t(field.labelKey)}</span>
+                  <span className="text-c-text-primary">{t(field.labelKey)}</span>
                   <textarea
-                    className="mt-1 w-full min-h-[72px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm text-white outline-none focus:border-[#4db6ac]"
+                    className="mt-1 w-full min-h-[72px] rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm text-c-text-primary outline-none focus:border-cpoint-turquoise"
                     value={personal[field.key]}
                     onChange={e =>
                       setPersonal(prev => ({ ...prev, [field.key]: e.target.value }))
@@ -152,29 +152,29 @@ export function ProfileDetailsModal({
             </form>
           ) : (
             <form id="form-professional-modal" className="space-y-4" onSubmit={onSaveProfessional}>
-              <p className="text-xs leading-relaxed text-[#b8c8cc] border border-[#4db6ac]/25 rounded-lg px-3 py-2 bg-[#4db6ac]/5">
-                <span className="font-medium text-[#4db6ac]">{t('profile.details_modal.steve_label')}</span>{' '}
+              <p className="text-xs leading-relaxed text-[#b8c8cc] border border-cpoint-turquoise/25 rounded-lg px-3 py-2 bg-cpoint-turquoise/5">
+                <span className="font-medium text-cpoint-turquoise">{t('profile.details_modal.steve_label')}</span>{' '}
                 {t('profile.details_modal.steve_page2')}
               </p>
               <label className="text-sm sm:col-span-2 block">
-                <span className="text-white/90">{t('profile.details_modal.current_role_start')}</span>
-                <span className="block text-[11px] text-[#9fb0b5] font-normal">
+                <span className="text-c-text-primary">{t('profile.details_modal.current_role_start')}</span>
+                <span className="block text-[11px] text-c-text-tertiary font-normal">
                   {t('profile.details_modal.current_role_start_hint')}
                 </span>
                 <input
                   type="month"
-                  className="mt-1 w-full max-w-[200px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                  className="mt-1 w-full max-w-[200px] rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
                   value={professional.current_role_start}
                   onChange={e => setProfessional(prev => ({ ...prev, current_role_start: e.target.value }))}
                 />
               </label>
 
-              <div className="rounded-lg border border-white/10 p-3 space-y-3">
+              <div className="rounded-lg border border-c-border p-3 space-y-3">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium text-white">{t('profile.details_modal.more_experience')}</span>
+                  <span className="text-sm font-medium text-c-text-primary">{t('profile.details_modal.more_experience')}</span>
                   <button
                     type="button"
-                    className="flex h-8 w-8 items-center justify-center rounded-full border border-[#4db6ac]/50 text-[#4db6ac] hover:bg-[#4db6ac]/15"
+                    className="flex h-8 w-8 items-center justify-center rounded-full border border-cpoint-turquoise/50 text-cpoint-turquoise hover:bg-cpoint-turquoise/15"
                     onClick={() =>
                       setProfessional(prev => ({
                         ...prev,
@@ -187,10 +187,10 @@ export function ProfileDetailsModal({
                   </button>
                 </div>
                 {professional.work_history.length === 0 ? (
-                  <p className="text-xs text-[#9fb0b5]">{t('profile.details_modal.add_experience_hint')}</p>
+                  <p className="text-xs text-c-text-tertiary">{t('profile.details_modal.add_experience_hint')}</p>
                 ) : null}
                 {professional.work_history.map((row, idx) => (
-                  <div key={idx} className="rounded-md border border-white/10 bg-black/40 p-3 space-y-2">
+                  <div key={idx} className="rounded-md border border-c-border bg-c-hover-bg p-3 space-y-2">
                     <div className="flex justify-end">
                       <button
                         type="button"
@@ -207,7 +207,7 @@ export function ProfileDetailsModal({
                     </div>
                     <div className="grid gap-2 sm:grid-cols-2">
                       <input
-                        className="rounded-md bg-black border border-white/10 px-2 py-1.5 text-sm"
+                        className="rounded-md bg-c-bg-app border border-c-border px-2 py-1.5 text-sm"
                         placeholder={t('profile.work.title')}
                         value={row.title}
                         onChange={e => {
@@ -219,7 +219,7 @@ export function ProfileDetailsModal({
                         }}
                       />
                       <input
-                        className="rounded-md bg-black border border-white/10 px-2 py-1.5 text-sm"
+                        className="rounded-md bg-c-bg-app border border-c-border px-2 py-1.5 text-sm"
                         placeholder={t('profile.work.company')}
                         value={row.company}
                         onChange={e => {
@@ -231,7 +231,7 @@ export function ProfileDetailsModal({
                         }}
                       />
                       <input
-                        className="rounded-md bg-black border border-white/10 px-2 py-1.5 text-sm sm:col-span-2"
+                        className="rounded-md bg-c-bg-app border border-c-border px-2 py-1.5 text-sm sm:col-span-2"
                         placeholder={t('profile.work.location_optional')}
                         value={row.location}
                         onChange={e => {
@@ -242,12 +242,12 @@ export function ProfileDetailsModal({
                           }))
                         }}
                       />
-                      <label className="text-[11px] text-[#9fb0b5] sm:col-span-2 grid grid-cols-2 gap-2">
+                      <label className="text-[11px] text-c-text-tertiary sm:col-span-2 grid grid-cols-2 gap-2">
                         <span>{t('profile.work.start_month')}</span>
                         <span>{t('profile.work.end_month_optional')}</span>
                         <input
                           type="month"
-                          className="rounded-md bg-black border border-white/10 px-2 py-1.5 text-sm"
+                          className="rounded-md bg-c-bg-app border border-c-border px-2 py-1.5 text-sm"
                           value={row.start}
                           onChange={e => {
                             const v = e.target.value
@@ -259,7 +259,7 @@ export function ProfileDetailsModal({
                         />
                         <input
                           type="month"
-                          className="rounded-md bg-black border border-white/10 px-2 py-1.5 text-sm"
+                          className="rounded-md bg-c-bg-app border border-c-border px-2 py-1.5 text-sm"
                           value={row.end}
                           onChange={e => {
                             const v = e.target.value
@@ -272,7 +272,7 @@ export function ProfileDetailsModal({
                       </label>
                     </div>
                     <textarea
-                      className="w-full rounded-md bg-black border border-white/10 px-2 py-1.5 text-sm min-h-[64px]"
+                      className="w-full rounded-md bg-c-bg-app border border-c-border px-2 py-1.5 text-sm min-h-[64px]"
                       placeholder={t('profile.work.description')}
                       value={row.description}
                       onChange={e => {
@@ -287,12 +287,12 @@ export function ProfileDetailsModal({
                 ))}
               </div>
 
-              <div className="rounded-lg border border-white/10 p-3 space-y-3">
+              <div className="rounded-lg border border-c-border p-3 space-y-3">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium text-white">{t('profile.details_modal.education')}</span>
+                  <span className="text-sm font-medium text-c-text-primary">{t('profile.details_modal.education')}</span>
                   <button
                     type="button"
-                    className="flex h-8 w-8 items-center justify-center rounded-full border border-[#4db6ac]/50 text-[#4db6ac] hover:bg-[#4db6ac]/15"
+                    className="flex h-8 w-8 items-center justify-center rounded-full border border-cpoint-turquoise/50 text-cpoint-turquoise hover:bg-cpoint-turquoise/15"
                     onClick={() =>
                       setProfessional(prev => ({
                         ...prev,
@@ -305,10 +305,10 @@ export function ProfileDetailsModal({
                   </button>
                 </div>
                 {professional.education.length === 0 ? (
-                  <p className="text-xs text-[#9fb0b5]">{t('profile.details_modal.add_education_hint')}</p>
+                  <p className="text-xs text-c-text-tertiary">{t('profile.details_modal.add_education_hint')}</p>
                 ) : null}
                 {professional.education.map((row, idx) => (
-                  <div key={idx} className="rounded-md border border-white/10 bg-black/40 p-3 space-y-2">
+                  <div key={idx} className="rounded-md border border-c-border bg-c-hover-bg p-3 space-y-2">
                     <div className="flex justify-end">
                       <button
                         type="button"
@@ -324,7 +324,7 @@ export function ProfileDetailsModal({
                       </button>
                     </div>
                     <input
-                      className="w-full rounded-md bg-black border border-white/10 px-2 py-1.5 text-sm"
+                      className="w-full rounded-md bg-c-bg-app border border-c-border px-2 py-1.5 text-sm"
                       placeholder={t('profile.education.school')}
                       value={row.school}
                       onChange={e => {
@@ -336,7 +336,7 @@ export function ProfileDetailsModal({
                       }}
                     />
                     <input
-                      className="w-full rounded-md bg-black border border-white/10 px-2 py-1.5 text-sm"
+                      className="w-full rounded-md bg-c-bg-app border border-c-border px-2 py-1.5 text-sm"
                       placeholder={t('profile.education.degree_optional')}
                       value={row.degree}
                       onChange={e => {
@@ -350,7 +350,7 @@ export function ProfileDetailsModal({
                     <div className="grid grid-cols-2 gap-2">
                       <input
                         type="month"
-                        className="rounded-md bg-black border border-white/10 px-2 py-1.5 text-sm"
+                        className="rounded-md bg-c-bg-app border border-c-border px-2 py-1.5 text-sm"
                         value={row.start}
                         onChange={e => {
                           const v = e.target.value
@@ -362,7 +362,7 @@ export function ProfileDetailsModal({
                       />
                       <input
                         type="month"
-                        className="rounded-md bg-black border border-white/10 px-2 py-1.5 text-sm"
+                        className="rounded-md bg-c-bg-app border border-c-border px-2 py-1.5 text-sm"
                         value={row.end}
                         onChange={e => {
                           const v = e.target.value
@@ -374,7 +374,7 @@ export function ProfileDetailsModal({
                       />
                     </div>
                     <textarea
-                      className="w-full rounded-md bg-black border border-white/10 px-2 py-1.5 text-sm min-h-[56px]"
+                      className="w-full rounded-md bg-c-bg-app border border-c-border px-2 py-1.5 text-sm min-h-[56px]"
                       placeholder={t('profile.education.description_optional')}
                       value={row.description}
                       onChange={e => {
@@ -393,13 +393,13 @@ export function ProfileDetailsModal({
         </div>
 
         <div
-          className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-white/10 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+          className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-c-border px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
         >
           <div className="flex gap-2">
             {page === 2 ? (
               <button
                 type="button"
-                className="rounded-md border border-white/15 px-3 py-2 text-sm text-white/80 hover:bg-white/10"
+                className="rounded-md border border-c-border px-3 py-2 text-sm text-c-text-secondary hover:bg-c-hover-bg"
                 onClick={() => setPage(1)}
               >
                 {t('profile.public.back')}
@@ -412,14 +412,14 @@ export function ProfileDetailsModal({
                 <button
                   type="submit"
                   form="form-personal-modal"
-                  className="rounded-md bg-[#4db6ac] px-4 py-2 text-sm font-medium text-black hover:brightness-110 disabled:opacity-50"
+                  className="rounded-md bg-cpoint-turquoise px-4 py-2 text-sm font-medium text-black hover:brightness-110 disabled:opacity-50"
                   disabled={savingPersonal}
                 >
                   {savingPersonal ? t('profile.saving') : t('profile.details_modal.save_highlights')}
                 </button>
                 <button
                   type="button"
-                  className="rounded-md border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/10"
+                  className="rounded-md border border-c-border px-4 py-2 text-sm text-c-text-primary hover:bg-c-hover-bg"
                   onClick={() => setPage(2)}
                 >
                   {t('profile.next')}
@@ -430,14 +430,14 @@ export function ProfileDetailsModal({
                 <button
                   type="submit"
                   form="form-professional-modal"
-                  className="rounded-md bg-[#4db6ac] px-4 py-2 text-sm font-medium text-black hover:brightness-110 disabled:opacity-50"
+                  className="rounded-md bg-cpoint-turquoise px-4 py-2 text-sm font-medium text-black hover:brightness-110 disabled:opacity-50"
                   disabled={savingProfessional}
                 >
                   {savingProfessional ? t('profile.saving') : t('profile.details_modal.save_timeline')}
                 </button>
                 <button
                   type="button"
-                  className="rounded-md border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/10"
+                  className="rounded-md border border-c-border px-4 py-2 text-sm text-c-text-primary hover:bg-c-hover-bg"
                   onClick={requestClose}
                 >
                   {t('profile.done')}

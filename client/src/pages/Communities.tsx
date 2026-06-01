@@ -140,7 +140,7 @@ function PostMediaCarousel({ post }: { post: { image_path?: string | null; video
         <ImageLoader
           src={normalizeMediaPath(post.image_path)}
           alt={t('communities.post_image_alt')}
-          className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
+          className="block mx-auto max-w-full max-h-[360px] rounded border border-c-border"
         />
       )
     }
@@ -148,7 +148,7 @@ function PostMediaCarousel({ post }: { post: { image_path?: string | null; video
       return (
         <div onClick={(e) => e.stopPropagation()}>
           <video
-            className="w-full max-h-[360px] rounded border border-white/10 bg-black"
+            className="w-full max-h-[360px] rounded border border-c-border bg-c-bg-app"
             src={normalizeMediaPath(post.video_path) + '#t=0.1'}
             controls
             playsInline
@@ -192,7 +192,7 @@ function PostMediaCarousel({ post }: { post: { image_path?: string | null; video
     >
       {current?.type === 'video' ? (
         <video
-          className="w-full max-h-[360px] rounded border border-white/10 bg-black"
+          className="w-full max-h-[360px] rounded border border-c-border bg-c-bg-app"
           src={normalizeMediaPath(current.path) + '#t=0.1'}
           controls
           playsInline
@@ -202,7 +202,7 @@ function PostMediaCarousel({ post }: { post: { image_path?: string | null; video
         <ImageLoader
           src={normalizeMediaPath(current?.path || '')}
           alt={t('communities.post_media_alt', { index: index + 1 })}
-          className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
+          className="block mx-auto max-w-full max-h-[360px] rounded border border-c-border"
         />
       )}
       
@@ -212,7 +212,7 @@ function PostMediaCarousel({ post }: { post: { image_path?: string | null; video
           {/* Left arrow */}
           <button
             type="button"
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-black/90 disabled:opacity-30 z-20 shadow-lg"
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/70 text-c-text-primary flex items-center justify-center hover:bg-black/90 disabled:opacity-30 z-20 shadow-lg"
             onClick={(e) => { e.stopPropagation(); setIndex(i => Math.max(0, i - 1)) }}
             disabled={index === 0}
           >
@@ -221,7 +221,7 @@ function PostMediaCarousel({ post }: { post: { image_path?: string | null; video
           {/* Right arrow */}
           <button
             type="button"
-            className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-black/90 disabled:opacity-30 z-20 shadow-lg"
+            className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/70 text-c-text-primary flex items-center justify-center hover:bg-black/90 disabled:opacity-30 z-20 shadow-lg"
             onClick={(e) => { e.stopPropagation(); setIndex(i => Math.min(mediaPaths.length - 1, i + 1)) }}
             disabled={index === mediaPaths.length - 1}
           >
@@ -239,7 +239,7 @@ function PostMediaCarousel({ post }: { post: { image_path?: string | null; video
             ))}
           </div>
           {/* Counter badge */}
-          <div className="absolute top-3 right-3 bg-black/70 text-white text-xs px-2 py-1 rounded-full z-20">
+          <div className="absolute top-3 right-3 bg-black/70 text-c-text-primary text-xs px-2 py-1 rounded-full z-20">
             {index + 1}/{mediaPaths.length}
           </div>
         </>
@@ -689,12 +689,12 @@ export default function Communities(){
   const showSubCommunityFab = activeTab === 'management' && !!parentIdFromQuery
 
   return (
-    <div className="min-h-screen bg-black text-white relative pb-safe">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary relative pb-safe">
       {/* Global header used from App */}
 
       {/* Secondary nav like X - fixed below global header */}
       <div 
-        className={`fixed left-0 right-0 h-12 bg-black/95 backdrop-blur border-b border-white/5 ${communitiesGuideStep !== null ? 'z-[100]' : 'z-40'}`}
+        className={`fixed left-0 right-0 h-12 bg-c-bg-elevated/95 backdrop-blur border-b border-c-border ${communitiesGuideStep !== null ? 'z-[100]' : 'z-40'}`}
         style={{
           top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))',
           '--app-subnav-height': '48px',
@@ -703,7 +703,7 @@ export default function Communities(){
         <div className="max-w-2xl mx-auto h-full flex items-center">
           <button
             type="button"
-            className="mr-2 p-2 rounded-full hover:bg-white/5"
+            className="mr-2 p-2 rounded-full hover:bg-c-hover-bg"
             onClick={()=> {
               if (communitiesGuideStep !== null) return
               navigate('/premium_dashboard')
@@ -715,18 +715,18 @@ export default function Communities(){
           <div className="flex-1 flex items-center justify-center gap-8 overflow-x-auto no-scrollbar" style={{ WebkitOverflowScrolling: 'touch' as any }}>
             <button 
               type="button" 
-              className={`text-sm font-medium transition-opacity ${activeTab==='management' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'} ${communitiesGuideStep !== null && guideHighlightTab === 'management' ? 'ring-2 ring-[#4db6ac] ring-offset-2 ring-offset-black/95 rounded-lg px-1 -mx-0.5' : ''} ${communitiesGuideStep !== null && guideHighlightTab !== 'management' ? 'opacity-45' : ''}`}
+              className={`text-sm font-medium transition-opacity ${activeTab==='management' ? 'text-c-text-primary' : 'text-c-text-tertiary hover:text-c-text-secondary'} ${communitiesGuideStep !== null && guideHighlightTab === 'management' ? 'ring-2 ring-cpoint-turquoise ring-offset-2 ring-offset-c-bg-elevated rounded-lg px-1 -mx-0.5' : ''} ${communitiesGuideStep !== null && guideHighlightTab !== 'management' ? 'opacity-45' : ''}`}
               onClick={()=> {
                 if (communitiesGuideStep !== null) return
                 setActiveTab('management')
               }}
             >
               <div className="pt-2 whitespace-nowrap text-center">{t('communities.tab_sub_communities')}</div>
-              <div className={`h-0.5 ${activeTab==='management' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
+              <div className={`h-0.5 ${activeTab==='management' ? 'bg-cpoint-turquoise' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
             </button>
             <button 
               type="button" 
-              className={`text-sm font-medium transition-opacity ${activeTab==='timeline' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'} ${communitiesGuideStep !== null && guideHighlightTab === 'timeline' ? 'ring-2 ring-[#4db6ac] ring-offset-2 ring-offset-black/95 rounded-lg px-1 -mx-0.5' : ''} ${communitiesGuideStep !== null && guideHighlightTab !== 'timeline' ? 'opacity-45' : ''}`}
+              className={`text-sm font-medium transition-opacity ${activeTab==='timeline' ? 'text-c-text-primary' : 'text-c-text-tertiary hover:text-c-text-secondary'} ${communitiesGuideStep !== null && guideHighlightTab === 'timeline' ? 'ring-2 ring-cpoint-turquoise ring-offset-2 ring-offset-c-bg-elevated rounded-lg px-1 -mx-0.5' : ''} ${communitiesGuideStep !== null && guideHighlightTab !== 'timeline' ? 'opacity-45' : ''}`}
               onClick={()=> {
                 if (communitiesGuideStep !== null) return
                 const pidLocal = new URLSearchParams(location.search).get('parent_id')
@@ -737,11 +737,11 @@ export default function Communities(){
               }}
             >
               <div className="pt-2 whitespace-nowrap text-center">{t('communities.tab_home_timeline')}</div>
-              <div className={`h-0.5 ${activeTab==='timeline' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
+              <div className={`h-0.5 ${activeTab==='timeline' ? 'bg-cpoint-turquoise' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
             </button>
             <button 
               type="button" 
-              className={`text-sm font-medium transition-opacity ${activeTab==='groups' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'} ${communitiesGuideStep !== null && guideHighlightTab === 'groups' ? 'ring-2 ring-[#4db6ac] ring-offset-2 ring-offset-black/95 rounded-lg px-1 -mx-0.5' : ''} ${communitiesGuideStep !== null && guideHighlightTab !== 'groups' ? 'opacity-45' : ''}`}
+              className={`text-sm font-medium transition-opacity ${activeTab==='groups' ? 'text-c-text-primary' : 'text-c-text-tertiary hover:text-c-text-secondary'} ${communitiesGuideStep !== null && guideHighlightTab === 'groups' ? 'ring-2 ring-cpoint-turquoise ring-offset-2 ring-offset-c-bg-elevated rounded-lg px-1 -mx-0.5' : ''} ${communitiesGuideStep !== null && guideHighlightTab !== 'groups' ? 'opacity-45' : ''}`}
               onClick={()=> {
                 if (communitiesGuideStep !== null) return
                 setActiveTab('groups')
@@ -749,19 +749,19 @@ export default function Communities(){
               }}
             >
               <div className="pt-2 whitespace-nowrap text-center">{t('communities.tab_groups')}</div>
-              <div className={`h-0.5 ${activeTab==='groups' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
+              <div className={`h-0.5 ${activeTab==='groups' ? 'bg-cpoint-turquoise' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
             </button>
             {showTrainingTab && (
               <button 
                 type="button" 
-                className={`text-sm font-medium transition-opacity ${activeTab==='training' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'} ${communitiesGuideStep !== null ? 'opacity-45' : ''}`}
+                className={`text-sm font-medium transition-opacity ${activeTab==='training' ? 'text-c-text-primary' : 'text-c-text-tertiary hover:text-c-text-secondary'} ${communitiesGuideStep !== null ? 'opacity-45' : ''}`}
                 onClick={()=> {
                   if (communitiesGuideStep !== null) return
                   setActiveTab('training')
                 }}
               >
                 <div className="pt-2 whitespace-nowrap text-center">{t('communities.tab_training')}</div>
-                <div className={`h-0.5 ${activeTab==='training' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
+                <div className={`h-0.5 ${activeTab==='training' ? 'bg-cpoint-turquoise' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
               </button>
             )}
           </div>
@@ -775,17 +775,17 @@ export default function Communities(){
       />
       {communitiesGuideStep !== null && (
         <div
-          className="fixed inset-0 z-[80] flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-[80] flex items-center justify-center px-4 bg-c-bg-overlay backdrop-blur-sm"
           onClick={dismissCommunitiesGuide}
         >
           <div
-            className="w-full max-w-sm rounded-3xl bg-[#0a0a0c] shadow-2xl shadow-black/50 ring-1 ring-white/10 overflow-hidden"
+            className="w-full max-w-sm rounded-3xl bg-c-bg-elevated shadow-2xl shadow-c-card ring-1 ring-c-border overflow-hidden"
             onClick={e => e.stopPropagation()}
           >
             {/* Progress bar */}
-            <div className="h-0.5 w-full bg-white/10">
+            <div className="h-0.5 w-full bg-c-active-bg">
               <div
-                className="h-full bg-[#4db6ac] transition-[width] duration-300 ease-out shadow-[0_0_12px_rgba(77,182,172,0.35)]"
+                className="h-full bg-cpoint-turquoise transition-[width] duration-300 ease-out shadow-[0_0_12px_rgba(0,206,200,0.35)]"
                 style={{
                   width: `${((communitiesGuideStep + 1) / COMMUNITIES_GUIDE_STEPS.length) * 100}%`,
                 }}
@@ -793,20 +793,20 @@ export default function Communities(){
             </div>
 
             <div className="px-6 pt-7 pb-5 flex flex-col items-center text-center">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-[#4db6ac]/75 mb-4 font-medium">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-cpoint-turquoise/75 mb-4 font-medium">
                 {t('communities.guide_quick_tour')}
               </p>
               <div
                 key={communitiesGuideStep}
                 className="flex flex-col items-center animate-fade-in"
               >
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#4db6ac]/25 to-[#4db6ac]/5 border border-[#4db6ac]/25 flex items-center justify-center mb-4 shadow-[0_8px_32px_-8px_rgba(77,182,172,0.35)]">
-                  <i className={`${COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].icon} text-2xl text-[#4db6ac]`} />
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cpoint-turquoise/25 to-cpoint-turquoise/5 border border-cpoint-turquoise/25 flex items-center justify-center mb-4 shadow-[0_8px_32px_-8px_rgba(0,206,200,0.35)]">
+                  <i className={`${COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].icon} text-2xl text-cpoint-turquoise`} />
                 </div>
-                <div className="text-lg font-semibold text-white tracking-tight mb-2">
+                <div className="text-lg font-semibold text-c-text-primary tracking-tight mb-2">
                   {t(COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].titleKey)}
                 </div>
-                <div className="text-[13px] sm:text-sm text-white/75 leading-relaxed max-w-[280px]">
+                <div className="text-[13px] sm:text-sm text-c-text-secondary leading-relaxed max-w-[280px]">
                   {t(COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].descriptionKey)}
                 </div>
               </div>
@@ -816,23 +816,23 @@ export default function Communities(){
               {COMMUNITIES_GUIDE_STEPS.map((_, i) => (
                 <div
                   key={i}
-                  className={`h-1 rounded-full transition-all duration-300 ${i === communitiesGuideStep ? 'w-5 bg-[#4db6ac]' : 'w-1.5 bg-white/20'}`}
+                  className={`h-1 rounded-full transition-all duration-300 ${i === communitiesGuideStep ? 'w-5 bg-cpoint-turquoise' : 'w-1.5 bg-c-active-bg'}`}
                 />
               ))}
             </div>
 
-            <div className="px-5 pb-6 pt-5 flex items-center justify-between gap-2 border-t border-white/[0.08]">
+            <div className="px-5 pb-6 pt-5 flex items-center justify-between gap-2 border-t border-c-border">
               <button
                 type="button"
                 onClick={() => {
                   if (communitiesGuideStep > 0) setCommunitiesGuideStep(communitiesGuideStep - 1)
                   else dismissCommunitiesGuide()
                 }}
-                className="px-4 py-2.5 rounded-xl text-sm font-medium text-white/50 hover:text-white/90 hover:bg-white/5 active:scale-[0.98] transition-all"
+                className="px-4 py-2.5 rounded-xl text-sm font-medium text-c-text-tertiary hover:text-c-text-secondary hover:bg-c-hover-bg active:scale-[0.98] transition-all"
               >
                 {communitiesGuideStep > 0 ? t('common.back') : t('feed.skip')}
               </button>
-              <div className="text-[11px] tabular-nums text-white/35 shrink-0">
+              <div className="text-[11px] tabular-nums text-c-text-tertiary shrink-0">
                 {communitiesGuideStep + 1} / {COMMUNITIES_GUIDE_STEPS.length}
               </div>
               <button
@@ -841,7 +841,7 @@ export default function Communities(){
                   if (communitiesGuideStep < COMMUNITIES_GUIDE_STEPS.length - 1) setCommunitiesGuideStep(communitiesGuideStep + 1)
                   else dismissCommunitiesGuide()
                 }}
-                className="px-5 py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold shadow-lg shadow-[#4db6ac]/20 hover:brightness-110 active:scale-[0.98] transition-all"
+                className="px-5 py-2.5 rounded-xl bg-cpoint-turquoise text-black text-sm font-semibold shadow-lg shadow-cpoint-turquoise/20 hover:brightness-110 active:scale-[0.98] transition-all"
               >
                 {communitiesGuideStep < COMMUNITIES_GUIDE_STEPS.length - 1 ? t('common.next') : t('communities.guide_got_it')}
               </button>
@@ -858,13 +858,13 @@ export default function Communities(){
         style={{ '--app-subnav-height': '48px' } as CSSProperties}
       >
         {ownerIntroResumeFeedId != null && (
-          <div className="mb-3 flex flex-col gap-3 rounded-xl border border-[#4db6ac]/35 bg-[#4db6ac]/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-[#d5e4e7]">
+          <div className="mb-3 flex flex-col gap-3 rounded-xl border border-cpoint-turquoise/35 bg-cpoint-turquoise/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-c-text-secondary">
               {t('communities.owner_intro_banner')}
             </p>
             <button
               type="button"
-              className="shrink-0 rounded-xl bg-[#4db6ac] px-4 py-2.5 text-sm font-semibold text-black hover:brightness-110"
+              className="shrink-0 rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-sm font-semibold text-black hover:brightness-110"
               onClick={() => navigate(`/community_feed_react/${ownerIntroResumeFeedId}`)}
             >
               {t('communities.owner_intro_continue')}
@@ -872,7 +872,7 @@ export default function Communities(){
           </div>
         )}
         {loading ? (
-          <div className="text-[#9fb0b5]">{t('communities.loading')}</div>
+          <div className="text-c-text-tertiary">{t('communities.loading')}</div>
         ) : error ? (
           <div className="text-red-400">{error}</div>
         ) : (
@@ -888,9 +888,9 @@ export default function Communities(){
               }
                if (pidLocal && activeTab === 'training' && showTrainingTab) {
                  return (
-                   <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+                   <div className="bg-c-hover-bg backdrop-blur rounded-xl p-4 border border-c-border">
                      <button
-                       className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-sm hover:brightness-110"
+                       className="px-4 py-2 rounded-lg bg-cpoint-turquoise text-black text-sm hover:brightness-110"
                        onClick={()=> {
                          const pidNext = new URLSearchParams(location.search).get('parent_id')
                          window.location.href = pidNext ? `/workout_tracking?parent_id=${pidNext}` : '/workout_tracking'
@@ -906,7 +906,7 @@ export default function Communities(){
                     {activeTab === 'groups' ? (
                       <div className="space-y-5">
                         {myGroupsLoading ? (
-                          <div className="text-[#9fb0b5] text-sm py-4 text-center">{t('communities.loading')}</div>
+                          <div className="text-c-text-tertiary text-sm py-4 text-center">{t('communities.loading')}</div>
                         ) : (
                           (() => {
                             const searchParams = new URLSearchParams(location.search)
@@ -923,44 +923,44 @@ export default function Communities(){
                             {/* Joined Groups */}
                             <div className="space-y-2">
                               <div className="flex items-center justify-between">
-                                <div className="text-xs font-semibold uppercase tracking-[0.15em] text-[#8ca0a8]">{t('communities.joined_groups')}</div>
+                                <div className="text-xs font-semibold uppercase tracking-[0.15em] text-c-text-tertiary">{t('communities.joined_groups')}</div>
                                 <select
                                   value={joinedFilter}
                                   onChange={e => setJoinedFilter(e.target.value)}
-                                  className="rounded-lg border border-white/15 bg-transparent px-2 py-1 text-[10px] text-white focus:outline-none focus:border-[#4db6ac]"
-                                >
-                                  <option value="all" className="bg-black">{parentIdParam ? t('communities.filter_this_community') : t('communities.filter_all_communities')}</option>
-                                  {filteredGroupCommunities.map(c => (
-                                    <option key={c.id} value={String(c.id)} className="bg-black">{c.name}</option>
-                                  ))}
-                                </select>
-                              </div>
-                              {(() => {
-                                // When parent_id is present and filter is 'all', only show groups from the current community hierarchy
-                                let filtered = joinedGroups
+                  className="rounded-lg border border-c-border bg-transparent px-2 py-1 text-[10px] text-c-text-primary focus:outline-none focus:border-cpoint-turquoise"
+                >
+                  <option value="all" className="bg-c-bg-app">{parentIdParam ? t('communities.filter_this_community') : t('communities.filter_all_communities')}</option>
+                  {filteredGroupCommunities.map(c => (
+                    <option key={c.id} value={String(c.id)} className="bg-c-bg-app">{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              {(() => {
+                // When parent_id is present and filter is 'all', only show groups from the current community hierarchy
+                let filtered = joinedGroups
                                 if (joinedFilter !== 'all') {
                                   filtered = joinedGroups.filter(g => String(g.community_id) === joinedFilter)
                                 } else if (validCommunityIds) {
                                   filtered = joinedGroups.filter(g => validCommunityIds.has(g.community_id))
                                 }
                                 return filtered.length === 0 ? (
-                                  <div className="text-[#6f7c81] text-xs py-4 text-center">{joinedFilter !== 'all' || parentIdParam ? t('communities.no_joined_groups_here') : `${t('communities.no_joined_groups')}.`}</div>
+                                  <div className="text-c-text-tertiary text-xs py-4 text-center">{joinedFilter !== 'all' || parentIdParam ? t('communities.no_joined_groups_here') : `${t('communities.no_joined_groups')}.`}</div>
                                 ) : (
                                   <div className="space-y-2">
                                     {filtered.map(g => (
                                       <div
                                         key={g.group_id}
-                                        className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-white/5 transition-colors"
+                                        className="rounded-xl border border-c-border bg-c-bg-elevated px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-c-hover-bg transition-colors"
                                         onClick={() => navigate(`/group_feed_react/${g.group_id}`)}
                                       >
-                                        <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
-                                          <i className="fa-solid fa-users text-[#4db6ac] text-sm" />
+                                        <div className="w-10 h-10 rounded-full bg-cpoint-turquoise/20 flex items-center justify-center flex-shrink-0">
+                                          <i className="fa-solid fa-users text-cpoint-turquoise text-sm" />
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                          <div className="text-sm font-medium text-white truncate">{g.name}</div>
-                                          <div className="text-[11px] text-[#6f7c81]">{g.community_name}</div>
+                                          <div className="text-sm font-medium text-c-text-primary truncate">{g.name}</div>
+                                          <div className="text-[11px] text-c-text-tertiary">{g.community_name}</div>
                                         </div>
-                                        <i className="fa-solid fa-chevron-right text-xs text-white/30" />
+                                        <i className="fa-solid fa-chevron-right text-xs text-c-text-tertiary" />
                                       </div>
                                     ))}
                                   </div>
@@ -971,48 +971,48 @@ export default function Communities(){
                             {/* Available Groups */}
                             <div className="space-y-2">
                               <div className="flex items-center justify-between">
-                                <div className="text-xs font-semibold uppercase tracking-[0.15em] text-[#8ca0a8]">{t('communities.available_groups')}</div>
+                                <div className="text-xs font-semibold uppercase tracking-[0.15em] text-c-text-tertiary">{t('communities.available_groups')}</div>
                                 <select
                                   value={availableFilter}
                                   onChange={e => setAvailableFilter(e.target.value)}
-                                  className="rounded-lg border border-white/15 bg-transparent px-2 py-1 text-[10px] text-white focus:outline-none focus:border-[#4db6ac]"
-                                >
-                                  <option value="all" className="bg-black">{parentIdParam ? t('communities.filter_this_community') : t('communities.filter_all_communities')}</option>
-                                  {filteredGroupCommunities.map(c => (
-                                    <option key={c.id} value={String(c.id)} className="bg-black">{c.name}</option>
-                                  ))}
-                                </select>
-                              </div>
-                              {(() => {
-                                // When parent_id is present and filter is 'all', only show groups from the current community hierarchy
-                                let filtered = availableGroups
+                  className="rounded-lg border border-c-border bg-transparent px-2 py-1 text-[10px] text-c-text-primary focus:outline-none focus:border-cpoint-turquoise"
+                >
+                  <option value="all" className="bg-c-bg-app">{parentIdParam ? t('communities.filter_this_community') : t('communities.filter_all_communities')}</option>
+                  {filteredGroupCommunities.map(c => (
+                    <option key={c.id} value={String(c.id)} className="bg-c-bg-app">{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              {(() => {
+                // When parent_id is present and filter is 'all', only show groups from the current community hierarchy
+                let filtered = availableGroups
                                 if (availableFilter !== 'all') {
                                   filtered = availableGroups.filter(g => String(g.community_id) === availableFilter)
                                 } else if (validCommunityIds) {
                                   filtered = availableGroups.filter(g => validCommunityIds.has(g.community_id))
                                 }
                                 return filtered.length === 0 ? (
-                                  <div className="text-[#6f7c81] text-xs py-4 text-center">{availableFilter !== 'all' || parentIdParam ? t('communities.no_available_groups_here') : `${t('communities.no_available_groups')}.`}</div>
+                                  <div className="text-c-text-tertiary text-xs py-4 text-center">{availableFilter !== 'all' || parentIdParam ? t('communities.no_available_groups_here') : `${t('communities.no_available_groups')}.`}</div>
                                 ) : (
                                   <div className="space-y-2">
                                     {filtered.map(g => (
                                       <div
                                         key={g.group_id}
-                                        className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 flex items-center gap-3"
+                                        className="rounded-xl border border-c-border bg-c-bg-elevated px-4 py-3 flex items-center gap-3"
                                       >
-                                        <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center flex-shrink-0">
-                                          <i className="fa-solid fa-users text-white/40 text-sm" />
+                                        <div className="w-10 h-10 rounded-full bg-c-hover-bg flex items-center justify-center flex-shrink-0">
+                                          <i className="fa-solid fa-users text-c-text-tertiary text-sm" />
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                          <div className="text-sm font-medium text-white truncate">{g.name}</div>
-                                          <div className="text-[11px] text-[#6f7c81]">
+                                          <div className="text-sm font-medium text-c-text-primary truncate">{g.name}</div>
+                                          <div className="text-[11px] text-c-text-tertiary">
                                             {g.community_name}
-                                            {g.approval_required && <span className="ml-1.5 text-[#4db6ac]">· {t('communities.approval_required_short')}</span>}
+                                            {g.approval_required && <span className="ml-1.5 text-cpoint-turquoise">· {t('communities.approval_required_short')}</span>}
                                           </div>
                                         </div>
                                         <button
                                           disabled={joiningGroupId === g.group_id}
-                                          className="px-3 py-1.5 rounded-lg border border-[#4db6ac]/40 text-[#4db6ac] text-xs font-medium hover:bg-[#4db6ac]/10 disabled:opacity-50 flex-shrink-0"
+                                          className="px-3 py-1.5 rounded-lg border border-cpoint-turquoise/40 text-cpoint-turquoise text-xs font-medium hover:bg-cpoint-turquoise/10 disabled:opacity-50 flex-shrink-0"
                                           onClick={async () => {
                                             setJoiningGroupId(g.group_id)
                                             try {
@@ -1047,9 +1047,9 @@ export default function Communities(){
                         )}
                       </div>
                     ) : activeTab === 'training' && showTrainingTab ? (
-                      <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+                      <div className="bg-c-hover-bg backdrop-blur rounded-xl p-4 border border-c-border">
                         <button
-                          className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-sm hover:brightness-110"
+                          className="px-4 py-2 rounded-lg bg-cpoint-turquoise text-black text-sm hover:brightness-110"
                           onClick={()=> {
                             const pidNext = new URLSearchParams(location.search).get('parent_id')
                             window.location.href = pidNext ? `/workout_tracking?parent_id=${pidNext}` : '/workout_tracking'
@@ -1061,23 +1061,23 @@ export default function Communities(){
                     ) : (
                       <>
                         {activeTab === 'management' && hasNestedCommunities ? (
-                          <div className="flex items-center justify-end gap-3 text-xs text-[#9fb0b5] px-1">
+                          <div className="flex items-center justify-end gap-3 text-xs text-c-text-tertiary px-1">
                             <span>{t('communities.show_nested_label')}</span>
                             <button
                               type="button"
                               onClick={()=> setShowNested(value => !value)}
                               aria-pressed={showNested}
                               aria-label={showNested ? t('communities.hide_nested') : t('communities.show_nested')}
-                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4db6ac]/60 ${showNested ? 'bg-[#4db6ac]' : 'bg-white/20'}`}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/60 ${showNested ? 'bg-cpoint-turquoise' : 'bg-c-active-bg'}`}
                             >
                               <span
-                                className={`inline-block h-5 w-5 transform rounded-full bg-black transition duration-200 ease-out ${showNested ? 'translate-x-5' : 'translate-x-1'}`}
+                                className={`inline-block h-5 w-5 transform rounded-full bg-c-bg-app transition duration-200 ease-out ${showNested ? 'translate-x-5' : 'translate-x-1'}`}
                               />
                             </button>
                           </div>
                         ) : null}
                         {communities.length === 0 ? (
-                          <div className="text-[#9fb0b5]">{t('communities.no_member_communities')}</div>
+                          <div className="text-c-text-tertiary">{t('communities.no_member_communities')}</div>
                         ) : (
                           communities.map(c => {
                             const hasChildren = !!(c.children && c.children.length > 0)
@@ -1204,17 +1204,17 @@ export default function Communities(){
 
             {showCreateSubModal && (
               <div
-                className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center"
+                className="fixed inset-0 z-50 bg-c-bg-overlay backdrop-blur flex items-center justify-center"
                 onClick={(e)=> { if (e.currentTarget === e.target) setShowCreateSubModal(false) }}
               >
-                <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-4">
+                <div className="w-[92%] max-w-sm rounded-2xl border border-c-border bg-c-bg-elevated p-4">
                   <div className="flex items-center justify-between mb-3">
                     <div className="font-semibold text-sm">{t('communities.create_sub_community')}</div>
                     <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowCreateSubModal(false)} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
                   </div>
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-xs text-[#9fb0b5] mb-1">{t('communities.create_under')}</label>
+                      <label className="block text-xs text-c-text-tertiary mb-1">{t('communities.create_under')}</label>
                       <select 
                         value={selectedSubCommunityId === 'none' ? parentIdNum : selectedSubCommunityId}
                         onChange={e=> {
@@ -1225,7 +1225,7 @@ export default function Communities(){
                             setSelectedSubCommunityId(Number(val))
                           }
                         }}
-                        className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm"
+                        className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm"
                       >
                         <option value={parentIdNum}>{parentName || t('communities.parent_community_fallback')}</option>
                         {(() => {
@@ -1265,18 +1265,18 @@ export default function Communities(){
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-[#9fb0b5] mb-1">{t('communities.sub_community_name')}</label>
+                      <label className="block text-xs text-c-text-tertiary mb-1">{t('communities.sub_community_name')}</label>
                       <input value={newSubName}
                              onChange={e=> setNewSubName(e.target.value)}
                              placeholder={t('communities.sub_name_placeholder')}
-                             className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm" />
+                             className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm" />
                     </div>
                     {isAppAdmin ? (
                       <div>
-                        <label className="block text-xs text-[#9fb0b5] mb-1">{t('communities.community_type')}</label>
+                        <label className="block text-xs text-c-text-tertiary mb-1">{t('communities.community_type')}</label>
                         <select value={newSubType || parentTypeLabel}
                                 onChange={e=> setNewSubType(e.target.value)}
-                                className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm">
+                                className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm">
                           <option value={parentTypeLabel}>{t('communities.same_as_parent', { type: parentTypeLabel || t('communities.type_general') })}</option>
                           <option value="General">{t('communities.type_general')}</option>
                           <option value="Gym">{t('dashboard.type_gym', { defaultValue: 'Gym' })}</option>
@@ -1287,7 +1287,7 @@ export default function Communities(){
                     ) : null}
                     <div className="flex items-center justify-end gap-2">
                       <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowCreateSubModal(false)}>{t('common.cancel')}</button>
-                      <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=>{
+                      <button className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black hover:brightness-110" onClick={async()=>{
                         if (!newSubName.trim()) { alert(t('communities.sub_name_required')); return }
                         const targetParentId = selectedSubCommunityId === 'none' ? parentIdNum : Number(selectedSubCommunityId)
                         try{
@@ -1320,23 +1320,23 @@ export default function Communities(){
 
             {/* Create Group Modal */}
             {showCreateGroup && (
-              <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> { if (e.currentTarget === e.target) setShowCreateGroup(false) }}>
-                <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-4">
+              <div className="fixed inset-0 z-50 bg-c-bg-overlay backdrop-blur flex items-center justify-center" onClick={(e)=> { if (e.currentTarget === e.target) setShowCreateGroup(false) }}>
+                <div className="w-[92%] max-w-sm rounded-2xl border border-c-border bg-c-bg-elevated p-4">
                   <div className="flex items-center justify-between mb-3">
                     <div className="font-semibold text-sm">{t('communities.create_group')}</div>
                     <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowCreateGroup(false)} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
                   </div>
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-xs text-[#9fb0b5] mb-1">{t('communities.parent_community_label')}</label>
-                      <input value={parentName || `ID ${parentIdNum}`} disabled className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm text-white/70 disabled:opacity-70" />
+                      <label className="block text-xs text-c-text-tertiary mb-1">{t('communities.parent_community_label')}</label>
+                      <input value={parentName || `ID ${parentIdNum}`} disabled className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm text-c-text-secondary disabled:opacity-70" />
                     </div>
                     <div>
-                      <label className="block text-xs text-[#9fb0b5] mb-1">{t('communities.sub_community_label')}</label>
+                      <label className="block text-xs text-c-text-tertiary mb-1">{t('communities.sub_community_label')}</label>
                       <select value={selectedSubCommunityId === 'none' ? 'none' : String(selectedSubCommunityId)} onChange={e=> {
                         const v = e.target.value
                         setSelectedSubCommunityId(v === 'none' ? 'none' : Number(v))
-                      }} className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm">
+                      }} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm">
                         <option value="none">{t('communities.none_parent_only')}</option>
                         {(() => {
                           const parent = communities.find(c => c.id === parentIdNum)
@@ -1348,12 +1348,12 @@ export default function Communities(){
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-[#9fb0b5] mb-1">{t('communities.group_name')}</label>
-                      <input value={newGroupName} onChange={e=> setNewGroupName(e.target.value)} placeholder={t('communities.group_name_placeholder')} className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm" />
+                      <label className="block text-xs text-c-text-tertiary mb-1">{t('communities.group_name')}</label>
+                      <input value={newGroupName} onChange={e=> setNewGroupName(e.target.value)} placeholder={t('communities.group_name_placeholder')} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs text-[#9fb0b5] mb-1">{t('communities.join_policy')}</label>
-                      <select value={approvalRequired ? 'approval' : 'open'} onChange={e=> setApprovalRequired(e.target.value === 'approval')} className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm">
+                      <label className="block text-xs text-c-text-tertiary mb-1">{t('communities.join_policy')}</label>
+                      <select value={approvalRequired ? 'approval' : 'open'} onChange={e=> setApprovalRequired(e.target.value === 'approval')} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm">
                         <option value="open">{t('communities.join_policy_open')}</option>
                         <option value="approval">{t('communities.join_policy_approval_required')}</option>
                       </select>
@@ -1364,7 +1364,7 @@ export default function Communities(){
                       const canSteveAgent = stevePackageRootIds.has(billingRoot)
                       return (
                         <div>
-                          <label className="flex items-start gap-2 text-sm text-white cursor-pointer">
+                          <label className="flex items-start gap-2 text-sm text-c-text-primary cursor-pointer">
                             <input
                               type="checkbox"
                               className="mt-1"
@@ -1374,7 +1374,7 @@ export default function Communities(){
                             />
                             <span>
                               <span className="font-medium">{t('communities.steve_agent_label')}</span>
-                              <span className="block text-xs text-[#9fb0b5] mt-0.5">
+                              <span className="block text-xs text-c-text-tertiary mt-0.5">
                                 {t('communities.steve_agent_desc')}
                               </span>
                             </span>
@@ -1389,7 +1389,7 @@ export default function Communities(){
                     })()}
                     <div className="flex items-center justify-end gap-2">
                       <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowCreateGroup(false)}>{t('common.cancel')}</button>
-                      <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=>{
+                      <button className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black hover:brightness-110" onClick={async()=>{
                         if (!newGroupName.trim()) { alert(t('communities.group_name_required')); return }
                         try{
                           const targetCommunityId = selectedSubCommunityId === 'none' ? parentIdNum : Number(selectedSubCommunityId)
@@ -1425,25 +1425,25 @@ function PlusActions({ onCreateSub, onCreateGroup }:{ onCreateSub: ()=>void, onC
     <div className="fixed bottom-0 left-0 right-0 z-50 flex flex-col items-center pb-safe" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}>
       {/* Dropdown appears ABOVE the button */}
       {open && (
-        <div className="mb-3 rounded-xl border border-white/10 bg-black/95 backdrop-blur p-2 w-64 shadow-lg">
+        <div className="mb-3 rounded-xl border border-c-border bg-c-bg-elevated/95 backdrop-blur p-2 w-64 shadow-lg">
           <button 
-            className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-white/5 text-sm text-white flex items-center gap-2" 
+            className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-c-hover-bg text-sm text-c-text-primary flex items-center gap-2" 
             onClick={() => { setOpen(false); onCreateSub() }}
           >
-            <i className="fa-solid fa-sitemap text-[#4db6ac] w-5" />
+            <i className="fa-solid fa-sitemap text-cpoint-turquoise w-5" />
             {t('communities.create_sub_community')}
           </button>
           <button 
-            className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-white/5 text-sm text-white flex items-center gap-2" 
+            className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-c-hover-bg text-sm text-c-text-primary flex items-center gap-2" 
             onClick={() => { setOpen(false); onCreateGroup() }}
           >
-            <i className="fa-solid fa-users text-[#4db6ac] w-5" />
+            <i className="fa-solid fa-users text-cpoint-turquoise w-5" />
             {t('communities.create_group')}
           </button>
         </div>
       )}
       <button 
-        className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#4db6ac] text-black font-medium text-sm shadow-lg hover:brightness-110 transition-all duration-200 border border-[#4db6ac]"
+        className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-cpoint-turquoise text-black font-medium text-sm shadow-lg hover:brightness-110 transition-all duration-200 border border-cpoint-turquoise"
         onClick={() => setOpen(v => !v)}
       >
         <span>{t('communities.create_sub_or_group')}</span>
@@ -1488,45 +1488,45 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
   }, [open, communityId])
   if (!open) return <div id="groups-modal-root" />
   return (
-    <div id="groups-modal-root" className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> { if (e.currentTarget === e.target) onClose() }}>
-      <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-4">
+    <div id="groups-modal-root" className="fixed inset-0 z-50 bg-c-bg-overlay backdrop-blur flex items-center justify-center" onClick={(e)=> { if (e.currentTarget === e.target) onClose() }}>
+      <div className="w-[92%] max-w-sm rounded-2xl border border-c-border bg-c-bg-elevated p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="font-semibold text-sm">{t('communities.tab_groups')}</div>
           <button className="p-2 rounded-md hover:bg:white/5" onClick={onClose} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
         </div>
         {loading ? (
-          <div className="text-[#9fb0b5] text-sm">{t('communities.loading')}</div>
+          <div className="text-c-text-tertiary text-sm">{t('communities.loading')}</div>
         ) : (isMember === false) ? (
           <div className="space-y-3">
-            <div className="text-[#9fb0b5] text-sm">{t('communities.join_to_view')}</div>
+            <div className="text-c-text-tertiary text-sm">{t('communities.join_to_view')}</div>
             <div className="flex justify-end">
-              <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text:black text-sm hover:brightness-110" onClick={()=> { onClose(); window.location.href = `/community_feed_react/${communityId}` }}>{t('communities.go_to_community')}</button>
+              <button className="px-3 py-1.5 rounded-md bg-cpoint-turquoise text:black text-sm hover:brightness-110" onClick={()=> { onClose(); window.location.href = `/community_feed_react/${communityId}` }}>{t('communities.go_to_community')}</button>
             </div>
           </div>
         ) : items.length === 0 ? (
-          <div className="text-[#9fb0b5] text-sm">{t('communities.no_groups_available')}</div>
+          <div className="text-c-text-tertiary text-sm">{t('communities.no_groups_available')}</div>
         ) : (
           <div className="space-y-2 max-h-[50vh] overflow-y-auto">
             {items.map(g => {
               const status = g.membership_status
               return (
-                <div key={g.id} className="flex items-center gap-2 border border-white/10 rounded-lg p-2">
+                <div key={g.id} className="flex items-center gap-2 border border-c-border rounded-lg p-2">
                   <div className="flex-1">
-                    <button className="font-medium text-white underline decoration-white/20 underline-offset-2" onClick={()=> {
+                    <button className="font-medium text-c-text-primary underline decoration-white/20 underline-offset-2" onClick={()=> {
                       if (status !== 'member'){
                         alert(t('communities.join_group_to_view'))
                         return
                       }
                       window.location.href = `/group_feed_react/${g.id}`
                     }}>{g.name}</button>
-                    <div className="text-xs text-[#9fb0b5]">{g.approval_required ? t('communities.approval_required_short') : t('communities.open_to_members')}</div>
+                    <div className="text-xs text-c-text-tertiary">{g.approval_required ? t('communities.approval_required_short') : t('communities.open_to_members')}</div>
                   </div>
                   {status === 'member' ? (
-                    <span className="text-xs text-[#4db6ac]">{t('communities.joined_status')}</span>
+                    <span className="text-xs text-cpoint-turquoise">{t('communities.joined_status')}</span>
                   ) : status === 'pending' ? (
                     <span className="text-xs text-yellow-400">{t('communities.pending_status')}</span>
                   ) : (
-                    <button className="px-2.5 py-1.5 rounded-md bg-[#4db6ac] text-black text-xs hover:brightness-110" onClick={async()=>{
+                    <button className="px-2.5 py-1.5 rounded-md bg-cpoint-turquoise text-black text-xs hover:brightness-110" onClick={async()=>{
                       try{
                         const fd = new URLSearchParams({ group_id: String(g.id) })
                         const r = await fetch('/api/groups/join', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
@@ -1552,7 +1552,7 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
                     </button>
                   ) : null}
                   {status === 'member' ? (
-                    <button className="ml-2 px-2.5 py-1.5 rounded-md border border-white/15 text-[#cfd8dc] text-xs hover:bg-white/5" onClick={async()=>{
+                    <button className="ml-2 px-2.5 py-1.5 rounded-md border border-c-border text-c-text-secondary text-xs hover:bg-c-hover-bg" onClick={async()=>{
                       const ok = confirm(t('communities.leave_group_confirm'))
                       if (!ok) return
                       try{
@@ -1786,7 +1786,7 @@ function ParentTimeline({ parentId }:{ parentId:number }){
           className="flex justify-center mb-3 pointer-events-none transition-transform duration-150"
           style={{ transform: `translateY(${Math.min(pullPx * 0.3, 20)}px)` }}
         >
-          <span className="rounded-full border border-white/10 bg-black/80 px-4 py-1.5 text-[11px] text-[#9fb0b5] flex items-center gap-2">
+          <span className="rounded-full border border-c-border bg-c-bg-elevated/80 px-4 py-1.5 text-[11px] text-c-text-tertiary flex items-center gap-2">
             {isRefreshing ? (
               <>
                 <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
@@ -1806,31 +1806,31 @@ function ParentTimeline({ parentId }:{ parentId:number }){
       )}
       {posts.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 px-4">
-          <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-3">
-            <i className="fa-regular fa-comment-dots text-2xl text-white/30" />
+            <div className="w-16 h-16 rounded-full bg-c-hover-bg border border-c-border flex items-center justify-center mb-3">
+            <i className="fa-regular fa-comment-dots text-2xl text-c-text-tertiary" />
           </div>
-          <h3 className="text-base font-medium text-white/70 mb-1">{t('communities.timeline_empty_title')}</h3>
-          <p className="text-xs text-white/40 text-center max-w-xs">
+          <h3 className="text-base font-medium text-c-text-secondary mb-1">{t('communities.timeline_empty_title')}</h3>
+          <p className="text-xs text-c-text-tertiary text-center max-w-xs">
             {t('communities.timeline_empty_body')}
           </p>
         </div>
       ) : (
         <div className="space-y-3">
           {posts.map((p:any) => (
-            <div key={p.id} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer"
+            <div key={p.id} className="rounded-2xl border border-c-border bg-c-bg-app shadow-sm shadow-c-card cursor-pointer"
               onClick={() => { if (!p.poll) navigate(`/post/${p.id}`) }}
             >
-                <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
+                <div className="px-3 py-2 border-b border-c-border flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
                   <Avatar username={p.username || ''} url={p.profile_picture || undefined} size={28} linkToProfile />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2 min-w-0">
                     <div className="font-medium truncate">{p.username}</div>
                     {p.community_name ? (
-                      <div className="text-xs text-[#9fb0b5] truncate">{t('feed.in_community', { community: p.community_name })}</div>
+                      <div className="text-xs text-c-text-tertiary truncate">{t('feed.in_community', { community: p.community_name })}</div>
                     ) : null}
                   </div>
                 </div>
-                <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatSmartTime(p.created_at)}</div>
+                <div className="text-xs text-c-text-tertiary ml-auto tabular-nums">{formatSmartTime(p.created_at)}</div>
               </div>
               <div className="px-3 py-2 space-y-2">
                 {(() => {
@@ -1884,11 +1884,11 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                 {p.poll && (
                   <div className="space-y-2" onClick={(e)=> e.stopPropagation()}>
                     <div className="flex items-center gap-2 mb-1">
-                      <i className="fa-solid fa-chart-bar text-[#4db6ac]" />
+                      <i className="fa-solid fa-chart-bar text-cpoint-turquoise" />
                       <div className="font-medium text-sm flex-1">
                         {p.poll.question}
                         {p.poll.expires_at ? (
-                          <span className="ml-2 text-[11px] text-[#9fb0b5]">• {t('communities.poll_closes_prefix')} {(() => { try { const d = new Date(p.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch { } return String(p.poll.expires_at) })()}</span>
+                          <span className="ml-2 text-[11px] text-c-text-tertiary">• {t('communities.poll_closes_prefix')} {(() => { try { const d = new Date(p.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch { } return String(p.poll.expires_at) })()}</span>
                         ) : null}
                       </div>
                     </div>
@@ -1905,7 +1905,7 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                             key={option.id}
                             type="button"
                             disabled={isExpired}
-                            className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isExpired ? 'opacity-60 cursor-not-allowed' : (isUserVote ? 'border-[#4db6ac] bg-[#4db6ac]/10' : 'border-white/10 hover:bg-white/5')}`}
+                            className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isExpired ? 'opacity-60 cursor-not-allowed' : (isUserVote ? 'border-cpoint-turquoise bg-cpoint-turquoise/10' : 'border-c-border hover:bg-c-hover-bg')}`}
                             onClick={async (e)=> { 
                               if (isExpired) return; 
                               e.preventDefault(); e.stopPropagation();
@@ -1946,23 +1946,23 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                               }catch{}
                             }}
                           >
-                            <div className="absolute inset-0 bg-[#4db6ac]/20" style={{ width: `${percentage}%`, transition: 'width 0.3s ease' }} />
+                            <div className="absolute inset-0 bg-cpoint-turquoise/20" style={{ width: `${percentage}%`, transition: 'width 0.3s ease' }} />
                             <div className="relative flex items-center justify-between">
                               <span className="text-sm">{option.text || option.option_text}</span>
-                              <span className="text-xs text-[#9fb0b5] font-medium">{option.votes} {percentage > 0 ? `(${percentage}%)` : ''}</span>
+                              <span className="text-xs text-c-text-tertiary font-medium">{option.votes} {percentage > 0 ? `(${percentage}%)` : ''}</span>
                             </div>
                           </button>
                         )
                       })}
                     </div>
-                    <div className="flex items-center justify-between text-xs text-[#9fb0b5] pt-1">
+                    <div className="flex items-center justify-between text-xs text-c-text-tertiary pt-1">
                       {(() => { const sv = (p.poll as any)?.single_vote; const isSingle = !(sv === false || sv === 0 || sv === '0' || sv === 'false'); return isSingle })() && (
                         <span>{t('feed.vote_count', { count: p.poll.total_votes || 0 })}</span>
                       )}
                       <button 
                         type="button"
                         onClick={()=> navigate(`/community/${p.community_id}/polls_react`)}
-                        className="text-[#4db6ac] hover:underline"
+                        className="text-cpoint-turquoise hover:underline"
                       >
                         {t('feed.view_all_polls')} →
                       </button>
@@ -1988,8 +1988,8 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                         }
                       }catch{}
                     }}>
-                      <i className={`fa-regular fa-heart ${p.user_reaction==='heart' ? '' : ''}`} style={{ color: p.user_reaction==='heart' ? '#4db6ac' : '#6c757d', WebkitTextStroke: p.user_reaction==='heart' ? '1px #4db6ac' : undefined }} />
-                      <span className="ml-1" style={{ color: p.user_reaction==='heart' ? '#cfe9e7' : '#9fb0b5' }}>{(p.reactions?.['heart'])||0}</span>
+                      <i className={`fa-regular fa-heart ${p.user_reaction==='heart' ? 'text-cpoint-turquoise' : 'text-c-text-tertiary'}`} style={{ WebkitTextStroke: p.user_reaction==='heart' ? '1px #00CEC8' : undefined }} />
+                      <span className="ml-1 text-c-text-secondary">{(p.reactions?.['heart'])||0}</span>
                     </button>
                     <button className="px-2 py-1 rounded transition-colors" onClick={async()=>{
                       const prev = p.user_reaction
@@ -2007,8 +2007,8 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                         }
                       }catch{}
                     }}>
-                      <i className="fa-regular fa-thumbs-up" style={{ color: p.user_reaction==='thumbs-up' ? '#4db6ac' : '#6c757d', WebkitTextStroke: p.user_reaction==='thumbs-up' ? '1px #4db6ac' : undefined }} />
-                      <span className="ml-1" style={{ color: p.user_reaction==='thumbs-up' ? '#cfe9e7' : '#9fb0b5' }}>{(p.reactions?.['thumbs-up'])||0}</span>
+                      <i className={`fa-regular fa-thumbs-up ${p.user_reaction==='thumbs-up' ? 'text-cpoint-turquoise' : 'text-c-text-tertiary'}`} style={{ WebkitTextStroke: p.user_reaction==='thumbs-up' ? '1px #00CEC8' : undefined }} />
+                      <span className="ml-1 text-c-text-secondary">{(p.reactions?.['thumbs-up'])||0}</span>
                     </button>
                     <button className="px-2 py-1 rounded transition-colors" onClick={async()=>{
                       const prev = p.user_reaction
@@ -2026,10 +2026,10 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                         }
                       }catch{}
                     }}>
-                      <i className="fa-regular fa-thumbs-down" style={{ color: p.user_reaction==='thumbs-down' ? '#4db6ac' : '#6c757d', WebkitTextStroke: p.user_reaction==='thumbs-down' ? '1px #4db6ac' : undefined }} />
-                      <span className="ml-1" style={{ color: p.user_reaction==='thumbs-down' ? '#cfe9e7' : '#9fb0b5' }}>{(p.reactions?.['thumbs-down'])||0}</span>
+                      <i className={`fa-regular fa-thumbs-down ${p.user_reaction==='thumbs-down' ? 'text-cpoint-turquoise' : 'text-c-text-tertiary'}`} style={{ WebkitTextStroke: p.user_reaction==='thumbs-down' ? '1px #00CEC8' : undefined }} />
+                      <span className="ml-1 text-c-text-secondary">{(p.reactions?.['thumbs-down'])||0}</span>
                     </button>
-                    <button className="ml-auto px-2.5 py-1 rounded-full text-[#cfd8dc]" onClick={()=> navigate(`/post/${p.id}`)}>
+                    <button className="ml-auto px-2.5 py-1 rounded-full text-c-text-secondary" onClick={()=> navigate(`/post/${p.id}`)}>
                       <i className="fa-regular fa-comment" />
                       <span className="ml-1">{p.replies_count||0}</span>
                     </button>
@@ -2134,17 +2134,17 @@ function CommunityItem({
 
   return (
     <div 
-      className={`relative w-full overflow-hidden rounded-2xl transition-all duration-200 bg-black ${
+      className={`relative w-full overflow-hidden rounded-2xl transition-all duration-200 bg-c-bg-app ${
         isSwipedOpen || dragX < -10 
-          ? 'border-2 border-[#4db6ac]' 
-          : 'border border-white/10'
+          ? 'border-2 border-cpoint-turquoise' 
+          : 'border border-c-border'
       }`}
     >
       {/* Action button (Leave or Delete depending on ownership) */}
       <div className="absolute inset-y-0 right-0 flex items-center">
         {/* Groups button */}
         <button
-          className="h-full w-20 bg-[#4db6ac]/20 text-[#4db6ac] flex items-center justify-center hover:bg-[#4db6ac]/30 transition-all duration-200"
+          className="h-full w-20 bg-cpoint-turquoise/20 text-cpoint-turquoise flex items-center justify-center hover:bg-cpoint-turquoise/30 transition-all duration-200"
           onClick={(e)=> { e.stopPropagation(); onOpenGroups(community.id) }}
           style={{
             opacity: isSwipedOpen || dragX < -20 ? 1 : 0,
@@ -2192,7 +2192,7 @@ function CommunityItem({
 
       {/* Swipeable community content */}
       <div
-        className={`w-full px-3 py-3 hover:bg-white/[0.03] flex items-center justify-between cursor-pointer bg-black ${isChild ? 'pl-4' : ''}`}
+        className={`w-full px-3 py-3 hover:bg-c-hover-bg flex items-center justify-between cursor-pointer bg-c-bg-app ${isChild ? 'pl-4' : ''}`}
         style={{
           transform: `translateX(${isDragging ? dragX : (isSwipedOpen ? -ACTIONS_WIDTH : 0)}px)`,
           transition: isDragging ? 'none' : 'transform 0.2s ease-out'
@@ -2207,7 +2207,7 @@ function CommunityItem({
           {expandable ? (
             <button
               type="button"
-              className={`h-6 w-6 grid place-items-center transition-colors duration-150 ${isExpanded ? 'text-[#4db6ac]' : 'text-[#9fb0b5]'} ${expandDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:text-white'}`}
+              className={`h-6 w-6 grid place-items-center transition-colors duration-150 ${isExpanded ? 'text-cpoint-turquoise' : 'text-c-text-tertiary'} ${expandDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:text-c-text-primary'}`}
               onClick={(e)=> { 
                 e.stopPropagation(); 
                 if (!expandDisabled) onToggleExpand?.() 
@@ -2223,20 +2223,20 @@ function CommunityItem({
             <span className="w-6" />
           )}
           {isChild && (
-            <span className="block w-[6px] h-[6px] rounded-full bg-[#4db6ac]" />
+            <span className="block w-[6px] h-[6px] rounded-full bg-cpoint-turquoise" />
           )}
           <div className="flex-1 min-w-0">
-            <div className="font-medium text-white truncate">{community.name}</div>
-            <div className="text-xs text-[#9fb0b5] truncate">{community.type || t('communities.community_type_fallback')}</div>
+            <div className="font-medium text-c-text-primary truncate">{community.name}</div>
+            <div className="text-xs text-c-text-tertiary truncate">{community.type || t('communities.community_type_fallback')}</div>
           </div>
         </div>
         <div className="flex items-center gap-2 ml-3 flex-shrink-0">
           {(community.unread_posts_count ?? 0) > 0 && (
-            <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-[#4db6ac]/20 text-[#4db6ac] border border-[#4db6ac]/30 whitespace-nowrap">
+            <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-cpoint-turquoise/20 text-cpoint-turquoise border border-cpoint-turquoise/30 whitespace-nowrap">
               {t('communities.unread_new', { count: community.unread_posts_count ?? 0 })}
             </span>
           )}
-          <span className="text-[#4db6ac]">
+          <span className="text-cpoint-turquoise">
             <i className="fa-solid fa-chevron-right" />
           </span>
         </div>

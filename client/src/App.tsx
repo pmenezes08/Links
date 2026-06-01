@@ -5,6 +5,7 @@ import { App as CapacitorApp } from '@capacitor/app'
 import { Keyboard, KeyboardResize } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
 import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { extractInviteToken, isInternalLink, joinCommunityWithInvite } from './utils/internalLinkHandler'
 import {
   isClipboardInviteConsumed,
@@ -22,6 +23,7 @@ import PushInit from './components/PushInit'
 import NotificationPrompt from './components/NotificationPrompt'
 import { EntitlementsProvider } from './contexts/EntitlementsContext'
 import { LogoutPromptProvider } from './contexts/LogoutPromptContext'
+import { ThemeProvider } from './contexts/ThemeContext'
 import { NetworkProvider } from './contexts/NetworkContext'
 import { BadgeProvider } from './contexts/BadgeContext'
 import OfflineBanner from './components/OfflineBanner'
@@ -77,6 +79,8 @@ import PageTransitionStack from './components/PageTransitionStack'
 
 const TRANSITIONS_ENABLED = import.meta.env.VITE_PAGE_TRANSITIONS === 'true'
 import { useSafeAreaSync } from './hooks/useSafeAreaSync'
+import { useThemedNativeChrome } from './hooks/useThemedNativeChrome'
+import { useMediaUploadResume } from './hooks/useMediaUploadResume'
 import EventDetail from './pages/EventDetail'
 import GroupFeed from './pages/GroupFeed'
 import EditGroup from './pages/EditGroup'
@@ -103,7 +107,12 @@ function GroupChatThreadRoute() {
 }
 
 function AppRoutes(){
+  const { t } = useTranslation()
   useSafeAreaSync()
+  // Native chrome (status bar + iOS keyboard) tracks the active theme;
+  // mounted once at the route shell so every page inherits the right
+  // polarity instead of each themed page re-applying it.
+  useThemedNativeChrome()
   const [title, setTitle] = useState('')
   const [titleAccessory, setTitleAccessory] = useState<ReactNode>(null)
   const [headerHiddenOverride, setHeaderHiddenOverride] = useState(false)
@@ -117,9 +126,11 @@ function AppRoutes(){
   const [profileData, setProfileData] = useState<UserProfile>(null)
   const [profileLoading, setProfileLoading] = useState(true)
   const [profileError, setProfileError] = useState<string | null>(null)
+  const [uploadStatusToast, setUploadStatusToast] = useState<string | null>(null)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const [fullscreenOverlayTick, setFullscreenOverlayTick] = useState(0)
   const isChatRoute = location.pathname.startsWith('/user_chat/chat/') || location.pathname.startsWith('/group_chat/')
+  useMediaUploadResume(authLoaded && !!userMeta.username)
 
   const scrollRegionRef = useRef<HTMLDivElement | null>(null)
   const publicPaths = useMemo(
@@ -706,6 +717,21 @@ function AppRoutes(){
     }
   }, [authLoaded])
 
+  useEffect(() => {
+    const onStatus = (event: Event) => {
+      const detail = (event as CustomEvent<{ message?: string }>).detail
+      if (detail?.message) setUploadStatusToast(t(detail.message, detail.message))
+    }
+    window.addEventListener('chat-media-upload-status', onStatus)
+    return () => window.removeEventListener('chat-media-upload-status', onStatus)
+  }, [t])
+
+  useEffect(() => {
+    if (!uploadStatusToast) return
+    const id = window.setTimeout(() => setUploadStatusToast(null), 3500)
+    return () => window.clearTimeout(id)
+  }, [uploadStatusToast])
+
   const rootRouteElement = (() => {
     if (!authLoaded) return null
     if (profileData) {
@@ -766,6 +792,11 @@ function AppRoutes(){
         {showHeader && (
           <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} titleAccessory={titleAccessory} />
         )}
+        {uploadStatusToast ? (
+          <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+1rem)] z-[1500] -translate-x-1/2 rounded-full border border-c-border bg-c-bg-elevated/95 px-4 py-2 text-sm font-semibold text-c-text-primary shadow-2xl backdrop-blur">
+            {uploadStatusToast}
+          </div>
+        ) : null}
         <main
           ref={scrollRegionRef}
           data-scroll-region="true"
@@ -854,17 +885,17 @@ function AppRoutes(){
         )}
 
         {deepLinkJoin && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div className="mx-4 w-full max-w-sm rounded-2xl border border-[#4db6ac]/30 bg-[#0a0a0a] p-6 shadow-2xl animate-fade-in">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-c-bg-app/70 backdrop-blur-sm">
+            <div className="mx-4 w-full max-w-sm rounded-2xl border border-cpoint-turquoise/30 bg-c-bg-elevated p-6 shadow-2xl animate-fade-in">
               <div className="flex flex-col items-center text-center">
-                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#4db6ac]/20">
-                  <i className="fa-solid fa-check text-3xl text-[#4db6ac]" />
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-cpoint-turquoise/20">
+                  <i className="fa-solid fa-check text-3xl text-cpoint-turquoise" />
                 </div>
                 <h3 className="mb-2 text-xl font-semibold text-white">Welcome!</h3>
-                <p className="mb-4 text-sm text-white/70">
-                  You've joined <span className="font-medium text-[#4db6ac]">{deepLinkJoin.name}</span>
+                <p className="mb-4 text-sm text-c-text-secondary">
+                  You've joined <span className="font-medium text-cpoint-turquoise">{deepLinkJoin.name}</span>
                 </p>
-                <p className="text-xs text-white/50">Taking you to the community...</p>
+                <p className="text-xs text-c-text-tertiary">Taking you to the community...</p>
               </div>
             </div>
           </div>
@@ -921,17 +952,19 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <NetworkProvider>
         <BrowserRouter>
-          <EntitlementsProvider>
-            <LogoutPromptProvider>
-              <OfflineBanner />
-              <OutboxDrainer />
-              <BrandAssetsInit />
-              <LocaleBootstrap />
-              <PushInit />
-              <NotificationPrompt />
-              <AppRoutes />
-            </LogoutPromptProvider>
-          </EntitlementsProvider>
+          <ThemeProvider>
+            <EntitlementsProvider>
+              <LogoutPromptProvider>
+                <OfflineBanner />
+                <OutboxDrainer />
+                <BrandAssetsInit />
+                <LocaleBootstrap />
+                <PushInit />
+                <NotificationPrompt />
+                <AppRoutes />
+              </LogoutPromptProvider>
+            </EntitlementsProvider>
+          </ThemeProvider>
         </BrowserRouter>
       </NetworkProvider>
     </QueryClientProvider>

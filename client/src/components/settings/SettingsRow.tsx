@@ -23,33 +23,33 @@ export default function SettingsRow({
     <button
       type="button"
       onClick={onClick}
-      className={`group flex w-full items-center gap-4 px-4 py-3 text-left transition-colors active:bg-white/[0.08] ${
-        active ? 'bg-[#4db6ac]/[0.08]' : 'hover:bg-white/[0.04]'
+      className={`group flex w-full items-center gap-4 px-4 py-3 text-left transition-colors active:bg-c-active-bg ${
+        active ? 'bg-cpoint-turquoise/[0.08]' : 'hover:bg-c-hover-bg'
       }`}
     >
       <span
         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
           danger
-            ? 'border-red-400/15 bg-red-500/10 text-red-300'
+            ? 'border-red-400/15 bg-red-500/10 text-red-500'
             : active
-              ? 'border-[#4db6ac]/25 bg-[#4db6ac]/10 text-white'
-              : 'border-white/5 bg-white/[0.05] text-white/75'
+              ? 'border-cpoint-turquoise/25 bg-cpoint-turquoise/10 text-c-text-primary'
+              : 'border-c-border bg-c-hover-bg text-c-text-secondary'
         }`}
       >
         <i className={`${icon} text-sm`} />
       </span>
       <span className="min-w-0 flex-1">
-        <span className={`block truncate text-[15px] font-semibold ${danger ? 'text-red-300' : 'text-white'}`}>
+        <span className={`block truncate text-[15px] font-semibold ${danger ? 'text-red-500' : 'text-c-text-primary'}`}>
           {title}
         </span>
         {subtitle ? (
-          <span className={`mt-0.5 block truncate text-sm ${danger ? 'text-red-200/55' : 'text-white/45'}`}>
+          <span className={`mt-0.5 block truncate text-sm ${danger ? 'text-red-400' : 'text-c-text-tertiary'}`}>
             {subtitle}
           </span>
         ) : null}
       </span>
       {badge ? <span className="shrink-0">{badge}</span> : null}
-      <i className={`fa-solid fa-chevron-right text-xs ${danger ? 'text-red-300/55' : 'text-white/22'}`} />
+      <i className={`fa-solid fa-chevron-right text-xs ${danger ? 'text-red-400' : 'text-c-text-tertiary'}`} />
     </button>
   )
 }

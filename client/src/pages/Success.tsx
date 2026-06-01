@@ -154,7 +154,7 @@ export default function Success() {
     : "Payment recorded, still syncing. Check your membership shortly."
 
   return (
-    <div className="min-h-screen bg-black text-white pt-16 pb-24">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary pt-16 pb-24">
       <div className="mx-auto max-w-md px-4 pt-16 text-center">
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-cpoint-turquoise/30 bg-cpoint-turquoise/10">
           <svg
@@ -174,7 +174,7 @@ export default function Success() {
         <h1 className="mt-8 text-2xl font-semibold tracking-tight">
           {headline}
         </h1>
-        <p className="mt-4 text-white/60 leading-relaxed">
+        <p className="mt-4 text-c-text-tertiary leading-relaxed">
           {body}
         </p>
 
@@ -185,7 +185,7 @@ export default function Success() {
         )}
 
         {sessionId && (
-          <p className="mt-4 text-[11px] uppercase tracking-[0.22em] text-white/30">
+          <p className="mt-4 text-[11px] uppercase tracking-[0.22em] text-c-text-tertiary">
             Ref {sessionId.slice(0, 18)}…
           </p>
         )}
@@ -224,7 +224,7 @@ export default function Success() {
           <button
             type="button"
             onClick={() => navigate(isCommunity && checkout?.community_id ? `/community_feed_react/${checkout.community_id}` : '/home')}
-            className="inline-flex w-full items-center justify-center rounded-full border border-white/20 px-6 py-3 text-sm font-semibold text-white hover:bg-white/5"
+            className="inline-flex w-full items-center justify-center rounded-full border border-white/20 px-6 py-3 text-sm font-semibold text-c-text-primary hover:bg-c-hover-bg"
           >
             Continue
           </button>

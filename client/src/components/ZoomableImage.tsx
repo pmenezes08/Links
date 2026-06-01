@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface ZoomableImageProps {
   src: string
@@ -18,6 +19,7 @@ interface ZoomableImageProps {
 // - Drag to pan when zoomed
 // - ESC to reset (or close if already at 1x)
 export default function ZoomableImage({ src, alt = 'image', className = '', maxScale = 3, onRequestClose, disableTapToClose = false }: ZoomableImageProps) {
+  const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
 
@@ -401,8 +403,9 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
 
       {/* Error placeholder */}
       {error && (
-        <div className="absolute inset-0 flex items-center justify-center text-white/60 text-xs bg-black/20">
-          Image unavailable
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white/60 text-xs bg-black/20">
+          <i className="fa-solid fa-image-slash text-xl" />
+          <span>{t('chat.media_unavailable')}</span>
         </div>
       )}
     </div>

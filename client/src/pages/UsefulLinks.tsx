@@ -154,23 +154,23 @@ export default function UsefulLinks(){
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary">
       <div
-        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+        className="fixed left-0 right-0 h-10 bg-c-bg-app/70 backdrop-blur z-40"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
       >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id||''}`)} aria-label={t('common.back')}>
+          <button className="p-2 rounded-full hover:bg-c-hover-bg" onClick={()=> navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id||''}`)} aria-label={t('common.back')}>
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="flex-1 h-full flex">
-            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='list' ? 'text-white/95' : 'text-[#9fb0b5] hover:text_WHITE/90'}`} onClick={()=> setActiveTab('list')}>
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='list' ? 'text-c-text-secondary' : 'text-c-text-tertiary hover:text-c-text-primary'}`} onClick={()=> setActiveTab('list')}>
               <div className="pt-2">{t('links_docs.tab_list')}</div>
-              <div className={`h-0.5 rounded-full w-24 mx-auto mt-1 ${activeTab==='list' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+              <div className={`h-0.5 rounded-full w-24 mx-auto mt-1 ${activeTab==='list' ? 'bg-cpoint-turquoise' : 'bg-transparent'}`} />
             </button>
-            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='add' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('add')}>
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='add' ? 'text-c-text-secondary' : 'text-c-text-tertiary hover:text-c-text-primary'}`} onClick={()=> setActiveTab('add')}>
               <div className="pt-2">{t('links_docs.tab_add')}</div>
-              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='add' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='add' ? 'bg-cpoint-turquoise' : 'bg-transparent'}`} />
             </button>
           </div>
         </div>
@@ -187,41 +187,41 @@ export default function UsefulLinks(){
       >
         {activeTab === 'add' ? (
           <div className="space-y-3">
-            <div className="rounded-2xl border border_WHITE/10 bg_WHITE/[0.035] p-3">
+            <div className="rounded-2xl border border-c-border bg-white/[0.035] p-3">
               <div className="text-sm font-semibold mb-2">{t('links_docs.add_link_title')}</div>
               <div className="flex flex-col sm:flex-row gap-2">
-                <input ref={urlRef} className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" placeholder={t('links_docs.url_placeholder')} />
-                <input ref={descRef} className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" placeholder={t('links_docs.description')} />
-                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110" onClick={addLink}>{t('common.add')}</button>
+                <input ref={urlRef} className="flex-1 rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm focus:border-teal-400/70 outline-none" placeholder={t('links_docs.url_placeholder')} />
+                <input ref={descRef} className="flex-1 rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm focus:border-teal-400/70 outline-none" placeholder={t('links_docs.description')} />
+                <button className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black text-sm hover:brightness-110" onClick={addLink}>{t('common.add')}</button>
               </div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg_WHITE/[0.035] p-3">
+            <div className="rounded-2xl border border-c-border bg-white/[0.035] p-3">
               <div className="text-sm font-semibold mb-2">{t('links_docs.upload_pdf_title')}</div>
               <div className="flex flex-col sm:flex-row gap-2 items-center">
                 <input ref={pdfInputRef} type="file" accept="application/pdf" className="flex-1 text-sm" />
-                <input ref={pdfNameRef} className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" placeholder={t('links_docs.document_name_required')} />
-                <textarea ref={pdfDetailsRef} className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none resize-none" placeholder={t('links_docs.document_description_optional')} rows={2} />
-                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text_black text-sm hover:brightness-110" onClick={uploadPdf}>{t('links_docs.upload')}</button>
+                <input ref={pdfNameRef} className="flex-1 rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm focus:border-teal-400/70 outline-none" placeholder={t('links_docs.document_name_required')} />
+                <textarea ref={pdfDetailsRef} className="flex-1 rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm focus:border-teal-400/70 outline-none resize-none" placeholder={t('links_docs.document_description_optional')} rows={2} />
+                <button className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black text-sm hover:brightness-110" onClick={uploadPdf}>{t('links_docs.upload')}</button>
               </div>
             </div>
           </div>
         ) : (
           <div className="space-y-3">
             {loading ? (
-              <div className="text-[#9fb0b5]">{t('common.loading')}</div>
+              <div className="text-c-text-tertiary">{t('common.loading')}</div>
             ) : (
               <>
                 <div className="space-y-2">
                   {links.length === 0 ? (
-                    <div className="text-[#9fb0b5]">{t('links_docs.no_links')}</div>
+                    <div className="text-c-text-tertiary">{t('links_docs.no_links')}</div>
                   ) : (
                     links.map(l => (
-                      <div key={l.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                      <div key={l.id} className="rounded-2xl border border-c-border bg-white/[0.035] p-3">
                         <div className="text-teal-300 truncate"><a className="hover:underline" href={l.url} target="_blank" rel="noreferrer">{l.url}</a></div>
-                        <div className="text-sm text-[#cfd8dc] truncate">{l.description}</div>
+                        <div className="text-sm text-c-text-secondary truncate">{l.description}</div>
                         <div className="mt-2 flex justify-end">
                           {l.can_delete ? (
-                            <button className="px-2 py-1 rounded-md border border-white/10 hover:bg-white/5 text-xs" onClick={()=> remove(l.id)}>{t('common.delete')}</button>
+                            <button className="px-2 py-1 rounded-md border border-c-border hover:bg-c-hover-bg text-xs" onClick={()=> remove(l.id)}>{t('common.delete')}</button>
                           ) : null}
                         </div>
                       </div>
@@ -230,9 +230,9 @@ export default function UsefulLinks(){
                 </div>
                 <div className="pt-2">
                   <div className="text-sm font-semibold mb-2">{t('links_docs.documents_section')}</div>
-                  <div className="text-xs text-[#9fb0b5] mb-2">{t('links_docs.swipe_hint')}</div>
+                  <div className="text-xs text-c-text-tertiary mb-2">{t('links_docs.swipe_hint')}</div>
                   {docs.length === 0 ? (
-                    <div className="text-[#9fb0b5]">{t('links_docs.no_documents')}</div>
+                    <div className="text-c-text-tertiary">{t('links_docs.no_documents')}</div>
                   ) : (
                     docs.map(d => {
                       const displayName = d.description || (d.file_path ? (d.file_path.split('/').pop()?.replace(/^\d+_/, '') || t('links_docs.pdf_document')) : t('links_docs.pdf_document'))
@@ -270,7 +270,7 @@ export default function UsefulLinks(){
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 animate-fade-in">
           <div className={`px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 ${
             toast.type === 'success' 
-              ? 'bg-[#4db6ac] text-black' 
+              ? 'bg-cpoint-turquoise text-black' 
               : 'bg-red-500 text-white'
           }`}>
             <i className={`fa-solid ${toast.type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}`} />
@@ -363,7 +363,7 @@ function SwipeableDocCard({
         style={{ width: actionWidth }}
       >
         <button 
-          className="flex-1 bg-[#4db6ac] flex items-center justify-center text-black font-medium"
+          className="flex-1 bg-cpoint-turquoise flex items-center justify-center text-black font-medium"
           onClick={onEditStart}
         >
           <i className="fa-solid fa-pen" />
@@ -377,11 +377,10 @@ function SwipeableDocCard({
       </div>
       
       <div 
-        className="relative bg-black border border-white/10 rounded-2xl p-3 transition-transform"
+        className="relative bg-c-bg-app border border-c-border rounded-2xl p-3 transition-transform"
         style={{ 
           transform: `translateX(${translateX}px)`,
-          transitionDuration: touchRef.current ? '0ms' : '200ms',
-          backgroundColor: '#0a0a0a'
+          transitionDuration: touchRef.current ? '0ms' : '200ms'
         }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
@@ -393,7 +392,7 @@ function SwipeableDocCard({
               type="text"
               value={editingName}
               onChange={(e) => onEditNameChange(e.target.value)}
-              className="flex-1 rounded-md bg-black border border-white/20 px-2 py-1 text-sm focus:border-teal-400/70 outline-none"
+              className="flex-1 rounded-md bg-c-bg-app border border-c-border px-2 py-1 text-sm focus:border-teal-400/70 outline-none"
               placeholder={t('links_docs.document_name_placeholder')}
               autoFocus
               onKeyDown={(e) => {
@@ -404,19 +403,19 @@ function SwipeableDocCard({
             <textarea
               value={editingDetails}
               onChange={(e) => onEditDetailsChange(e.target.value)}
-              className="w-full rounded-md bg-black border border-white/20 px-2 py-1 text-sm focus:border-teal-400/70 outline-none resize-none"
+              className="w-full rounded-md bg-c-bg-app border border-c-border px-2 py-1 text-sm focus:border-teal-400/70 outline-none resize-none"
               placeholder={t('links_docs.document_description_optional')}
               rows={2}
             />
             <div className="flex items-center justify-end gap-2">
               <button
-                className="px-2 py-1 rounded-md bg-[#4db6ac] text-black text-xs hover:brightness-110"
+                className="px-2 py-1 rounded-md bg-cpoint-turquoise text-black text-xs hover:brightness-110"
                 onClick={onEditSave}
               >
                 {t('common.save')}
               </button>
               <button
-                className="px-2 py-1 rounded-md border border-white/10 hover:bg-white/5 text-xs"
+                className="px-2 py-1 rounded-md border border-c-border hover:bg-c-hover-bg text-xs"
                 onClick={onEditCancel}
               >
                 {t('common.cancel')}
@@ -426,15 +425,15 @@ function SwipeableDocCard({
         ) : (
           <div className="flex items-center justify-between gap-3">
             <div className="flex-1 min-w-0">
-              <div className="text-white/90 text-sm truncate">{displayName}</div>
-              {doc.details ? <div className="text-sm text-[#cfd8dc] line-clamp-2 mt-0.5">{doc.details}</div> : null}
-              <div className="text-xs text-[#9fb0b5]">{doc.username} • {new Date(doc.created_at).toLocaleString()}</div>
+              <div className="text-c-text-secondary text-sm truncate">{displayName}</div>
+              {doc.details ? <div className="text-sm text-c-text-secondary line-clamp-2 mt-0.5">{doc.details}</div> : null}
+              <div className="text-xs text-c-text-tertiary">{doc.username} • {new Date(doc.created_at).toLocaleString()}</div>
             </div>
             <a 
               href={resolveDocUrl(doc.file_path)} 
               target="_blank" 
               rel="noreferrer"
-              className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm flex-shrink-0"
+              className="px-3 py-1.5 rounded-md border border-c-border hover:bg-c-hover-bg text-sm flex-shrink-0"
             >
               <i className="fa-solid fa-external-link mr-1.5" />
               {t('links_docs.open')}

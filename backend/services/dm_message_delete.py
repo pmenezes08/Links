@@ -6,6 +6,7 @@ import logging
 from typing import Any, Tuple
 
 from backend.services.database import get_db_connection, get_sql_placeholder
+from backend.services.message_media_utils import parse_media_paths, purge_media_file
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,11 @@ def delete_dm_message(
         with get_db_connection() as conn:
             c = conn.cursor()
             c.execute(
-                f"SELECT sender, receiver FROM messages WHERE id={ph} AND (sender={ph} OR receiver={ph})",
+                f"""
+                SELECT sender, receiver, image_path, video_path, audio_path, media_paths
+                FROM messages
+                WHERE id={ph} AND (sender={ph} OR receiver={ph})
+                """,
                 (message_id, username, username),
             )
             row = c.fetchone()
@@ -31,8 +36,15 @@ def delete_dm_message(
                 return {"success": False, "error": "Message not found or not yours"}, 200
             sender = row["sender"] if hasattr(row, "keys") else row[0]
             receiver = row["receiver"] if hasattr(row, "keys") else row[1]
+            image_path = row["image_path"] if hasattr(row, "keys") else row[2]
+            video_path = row["video_path"] if hasattr(row, "keys") else row[3]
+            audio_path = row["audio_path"] if hasattr(row, "keys") else row[4]
+            media_raw = row["media_paths"] if hasattr(row, "keys") else row[5]
+            media_paths = list(dict.fromkeys(parse_media_paths(media_raw) + [p for p in (image_path, video_path, audio_path) if p]))
             c.execute(f"DELETE FROM messages WHERE id={ph}", (message_id,))
             conn.commit()
+            for media_path in media_paths:
+                purge_media_file(media_path)
 
             try:
                 from backend.services.firestore_writes import USE_FIRESTORE_WRITES, _dm_conv_id, _get_client

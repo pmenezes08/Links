@@ -143,7 +143,7 @@ export default function ManageMembershipModal({ open, onClose, initialTab = 'pla
   return (
     <>
       <div
-        className="fixed inset-x-0 bottom-0 bg-black/70 z-50"
+        className="fixed inset-x-0 bottom-0 bg-c-bg-app/70 z-50"
         style={{ top: 'var(--app-header-offset, 0px)' }}
         onClick={onClose}
         aria-hidden
@@ -157,16 +157,16 @@ export default function ManageMembershipModal({ open, onClose, initialTab = 'pla
       >
         <div
           onClick={e => e.stopPropagation()}
-          className="flex max-h-full min-h-0 w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0f1114] shadow-2xl"
+          className="flex max-h-full min-h-0 w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-c-border bg-c-bg-elevated shadow-2xl"
         >
-          <header className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+          <header className="flex items-center justify-between px-5 py-4 border-b border-c-border">
             <div>
-              <div className="text-xs text-white/50">{t('billing.account')}</div>
+              <div className="text-xs text-c-text-tertiary">{t('billing.account')}</div>
               <h2 className="text-lg font-semibold">{t('billing.modal_title')}</h2>
             </div>
             <button
               onClick={onClose}
-              className="text-white/60 hover:text-white transition"
+              className="text-c-text-tertiary hover:text-c-text-primary transition"
               aria-label={t('common.close')}
             >
               <i className="fa-solid fa-xmark text-lg" />
@@ -174,15 +174,15 @@ export default function ManageMembershipModal({ open, onClose, initialTab = 'pla
           </header>
 
           <div className="flex min-h-0 flex-1 overflow-hidden">
-            <nav className="hidden w-44 shrink-0 overflow-y-auto border-r border-white/10 p-2 sm:block">
+            <nav className="hidden w-44 shrink-0 overflow-y-auto border-r border-c-border p-2 sm:block">
               {TABS.map(tabItem => (
                 <button
                   key={tabItem.id}
                   onClick={() => setTab(tabItem.id)}
                   className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition ${
                     tab === tabItem.id
-                      ? 'bg-[#4db6ac]/15 text-[#4db6ac]'
-                      : 'text-white/70 hover:bg-white/5 hover:text-white'
+                      ? 'bg-cpoint-turquoise/15 text-cpoint-turquoise'
+                      : 'text-c-text-secondary hover:bg-c-hover-bg hover:text-c-text-primary'
                   }`}
                 >
                   <i className={`fa-solid ${tabItem.icon} w-4 text-center`} />
@@ -192,15 +192,15 @@ export default function ManageMembershipModal({ open, onClose, initialTab = 'pla
             </nav>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
-              <div className="sm:hidden flex gap-1 p-2 border-b border-white/10 overflow-x-auto">
+              <div className="sm:hidden flex gap-1 p-2 border-b border-c-border overflow-x-auto">
                 {TABS.map(tabItem => (
                   <button
                     key={tabItem.id}
                     onClick={() => setTab(tabItem.id)}
                     className={`px-3 py-1.5 text-xs rounded-full whitespace-nowrap transition ${
                       tab === tabItem.id
-                        ? 'bg-[#4db6ac]/15 text-[#4db6ac]'
-                        : 'bg-white/5 text-white/70'
+                        ? 'bg-cpoint-turquoise/15 text-cpoint-turquoise'
+                        : 'bg-c-hover-bg text-c-text-secondary'
                     }`}
                   >
                     {t(tabItem.labelKey)}
@@ -242,7 +242,7 @@ function PlanTab() {
     }
   }, [])
   if (loading || !entitlements) {
-    return <div className="text-white/60 text-sm">{t('billing.loading_plan')}</div>
+    return <div className="text-c-text-tertiary text-sm">{t('billing.loading_plan')}</div>
   }
 
   const tier = entitlements.tier
@@ -280,11 +280,11 @@ function PlanTab() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-xl border border-white/10 bg-white/5 p-4">
-        <div className="text-xs uppercase tracking-wide text-white/50">{t('billing.current_plan')}</div>
+      <section className="rounded-xl border border-c-border bg-c-hover-bg p-4">
+        <div className="text-xs uppercase tracking-wide text-c-text-tertiary">{t('billing.current_plan')}</div>
         <div className="flex items-center gap-3 mt-1">
           <h3 className="text-xl font-semibold">{tierLabel}</h3>
-          <span className="text-[10px] px-2 py-0.5 rounded-full border border-white/15 bg-white/5 text-white/60">
+          <span className="text-[10px] px-2 py-0.5 rounded-full border border-c-border bg-c-hover-bg text-c-text-tertiary">
             {providerBadge(billingProvider)}
           </span>
           {entitlements.is_special && (
@@ -294,7 +294,7 @@ function PlanTab() {
           )}
         </div>
         {isEnterprise && (
-          <p className="text-xs text-white/60 mt-2">
+          <p className="text-xs text-c-text-tertiary mt-2">
             {t('billing.enterprise_benefit_note')}
           </p>
         )}
@@ -302,10 +302,10 @@ function PlanTab() {
 
       <section>
         <h4 className="text-sm font-semibold mb-3">{t('billing.included')}</h4>
-        <div className="divide-y divide-white/5 rounded-xl border border-white/10 bg-white/5">
+        <div className="divide-y divide-c-border rounded-xl border border-c-border bg-c-hover-bg">
           {rows.map(([k, v]) => (
             <div key={k} className="flex items-center justify-between px-4 py-2.5 text-sm">
-              <span className="text-white/70">{k}</span>
+              <span className="text-c-text-secondary">{k}</span>
               <span className="font-medium">{v}</span>
             </div>
           ))}
@@ -323,7 +323,7 @@ function PlanTab() {
                 ? 'https://apps.apple.com/account/subscriptions'
                 : 'https://play.google.com/store/account/subscriptions',
             )}
-            className="w-full bg-white/10 border border-white/20 text-white font-semibold py-3 rounded-lg hover:bg-white/20 transition"
+            className="w-full bg-c-active-bg border border-white/20 text-c-text-primary font-semibold py-3 rounded-lg hover:bg-white/20 transition"
           >
             {t('billing.manage_in_store', { provider: providerLabel(billingProvider) })}
           </button>
@@ -337,7 +337,7 @@ function PlanTab() {
                 window.location.href = '/subscription_plans'
               }
             }}
-            className="w-full bg-[#4db6ac] text-black font-semibold py-3 rounded-lg hover:bg-[#3da398] transition"
+            className="w-full bg-cpoint-turquoise text-black font-semibold py-3 rounded-lg hover:brightness-90 transition"
           >
             {nativeProvider
               ? t('billing.upgrade_via_store', { provider: providerLabel(nativeProvider) })
@@ -372,7 +372,7 @@ function AiUsageTab() {
   }, [refresh])
 
   if (err) return <div className="text-red-400 text-sm">{err}</div>
-  if (!entitlements || !usage) return <div className="text-white/60 text-sm">{t('billing.loading_usage')}</div>
+  if (!entitlements || !usage) return <div className="text-c-text-tertiary text-sm">{t('billing.loading_usage')}</div>
 
   return (
     <div className="space-y-5">
@@ -400,11 +400,11 @@ function AiUsageTab() {
       {aiData?.by_surface && (
         <section>
           <h4 className="text-sm font-semibold mb-2">{t('billing.breakdown_by_surface')}</h4>
-          <div className="divide-y divide-white/5 rounded-xl border border-white/10 bg-white/5">
+          <div className="divide-y divide-c-border rounded-xl border border-c-border bg-c-hover-bg">
             {Object.entries(aiData.by_surface).map(([k, v]) => (
               <div key={k} className="flex items-center justify-between px-4 py-2 text-sm">
-                <span className="text-white/70 capitalize">{k.replace(/_/g, ' ')}</span>
-                <span className="font-mono text-white/90">{v}</span>
+                <span className="text-c-text-secondary capitalize">{k.replace(/_/g, ' ')}</span>
+                <span className="font-mono text-c-text-secondary">{v}</span>
               </div>
             ))}
           </div>
@@ -437,25 +437,25 @@ function UsageRow({
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between text-sm">
-        <span className="text-white/80">{label}</span>
-        <span className={over ? 'text-red-400' : warn ? 'text-yellow-400' : 'text-white/80'}>
+        <span className="text-c-text-secondary">{label}</span>
+        <span className={over ? 'text-red-400' : warn ? 'text-yellow-400' : 'text-c-text-secondary'}>
           {unlimited ? (
             <>{formatNum(used)}{unit ? ` ${unit}` : ''} · unlimited</>
           ) : (
-            <>{formatNum(used)} / {cap}{unit ? ` ${unit}` : ''} <span className="text-white/40">({pct}%)</span></>
+            <>{formatNum(used)} / {cap}{unit ? ` ${unit}` : ''} <span className="text-c-text-tertiary">({pct}%)</span></>
           )}
         </span>
       </div>
       {!unlimited && (
-        <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+        <div className="h-1.5 rounded-full bg-c-hover-bg overflow-hidden">
           <div
-            className={`h-full ${over ? 'bg-red-500' : warn ? 'bg-yellow-500' : 'bg-[#4db6ac]'}`}
+            className={`h-full ${over ? 'bg-red-500' : warn ? 'bg-yellow-500' : 'bg-cpoint-turquoise'}`}
             style={{ width: `${pct}%` }}
           />
         </div>
       )}
       {resetAt && (
-        <div className="text-xs text-white/40">
+        <div className="text-xs text-c-text-tertiary">
           {rolling ? `Next slot frees up ${formatRollingReset(resetAt)}` : `Resets ${new Date(resetAt).toLocaleDateString()}`}
         </div>
       )}
@@ -512,7 +512,7 @@ function BillingTab() {
     }
   }, [t])
 
-  if (loading) return <div className="text-white/60 text-sm">{t('billing.loading_billing')}</div>
+  if (loading) return <div className="text-c-text-tertiary text-sm">{t('billing.loading_billing')}</div>
   if (err) return <div className="text-red-400 text-sm">{err}</div>
   if (!data) return null
 
@@ -539,32 +539,32 @@ function BillingTab() {
         </div>
       )}
 
-      <section className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-3">
+      <section className="rounded-xl border border-c-border bg-c-hover-bg p-4 space-y-3">
         <div>
-          <div className="text-xs uppercase tracking-wide text-white/50">Subscription</div>
+          <div className="text-xs uppercase tracking-wide text-c-text-tertiary">Subscription</div>
           <div className="text-base font-semibold mt-0.5 capitalize">
             {data.plan.tier}
             {data.plan.inherited_from?.startsWith('enterprise:') && (
-              <span className="ml-2 text-xs text-white/50">via Enterprise</span>
+              <span className="ml-2 text-xs text-c-text-tertiary">via Enterprise</span>
             )}
-            <span className="ml-2 rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[11px] font-medium text-white/60">
+            <span className="ml-2 rounded-full border border-c-border bg-c-hover-bg px-2 py-0.5 text-[11px] font-medium text-c-text-tertiary">
               {providerBadge(provider)}
             </span>
           </div>
         </div>
 
         {storeBilled ? (
-          <div className="text-sm text-white/70">
+          <div className="text-sm text-c-text-secondary">
             {iosOtherStoreBilled
               ? t('billing.managed_original_platform')
               : t('billing.managed_provider_subscription', { provider: providerLabel(provider) })}
           </div>
         ) : iosWebBilled ? (
-          <div className="text-sm text-white/70">
+          <div className="text-sm text-c-text-secondary">
             {t('billing.managed_on_web_ios')}
           </div>
         ) : sub ? (
-          <div className="text-sm text-white/80 space-y-1">
+          <div className="text-sm text-c-text-secondary space-y-1">
             <div>{t('billing.subscription_status')}: <span className="font-medium capitalize">{sub.status}</span>
               {sub.cancel_at_period_end && (
                 <span className="ml-2 text-xs text-yellow-400">{t('billing.cancels_at_period_end')}</span>
@@ -582,7 +582,7 @@ function BillingTab() {
             )}
           </div>
         ) : (
-          <div className="text-sm text-white/60">{t('billing.no_active_subscription')}</div>
+          <div className="text-sm text-c-text-tertiary">{t('billing.no_active_subscription')}</div>
         )}
 
         {portalErr && (
@@ -598,7 +598,7 @@ function BillingTab() {
                 ? 'https://apps.apple.com/account/subscriptions'
                 : 'https://play.google.com/store/account/subscriptions',
             )}
-            className="w-full mt-2 bg-white/10 border border-white/20 rounded-lg py-2.5 text-sm font-semibold hover:bg-white/20 transition"
+            className="w-full mt-2 bg-c-active-bg border border-white/20 rounded-lg py-2.5 text-sm font-semibold hover:bg-white/20 transition"
           >
             <i className="fa-regular fa-credit-card mr-2" />
             {t('billing.open_provider_subscriptions', { provider: providerLabel(provider) })}
@@ -607,7 +607,7 @@ function BillingTab() {
           <button
             onClick={openPortal}
             disabled={portalBusy}
-            className="w-full mt-2 bg-white/10 border border-white/20 rounded-lg py-2.5 text-sm font-semibold hover:bg-white/20 disabled:opacity-50 transition"
+            className="w-full mt-2 bg-c-active-bg border border-white/20 rounded-lg py-2.5 text-sm font-semibold hover:bg-white/20 disabled:opacity-50 transition"
           >
             <i className="fa-regular fa-credit-card mr-2" />
             {portalBusy
@@ -622,7 +622,7 @@ function BillingTab() {
       {data.plan.tier !== 'premium' && !data.plan.is_special && (
         <button
           onClick={() => { window.location.href = '/subscription_plans' }}
-          className="w-full bg-[#4db6ac] text-black font-semibold py-3 rounded-lg hover:bg-[#3da398] transition"
+          className="w-full bg-cpoint-turquoise text-black font-semibold py-3 rounded-lg hover:brightness-90 transition"
         >
           {t('billing.upgrade_to_premium')}
         </button>
@@ -681,26 +681,26 @@ function PaymentHistoryTab() {
     return () => { cancelled = true }
   }, [])
 
-  if (loading) return <div className="text-white/60 text-sm">{t('billing.loading_payments')}</div>
+  if (loading) return <div className="text-c-text-tertiary text-sm">{t('billing.loading_payments')}</div>
   if (err) return <div className="text-red-400 text-sm">{err}</div>
 
   const payments = data?.payments || []
   if (payments.length === 0) {
     return (
-      <section className="rounded-xl border border-white/10 bg-white/5 p-4">
-        <h3 className="text-sm font-semibold text-white">{t('billing.payment_history_title')}</h3>
-        <p className="mt-2 text-sm text-white/55">{t('billing.payment_history_empty')}</p>
+      <section className="rounded-xl border border-c-border bg-c-hover-bg p-4">
+        <h3 className="text-sm font-semibold text-c-text-primary">{t('billing.payment_history_title')}</h3>
+        <p className="mt-2 text-sm text-c-text-tertiary">{t('billing.payment_history_empty')}</p>
       </section>
     )
   }
 
   return (
-    <section className="rounded-xl border border-white/10 bg-white/5 overflow-hidden">
-      <div className="px-4 py-3 border-b border-white/10">
-        <h3 className="text-sm font-semibold text-white">{t('billing.payment_history_title')}</h3>
-        <p className="mt-1 text-xs text-white/55">{t('billing.payment_history_subtitle')}</p>
+    <section className="rounded-xl border border-c-border bg-c-hover-bg overflow-hidden">
+      <div className="px-4 py-3 border-b border-c-border">
+        <h3 className="text-sm font-semibold text-c-text-primary">{t('billing.payment_history_title')}</h3>
+        <p className="mt-1 text-xs text-c-text-tertiary">{t('billing.payment_history_subtitle')}</p>
       </div>
-      <ul className="divide-y divide-white/5">
+      <ul className="divide-y divide-c-border">
         {payments.map((payment, idx) => {
           const paidAt = payment.paid_at ? new Date(payment.paid_at) : null
           const periodEnd = payment.period_end ? new Date(payment.period_end) : null
@@ -711,8 +711,8 @@ function PaymentHistoryTab() {
             <li key={`${payment.stripe_invoice_id || idx}`} className="px-4 py-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-medium text-white truncate">{label}</div>
-                  <div className="mt-1 text-xs text-white/45">
+                  <div className="font-medium text-c-text-primary truncate">{label}</div>
+                  <div className="mt-1 text-xs text-c-text-tertiary">
                     {paidAt ? paidAt.toLocaleDateString() : t('billing.payment_date_unknown')}
                     {periodEnd && (
                       <span> · {t('billing.payment_period_ends')} {periodEnd.toLocaleDateString()}</span>
@@ -720,10 +720,10 @@ function PaymentHistoryTab() {
                   </div>
                 </div>
                 <div className="shrink-0 text-right">
-                  <div className="font-semibold text-white">
+                  <div className="font-semibold text-c-text-primary">
                     {formatMoney(payment.amount_paid_cents, payment.currency)}
                   </div>
-                  <div className="text-[11px] uppercase tracking-wide text-white/40">
+                  <div className="text-[11px] uppercase tracking-wide text-c-text-tertiary">
                     {payment.scope === 'community' ? t('billing.payment_scope_community') : t('billing.payment_scope_personal')}
                   </div>
                 </div>

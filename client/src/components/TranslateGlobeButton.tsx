@@ -64,7 +64,7 @@ export default function TranslateGlobeButton({
           e.stopPropagation()
           setShowLanguages((v) => !v)
         }}
-        className="text-[#4db6ac] hover:text-[#4db6ac]/80 text-xs px-1"
+        className="text-cpoint-turquoise hover:text-cpoint-turquoise/80 text-xs px-1"
         title={t('feed.translate')}
         aria-label={t('feed.translate')}
         disabled={disabled || isTranslating}
@@ -77,7 +77,7 @@ export default function TranslateGlobeButton({
       </button>
       {showLanguages && (
         <div
-          className={`absolute top-6 z-10 bg-[#1a1d29] border border-[#4db6ac]/30 rounded-lg shadow-lg min-w-[160px] ${
+          className={`absolute top-6 z-10 bg-[#1a1d29] border border-cpoint-turquoise/30 rounded-lg shadow-lg min-w-[160px] ${
             menuAlign === 'right' ? 'right-0' : 'left-0'
           }`}
           onClick={(e) => e.stopPropagation()}
@@ -90,7 +90,7 @@ export default function TranslateGlobeButton({
                 e.stopPropagation()
                 void handleTranslate(lang.code)
               }}
-              className="w-full px-3 py-2 text-left text-xs text-white hover:bg-[#4db6ac]/20 flex items-center gap-2 first:rounded-t-lg last:rounded-b-lg"
+              className="w-full px-3 py-2 text-left text-xs text-c-text-primary hover:bg-cpoint-turquoise/20 flex items-center gap-2 first:rounded-t-lg last:rounded-b-lg"
             >
               <span>{lang.flag}</span>
               <span>{t(lang.nameKey)}</span>

@@ -79,17 +79,17 @@ _DEFAULTS: Dict[str, Any] = {
     "thread_summary_trigger_messages": 120,
     "thread_summary_refresh_messages": 40,
     "thread_summary_max_chars": 2000,
-    "chat_memory_enabled": False,
-    "chat_memory_peer_dm_enabled": False,
-    "chat_memory_group_enabled": False,
+    "chat_memory_enabled": True,
+    "chat_memory_peer_dm_enabled": True,
+    "chat_memory_group_enabled": True,
     "chat_memory_min_messages": 200,
     "chat_memory_chunk_messages": 60,
     "chat_memory_chunk_chars": 3200,
     "chat_memory_top_k": 4,
     "chat_memory_max_prompt_chars": 3500,
     "chat_memory_backfill_max_messages": 4000,
-    "chat_memory_event_ledger_enabled": False,
-    "chat_memory_embedding_model": "",
+    "chat_memory_event_ledger_enabled": True,
+    "chat_memory_embedding_model": "text-embedding-3-small",
     "chat_memory_indexing_daily_budget_usd": 0.0,
     "rpm_per_user": 10,
     "hpm_per_user": 60,
@@ -108,6 +108,8 @@ _DEFAULTS: Dict[str, Any] = {
     # subscription". Effectively: a Free user can own a Paid community
     # and get the Paid-tier member cap.
     "free_members_per_owned_community": 25,
+    "chat_media_max_bytes": 500 * 1024 * 1024,
+    "chat_media_max_daily": 50,
 }
 
 
@@ -174,6 +176,7 @@ def _load_kb_defaults() -> Dict[str, Any]:
         "chat_memory_chunk_messages", "chat_memory_chunk_chars",
         "chat_memory_top_k", "chat_memory_max_prompt_chars",
         "chat_memory_backfill_max_messages",
+        "chat_media_max_bytes", "chat_media_max_daily",
     ):
         v = _kb_field_value("hard-limits", k, _DEFAULTS[k])
         try:
@@ -409,6 +412,8 @@ def resolve_entitlements(username: Optional[str]) -> Dict[str, Any]:
         "chat_memory_event_ledger_enabled": defaults.get("chat_memory_event_ledger_enabled", False),
         "chat_memory_embedding_model": defaults.get("chat_memory_embedding_model", ""),
         "chat_memory_indexing_daily_budget_usd": defaults.get("chat_memory_indexing_daily_budget_usd", 0.0),
+        "chat_media_max_bytes": defaults.get("chat_media_max_bytes", 500 * 1024 * 1024),
+        "chat_media_max_daily": defaults.get("chat_media_max_daily", 50),
     }
 
     if tier == TIER_SPECIAL:

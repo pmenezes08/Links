@@ -66,27 +66,27 @@ export default function KeyPosts(){
     return ()=> { ok = false }
   }, [community_id, groupId, activeTab])
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
+  if (loading) return <div className="p-4 text-c-text-tertiary">Loading…</div>
   if (error) return <div className="p-4 text-red-400">{error}</div>
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary">
       <div
-        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+        className="fixed left-0 right-0 h-10 bg-c-bg-app/70 backdrop-blur z-40"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
       >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={goBack} aria-label="Back">
+          <button className="p-2 rounded-full hover:bg-c-hover-bg" onClick={goBack} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="flex-1 h-full flex">
-            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='community' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('community')}>
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='community' ? 'text-c-text-secondary' : 'text-c-text-tertiary hover:text-white/90'}`} onClick={()=> setActiveTab('community')}>
               <div className="pt-2">{groupScope ? 'Group' : 'Community'}</div>
               <div className={`h-0.5 rounded-full w-20 mx-auto mt-1 ${activeTab==='community' ? 'bg-[#ffd54f]' : 'bg-transparent'}`} />
             </button>
-            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='yours' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('yours')}>
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='yours' ? 'text-c-text-secondary' : 'text-c-text-tertiary hover:text-white/90'}`} onClick={()=> setActiveTab('yours')}>
               <div className="pt-2">Yours</div>
-              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='yours' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='yours' ? 'bg-cpoint-turquoise' : 'bg-transparent'}`} />
             </button>
           </div>
         </div>
@@ -104,15 +104,15 @@ export default function KeyPosts(){
         </div>
         {activeTab === 'community' ? (
           communityPosts.length === 0 ? (
-            <div className="text-sm text-[#9fb0b5]">{groupScope ? 'No group key posts yet.' : 'No community key posts yet.'}</div>
+            <div className="text-sm text-c-text-tertiary">{groupScope ? 'No group key posts yet.' : 'No community key posts yet.'}</div>
           ) : (
             <div className="space-y-3">
               {communityPosts.map(p => (
-                <div key={p.id} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer" onClick={()=> openPost(p.id)}>
-                  <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
+                <div key={p.id} className="rounded-2xl border border-c-border bg-c-bg-app shadow-sm shadow-black/20 cursor-pointer" onClick={()=> openPost(p.id)}>
+                  <div className="px-3 py-2 border-b border-c-border flex items-center gap-2">
                     <Avatar username={p.username} url={p.profile_picture || undefined} size={28} linkToProfile />
                     <div className="font-medium">{p.username}</div>
-                    <div className="text-xs text-[#9fb0b5] ml-auto">{formatSmartTime((p as any).display_timestamp || p.timestamp)}</div>
+                    <div className="text-xs text-c-text-tertiary ml-auto">{formatSmartTime((p as any).display_timestamp || p.timestamp)}</div>
                     <i className="fa-solid fa-thumbtack" style={{ color:'#ffd54f' }} />
                   </div>
                   <div className="px-3 py-2 space-y-2">
@@ -127,7 +127,7 @@ export default function KeyPosts(){
                           return ip.startsWith('uploads') || ip.startsWith('static') ? `/${ip}` : `/uploads/${ip}`
                         })()}
                         alt="Post image"
-                        className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
+                        className="block mx-auto max-w-full max-h-[360px] rounded border border-c-border"
                       />
                     ) : null}
                   </div>
@@ -137,16 +137,16 @@ export default function KeyPosts(){
           )
         ) : (
           yourPosts.length === 0 ? (
-            <div className="text-sm text-[#9fb0b5]">No starred posts yet. Tap the turquoise star on posts to add them here.</div>
+            <div className="text-sm text-c-text-tertiary">No starred posts yet. Tap the turquoise star on posts to add them here.</div>
           ) : (
             <div className="space-y-3">
               {yourPosts.map(p => (
-                <div key={p.id} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer" onClick={()=> openPost(p.id)}>
-                  <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
+                <div key={p.id} className="rounded-2xl border border-c-border bg-c-bg-app shadow-sm shadow-black/20 cursor-pointer" onClick={()=> openPost(p.id)}>
+                  <div className="px-3 py-2 border-b border-c-border flex items-center gap-2">
                     <Avatar username={p.username} url={p.profile_picture || undefined} size={28} linkToProfile />
                     <div className="font-medium">{p.username}</div>
-                    <div className="text-xs text-[#9fb0b5] ml-auto">{formatSmartTime((p as any).display_timestamp || p.timestamp)}</div>
-                    <i className="fa-solid fa-star" style={{ color:'#4db6ac' }} />
+                    <div className="text-xs text-c-text-tertiary ml-auto">{formatSmartTime((p as any).display_timestamp || p.timestamp)}</div>
+                    <i className="fa-solid fa-star" style={{ color:'#00CEC8' }} />
                   </div>
                   <div className="px-3 py-2 space-y-2">
                     <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{p.content}</div>
@@ -160,7 +160,7 @@ export default function KeyPosts(){
                           return ip.startsWith('uploads') || ip.startsWith('static') ? `/${ip}` : `/uploads/${ip}`
                         })()}
                         alt="Post image"
-                        className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
+                        className="block mx-auto max-w-full max-h-[360px] rounded border border-c-border"
                       />
                     ) : null}
                   </div>

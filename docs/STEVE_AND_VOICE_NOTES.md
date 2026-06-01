@@ -418,14 +418,14 @@ separate and unchanged.
 When disabled (default), the code path is a strict no-op — zero extra
 rows, identical context to the raw-window behaviour.
 
-### Phase 3 chat memory skeleton (disabled)
+### Phase 3 chat memory (peer DMs enabled)
 
-`backend/services/steve_chat_memory.py` defines the PR 1 foundation for
-future hybrid chat memory: KB-backed config parsing, exact thread scope
-helpers (`dm:{conv_id}` / `group:{group_id}`), and prompt-section
-formatting for already-retrieved older chunks and structured counters.
-It does **not** read Firestore, build embeddings, call vendors, log usage,
-or inject memory into live Steve prompts yet.
+`backend/services/steve_dm_reply.py` now calls `inject_chat_memory_into_context` (semantic retrieval via `retrieve_relevant_chunks` + cosine similarity) and `inject_counters_into_context` (event ledger via `query_counters`) for peer DMs when `chat_memory_enabled` + `chat_memory_peer_dm_enabled` (and `chat_memory_event_ledger_enabled` for counters) are true **and** the user message matches `has_recall_intent` or `has_count_intent`.
+
+- `=== RELEVANT OLDER MEMORY ===` section for recall questions ("when did", "remember when").
+- `=== STRUCTURED THREAD COUNTERS ===` section for count questions ("how many times", "how often").
+
+Chunks must be backfilled (`scripts/backfill_steve_chat_memory.py --conv-id X --write`) and then embedded (`embed_chunks`). Retrieval-only reads do **not** log `ai_usage`; embedding calls log one row with `request_type="steve_chat_memory_embed"`.
 
 The rollout knobs live on KB page `hard-limits` and are projected through
 `resolve_entitlements`: `chat_memory_enabled`,
@@ -433,15 +433,14 @@ The rollout knobs live on KB page `hard-limits` and are projected through
 `chat_memory_min_messages`, `chat_memory_chunk_messages`,
 `chat_memory_chunk_chars`, `chat_memory_top_k`,
 `chat_memory_max_prompt_chars`, `chat_memory_backfill_max_messages`,
-`chat_memory_event_ledger_enabled`, `chat_memory_embedding_model`, and
+`chat_memory_event_ledger_enabled`, `chat_memory_embedding_model` (defaults to `text-embedding-3-small`), and
 `chat_memory_indexing_daily_budget_usd`. All feature switches default off;
-the indexing budget defaults to `$0` while embeddings and event extraction
-are not implemented.
+the indexing budget defaults to `$0`.
 
 Future retrieval must stay scoped to the exact thread key and must not cross
-DM/group boundaries. Retrieval-only reads do not write `ai_usage` rows; any
-future embedding or extraction vendor call must gate first and log its own
-row before it ships.
+DM/group boundaries. `should_include_memory_record` excludes stale/invalidated/deleted/encrypted/reset records. 
+
+See `steve_chat_memory_retrieval.py` and `steve_chat_memory_events.py` for implementation. Group support (PR5) and full ops/invalidation (PR6) are also wired.
 
 ---
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { useTheme, type Theme } from '../../contexts/ThemeContext'
 import { matchLocale, type SupportedLocale } from '../../i18n'
 import { LOCALE_OPTIONS } from '../../i18n/localeOptions'
 import { useLocale } from '../../i18n/useLocale'
@@ -19,17 +20,23 @@ function fetchMockable(url: string, init?: RequestInit) {
 export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProps) {
   const { t } = useTranslation()
   const { locale, supported, saving, setLocale } = useLocale()
+  const { theme, setTheme } = useTheme()
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [videoFailed, setVideoFailed] = useState(false)
   const [manifestoOpen, setManifestoOpen] = useState(false)
   const [page, setPage] = useState<IntroPage | null>(null)
   const [skipLanguageStep, setSkipLanguageStep] = useState(false)
   const [draftLocale, setDraftLocale] = useState<SupportedLocale>(locale)
+  const [draftAppearance, setDraftAppearance] = useState<Theme>(theme)
   const [localeError, setLocaleError] = useState<string | null>(null)
 
   useEffect(() => {
     setDraftLocale(locale)
   }, [locale])
+
+  useEffect(() => {
+    setDraftAppearance(theme)
+  }, [theme])
 
   useEffect(() => {
     let cancelled = false
@@ -83,27 +90,28 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
       setLocaleError(t('account.language.save_failed'))
       return
     }
+    setTheme(draftAppearance)
     setPage(1)
-  }, [draftLocale, setLocale, t])
+  }, [draftLocale, draftAppearance, setLocale, setTheme, t])
 
   if (page === null) {
     return (
-      <div className="fixed inset-0 z-[1101] bg-black text-white flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-cpoint-turquoise animate-spin" aria-hidden />
+      <div className="fixed inset-0 z-[1101] bg-c-bg-app text-c-text-primary flex items-center justify-center">
+          <div className="w-8 h-8 rounded-full border-2 border-c-border border-t-cpoint-turquoise animate-spin" aria-hidden />
       </div>
     )
   }
 
   return (
-    <div className="fixed inset-0 z-[1101] overflow-y-auto bg-black text-white">
+    <div className="fixed inset-0 z-[1101] overflow-y-auto bg-c-bg-app text-c-text-primary">
       <div className="min-h-full px-5 py-8 flex items-center justify-center">
         <div className="w-full max-w-md">
-          <div className="rounded-[28px] border border-cpoint-turquoise/45 bg-black overflow-hidden">
+            <div className="rounded-[28px] border border-cpoint-turquoise/45 bg-c-bg-app overflow-hidden">
             <div className="p-6 sm:p-7">
               <BrandLogo className="w-16 h-16 rounded-2xl object-contain mx-auto mb-5" />
 
               {showVideo && (
-                <div className="mb-5 rounded-2xl overflow-hidden border border-cpoint-turquoise/35 bg-black">
+                <div className="mb-5 rounded-2xl overflow-hidden border border-cpoint-turquoise/35 bg-c-bg-app">
                   <video
                     src={videoUrl || undefined}
                     className="w-full aspect-video object-cover"
@@ -122,7 +130,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                   <h1 className="text-2xl font-semibold tracking-tight mb-2">
                     {t('onboarding_intro.language_title')}
                   </h1>
-                  <p className="text-sm leading-relaxed text-[#9fb0b5] mb-5">
+                  <p className="text-sm leading-relaxed text-c-text-tertiary mb-5">
                     {t('onboarding_intro.language_subtitle')}
                   </p>
                   <div className="space-y-2 text-left mb-2">
@@ -133,8 +141,8 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                           key={opt.value}
                           className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition ${
                             checked
-                              ? 'border-cpoint-turquoise/60 bg-cpoint-turquoise/10 text-white'
-                              : 'border-white/10 bg-white/5 text-white/80 hover:border-white/20'
+                              ? 'border-cpoint-turquoise/60 bg-cpoint-turquoise/10 text-c-text-primary'
+                              : 'border-c-border bg-c-hover-bg text-c-text-secondary hover:border-c-border-strong'
                           }`}
                         >
                           <input
@@ -157,16 +165,52 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                   {localeError ? (
                     <p className="text-xs text-red-300 mt-2">{localeError}</p>
                   ) : null}
+
+                  {/* Appearance section */}
+                  <div className="mt-6 text-left">
+                    <h2 className="text-lg font-medium mb-2 text-center">{t('onboarding_intro.appearance_title')}</h2>
+                    <p className="text-sm text-c-text-tertiary mb-3 text-center">{t('onboarding_intro.appearance_subtitle')}</p>
+                    <div
+                      className="space-y-2"
+                      role="radiogroup"
+                      aria-label={t('onboarding_intro.appearance_title')}
+                    >
+                      {(['dark', 'light'] as const).map((option) => {
+                        const checked = draftAppearance === option
+                        return (
+                          <label
+                            key={option}
+                            className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition ${
+                              checked
+                                ? 'border-cpoint-turquoise/60 bg-cpoint-turquoise/10 text-c-text-primary'
+                              : 'border-c-border bg-c-hover-bg text-c-text-secondary hover:border-c-border-strong'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="onboarding-appearance"
+                              value={option}
+                              checked={checked}
+                              onChange={() => setDraftAppearance(option)}
+                              className="h-4 w-4 accent-cpoint-turquoise focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                            />
+                            <span>{t(`onboarding_intro.appearance_${option}`)}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                    <p className="mt-2 text-xs text-c-text-tertiary">{t('onboarding_intro.appearance_change_later')}</p>
+                  </div>
                 </div>
               ) : page === 1 ? (
                 <div className="text-center">
                   <h1 className="text-2xl font-semibold tracking-tight mb-3">{t('onboarding_intro.welcome_title')}</h1>
-                  <p className="text-sm leading-relaxed text-[#d5e4e7] mb-6">{t('onboarding_intro.summary')}</p>
+                  <p className="text-sm leading-relaxed text-c-text-secondary mb-6">{t('onboarding_intro.summary')}</p>
                 </div>
               ) : (
                 <div className="text-center">
                   <h1 className="text-2xl font-semibold tracking-tight mb-3">{t('onboarding_intro.steve_title')}</h1>
-                  <p className="text-sm leading-relaxed text-[#9fb0b5] mb-6">
+                  <p className="text-sm leading-relaxed text-c-text-tertiary mb-6">
                     {t('onboarding_intro.steve_body')}
                   </p>
                 </div>
@@ -203,7 +247,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                   <button
                     type="button"
                     onClick={() => setManifestoOpen(true)}
-                    className="w-full rounded-xl bg-cpoint-turquoise/10 text-[#d5fffb] border border-cpoint-turquoise/30 font-medium py-3 text-sm hover:bg-cpoint-turquoise/15 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                    className="w-full rounded-xl bg-cpoint-turquoise/10 text-c-accent-ink border border-cpoint-turquoise/30 font-medium py-3 text-sm hover:bg-cpoint-turquoise/15 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
                   >
                     {t('onboarding_intro.read_manifesto')}
                   </button>
@@ -211,7 +255,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                   <button
                     type="button"
                     onClick={() => setPage(1)}
-                    className="w-full rounded-xl bg-cpoint-turquoise/10 text-[#d5fffb] border border-cpoint-turquoise/30 font-medium py-3 text-sm hover:bg-cpoint-turquoise/15 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                    className="w-full rounded-xl bg-cpoint-turquoise/10 text-c-accent-ink border border-cpoint-turquoise/30 font-medium py-3 text-sm hover:bg-cpoint-turquoise/15 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
                   >
                     {t('common.back')}
                   </button>
@@ -238,19 +282,19 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
             paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)',
           }}
         >
-          <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={() => setManifestoOpen(false)} />
+          <div className="absolute inset-0 bg-c-bg-overlay backdrop-blur-sm" onClick={() => setManifestoOpen(false)} />
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="onboarding-manifesto-title"
-            className="relative w-full max-w-lg overflow-y-auto rounded-2xl border border-cpoint-turquoise/45 bg-black p-6 shadow-[0_24px_80px_rgba(0,206,200,0.18)]"
+            className="relative w-full max-w-lg overflow-y-auto rounded-2xl border border-cpoint-turquoise/45 bg-c-bg-app p-6 shadow-[0_24px_80px_rgba(0,206,200,0.18)]"
             style={{
               maxHeight: 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2rem)',
             }}
           >
             <BrandLogo className="w-12 h-12 rounded-xl object-contain mx-auto mb-4" />
             <h2 id="onboarding-manifesto-title" className="text-xl font-semibold text-center mb-5">{t('onboarding_intro.manifesto_title')}</h2>
-            <div className="space-y-4 text-sm leading-relaxed text-[#c8d6d9]">
+            <div className="space-y-4 text-sm leading-relaxed text-c-text-secondary">
               {manifestoParagraphs.map((paragraph) => (
                 <p key={paragraph}>{paragraph}</p>
               ))}
@@ -259,7 +303,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
               <button
                 type="button"
                 onClick={() => setManifestoOpen(false)}
-                className="rounded-xl bg-cpoint-turquoise/10 text-[#d5fffb] border border-cpoint-turquoise/30 font-medium py-3 text-sm hover:bg-cpoint-turquoise/15 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                className="rounded-xl bg-cpoint-turquoise/10 text-c-accent-ink border border-cpoint-turquoise/30 font-medium py-3 text-sm hover:bg-cpoint-turquoise/15 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
               >
                 {t('common.close')}
               </button>

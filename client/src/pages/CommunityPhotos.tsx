@@ -113,13 +113,13 @@ export default function CommunityPhotos(){
     navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)
 
   const photosChrome = (body: ReactNode) => (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary">
       <div
-        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+        className="fixed left-0 right-0 h-10 bg-c-bg-app/70 backdrop-blur z-40"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
       >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={backToFeed} aria-label="Back">
+          <button className="p-2 rounded-full hover:bg-c-hover-bg" onClick={backToFeed} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="flex-1 font-medium">Media</div>
@@ -138,14 +138,14 @@ export default function CommunityPhotos(){
     </div>
   )
 
-  if (loading) return photosChrome(<div className="text-[#9fb0b5] py-8">Loading…</div>)
+  if (loading) return photosChrome(<div className="text-c-text-tertiary py-8">Loading…</div>)
   if (error) return photosChrome(<div className="text-red-400 py-8">{error}</div>)
 
   return photosChrome(
         <>
         {items.length === 0 ? (
           <div className="text-center py-12">
-            <div className="text-[#9fb0b5] mb-4">
+            <div className="text-c-text-tertiary mb-4">
               <i className="fa-solid fa-photo-film text-4xl mb-3 block opacity-50"></i>
               <p className="text-lg font-medium">No media yet</p>
               <p className="text-sm">
@@ -161,7 +161,7 @@ export default function CommunityPhotos(){
 
               return (
                 <div key={formattedDateKey} className="space-y-3">
-                  <div className="text-sm text-[#9fb0b5] font-medium border-b border-white/10 pb-2">
+                  <div className="text-sm text-c-text-tertiary font-medium border-b border-c-border pb-2">
                     {formattedDateKey} ({photosForDate.length} item{photosForDate.length !== 1 ? 's' : ''})
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -171,7 +171,7 @@ export default function CommunityPhotos(){
                           <>
                             <video
                               src={p.image_url.includes('#') ? p.image_url : `${p.image_url}#t=0.1`}
-                              className="w-full h-full object-cover rounded-lg border border-white/10 cursor-pointer hover:border-white/20 transition-colors"
+                              className="w-full h-full object-cover rounded-lg border border-c-border cursor-pointer hover:border-white/20 transition-colors"
                               muted
                               playsInline
                               preload="metadata"
@@ -187,16 +187,16 @@ export default function CommunityPhotos(){
                           <img
                             src={p.image_url}
                             alt="Community media"
-                            className="w-full h-full object-cover rounded-lg border border-white/10 cursor-pointer hover:border-white/20 transition-colors"
+                            className="w-full h-full object-cover rounded-lg border border-c-border cursor-pointer hover:border-white/20 transition-colors"
                             onClick={() => navigate(`/post/${p.post_id}`)}
                           />
                         )}
-                        <div className="absolute bottom-2 left-2 text-xs px-2 py-1 rounded bg-black/70 border border-white/10 text-white">
+                        <div className="absolute bottom-2 left-2 text-xs px-2 py-1 rounded bg-black/70 border border-c-border text-white">
                           {formatSmartTime(p.created_at)}
                         </div>
                         <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
-                            className="px-2 py-1 text-xs rounded bg-black/60 border border-white/10 hover:bg-black/80"
+                            className="px-2 py-1 text-xs rounded bg-black/60 border border-c-border hover:bg-black/80"
                             onClick={(e) => {
                               e.stopPropagation()
                               navigate(`/post/${p.post_id}`)

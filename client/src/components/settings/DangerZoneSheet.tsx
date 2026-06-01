@@ -83,7 +83,7 @@ export default function DangerZoneSheet({ open, onClose }: DangerZoneSheetProps)
       <div
         role="dialog"
         aria-modal="true"
-        className={`w-full max-h-[85dvh] overflow-y-auto overscroll-contain rounded-t-[2rem] border border-red-300/15 bg-[#090909] px-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] pt-3 text-white shadow-[0_-28px_80px_rgba(0,0,0,0.72)] transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+          className={`w-full max-h-[85dvh] overflow-y-auto overscroll-contain rounded-t-[2rem] border border-red-300/15 bg-c-bg-elevated px-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] pt-3 text-c-text-primary shadow-[0_-28px_80px_rgba(0,0,0,0.72)] transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
           open ? 'translate-y-0' : 'translate-y-full'
         }`}
         style={{
@@ -92,17 +92,17 @@ export default function DangerZoneSheet({ open, onClose }: DangerZoneSheetProps)
         }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="mx-auto mb-5 h-1 w-11 rounded-full bg-white/20" />
-        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-red-300/80">{t('account.danger.section_title')}</p>
-        <h2 className="mt-1 text-2xl font-bold tracking-[-0.03em] text-white">{t('account.danger.delete_title')}</h2>
-        <p className="mt-2 text-sm leading-6 text-red-100/65">{t('account.danger.delete_warning')}</p>
+        <div className="mx-auto mb-5 h-1 w-11 rounded-full bg-c-text-tertiary" />
+        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-red-500">{t('account.danger.section_title')}</p>
+        <h2 className="mt-1 text-2xl font-bold tracking-[-0.03em] text-c-text-primary">{t('account.danger.delete_title')}</h2>
+        <p className="mt-2 text-sm leading-6 text-red-400">{t('account.danger.delete_warning')}</p>
 
         {feedback ? (
           <div
             className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${
               feedback.type === 'success'
-                ? 'border-white/10 bg-white/[0.055] text-white/75'
-                : 'border-red-400/25 bg-red-500/10 text-red-200'
+                ? 'border-c-border bg-c-bg-surface text-c-text-secondary'
+                : 'border-red-400/25 bg-red-500/10 text-red-500'
             }`}
           >
             {feedback.text}
@@ -110,7 +110,7 @@ export default function DangerZoneSheet({ open, onClose }: DangerZoneSheetProps)
         ) : null}
 
         <label className="mt-5 block">
-          <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/28">{t('account.danger.confirm_label')}</span>
+          <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-c-text-tertiary">{t('account.danger.confirm_label')}</span>
           <input
             ref={inputRef}
             type="text"
@@ -121,7 +121,7 @@ export default function DangerZoneSheet({ open, onClose }: DangerZoneSheetProps)
                 inputRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
               }, 250)
             }}
-            className="mt-2 w-full rounded-2xl border border-red-300/20 bg-white/[0.06] px-4 py-3 text-white placeholder:text-white/25 focus:border-red-200/60 focus:outline-none"
+            className="mt-2 w-full rounded-2xl border border-red-300/20 bg-c-hover-bg px-4 py-3 text-c-text-primary placeholder:text-c-text-tertiary focus:border-red-200/60 focus:outline-none"
             placeholder="DELETE"
             disabled={loading}
           />
@@ -132,7 +132,7 @@ export default function DangerZoneSheet({ open, onClose }: DangerZoneSheetProps)
             type="button"
             disabled={loading}
             onClick={close}
-            className="rounded-2xl border border-white/10 px-4 py-3 font-bold text-white/75 active:bg-white/10 disabled:opacity-50"
+            className="rounded-2xl border border-c-border px-4 py-3 font-bold text-c-text-secondary active:bg-c-active-bg disabled:opacity-50"
           >
             {t('common.cancel', { defaultValue: 'Cancel' })}
           </button>

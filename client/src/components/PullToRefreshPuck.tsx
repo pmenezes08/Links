@@ -42,7 +42,7 @@ export default function PullToRefreshPuck({ dragY, refreshing, settling }: PullT
       style={puckStyle}
     >
       <div
-        className="flex items-center justify-center rounded-full border border-white/10"
+        className="flex items-center justify-center rounded-full border border-c-border"
         style={{
           width: PUCK_SIZE,
           height: PUCK_SIZE,

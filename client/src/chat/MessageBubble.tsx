@@ -177,13 +177,7 @@ function MessageBubbleInner({
               >
                 {m.media_paths[0].match(/\.(mp4|mov|webm|m4v)$/i) ? (
                   <div className="relative bg-black rounded-lg">
-                    <video
-                      src={normalizeMediaPath(m.media_paths[0]) + '#t=0.1'}
-                      className="block w-full max-h-64 object-contain rounded-lg"
-                      muted
-                      preload="metadata"
-                      playsInline
-                    />
+                    <MessageVideo src={normalizeMediaPath(m.media_paths[0])} />
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                       <div className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center">
                         <i className="fa-solid fa-play text-white text-lg ml-0.5" />
@@ -236,19 +230,19 @@ function MessageBubbleInner({
                 href={resolveDocUrl(m.file_path)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-3 max-w-[280px] rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2.5 hover:bg-white/[0.1] transition-colors"
+                className="flex items-center gap-3 max-w-[280px] rounded-xl border border-c-border bg-white/[0.06] px-3 py-2.5 hover:bg-c-hover-bg transition-colors"
                 onClick={e => e.stopPropagation()}
               >
-                <div className="w-10 h-10 rounded-lg bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
-                  <i className="fa-solid fa-file-pdf text-[#4db6ac] text-lg" />
+                <div className="w-10 h-10 rounded-lg bg-cpoint-turquoise/20 flex items-center justify-center flex-shrink-0">
+                  <i className="fa-solid fa-file-pdf text-cpoint-turquoise text-lg" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm text-white font-medium truncate">
+                  <div className="text-sm text-c-text-primary font-medium truncate">
                     {m.file_name || t('chat.pdf_document')}
                   </div>
-                  <div className="text-[10px] text-white/50">PDF</div>
+                  <div className="text-[10px] text-c-text-tertiary">PDF</div>
                 </div>
-                <i className="fa-solid fa-arrow-up-right-from-square text-white/40 text-xs flex-shrink-0" />
+                <i className="fa-solid fa-arrow-up-right-from-square text-c-text-tertiary text-xs flex-shrink-0" />
               </a>
             </div>
           )}
@@ -262,24 +256,24 @@ function MessageBubbleInner({
               />
               {m.audio_summary ? (
                 <div className="px-2 pb-1 pt-0.5">
-                  <div className="text-[11px] text-white/50 flex items-center gap-1 mb-0.5">
+                  <div className="text-[11px] text-c-text-tertiary flex items-center gap-1 mb-0.5">
                     <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
                     <span>{translatedSummaries?.[m.id] ? t('feed.steve_summary_translated') : t('feed.steve_summary')}</span>
                     <div className="ml-auto flex items-center gap-1">
                       {translatedSummaries?.[m.id] && onTranslateSummary && (
-                        <button onClick={(e) => { e.stopPropagation(); onTranslateSummary(m.id, '', 'reset') }} className="text-white/30 hover:text-white/50 px-0.5"><i className="fa-solid fa-rotate-left text-[8px]" /></button>
+                        <button onClick={(e) => { e.stopPropagation(); onTranslateSummary(m.id, '', 'reset') }} className="text-c-text-disabled hover:text-c-text-tertiary px-0.5"><i className="fa-solid fa-rotate-left text-[8px]" /></button>
                       )}
                       {onTranslateSummary && (
-                        <button onClick={(e) => { e.stopPropagation(); onTranslateSummary(m.id, m.audio_summary || '', 'pick') }} className="text-white/30 hover:text-white/50 px-0.5" disabled={translatingId === m.id}>
+                        <button onClick={(e) => { e.stopPropagation(); onTranslateSummary(m.id, m.audio_summary || '', 'pick') }} className="text-c-text-disabled hover:text-c-text-tertiary px-0.5" disabled={translatingId === m.id}>
                           {translatingId === m.id ? <i className="fa-solid fa-spinner fa-spin text-[9px]" /> : <i className="fa-solid fa-globe text-[9px]" />}
                         </button>
                       )}
                       {m.sent && onEditSummary && (
-                        <button onClick={(e) => { e.stopPropagation(); onEditSummary(m.id, m.audio_summary || '') }} className="text-white/30 hover:text-white/50 px-0.5"><i className="fa-solid fa-pen text-[8px]" /></button>
+                        <button onClick={(e) => { e.stopPropagation(); onEditSummary(m.id, m.audio_summary || '') }} className="text-c-text-disabled hover:text-c-text-tertiary px-0.5"><i className="fa-solid fa-pen text-[8px]" /></button>
                       )}
                     </div>
                   </div>
-                  <p className="text-[12px] text-white/80 leading-relaxed italic">
+                  <p className="text-[12px] text-c-text-secondary leading-relaxed italic">
                     {translatedSummaries?.[m.id] || m.audio_summary}
                   </p>
                 </div>
@@ -289,12 +283,12 @@ function MessageBubbleInner({
                   if (Date.now() - createdMs < 120000) return (
                     <div className="px-2 pb-1 pt-0.5">
                       <div className="flex items-center gap-1">
-                        <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-white/40" />
-                        <span className="text-[11px] text-white/40">{t('feed.steve_summary_generating')}</span>
+                        <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-c-text-tertiary" />
+                        <span className="text-[11px] text-c-text-tertiary">{t('feed.steve_summary_generating')}</span>
                         <span className="flex gap-0.5 ml-0.5">
-                          <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                          <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                          <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                          <span className="w-1 h-1 bg-cpoint-turquoise rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1 h-1 bg-cpoint-turquoise rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1 h-1 bg-cpoint-turquoise rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                         </span>
                       </div>
                     </div>
@@ -333,9 +327,9 @@ function MessageBubbleInner({
             <div
               className={`${
                 m.isOptimistic
-                  ? 'bg-[#4db6ac]/40 border border-[#4db6ac]/30'
+                  ? 'bg-cpoint-turquoise/40 border border-cpoint-turquoise/30'
                   : `liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent' : 'liquid-glass-bubble--received'}`
-              } text-white px-2.5 py-1.5 rounded-2xl text-[14px] leading-relaxed whitespace-pre-wrap break-words overflow-hidden max-w-full min-w-0 ${
+              } ${m.sent ? 'text-white' : 'text-c-text-primary'} px-2.5 py-1.5 rounded-2xl text-[14px] leading-relaxed whitespace-pre-wrap break-words overflow-hidden max-w-full min-w-0 ${
                 m.sent ? 'rounded-br-xl' : 'rounded-bl-xl'
               }`}
             >
@@ -349,7 +343,7 @@ function MessageBubbleInner({
             return (
               <button
                 type="button"
-                className="mb-2 w-full flex items-stretch gap-0 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-lg overflow-hidden border border-white/10 hover:from-purple-500/30 hover:to-pink-500/30 active:from-purple-500/40 active:to-pink-500/40 transition-colors cursor-pointer text-left"
+                className="mb-2 w-full flex items-stretch gap-0 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-lg overflow-hidden border border-c-border hover:from-purple-500/30 hover:to-pink-500/30 active:from-purple-500/40 active:to-pink-500/40 transition-colors cursor-pointer text-left"
                 onMouseDown={(e) => e.stopPropagation()}
                 onTouchStart={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
@@ -367,7 +361,7 @@ function MessageBubbleInner({
                 <div className="flex-1 px-2.5 py-1.5 min-w-0 flex items-start gap-2">
                   {/* Story thumbnail */}
                   {mediaPath && !isVideo && (
-                    <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-black/30">
+                    <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-c-bg-recessed">
                       <img 
                         src={normalizeMediaPath(mediaPath)} 
                         alt={t('chat.story_alt')} 
@@ -388,7 +382,7 @@ function MessageBubbleInner({
                     </div>
                   )}
                   {mediaPath && isVideo && (
-                    <div className="w-10 h-10 rounded bg-black/40 flex items-center justify-center flex-shrink-0 relative overflow-hidden">
+                    <div className="w-10 h-10 rounded bg-c-bg-recessed flex items-center justify-center flex-shrink-0 relative overflow-hidden">
                       <video 
                         src={normalizeMediaPath(mediaPath)} 
                         className="absolute inset-0 w-full h-full object-cover"
@@ -455,13 +449,13 @@ function MessageBubbleInner({
             if (displayText.length > 80) displayText = displayText.slice(0, 80) + '…'
             
             return (
-              <div className="mb-2 w-full min-w-0 flex items-stretch gap-0 bg-black/20 rounded-lg overflow-hidden">
+              <div className="mb-2 w-full min-w-0 flex items-stretch gap-0 bg-c-bg-reply rounded-lg overflow-hidden">
                 {/* WhatsApp-style left accent bar */}
-                <div className={`w-1 flex-shrink-0 ${m.sent ? 'bg-white/40' : 'bg-[#4db6ac]'}`} />
+                <div className={`w-1 flex-shrink-0 ${m.sent ? 'bg-white/40' : 'bg-c-accent-ink'}`} />
                 <div className="flex-1 px-2.5 py-1.5 min-w-0 flex items-start gap-2">
                   {/* Media thumbnail for image/video replies */}
                   {mediaPath && isImageReply && (
-                    <div className="w-9 h-9 rounded overflow-hidden flex-shrink-0 bg-black/30">
+                    <div className="w-9 h-9 rounded overflow-hidden flex-shrink-0 bg-c-bg-recessed">
                       <img 
                         src={normalizeMediaPath(mediaPath)} 
                         alt="" 
@@ -472,22 +466,22 @@ function MessageBubbleInner({
                     </div>
                   )}
                   {mediaPath && isVideoReply && (
-                    <div className="w-9 h-9 rounded bg-black/40 flex items-center justify-center flex-shrink-0">
-                      <i className="fa-solid fa-play text-white/60 text-xs" />
+                    <div className="w-9 h-9 rounded bg-c-bg-recessed flex items-center justify-center flex-shrink-0">
+                      <i className={`fa-solid fa-play text-xs ${m.sent ? 'text-white/60' : 'text-c-text-tertiary'}`} />
                     </div>
                   )}
                   {isAudioReply && (
-                    <div className="w-7 h-7 rounded-full bg-black/30 flex items-center justify-center flex-shrink-0">
-                      <i className="fa-solid fa-microphone text-white/50 text-[10px]" />
+                    <div className="w-7 h-7 rounded-full bg-c-bg-recessed flex items-center justify-center flex-shrink-0">
+                      <i className={`fa-solid fa-microphone text-[10px] ${m.sent ? 'text-white/60' : 'text-c-text-tertiary'}`} />
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className={`text-[11px] font-medium truncate ${m.sent ? 'text-white/70' : 'text-[#4db6ac]'}`}>
+                    <div className={`text-[11px] font-medium truncate ${m.sent ? 'text-white/85' : 'text-cpoint-turquoise'}`}>
                       {m.sent ? otherDisplayName : 'You'}
                     </div>
-                    <div className="mt-0.5 text-[12px] text-white/60 whitespace-pre-wrap break-words leading-[1.25]">
-                      {isImageReply && <i className="fa-solid fa-camera text-[10px] text-white/40 mr-1" />}
-                      {isVideoReply && <i className="fa-solid fa-video text-[10px] text-white/40 mr-1" />}
+                    <div className={`mt-0.5 text-[12px] whitespace-pre-wrap break-words leading-[1.25] ${m.sent ? 'text-white/85' : 'text-c-text-secondary'}`}>
+                      {isImageReply && <i className={`fa-solid fa-camera text-[10px] mr-1 ${m.sent ? 'text-white/60' : 'text-c-text-tertiary'}`} />}
+                      {isVideoReply && <i className={`fa-solid fa-video text-[10px] mr-1 ${m.sent ? 'text-white/60' : 'text-c-text-tertiary'}`} />}
                       {displayText}
                     </div>
                   </div>
@@ -504,7 +498,7 @@ function MessageBubbleInner({
               onMouseDown={(e) => e.stopPropagation()}
             >
               <textarea
-                className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#4db6ac] resize-none"
+                className="w-full bg-c-bg-recessed border border-c-border rounded-lg px-3 py-2 text-sm text-c-text-primary placeholder-c-text-tertiary focus:outline-none focus:border-cpoint-turquoise resize-none"
                 style={{ userSelect: 'text', WebkitUserSelect: 'text', touchAction: 'manipulation' } as React.CSSProperties}
                 value={editText}
                 onChange={(e) => onEditTextChange(e.target.value)}
@@ -514,7 +508,7 @@ function MessageBubbleInner({
               />
               <div className="flex gap-2 justify-end mt-1.5">
                 <button
-                  className="px-2.5 py-1 text-xs text-white/60 hover:text-white/80 transition-colors"
+                  className="px-2.5 py-1 text-xs text-c-text-tertiary hover:text-c-text-secondary transition-colors"
                   onClick={onCancelEdit}
                 >
                   {t('chat.cancel')}
@@ -523,7 +517,7 @@ function MessageBubbleInner({
                   className={`px-3 py-1 text-xs rounded-md flex items-center gap-1.5 ${
                     editingSaving
                       ? 'bg-gray-600 text-gray-300'
-                      : 'bg-[#4db6ac] text-black hover:brightness-110'
+                      : 'bg-cpoint-turquoise text-black hover:brightness-110'
                   }`}
                   onClick={editingSaving ? undefined : onCommitEdit}
                   disabled={editingSaving}
@@ -547,7 +541,7 @@ function MessageBubbleInner({
                 onEdit()
               }}
             >
-              {showLinkifiedBody ? renderTextWithSourceLinks(textWithoutPreviewUrls, false, onMentionClick) : null}
+              {showLinkifiedBody ? renderTextWithSourceLinks(textWithoutPreviewUrls, false, onMentionClick, undefined, m.sent) : null}
               {videoEmbed ? (
                 <div className="block w-full min-w-0 mt-2 max-w-[280px]">
                   {videoEmbed.type === 'youtube' ? (
@@ -560,21 +554,21 @@ function MessageBubbleInner({
               {m.edited_at ? (
                 <span className="text-[10px] text-white/50 ml-1">edited</span>
               ) : null}
-              <span className={`text-[10px] ml-2 ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
+              <span className={`text-[10px] ml-2 ${m.sent ? 'text-white/60' : 'text-c-text-tertiary'}`}>
                 {formatMessageTime(m.time)}
               </span>
             </div>
           )}
             </div>
           ) : (
-            <span className={`text-[10px] mt-0.5 ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
+            <span className={`text-[10px] mt-0.5 ${m.sent ? 'text-white/60' : 'text-c-text-tertiary'}`}>
               {formatMessageTime(m.time)}
             </span>
           )}
           {/* WhatsApp-style reaction pill - floats at bottom corner */}
           {m.reaction && (
             <div 
-              className={`absolute -bottom-6 ${m.sent ? 'right-1' : 'left-1'} bg-[#1f1f1f] px-1.5 py-0.5 rounded-full shadow-lg border border-white/10 z-10 chat-reaction-pop`}
+              className={`absolute -bottom-6 ${m.sent ? 'right-1' : 'left-1'} bg-c-bg-surface px-1.5 py-0.5 rounded-full shadow-lg border border-c-border z-10 chat-reaction-pop`}
             >
               <span className="text-sm select-none">{m.reaction}</span>
             </div>
