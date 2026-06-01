@@ -629,6 +629,7 @@ def _run_grok_dm_turn(
     from backend.services.steve_chat_images import (
         STEVE_SHARED_PHOTO_USER_MESSAGE,
         build_grok_user_content,
+        extract_reply_target_image,
         select_image_urls_for_turn,
         vision_focus_context_line,
         vision_system_prompt_addon,
@@ -640,7 +641,11 @@ def _run_grok_dm_turn(
             max_imgs = min(max_imgs, int(entitlements["max_images_per_turn"]))
     except Exception:
         pass
-    force_vision = (user_message or "").strip() == STEVE_SHARED_PHOTO_USER_MESSAGE
+    reply_target_img = extract_reply_target_image(user_message)
+    if reply_target_img and reply_target_img.startswith("/"):
+        origin = _canonical_app_origin()
+        reply_target_img = f"{origin}{reply_target_img}"
+    force_vision = (user_message or "").strip() == STEVE_SHARED_PHOTO_USER_MESSAGE or bool(reply_target_img)
     image_selection = select_image_urls_for_turn(
         image_urls_collected,
         user_message,
@@ -648,6 +653,10 @@ def _run_grok_dm_turn(
         max_count=max_imgs,
     )
     image_urls = image_selection.urls
+    # Normalize any relative reply-target URLs for DM (e.g. /uploads/... -> https://...)
+    if getattr(image_selection, "reply_targeted", False) and image_urls:
+        origin = _canonical_app_origin()
+        image_urls = [ (f"{origin}{u}" if u.startswith("/") else u) for u in image_urls ]
     if image_urls:
         context += f"\n\n[{len(image_urls)} image(s) from the conversation are attached for you to see.]"
         context += vision_focus_context_line(image_selection)
