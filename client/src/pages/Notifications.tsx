@@ -131,8 +131,8 @@ function notificationSummary(n: Notif, typeKey: string | undefined, t: TFunction
     : 'notifications_page.type_interacted'
   return (
     <>
-      <span className="font-medium text-white">@{user}</span>{' '}
-      <span className="text-white/70">{t(actionKey)}</span>
+      <span className="font-medium text-c-text-primary">@{user}</span>{' '}
+      <span className="text-c-text-secondary">{t(actionKey)}</span>
     </>
   )
 }
@@ -547,10 +547,10 @@ export default function Notifications(){
   ]
 
   return (
-    <div className="min-h-screen bg-black text-white pb-safe">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary pb-safe">
       <div className="app-content max-w-xl mx-auto px-3 pb-20">
         {/* Tab Navigation */}
-        <div className="flex gap-1 mb-4 overflow-x-auto scrollbar-hide border-b border-white/10 pb-2">
+        <div className="flex gap-1 mb-4 overflow-x-auto scrollbar-hide border-b border-c-border pb-2">
           {tabItems.map(tab => {
             const showInviteDot = tab.key === 'invites' && unreadInviteCount > 0
             return (
@@ -559,12 +559,12 @@ export default function Notifications(){
                 onClick={() => setActiveTab(tab.key)}
                 className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-colors ${
                   activeTab === tab.key 
-                    ? 'bg-[#4db6ac] text-black font-semibold' 
-                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                    ? 'bg-cpoint-turquoise text-black font-semibold' 
+                    : 'text-c-text-tertiary hover:text-c-text-primary hover:bg-c-hover-bg'
                 }`}
               >
                 {showInviteDot ? (
-                  <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[#7fffd4] ring-2 ring-black" />
+                  <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[#7fffd4] ring-2 ring-c-bg-app" />
                 ) : null}
                 <i className={tab.icon} />
                 {tab.label}
@@ -576,17 +576,17 @@ export default function Notifications(){
         {/* Notifications Tab */}
         {activeTab === 'notifications' && (
           <>
-            <div className="flex items-center justify-center gap-3 mb-3 border-b border-white/10 pb-2">
+            <div className="flex items-center justify-center gap-3 mb-3 border-b border-c-border pb-2">
               <button
                 onClick={markAll}
-                className="px-3 py-1.5 rounded-full text-sm border border-white/15 hover:border-[#4db6ac]"
+                className="px-3 py-1.5 rounded-full text-sm border border-c-border hover:border-cpoint-turquoise"
               >
                 {t('notifications_page.mark_all_read')}
               </button>
               <button
                 onClick={clearAll}
                 disabled={clearing}
-                className="px-3 py-1.5 rounded-full text-sm border border-white/15 hover:border-[#e53935] disabled:opacity-50"
+                className="px-3 py-1.5 rounded-full text-sm border border-c-border hover:border-[#e53935] disabled:opacity-50"
               >
                 {t('notifications_page.clear_all')}
               </button>
@@ -594,7 +594,7 @@ export default function Notifications(){
             {loading || !items ? (
               <SkeletonNotificationList />
             ) : items.length === 0 ? (
-              <div className="text-[#9fb0b5] py-10 text-center">
+              <div className="text-c-text-tertiary py-10 text-center">
                 <i className="fa-regular fa-bell text-2xl" />
                 <div className="mt-2">{t('notifications_page.no_notifications')}</div>
               </div>
@@ -623,7 +623,7 @@ export default function Notifications(){
                           type="button"
                           onClick={e => void markOneRead(n, e)}
                           disabled={n.is_read}
-                          className="my-1 h-[calc(100%-0.5rem)] min-h-[44px] w-[52px] rounded-md bg-[#4db6ac]/25 text-[#4db6ac] hover:bg-[#4db6ac]/35 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center"
+                          className="my-1 h-[calc(100%-0.5rem)] min-h-[44px] w-[52px] rounded-md bg-cpoint-turquoise/25 text-cpoint-turquoise hover:bg-cpoint-turquoise/35 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center"
                           aria-label={t('notifications_page.mark_as_read_aria')}
                         >
                           <i className="fa-regular fa-eye" />
@@ -675,7 +675,7 @@ export default function Notifications(){
                           notifDraggingIdRef.current = null
                           notifGestureRef.current = null
                         }}
-                        className={`text-left w-full px-3 py-2.5 rounded-xl border touch-pan-y ${n.is_read ? 'border-white/10 bg-white/[0.03]' : 'border-[#4db6ac]/40 bg-[#4db6ac]/10'}`}
+                        className={`text-left w-full px-3 py-2.5 rounded-xl border touch-pan-y ${n.is_read ? 'border-c-border bg-transparent' : 'border-cpoint-turquoise/40 bg-cpoint-turquoise/10'}`}
                         style={{ transform: `translateX(${tx}px)`, transition }}
                       >
                         <div className="flex items-start gap-3 pointer-events-none">
@@ -684,18 +684,18 @@ export default function Notifications(){
                               <img 
                                 src={avatarUrl} 
                                 alt={n.from_user || ''} 
-                                className="w-10 h-10 rounded-full object-cover bg-white/10"
+                                className="w-10 h-10 rounded-full object-cover bg-c-active-bg"
                                 onError={(e) => {
                                   (e.target as HTMLImageElement).style.display = 'none';
                                   (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
                                 }}
                               />
                             ) : null}
-                            <div className={`w-10 h-10 rounded-full bg-[#1a2526] flex items-center justify-center ${avatarUrl ? 'hidden' : ''}`}>
-                              <i className={`${iconFor(n.type)} text-[#4db6ac] text-lg`} />
+                            <div className={`w-10 h-10 rounded-full bg-c-bg-elevated flex items-center justify-center ${avatarUrl ? 'hidden' : ''}`}>
+                              <i className={`${iconFor(n.type)} text-cpoint-turquoise text-lg`} />
                             </div>
-                            <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#0b0f10] border border-white/10 flex items-center justify-center">
-                              <i className={`${iconFor(n.type)} text-[#4db6ac] text-[10px]`} />
+                            <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-c-bg-elevated border border-c-border flex items-center justify-center">
+                              <i className={`${iconFor(n.type)} text-cpoint-turquoise text-[10px]`} />
                             </div>
                           </div>
                           <div className="flex-1 min-w-0">
@@ -703,14 +703,14 @@ export default function Notifications(){
                               {notificationSummary(n, typeKey, t)}
                             </div>
                             {n.preview ? (
-                              <div className="text-xs text-white/55 mt-1 line-clamp-2 break-words">
+                              <div className="text-xs text-c-text-tertiary mt-1 line-clamp-2 break-words">
                                 {renderTextWithLinks(n.preview, undefined, undefined)}
                               </div>
                             ) : null}
-                            <div className="text-[11px] text-[#9fb0b5] mt-0.5">{formatTimeAgo(n.created_at, t)}</div>
+                            <div className="text-[11px] text-c-text-tertiary mt-0.5">{formatTimeAgo(n.created_at, t)}</div>
                           </div>
                           {!n.is_read && (
-                            <div className="w-2 h-2 rounded-full bg-[#4db6ac] flex-shrink-0 mt-2" />
+                            <div className="w-2 h-2 rounded-full bg-cpoint-turquoise flex-shrink-0 mt-2" />
                           )}
                         </div>
                       </button>
@@ -731,39 +731,39 @@ export default function Notifications(){
               </div>
             ) : null}
             {pendingInvites.length === 0 ? (
-              <div className="text-[#9fb0b5] py-10 text-center">
+              <div className="text-c-text-tertiary py-10 text-center">
                 <i className="fa-solid fa-user-plus text-2xl" />
                 <div className="mt-2">{t('notifications_page.no_invites')}</div>
               </div>
             ) : (
               <div className="space-y-2">
-                <div className="text-xs font-semibold uppercase tracking-wide text-white/50">{t('notifications_page.community_invites_heading')}</div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-c-text-tertiary">{t('notifications_page.community_invites_heading')}</div>
                 {pendingInvites.map(invite => (
-                  <div key={`community-${invite.id}`} className="rounded-xl border border-[#4db6ac]/35 bg-[#4db6ac]/10 p-3">
+                  <div key={`community-${invite.id}`} className="rounded-xl border border-cpoint-turquoise/35 bg-cpoint-turquoise/10 p-3">
                     <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center text-[#4db6ac]">
+                      <div className="w-10 h-10 rounded-full bg-cpoint-turquoise/20 flex items-center justify-center text-cpoint-turquoise">
                         <i className="fa-solid fa-user-plus" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm text-white">
+                        <div className="text-sm text-c-text-primary">
                           {t('notifications_page.invite_body', {
                             community: invite.community_name,
                             username: invite.invited_by_username,
                           })}
                         </div>
                         {invite.invited_at ? (
-                          <div className="text-[11px] text-[#9fb0b5] mt-0.5">{formatTimeAgo(invite.invited_at, t)}</div>
+                          <div className="text-[11px] text-c-text-tertiary mt-0.5">{formatTimeAgo(invite.invited_at, t)}</div>
                         ) : null}
                         <div className="mt-3 flex gap-2">
                           <button
-                            className="flex-1 rounded-lg bg-[#4db6ac] px-3 py-2 text-sm font-semibold text-black disabled:opacity-50"
+                            className="flex-1 rounded-lg bg-cpoint-turquoise px-3 py-2 text-sm font-semibold text-black disabled:opacity-50"
                             disabled={inviteActionLoading === invite.id}
                             onClick={() => respondToCommunityInvite(invite, 'accept')}
                           >
                             {inviteActionLoading === invite.id ? t('notifications_page.working') : t('notifications_page.accept')}
                           </button>
                           <button
-                            className="flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white disabled:opacity-50"
+                            className="flex-1 rounded-lg border border-c-border bg-c-hover-bg px-3 py-2 text-sm text-c-text-primary disabled:opacity-50"
                             disabled={inviteActionLoading === invite.id}
                             onClick={() => respondToCommunityInvite(invite, 'decline')}
                           >
@@ -783,9 +783,9 @@ export default function Notifications(){
         {activeTab === 'calendar' && (
           <>
             {eventsLoading ? (
-              <div className="text-[#9fb0b5] py-10 text-center">{t('notifications_page.loading_events')}</div>
+              <div className="text-c-text-tertiary py-10 text-center">{t('notifications_page.loading_events')}</div>
             ) : events.length === 0 ? (
-              <div className="text-[#9fb0b5] py-10 text-center">
+              <div className="text-c-text-tertiary py-10 text-center">
                 <i className="fa-regular fa-calendar text-2xl" />
                 <div className="mt-2">{t('notifications_page.no_upcoming_events')}</div>
               </div>
@@ -795,24 +795,24 @@ export default function Notifications(){
                   <button
                     key={event.id}
                     onClick={() => navigate(`/event/${event.id}`)}
-                    className="text-left w-full px-4 py-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
+                    className="text-left w-full px-4 py-3 rounded-xl border border-c-border bg-transparent hover:bg-c-hover-bg transition-colors"
                   >
                     <div className="flex items-start gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-[#4db6ac]/20 flex flex-col items-center justify-center flex-shrink-0">
-                        <div className="text-[10px] text-[#4db6ac] uppercase font-medium">
+                      <div className="w-12 h-12 rounded-xl bg-cpoint-turquoise/20 flex flex-col items-center justify-center flex-shrink-0">
+                        <div className="text-[10px] text-cpoint-turquoise uppercase font-medium">
                           {new Date(event.date).toLocaleDateString('en-US', { month: 'short' })}
                         </div>
-                        <div className="text-lg font-bold text-white">
+                        <div className="text-lg font-bold text-c-text-primary">
                           {new Date(event.date).getDate()}
                         </div>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-white truncate">{event.title}</div>
-                        <div className="text-xs text-[#9fb0b5] mt-0.5">
+                        <div className="font-medium text-c-text-primary truncate">{event.title}</div>
+                        <div className="text-xs text-c-text-tertiary mt-0.5">
                           {formatEventDate(event.date)}
                           {event.start_time && ` • ${event.start_time}`}
                         </div>
-                        <div className="text-xs text-[#4db6ac] mt-1 truncate">{event.community_name}</div>
+                        <div className="text-xs text-cpoint-turquoise mt-1 truncate">{event.community_name}</div>
                       </div>
                       {event.user_rsvp && (
                         <div className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
@@ -835,9 +835,9 @@ export default function Notifications(){
         {activeTab === 'polls' && (
           <>
             {pollsLoading ? (
-              <div className="text-[#9fb0b5] py-10 text-center">{t('notifications_page.loading_polls')}</div>
+              <div className="text-c-text-tertiary py-10 text-center">{t('notifications_page.loading_polls')}</div>
             ) : polls.length === 0 ? (
-              <div className="text-[#9fb0b5] py-10 text-center">
+              <div className="text-c-text-tertiary py-10 text-center">
                 <i className="fa-solid fa-chart-bar text-2xl" />
                 <div className="mt-2">{t('notifications_page.no_active_polls')}</div>
               </div>
@@ -847,21 +847,21 @@ export default function Notifications(){
                   <button
                     key={poll.id}
                     onClick={() => navigate(`/community/${poll.community_id}/polls_react`)}
-                    className="text-left w-full px-4 py-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
+                    className="text-left w-full px-4 py-3 rounded-xl border border-c-border bg-transparent hover:bg-c-hover-bg transition-colors"
                   >
                     <div className="flex items-start gap-3">
                       <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center flex-shrink-0">
                         <i className="fa-solid fa-chart-bar text-purple-400" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-white">{poll.question}</div>
-                        <div className="text-xs text-[#9fb0b5] mt-1">
+                        <div className="font-medium text-c-text-primary">{poll.question}</div>
+                        <div className="text-xs text-c-text-tertiary mt-1">
                           {t(poll.total_votes === 1 ? 'notifications_page.poll_votes_one' : 'notifications_page.poll_votes_other', { count: poll.total_votes })} • {t('notifications_page.poll_options_count', { count: poll.options.length })}
                         </div>
-                        <div className="text-xs text-[#4db6ac] mt-1 truncate">{poll.community_name}</div>
+                        <div className="text-xs text-cpoint-turquoise mt-1 truncate">{poll.community_name}</div>
                       </div>
                       {poll.user_vote !== null && poll.user_vote !== undefined && (
-                        <div className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#4db6ac]/20 text-[#4db6ac]">
+                        <div className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-cpoint-turquoise/20 text-cpoint-turquoise">
                           {t('notifications_page.poll_voted')}
                         </div>
                       )}
@@ -877,9 +877,9 @@ export default function Notifications(){
         {activeTab === 'tasks' && (
           <>
             {tasksLoading ? (
-              <div className="text-[#9fb0b5] py-10 text-center">{t('notifications_page.loading_tasks')}</div>
+              <div className="text-c-text-tertiary py-10 text-center">{t('notifications_page.loading_tasks')}</div>
             ) : tasks.length === 0 ? (
-              <div className="text-[#9fb0b5] py-10 text-center">
+              <div className="text-c-text-tertiary py-10 text-center">
                 <i className="fa-solid fa-list-check text-2xl" />
                 <div className="mt-2">{t('notifications_page.no_pending_tasks')}</div>
               </div>
@@ -889,7 +889,7 @@ export default function Notifications(){
                   <button
                     key={task.id}
                     onClick={() => navigate(`/community/${task.community_id}/tasks_react`)}
-                    className="text-left w-full px-4 py-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
+                    className="text-left w-full px-4 py-3 rounded-xl border border-c-border bg-transparent hover:bg-c-hover-bg transition-colors"
                   >
                     <div className="flex items-start gap-3">
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
@@ -900,13 +900,13 @@ export default function Notifications(){
                         }`} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-white">{task.title}</div>
+                        <div className="font-medium text-c-text-primary">{task.title}</div>
                         {task.due_date && (
-                          <div className="text-xs text-[#9fb0b5] mt-0.5">
+                          <div className="text-xs text-c-text-tertiary mt-0.5">
                             {t('notifications_page.task_due', { date: formatEventDate(task.due_date) })}
                           </div>
                         )}
-                        <div className="text-xs text-[#4db6ac] mt-1 truncate">{task.community_name}</div>
+                        <div className="text-xs text-cpoint-turquoise mt-1 truncate">{task.community_name}</div>
                       </div>
                       <div className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
                         task.status === 'ongoing' ? 'bg-blue-500/20 text-blue-400' : 'bg-orange-500/20 text-orange-400'
@@ -942,18 +942,18 @@ function BroadcastModal({ notif, onClose }: { notif: Notif | null; onClose: () =
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => e.currentTarget === e.target && onClose()}>
-      <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0b0f10] p-6">
+      <div className="w-full max-w-lg rounded-2xl border border-c-border bg-c-bg-elevated p-6">
         <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2 text-lg font-semibold text-white">
-            <i className="fa-solid fa-bullhorn text-[#4db6ac]" />
+          <div className="flex items-center gap-2 text-lg font-semibold text-c-text-primary">
+            <i className="fa-solid fa-bullhorn text-cpoint-turquoise" />
             {t('notifications_page.broadcast_title')}
           </div>
-          <button className="p-2 rounded-lg hover:bg-white/10" onClick={onClose} aria-label={t('common.close')}>
-            <i className="fa-solid fa-xmark text-white" />
+          <button className="p-2 rounded-lg hover:bg-c-hover-bg" onClick={onClose} aria-label={t('common.close')}>
+            <i className="fa-solid fa-xmark text-c-text-primary" />
           </button>
         </div>
 
-        <div className="space-y-3 text-sm text-white/80 max-h-[50vh] overflow-y-auto pr-1">
+          <div className="space-y-3 text-sm text-c-text-secondary max-h-[50vh] overflow-y-auto pr-1">
           {messageLines.length > 0
             ? messageLines.map((line, idx) => (
                 <p key={idx} className="leading-relaxed whitespace-pre-line">
@@ -970,7 +970,7 @@ function BroadcastModal({ notif, onClose }: { notif: Notif | null; onClose: () =
         <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
           {link && (
             <button
-              className="px-3 py-2 text-sm rounded-lg border border-white/15 bg-white/10 hover:bg-white/15"
+                className="px-3 py-2 text-sm rounded-lg border border-c-border bg-c-active-bg hover:bg-c-active-bg"
               onClick={() => {
                 try {
                   window.open(link, '_blank', 'noopener');
@@ -983,7 +983,7 @@ function BroadcastModal({ notif, onClose }: { notif: Notif | null; onClose: () =
             </button>
           )}
           <button
-            className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold hover:brightness-110"
+            className="px-3 py-2 text-sm rounded-lg bg-cpoint-turquoise text-black font-semibold hover:brightness-110"
             onClick={onClose}
           >
             {t('common.close')}

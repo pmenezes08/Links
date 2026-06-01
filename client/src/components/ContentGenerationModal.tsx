@@ -63,7 +63,7 @@ type ScheduleState = {
   end_date: string
 }
 
-const SECTION_BORDER = 'rounded-2xl border border-[#4db6ac]/25 bg-black p-4 shadow-[inset_0_0_0_1px_rgba(77,182,172,0.06)]'
+const SECTION_BORDER = 'rounded-2xl border border-cpoint-turquoise/25 bg-c-bg-app p-4 shadow-[inset_0_0_0_1px_rgba(0,206,200,0.06)]'
 
 const WEEKDAY_OPTIONS = [
   { value: 'MO', label: 'Monday' },
@@ -210,10 +210,10 @@ function CollapsibleSection({
           aria-expanded={open}
         >
           <i
-            className={`fa-solid shrink-0 w-5 text-center text-xs text-[#9fb0b5] ${open ? 'fa-chevron-down' : 'fa-chevron-right'}`}
+            className={`fa-solid shrink-0 w-5 text-center text-xs text-c-text-tertiary ${open ? 'fa-chevron-down' : 'fa-chevron-right'}`}
             aria-hidden
           />
-          <span className="font-medium text-white">{title}</span>
+          <span className="font-medium text-c-text-primary">{title}</span>
         </button>
         {right}
       </div>
@@ -538,7 +538,7 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
 
   return (
     <div
-      className="fixed inset-0 z-[1200] overflow-y-auto overscroll-contain bg-black/80 backdrop-blur-sm px-3"
+      className="fixed inset-0 z-[1200] overflow-y-auto overscroll-contain bg-c-bg-overlay backdrop-blur-sm px-3"
       style={{
         WebkitOverflowScrolling: 'touch',
         paddingTop: 'max(2rem, env(safe-area-inset-top, 0px))',
@@ -552,19 +552,19 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
       aria-labelledby="cg-modal-title"
     >
       <div
-        className="relative z-[1] mx-auto w-full max-w-3xl rounded-2xl border border-[#4db6ac]/30 bg-black p-4 text-white shadow-xl sm:p-5"
+        className="relative z-[1] mx-auto w-full max-w-3xl rounded-2xl border border-cpoint-turquoise/30 bg-c-bg-app p-4 text-c-text-primary shadow-xl sm:p-5"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-[#4db6ac]/20 pb-4">
+        <div className="flex items-start justify-between gap-3 border-b border-cpoint-turquoise/20 pb-4">
           <div>
             <h2 id="cg-modal-title" className="text-lg font-semibold">
               Content Generation
             </h2>
-            <p className="text-sm text-[#9fb0b5]">Create and run Steve jobs for this community.</p>
+            <p className="text-sm text-c-text-tertiary">Create and run Steve jobs for this community.</p>
           </div>
           <button
             type="button"
-            className="shrink-0 rounded-lg border border-white/10 px-3 py-2 text-sm hover:bg-white/5"
+            className="shrink-0 rounded-lg border border-c-border px-3 py-2 text-sm hover:bg-c-hover-bg"
             onClick={onClose}
           >
             Close
@@ -575,7 +575,7 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
           <div
             className={`mt-4 rounded-xl border px-4 py-3 text-sm ${
               feedback.type === 'success'
-                ? 'border-[#4db6ac]/40 bg-[#4db6ac]/10 text-[#9bf3ea]'
+                ? 'border-cpoint-turquoise/40 bg-cpoint-turquoise/10 text-c-accent-ink'
                 : 'border-red-500/30 bg-red-500/10 text-red-300'
             }`}
           >
@@ -588,18 +588,18 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
             title={editingJobId ? 'Edit job' : 'Create job'}
             right={
               editingJobId ? (
-                <button type="button" className="text-xs text-[#4db6ac]" onClick={() => resetForm(selectedIdeaId)}>
+                <button type="button" className="text-xs text-cpoint-turquoise" onClick={() => resetForm(selectedIdeaId)}>
                   Cancel edit
                 </button>
               ) : null
             }
           >
             {loading ? (
-              <div className="text-sm text-[#9fb0b5]">Loading options...</div>
+              <div className="text-sm text-c-text-tertiary">Loading options...</div>
             ) : (
               <form className="space-y-3" onSubmit={submitJob}>
                 <div>
-                  <label className="mb-1 block text-xs text-[#9fb0b5]">Idea</label>
+                    <label className="mb-1 block text-xs text-c-text-tertiary">Idea</label>
                   <select
                     value={selectedIdeaId}
                     onChange={(e) => {
@@ -607,7 +607,7 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
                       setSelectedIdeaId(nextIdeaId)
                       setPayload({})
                     }}
-                    className="w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                    className="w-full rounded-lg border border-c-border bg-c-bg-app px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
                   >
                     {ideas.map((idea) => (
                       <option key={idea.idea_id} value={idea.idea_id}>
@@ -615,17 +615,17 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
                       </option>
                     ))}
                   </select>
-                  {selectedIdea && <p className="mt-1 text-xs text-[#9fb0b5]">{selectedIdea.description}</p>}
+                  {selectedIdea && <p className="mt-1 text-xs text-c-text-tertiary">{selectedIdea.description}</p>}
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-xs text-[#9fb0b5]">
-                    Job title <span className="text-white/40">(optional)</span>
+                  <label className="mb-1 block text-xs text-c-text-tertiary">
+                    Job title <span className="text-c-text-tertiary">(optional)</span>
                   </label>
                   <input
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    className="w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                    className="w-full rounded-lg border border-c-border bg-c-bg-app px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
                     placeholder="Give this job an internal label"
                   />
                 </div>
@@ -633,7 +633,7 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
                 {selectedIdea?.payload_fields.map((field) =>
                   shouldShowField(field, payload) ? (
                     <div key={field.name}>
-                      <label className="mb-1 block text-xs text-[#9fb0b5]">
+                      <label className="mb-1 block text-xs text-c-text-tertiary">
                         {field.label}
                         {field.required ? ' *' : ''}
                       </label>
@@ -641,7 +641,7 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
                         <select
                           value={payload[field.name] || ''}
                           onChange={(e) => setPayload((prev) => ({ ...prev, [field.name]: e.target.value }))}
-                          className="w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                          className="w-full rounded-lg border border-c-border bg-c-bg-app px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
                         >
                           <option value="">{field.required ? 'Select a member' : 'Steve chooses automatically'}</option>
                           {members.map((member) => (
@@ -667,7 +667,7 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
                               }
                             })
                           }}
-                          className="w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                          className="w-full rounded-lg border border-c-border bg-c-bg-app px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
                         >
                           {(field.options || []).map((option) => (
                             <option key={option.value} value={option.value}>
@@ -681,12 +681,12 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
                           onChange={(e) => setPayload((prev) => ({ ...prev, [field.name]: e.target.value }))}
                           required={field.required}
                           placeholder={field.placeholder || ''}
-                          className="w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                          className="w-full rounded-lg border border-c-border bg-c-bg-app px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
                         />
                       )}
-                      {field.help_text && <p className="mt-1 text-xs text-[#9fb0b5]">{field.help_text}</p>}
+                      {field.help_text && <p className="mt-1 text-xs text-c-text-tertiary">{field.help_text}</p>}
                       {field.name === 'topic_mode' && getTopicMode(payload) === 'auto' && (
-                        <p className="mt-1 text-xs text-[#9fb0b5]">
+                        <p className="mt-1 text-xs text-c-text-tertiary">
                           Steve will pick a timely topic automatically whenever this job runs.
                         </p>
                       )}
@@ -694,15 +694,15 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
                   ) : null,
                 )}
 
-                <div className="space-y-3 rounded-xl border border-[#4db6ac]/15 p-3">
+                <div className="space-y-3 rounded-xl border border-cpoint-turquoise/15 p-3">
                   <div className="text-sm font-medium">Schedule preferences</div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
-                      <label className="mb-1 block text-xs text-[#9fb0b5]">Frequency</label>
+                      <label className="mb-1 block text-xs text-c-text-tertiary">Frequency</label>
                       <select
                         value={schedule.cadence}
                         onChange={(e) => setSchedule((prev) => ({ ...prev, cadence: e.target.value as ScheduleState['cadence'] }))}
-                        className="w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                        className="w-full rounded-lg border border-c-border bg-c-bg-app px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
                       >
                         <option value="weekly">Weekly</option>
                         <option value="biweekly">Bi-weekly</option>
@@ -711,11 +711,11 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
                     </div>
                     {schedule.cadence === 'monthly' ? (
                       <div>
-                        <label className="mb-1 block text-xs text-[#9fb0b5]">Weekday</label>
+                        <label className="mb-1 block text-xs text-c-text-tertiary">Weekday</label>
                         <select
                           value={schedule.weekday}
                           onChange={(e) => setSchedule((prev) => ({ ...prev, weekday: e.target.value }))}
-                          className="w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                          className="w-full rounded-lg border border-c-border bg-c-bg-app px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
                         >
                           {WEEKDAY_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>
@@ -725,19 +725,19 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
                         </select>
                       </div>
                     ) : (
-                      <div className="sm:col-span-2 rounded-lg border border-white/5 bg-black/40 px-3 py-2 text-xs text-[#9fb0b5]">
-                        Weekly and bi-weekly jobs run on the <span className="text-white/90">same calendar day</span> as
+                      <div className="sm:col-span-2 rounded-lg border border-c-border bg-c-hover-bg px-3 py-2 text-xs text-c-text-tertiary">
+                        Weekly and bi-weekly jobs run on the <span className="text-c-text-secondary">same calendar day</span> as
                         your starting date (or today if empty), at the time above, then every 7 or 14 days. The weekday is
                         set automatically from that date.
                       </div>
                     )}
                     {schedule.cadence === 'monthly' && (
                       <div>
-                        <label className="mb-1 block text-xs text-[#9fb0b5]">Week of month</label>
+                        <label className="mb-1 block text-xs text-c-text-tertiary">Week of month</label>
                         <select
                           value={schedule.week_of_month}
                           onChange={(e) => setSchedule((prev) => ({ ...prev, week_of_month: e.target.value }))}
-                          className="w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                          className="w-full rounded-lg border border-c-border bg-c-bg-app px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
                         >
                           {WEEK_OF_MONTH_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>
@@ -748,42 +748,42 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
                       </div>
                     )}
                     <div>
-                      <label className="mb-1 block text-xs text-[#9fb0b5]">Time</label>
+                      <label className="mb-1 block text-xs text-c-text-tertiary">Time</label>
                       <input
                         type="time"
                         value={schedule.time_of_day}
                         onChange={(e) => setSchedule((prev) => ({ ...prev, time_of_day: e.target.value }))}
-                        className="w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                        className="w-full rounded-lg border border-c-border bg-c-bg-app px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs text-[#9fb0b5]">
-                        Starting date <span className="text-white/40">(optional)</span>
+                      <label className="mb-1 block text-xs text-c-text-tertiary">
+                        Starting date <span className="text-c-text-tertiary">(optional)</span>
                       </label>
                       <input
                         type="date"
                         value={schedule.starting_date}
                         onChange={(e) => setSchedule((prev) => ({ ...prev, starting_date: e.target.value }))}
-                        className="w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                        className="w-full rounded-lg border border-c-border bg-c-bg-app px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs text-[#9fb0b5]">
-                        End date <span className="text-white/40">(optional)</span>
+                      <label className="mb-1 block text-xs text-c-text-tertiary">
+                        End date <span className="text-c-text-tertiary">(optional)</span>
                       </label>
                       <input
                         type="date"
                         value={schedule.end_date}
                         onChange={(e) => setSchedule((prev) => ({ ...prev, end_date: e.target.value }))}
-                        className="w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                        className="w-full rounded-lg border border-c-border bg-c-bg-app px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
                       />
                     </div>
                     <div className="sm:col-span-2">
-                      <label className="mb-1 block text-xs text-[#9fb0b5]">Timezone</label>
+                      <label className="mb-1 block text-xs text-c-text-tertiary">Timezone</label>
                       <select
                         value={schedule.timezone}
                         onChange={(e) => setSchedule((prev) => ({ ...prev, timezone: e.target.value }))}
-                        className="w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                        className="w-full rounded-lg border border-c-border bg-c-bg-app px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
                       >
                         {timeZoneChoices.map((tz) => (
                           <option key={tz} value={tz}>
@@ -793,12 +793,12 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
                       </select>
                     </div>
                   </div>
-                  <p className="text-xs text-[#9fb0b5]">Saved summary: {scheduleSummary(schedule)}</p>
+                  <p className="text-xs text-c-text-tertiary">Saved summary: {scheduleSummary(schedule)}</p>
                   {schedulePreviewError ? (
                     <p className="text-xs text-amber-200/90">{schedulePreviewError}</p>
                   ) : schedulePreview ? (
-                    <p className="text-xs text-[#9bf3ea]">
-                      First run: <span className="font-medium text-white">{schedulePreview.first_run_local_label}</span>{' '}
+                    <p className="text-xs text-c-accent-ink">
+                      First run: <span className="font-medium text-c-text-primary">{schedulePreview.first_run_local_label}</span>{' '}
                       ({schedulePreview.timezone}) · then {schedulePreview.cadence_label} at the same time of day.
                     </p>
                   ) : null}
@@ -807,7 +807,7 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
                 <button
                   type="submit"
                   disabled={saving || !selectedIdea}
-                  className="w-full rounded-lg bg-[#4db6ac] py-2.5 font-semibold text-black hover:brightness-110 disabled:opacity-50"
+                  className="w-full rounded-lg bg-cpoint-turquoise py-2.5 font-semibold text-black hover:brightness-110 disabled:opacity-50"
                 >
                   {saving ? 'Saving...' : editingJobId ? 'Update job' : 'Create job'}
                 </button>
@@ -836,19 +836,19 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
             >
               <div className="space-y-3">
                 {jobs.length === 0 ? (
-                  <div className="text-sm text-[#9fb0b5]">No jobs saved for this community yet.</div>
+                  <div className="text-sm text-c-text-tertiary">No jobs saved for this community yet.</div>
                 ) : (
                   jobs.map((job) => (
-                    <div key={job.id} className="rounded-xl border border-white/10 bg-black p-3">
+                    <div key={job.id} className="rounded-xl border border-c-border bg-c-bg-app p-3">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <div className="text-sm font-medium">{job.title || job.idea_id}</div>
-                          <div className="mt-1 text-xs text-[#9fb0b5]">{scheduleSummary(job.schedule as Partial<ScheduleState>)}</div>
-                          {job.last_run_at && <div className="mt-1 text-[11px] text-white/40">Last run: {job.last_run_at}</div>}
+                          <div className="mt-1 text-xs text-c-text-tertiary">{scheduleSummary(job.schedule as Partial<ScheduleState>)}</div>
+                          {job.last_run_at && <div className="mt-1 text-[11px] text-c-text-tertiary">Last run: {job.last_run_at}</div>}
                         </div>
                         <span
                           className={`text-[11px] rounded-full px-2 py-1 ${
-                            job.status === 'active' ? 'bg-[#4db6ac]/15 text-[#9bf3ea]' : 'bg-white/10 text-white/60'
+                            job.status === 'active' ? 'bg-cpoint-turquoise/15 text-c-accent-ink' : 'bg-c-active-bg text-c-text-tertiary'
                           }`}
                         >
                           {job.status}
@@ -857,7 +857,7 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button
                           type="button"
-                          className="rounded-lg bg-[#4db6ac] px-3 py-1.5 text-xs font-semibold text-black disabled:opacity-50"
+                          className="rounded-lg bg-cpoint-turquoise px-3 py-1.5 text-xs font-semibold text-black disabled:opacity-50"
                           disabled={runningJobId === job.id}
                           onClick={() => runJob(job.id)}
                         >
@@ -865,14 +865,14 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
                         </button>
                         <button
                           type="button"
-                          className="rounded-lg border border-white/10 px-3 py-1.5 text-xs hover:bg-white/5"
+                          className="rounded-lg border border-c-border px-3 py-1.5 text-xs hover:bg-c-hover-bg"
                           onClick={() => startEdit(job)}
                         >
                           Edit
                         </button>
                         <button
                           type="button"
-                          className="rounded-lg border border-white/10 px-3 py-1.5 text-xs hover:bg-white/5"
+                          className="rounded-lg border border-c-border px-3 py-1.5 text-xs hover:bg-c-hover-bg"
                           onClick={() => toggleJobStatus(job)}
                         >
                           {job.status === 'active' ? 'Pause' : 'Activate'}
@@ -912,29 +912,29 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
             >
               <div className="space-y-3">
                 {runs.length === 0 ? (
-                  <div className="text-sm text-[#9fb0b5]">No runs yet.</div>
+                  <div className="text-sm text-c-text-tertiary">No runs yet.</div>
                 ) : (
                   runs.map((run) => (
-                    <div key={run.id} className="rounded-xl border border-white/10 bg-black p-3">
+                    <div key={run.id} className="rounded-xl border border-c-border bg-c-bg-app p-3">
                       <div className="flex items-center justify-between gap-3">
                         <div className="text-sm font-medium">{run.idea_id}</div>
                         <span
                           className={`text-[11px] rounded-full px-2 py-1 ${
                             run.status === 'succeeded'
-                              ? 'bg-[#4db6ac]/15 text-[#9bf3ea]'
+                              ? 'bg-cpoint-turquoise/15 text-c-accent-ink'
                               : run.status === 'failed'
                                 ? 'bg-red-500/15 text-red-300'
-                                : 'bg-white/10 text-white/60'
+                                : 'bg-c-active-bg text-c-text-tertiary'
                           }`}
                         >
                           {run.status}
                         </span>
                       </div>
-                      <div className="mt-1 text-[11px] text-[#9fb0b5]">{run.finished_at || run.started_at || 'Pending'}</div>
+                      <div className="mt-1 text-[11px] text-c-text-tertiary">{run.finished_at || run.started_at || 'Pending'}</div>
                       {Array.isArray(run.source_links) && run.source_links.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-2">
                           {run.source_links.slice(0, 3).map((link) => (
-                            <a key={link} href={link} target="_blank" rel="noreferrer" className="text-[11px] text-[#4db6ac] hover:underline">
+                            <a key={link} href={link} target="_blank" rel="noreferrer" className="text-[11px] text-cpoint-turquoise hover:underline">
                               Source
                             </a>
                           ))}
@@ -962,34 +962,34 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
 
       {defaultEndModalOpen ? (
         <div
-          className="fixed inset-0 z-[1300] flex items-center justify-center bg-black/70 px-4"
+          className="fixed inset-0 z-[1300] flex items-center justify-center bg-c-bg-app/70 px-4"
           onClick={() => setDefaultEndModalOpen(false)}
           role="dialog"
           aria-modal="true"
           aria-labelledby="cg-default-end-title"
         >
           <div
-            className="w-full max-w-md rounded-2xl border border-[#4db6ac]/30 bg-black p-5 shadow-xl"
+            className="w-full max-w-md rounded-2xl border border-cpoint-turquoise/30 bg-c-bg-app p-5 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 id="cg-default-end-title" className="text-base font-semibold text-white">
+            <h3 id="cg-default-end-title" className="text-base font-semibold text-c-text-primary">
               Default end date
             </h3>
-            <p className="mt-2 text-sm text-[#9fb0b5]">
+            <p className="mt-2 text-sm text-c-text-tertiary">
               You did not set an end date. This job will automatically stop after six months from the starting date you
               picked, or from today if you left the starting date empty.
             </p>
             <div className="mt-5 flex flex-wrap justify-end gap-2">
               <button
                 type="button"
-                className="rounded-lg border border-white/10 px-4 py-2 text-sm text-white hover:bg-white/5"
+                className="rounded-lg border border-c-border px-4 py-2 text-sm text-c-text-primary hover:bg-c-hover-bg"
                 onClick={() => setDefaultEndModalOpen(false)}
               >
                 Go back
               </button>
               <button
                 type="button"
-                className="rounded-lg bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110"
+                className="rounded-lg bg-cpoint-turquoise px-4 py-2 text-sm font-semibold text-black hover:brightness-110"
                 onClick={() => {
                   setDefaultEndModalOpen(false)
                   void performSubmit()
@@ -1004,34 +1004,34 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
 
       {jobCreatedDialog ? (
         <div
-          className="fixed inset-0 z-[1300] flex items-center justify-center bg-black/70 px-4"
+          className="fixed inset-0 z-[1300] flex items-center justify-center bg-c-bg-app/70 px-4"
           onClick={() => setJobCreatedDialog(null)}
           role="dialog"
           aria-modal="true"
           aria-labelledby="cg-job-created-title"
         >
           <div
-            className="w-full max-w-md rounded-2xl border border-[#4db6ac]/30 bg-black p-5 shadow-xl"
+            className="w-full max-w-md rounded-2xl border border-cpoint-turquoise/30 bg-c-bg-app p-5 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 id="cg-job-created-title" className="text-base font-semibold text-white">
+            <h3 id="cg-job-created-title" className="text-base font-semibold text-c-text-primary">
               Job created
             </h3>
-            <p className="mt-2 text-sm text-[#9fb0b5]">
-              <span className="text-white/90">{jobCreatedDialog.title}</span> is saved. Steve will run{' '}
-              <span className="text-white/90">{jobCreatedDialog.cadenceLine}</span> at the scheduled time (
+            <p className="mt-2 text-sm text-c-text-tertiary">
+              <span className="text-c-text-secondary">{jobCreatedDialog.title}</span> is saved. Steve will run{' '}
+              <span className="text-c-text-secondary">{jobCreatedDialog.cadenceLine}</span> at the scheduled time (
               {jobCreatedDialog.timezone}).
             </p>
-            <p className="mt-2 text-sm text-[#9bf3ea]">
-              First run: <span className="font-semibold text-white">{jobCreatedDialog.firstRunLine}</span>
+            <p className="mt-2 text-sm text-c-accent-ink">
+              First run: <span className="font-semibold text-c-text-primary">{jobCreatedDialog.firstRunLine}</span>
             </p>
-            <p className="mt-1 text-xs text-[#9fb0b5]">
+            <p className="mt-1 text-xs text-c-text-tertiary">
               Actual execution may be a few minutes after the scheduled time, depending on the server cron.
             </p>
             <div className="mt-5 flex justify-end">
               <button
                 type="button"
-                className="rounded-lg bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110"
+                className="rounded-lg bg-cpoint-turquoise px-4 py-2 text-sm font-semibold text-black hover:brightness-110"
                 onClick={() => setJobCreatedDialog(null)}
               >
                 OK

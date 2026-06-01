@@ -1,6 +1,19 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { ChatMessage } from '../types/chat'
 import { compressImageForUpload } from '../utils/compressImageForUpload'
+import {
+  isChatUploadV2Enabled,
+  uploadChatMediaBlob,
+  uploadChatMediaBatch,
+  SENDING_MEDIA_LABEL as V2_SENDING_LABEL,
+  UploadRequestError,
+  createUploadController,
+  removeUploadController,
+  type UploadProgress as V2UploadProgress,
+  type MediaQuality,
+} from './upload'
+import { removeMediaOutboxRecord, removeMediaOutboxRecordsByPrefix } from './upload/mediaOutbox'
+import type { EntitlementsError } from '../utils/entitlementsError'
 
 interface BridgeRef {
   tempToServer: Map<string, string | number>
@@ -21,7 +34,13 @@ export interface UploadProgress {
 }
 
 /** User-facing label for DM/group media upload progress (avoid internal terms like "batch"). */
-export const SENDING_MEDIA_LABEL = 'Sending Media'
+export const SENDING_MEDIA_LABEL = V2_SENDING_LABEL
+
+function mapV2Progress(onProgress: ((p: UploadProgress) => void) | undefined, p: V2UploadProgress) {
+  const stage: UploadProgress['stage'] =
+    p.stage === 'done' ? 'done' : p.stage === 'failed' || p.stage === 'cancelled' ? 'error' : 'uploading'
+  onProgress?.({ stage, progress: p.progress, message: p.message })
+}
 
 interface BaseMediaOptions {
   otherUserId: number | ''
@@ -33,7 +52,10 @@ interface BaseMediaOptions {
   setSending: (value: boolean) => void
   setPastedImage?: (file: File | null) => void
   notifyError?: (message: string) => void
+  onLimitReached?: (err: EntitlementsError) => void
+  onCancelReady?: (cancel: (() => void) | null) => void
   cleanup?: () => void
+  quality?: MediaQuality
 }
 
 interface ImageMediaOptions extends BaseMediaOptions {
@@ -49,6 +71,22 @@ interface VideoMediaOptions extends BaseMediaOptions {
 const defaultNotify = (msg: string) => {
   if (typeof window !== 'undefined') {
     window.alert(msg)
+  }
+}
+
+function uploadLimitError(err: unknown): EntitlementsError | null {
+  if (!(err instanceof UploadRequestError)) return null
+  if (err.code !== 'upload_size_limit' && err.code !== 'upload_daily_limit') return null
+  return {
+    success: false,
+    error: 'entitlements_error',
+    reason: err.code,
+    message:
+      err.code === 'upload_size_limit'
+        ? 'This file is larger than your current chat media limit.'
+        : 'You have reached today\'s chat media upload limit.',
+    cta: { type: 'manage', label: 'View plans', url: '/subscription-plans' },
+    usage: {},
   }
 }
 
@@ -75,6 +113,8 @@ export async function sendImageMessage(options: ImageMediaOptions) {
     setSending,
     setPastedImage,
     notifyError = defaultNotify,
+    onLimitReached,
+    onCancelReady,
     cleanup,
   } = options
 
@@ -95,6 +135,8 @@ export async function sendImageMessage(options: ImageMediaOptions) {
   setMessages((prev: ChatMessage[]) => [...prev, optimisticMessage])
   recentOptimisticRef.current.set(tempId, { message: optimisticMessage, timestamp: Date.now() })
   setTimeout(scrollToBottom, 50)
+  const controller = isChatUploadV2Enabled() ? createUploadController(tempId) : null
+  if (controller) onCancelReady?.(() => controller.abort())
 
   const formData = new FormData()
   formData.append('photo', file)
@@ -102,6 +144,45 @@ export async function sendImageMessage(options: ImageMediaOptions) {
   formData.append('message', '')
 
   try {
+    if (isChatUploadV2Enabled()) {
+      const { publicUrl, outboxId } = await uploadChatMediaBlob({
+        context: { type: 'dm', recipientId: otherUserId },
+        file,
+        mediaKind: 'image',
+        quality: options.quality,
+        clientKey: tempId,
+        signal: controller?.signal,
+        onProgress: undefined,
+      })
+      const fd = new FormData()
+      fd.append('recipient_id', String(otherUserId))
+      fd.append('media_urls', JSON.stringify([publicUrl]))
+      fd.append('client_key', tempId)
+      const res = await fetch('/send_dm_media', { method: 'POST', credentials: 'include', body: fd })
+      const payload = await res.json().catch(() => null)
+      if (!payload?.success) throw new Error(payload?.error || 'Failed to send photo')
+      if (outboxId) await removeMediaOutboxRecord(outboxId, tempId)
+      if (payload.id) {
+        idBridgeRef.current.tempToServer.set(tempId, payload.id)
+        idBridgeRef.current.serverToTemp.set(payload.id, tempId)
+      }
+      setMessages((prev: ChatMessage[]) =>
+        prev.map((message: ChatMessage) => {
+          if ((message.clientKey || message.id) !== tempId) return message
+          return {
+            ...message,
+            id: payload.id || message.id,
+            image_path: payload.image_path || payload.media_paths?.[0] || message.image_path,
+            media_paths: payload.media_paths ?? message.media_paths,
+            isOptimistic: false,
+            time: payload.time || message.time,
+          }
+        }),
+      )
+      finalizeOptimisticEntry(recentOptimisticRef, tempId)
+      return
+    }
+
     const response = await fetch('/send_photo_message', {
       method: 'POST',
       credentials: 'include',
@@ -133,9 +214,16 @@ export async function sendImageMessage(options: ImageMediaOptions) {
     finalizeOptimisticEntry(recentOptimisticRef, tempId)
   } catch (error) {
     console.error('Image upload failed', error)
+    const limitErr = uploadLimitError(error)
+    if (controller?.signal.aborted) {
+      // User cancelled the upload.
+    } else if (limitErr && onLimitReached) {
+      onLimitReached(limitErr)
+    } else {
+      notifyError(kind === 'gif' ? "Couldn't send GIF. Try again." : "Couldn't send photo. Try again.")
+    }
     setMessages((prev: ChatMessage[]) => prev.filter((message: ChatMessage) => (message.clientKey || message.id) !== tempId))
     recentOptimisticRef.current.delete(tempId)
-    notifyError(kind === 'gif' ? 'Failed to send GIF. Please try again.' : 'Failed to send photo. Please try again.')
   } finally {
     try {
       URL.revokeObjectURL(previewUrl)
@@ -144,6 +232,8 @@ export async function sendImageMessage(options: ImageMediaOptions) {
     }
     setPastedImage?.(null)
     cleanup?.()
+    if (controller) removeUploadController(tempId)
+    onCancelReady?.(null)
     setSending(false)
   }
 }
@@ -159,6 +249,8 @@ export async function sendVideoMessage(options: VideoMediaOptions) {
     idBridgeRef,
     setSending,
     notifyError = defaultNotify,
+    onLimitReached,
+    onCancelReady,
     cleanup,
     onProgress,
   } = options
@@ -180,8 +272,52 @@ export async function sendVideoMessage(options: VideoMediaOptions) {
   setMessages((prev: ChatMessage[]) => [...prev, optimisticMessage])
   recentOptimisticRef.current.set(tempId, { message: optimisticMessage, timestamp: Date.now() })
   setTimeout(scrollToBottom, 50)
+  const controller = isChatUploadV2Enabled() ? createUploadController(tempId) : null
+  if (controller) onCancelReady?.(() => controller.abort())
 
   try {
+    if (isChatUploadV2Enabled()) {
+      onProgress?.({ stage: 'uploading', progress: 0, message: SENDING_MEDIA_LABEL })
+      const { publicUrl, outboxId } = await uploadChatMediaBlob({
+        context: { type: 'dm', recipientId: otherUserId },
+        file,
+        mediaKind: 'video',
+        quality: options.quality,
+        clientKey: tempId,
+        signal: controller?.signal,
+        onProgress: p => mapV2Progress(onProgress, p),
+      })
+      onProgress?.({ stage: 'uploading', progress: 98, message: SENDING_MEDIA_LABEL })
+      const fd = new FormData()
+      fd.append('recipient_id', String(otherUserId))
+      fd.append('message', '')
+      fd.append('video_url', publicUrl)
+      fd.append('client_key', tempId)
+      const msgRes = await fetch('/send_video_message', { method: 'POST', credentials: 'include', body: fd })
+      const payload = await msgRes.json().catch(() => null) || {}
+      if (!payload?.success) throw new Error(payload?.error || 'Failed to send video')
+      if (outboxId) await removeMediaOutboxRecord(outboxId, tempId)
+      onProgress?.({ stage: 'done', progress: 100, message: 'Sent' })
+      if (payload.id) {
+        idBridgeRef.current.tempToServer.set(tempId, payload.id)
+        idBridgeRef.current.serverToTemp.set(payload.id, tempId)
+      }
+      setMessages((prev: ChatMessage[]) =>
+        prev.map((message: ChatMessage) => {
+          if ((message.clientKey || message.id) !== tempId) return message
+          return {
+            ...message,
+            id: payload.id || message.id,
+            video_path: payload.video_path || message.video_path,
+            isOptimistic: false,
+            time: payload.time || message.time,
+          }
+        }),
+      )
+      finalizeOptimisticEntry(recentOptimisticRef, tempId)
+      return
+    }
+
     // Cloud Run has 32MB request limit - use direct R2 upload for videos > 25MB
     const LARGE_VIDEO_THRESHOLD = 25 * 1024 * 1024 // 25MB
     const useDirectUpload = file.size > LARGE_VIDEO_THRESHOLD
@@ -273,7 +409,7 @@ export async function sendVideoMessage(options: VideoMediaOptions) {
       throw new Error(payload?.error || 'Failed to send video')
     }
 
-    onProgress?.({ stage: 'done', progress: 100, message: 'Sent!' })
+    onProgress?.({ stage: 'done', progress: 100, message: 'Sent' })
 
     if (payload.id) {
       idBridgeRef.current.tempToServer.set(tempId, payload.id)
@@ -296,11 +432,15 @@ export async function sendVideoMessage(options: VideoMediaOptions) {
     finalizeOptimisticEntry(recentOptimisticRef, tempId)
   } catch (error) {
     console.error('Video upload failed', error)
-    const errMsg = error instanceof Error ? error.message : 'Failed to send video'
+    const limitErr = uploadLimitError(error)
+    const errMsg = controller?.signal.aborted ? 'Upload cancelled' : "Couldn't send video. Try again."
     onProgress?.({ stage: 'error', progress: 0, message: errMsg })
     setMessages((prev: ChatMessage[]) => prev.filter((message: ChatMessage) => (message.clientKey || message.id) !== tempId))
     recentOptimisticRef.current.delete(tempId)
-    notifyError(errMsg.includes('Failed') ? `${errMsg} Please try again.` : errMsg)
+    if (controller?.signal.aborted) {
+      // Cancelled by the user.
+    } else if (limitErr && onLimitReached) onLimitReached(limitErr)
+    else notifyError(errMsg)
   } finally {
     try {
       URL.revokeObjectURL(previewUrl)
@@ -308,6 +448,8 @@ export async function sendVideoMessage(options: VideoMediaOptions) {
       // ignore
     }
     cleanup?.()
+    if (controller) removeUploadController(tempId)
+    onCancelReady?.(null)
     setSending(false)
   }
 }
@@ -394,6 +536,8 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
     idBridgeRef,
     setSending,
     notifyError = defaultNotify,
+    onLimitReached,
+    onCancelReady,
     cleanup,
     onProgress,
     lockComposer = true,
@@ -421,8 +565,57 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
   setMessages((prev: ChatMessage[]) => [...prev, optimisticMessage])
   recentOptimisticRef.current.set(tempId, { message: optimisticMessage, timestamp: Date.now() })
   setTimeout(scrollToBottom, 50)
+  const controller = isChatUploadV2Enabled() ? createUploadController(tempId) : null
+  if (controller) onCancelReady?.(() => controller.abort())
 
   try {
+    onProgress?.({ stage: 'uploading', progress: 5, message: SENDING_MEDIA_LABEL })
+
+    if (isChatUploadV2Enabled()) {
+      const orderedUrls = await uploadChatMediaBatch(
+        files.map(f => ({ file: f.file, mediaKind: f.type })),
+        { type: 'dm', recipientId: otherUserId as number },
+        (index, total, p) => {
+          const slice = (index + p.progress / 100) / total
+          mapV2Progress(onProgress, { ...p, progress: 5 + slice * 90 })
+        },
+        controller?.signal,
+        options.quality,
+        tempId,
+      )
+      onProgress?.({ stage: 'uploading', progress: 96, message: SENDING_MEDIA_LABEL })
+      const fd = new FormData()
+      fd.append('recipient_id', String(otherUserId))
+      fd.append('media_urls', JSON.stringify(orderedUrls))
+      fd.append('client_key', tempId)
+      const res = await fetch('/send_dm_media', { method: 'POST', credentials: 'include', body: fd })
+      const payload = await res.json().catch(() => null)
+      if (!payload?.success) throw new Error(payload?.error || 'Failed to send media')
+      await removeMediaOutboxRecordsByPrefix(tempId)
+      if (payload.id) {
+        idBridgeRef.current.tempToServer.set(tempId, payload.id)
+        idBridgeRef.current.serverToTemp.set(payload.id, tempId)
+      }
+      onProgress?.({ stage: 'done', progress: 100, message: 'Sent' })
+      const p = payload
+      setMessages((prev: ChatMessage[]) =>
+        prev.map((message: ChatMessage) => {
+          if ((message.clientKey || message.id) !== tempId) return message
+          return {
+            ...message,
+            id: p?.id ?? message.id,
+            media_paths: p?.media_paths ?? message.media_paths,
+            image_path: p?.image_path ?? message.image_path,
+            video_path: p?.video_path ?? message.video_path,
+            isOptimistic: false,
+            time: p?.time ?? message.time,
+          }
+        }),
+      )
+      finalizeOptimisticEntry(recentOptimisticRef, tempId)
+      return
+    }
+
     onProgress?.({ stage: 'uploading', progress: 5, message: SENDING_MEDIA_LABEL })
 
     const n = files.length
@@ -456,19 +649,21 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
     const fd = new FormData()
     fd.append('recipient_id', String(otherUserId))
     fd.append('media_urls', JSON.stringify(orderedUrls))
+    fd.append('client_key', tempId)
 
     const res = await fetch('/send_dm_media', { method: 'POST', credentials: 'include', body: fd })
     const payload = await res.json().catch(() => null)
     if (!payload?.success) {
       throw new Error(payload?.error || 'Failed to send media')
     }
+    await removeMediaOutboxRecordsByPrefix(tempId)
 
     if (payload.id) {
       idBridgeRef.current.tempToServer.set(tempId, payload.id)
       idBridgeRef.current.serverToTemp.set(payload.id, tempId)
     }
 
-    onProgress?.({ stage: 'done', progress: 100, message: 'Sent!' })
+    onProgress?.({ stage: 'done', progress: 100, message: 'Sent' })
 
     const p = payload
     setMessages((prev: ChatMessage[]) =>
@@ -488,14 +683,20 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
     finalizeOptimisticEntry(recentOptimisticRef, tempId)
   } catch (error) {
     console.error('Multi-media upload failed', error)
-    const errMsg = error instanceof Error ? error.message : 'Failed to send media'
+    const limitErr = uploadLimitError(error)
+    const errMsg = controller?.signal.aborted ? 'Upload cancelled' : "Couldn't send media. Try again."
     onProgress?.({ stage: 'error', progress: 0, message: errMsg })
     setMessages((prev: ChatMessage[]) => prev.filter(m => (m.clientKey || m.id) !== tempId))
     recentOptimisticRef.current.delete(tempId)
-    notifyError(`Failed to send media: ${errMsg}`)
+    if (controller?.signal.aborted) {
+      // Cancelled by the user.
+    } else if (limitErr && onLimitReached) onLimitReached(limitErr)
+    else notifyError(errMsg)
   } finally {
     previewUrls.forEach(url => { try { URL.revokeObjectURL(url) } catch {} })
     cleanup?.()
+    if (controller) removeUploadController(tempId)
+    onCancelReady?.(null)
     if (lockComposer) setSending(false)
   }
 }

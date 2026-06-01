@@ -10,6 +10,7 @@ alwaysApply: false
   - **Shared hooks** in `client/src/chat/` or `client/src/hooks/` (keyboard, composer, scroll-to-latest, media preview, outbox).
   - **Shared presentational** pieces beside existing `MessageBubble`, `ChatHeader`, etc.
 - **New messaging features** (reactions, attachments, typing, media pipeline): implement once in **`client/src/chat/`**, wire from both pages.
+- **Chat media uploads (v2):** resumable multipart kernel lives in **`client/src/chat/upload/`** (`uploadKernel.ts`, `multipartUploader.ts`, `mediaOutbox.ts`). Both thread pages call **`mediaSenders.ts`** / **`groupChatMediaSenders.ts`** only — no per-page upload XHR. Backend: **`backend/blueprints/chat_uploads.py`** + **`backend/services/chat_uploads.py`** (not `group_chat.py` presigned routes). See **`docs/CHAT_MEDIA_UPLOAD_V2.md`**.
 - **API paths** pair with **`backend/blueprints/group_chat.py`** and **`dm_chats`** / **`MYSQL_AND_FIRESTORE.md`** — confirm route inventory after backend changes (`python scripts/generate_route_inventory.py`).
 - See **`docs/MONOLITH_REDUCTION_ROADMAP.md`** § Chat UI kernel and **`AGENTS.md`** for AI/voice (Steve) invariants if the change touches summaries or usage.
 

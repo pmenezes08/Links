@@ -42,6 +42,7 @@ EVENT_PHOTO_SHARED = "photo_shared"
 EVENT_LINK_SHARED = "link_shared"
 EVENT_QUESTION_ASKED = "question_asked"
 EVENT_COMPLIMENT = "compliment"
+EVENT_WEDDING = "wedding"  # social/life events like weddings, parties, attendance
 EVENT_CUSTOM = "custom"
 
 ALL_EVENT_TYPES = frozenset({
@@ -53,6 +54,7 @@ ALL_EVENT_TYPES = frozenset({
     EVENT_LINK_SHARED,
     EVENT_QUESTION_ASKED,
     EVENT_COMPLIMENT,
+    EVENT_WEDDING,
     EVENT_CUSTOM,
 })
 
@@ -95,6 +97,12 @@ _QUESTION_PATTERNS: list[re.Pattern] = [
 _COMPLIMENT_PATTERNS: list[re.Pattern] = [
     re.compile(r"\b(?:you(?:'re| are) (?:the best|amazing|awesome|great|incredible|wonderful))\b", re.I),
     re.compile(r"\b(?:proud of you|love (?:that|this)|well done|good job|nice work|great job|keep it up)\b", re.I),
+]
+
+_WEDDING_SOCIAL_PATTERNS: list[re.Pattern] = [
+    re.compile(r"\b(?:wedding|weddings|married|marriage|attended.*wedding|wedding.*attend|reception|ceremony)\b", re.I),
+    re.compile(r"\b(?:party|parties|celebration|attended|going to|went to).*?(?:wedding|event|party)\b", re.I),
+    re.compile(r"\b(?:how many.*?(?:wedding|party)|attended.*?(?:wedding|event))\b", re.I),
 ]
 
 _URL_PATTERN = re.compile(r"https?://[^\s<>\"']+", re.I)
@@ -172,6 +180,12 @@ def extract_events_from_message(
             m = pat.search(clean_text)
             if m:
                 _add(EVENT_COMPLIMENT, f"compliment: {m.group(0).lower()}")
+                break
+
+        for pat in _WEDDING_SOCIAL_PATTERNS:
+            m = pat.search(clean_text)
+            if m:
+                _add(EVENT_WEDDING, f"wedding/social: {m.group(0).lower()}")
                 break
 
         for pat in _QUESTION_PATTERNS:

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
@@ -49,19 +49,19 @@ export default function OnboardingWelcome(){
   const hasCards = cards && cards.length > 0
 
   return (
-    <div className="h-screen overflow-hidden bg-black text-white flex items-center justify-center" style={{ height: '100dvh' }}>
+    <div className="min-h-[100dvh] overflow-y-auto bg-c-bg-app text-c-text-primary flex items-center justify-center py-6">
       <div className="w-full max-w-xl px-4">
         <div className="mb-3">
           <div className="text-2xl font-bold">{t('onboarding.welcome.title')}</div>
         </div>
-        <div className="text-sm text-[#9fb0b5] mb-3" style={{ minHeight: '32px' }}>
+        <div className="text-sm text-c-text-tertiary mb-3" style={{ minHeight: '32px' }}>
           {sentences[cardIndex % sentences.length]}
         </div>
 
-        <div className="rounded-2xl border border-white/10 overflow-hidden bg-white/[0.03]">
+        <div className="rounded-2xl border border-c-border overflow-hidden bg-c-bg-surface">
           {!loaded ? (
             // Loading state
-            <div className="w-full h-[46vh] bg-white/[0.06] animate-pulse" />
+            <div className="w-full h-[46vh] bg-c-bg-surface animate-pulse" />
           ) : hasCards ? (
             // Show carousel with server-provided cards
             <div className="relative w-full h-[46vh]"
@@ -81,7 +81,7 @@ export default function OnboardingWelcome(){
               <div className="absolute inset-0 flex transition-transform duration-500"
                    style={{ transform: `translateX(calc(-${cardIndex * 100}% + ${touchDeltaX}px))` }}>
                 {cards.map((src, i) => (
-                  <div key={i} className="min-w-full h-full bg-black relative">
+                  <div key={i} className="min-w-full h-full bg-c-bg-surface relative">
                     {/* Show subtle loading shimmer only if image not loaded yet */}
                     {!imagesLoaded[i] && (
                       <div className="absolute inset-0 bg-white/[0.03] animate-pulse" />
@@ -103,15 +103,15 @@ export default function OnboardingWelcome(){
                     <button key={i}
                             aria-label={t('onboarding.welcome.slide_label', { number: i + 1 })}
                             onClick={() => setCardIndex(i)}
-                            className={`w-2.5 h-2.5 rounded-full ${cardIndex===i ? 'bg-[#4db6ac]' : 'bg-white/30'}`} />
+                            className={`w-2.5 h-2.5 rounded-full ${cardIndex===i ? 'bg-cpoint-turquoise' : 'bg-white/30'}`} />
                   ))}
                 </div>
               )}
             </div>
           ) : (
             // Placeholder when no cards are uploaded
-            <div className="w-full h-[46vh] bg-white/[0.03] flex items-center justify-center">
-              <div className="text-center text-white/40">
+            <div className="w-full h-[46vh] bg-c-bg-surface flex items-center justify-center">
+              <div className="text-center text-c-text-tertiary">
                 <i className="fa-solid fa-images text-4xl mb-2" />
                 <p className="text-sm">{t('onboarding.welcome.images_coming_soon')}</p>
               </div>
@@ -119,7 +119,7 @@ export default function OnboardingWelcome(){
           )}
         </div>
         <div className="mt-4">
-          <button className="px-4 py-3 rounded-xl bg-[#4db6ac] text-black font-semibold" onClick={onGetStarted}>{t('onboarding.welcome.get_started')}</button>
+          <button className="px-4 py-3 rounded-xl bg-cpoint-turquoise text-c-text-on-accent font-semibold" onClick={onGetStarted}>{t('onboarding.welcome.get_started')}</button>
         </div>
       </div>
     </div>

@@ -2,8 +2,9 @@ import SettingsRow from './SettingsRow'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import Avatar from '../Avatar'
+import { MIDDLE_DOT } from '../../utils/typography'
 
-export type SettingsPanelKey = 'account' | 'subscription' | 'notifications' | 'language' | 'privacy' | 'about'
+export type SettingsPanelKey = 'account' | 'subscription' | 'notifications' | 'language' | 'appearance' | 'privacy' | 'about'
 
 type SettingsHomeProps = {
   username: string
@@ -12,6 +13,7 @@ type SettingsHomeProps = {
   subscription: string
   notificationsLabel: string
   languageLabel: string
+  appearanceLabel: string
   activePanel: SettingsPanelKey | null
   dangerOpen: boolean
   onOpenPanel: (panel: SettingsPanelKey) => void
@@ -21,8 +23,8 @@ type SettingsHomeProps = {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="space-y-2">
-      <h2 className="px-1 text-[11px] font-bold uppercase tracking-[0.16em] text-white/28">{title}</h2>
-      <div className="overflow-hidden rounded-3xl border border-white/[0.06] bg-white/[0.055] shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
+      <h2 className="px-1 text-[11px] font-bold uppercase tracking-[0.16em] text-c-text-tertiary">{title}</h2>
+      <div className="overflow-hidden rounded-3xl border border-c-border bg-c-bg-surface shadow-c-glass">
         {children}
       </div>
     </section>
@@ -30,7 +32,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 function Divider() {
-  return <div className="ml-[4.75rem] h-px bg-white/[0.055]" />
+  return <div className="ml-[4.75rem] h-px bg-c-border-subtle" />
 }
 
 export default function SettingsHome({
@@ -40,6 +42,7 @@ export default function SettingsHome({
   subscription,
   notificationsLabel,
   languageLabel,
+  appearanceLabel,
   activePanel,
   dangerOpen,
   onOpenPanel,
@@ -50,7 +53,7 @@ export default function SettingsHome({
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-xl flex-col px-5 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)] pt-4">
-      <h1 className="text-center text-xl font-bold tracking-[-0.02em] text-white">Settings</h1>
+      <h1 className="text-center text-xl font-bold tracking-[-0.02em] text-c-text-primary">Settings</h1>
 
       <div className="mt-8 flex items-center gap-5">
         <Avatar
@@ -58,13 +61,13 @@ export default function SettingsHome({
           displayName={username}
           url={avatarUrl}
           size={80}
-          className="shrink-0 border-[#4db6ac]/35 bg-[#4db6ac]"
+          className="shrink-0 border-cpoint-turquoise/35 bg-cpoint-turquoise"
         />
         <div className="min-w-0">
-          <div className="truncate text-2xl font-bold tracking-[-0.03em] text-white">{username || 'Account'}</div>
-          <div className="mt-0.5 truncate text-base text-white/38">{email}</div>
+          <div className="truncate text-2xl font-bold tracking-[-0.03em] text-c-text-primary">{username || 'Account'}</div>
+          <div className="mt-0.5 truncate text-base text-c-text-tertiary">{email}</div>
           {isPremium ? (
-            <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#4db6ac]/12 px-3 py-1 text-xs font-bold text-[#4db6ac]">
+            <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-cpoint-turquoise/12 px-3 py-1 text-xs font-bold text-cpoint-turquoise">
               <i className="fa-solid fa-crown text-[10px]" />
               Premium
             </span>
@@ -77,7 +80,7 @@ export default function SettingsHome({
           <SettingsRow
             icon="fa-regular fa-user"
             title={t('account.info.section_title')}
-            subtitle={`${username || 'Username'} · ${email || 'Email'}`}
+            subtitle={`${username || 'Username'} ${MIDDLE_DOT} ${email || 'Email'}`}
             active={activePanel === 'account'}
             onClick={() => onOpenPanel('account')}
           />
@@ -89,7 +92,7 @@ export default function SettingsHome({
             active={activePanel === 'subscription'}
             badge={
               isPremium ? (
-                <span className="rounded-full bg-[#4db6ac]/12 px-3 py-1 text-xs font-bold text-[#4db6ac]">Premium</span>
+                <span className="rounded-full bg-cpoint-turquoise/12 px-3 py-1 text-xs font-bold text-cpoint-turquoise">Premium</span>
               ) : null
             }
             onClick={() => onOpenPanel('subscription')}
@@ -111,6 +114,14 @@ export default function SettingsHome({
             subtitle={languageLabel}
             active={activePanel === 'language'}
             onClick={() => onOpenPanel('language')}
+          />
+          <Divider />
+          <SettingsRow
+            icon="fa-regular fa-moon"
+            title={t('account.appearance')}
+            subtitle={appearanceLabel}
+            active={activePanel === 'appearance'}
+            onClick={() => onOpenPanel('appearance')}
           />
         </Section>
 

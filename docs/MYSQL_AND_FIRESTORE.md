@@ -46,7 +46,8 @@ Database name: env `FIRESTORE_DATABASE` (default **`cpoint`**).
 | `posts`, `post_views` | `init_database.py`, `post_views.py` | Feed posts + view counts. |
 | `replies`, `reactions`, `reply_reactions` | `init_database.py` | Threading and emoji reactions. |
 | `followers` | monolith | Follow graph. |
-| `messages` | `init_database.py`, monolith | DM storage (primary); Firestore mirrors. Columns include media paths and **`file_path` / `file_name`** for PDF attachments (`dm_chats_tables.ensure_messages_document_columns`). **FULLTEXT index `ft_message`** on `message` column for per-thread keyword search (`dm_chats_tables.ensure_fulltext_search_indexes`). |
+| `messages` | `init_database.py`, monolith | DM storage (primary); Firestore mirrors. Columns include media paths, `client_key` for optimistic/idempotent sends, and **`file_path` / `file_name`** for PDF attachments (`dm_chats_tables.ensure_messages_document_columns`). **FULLTEXT index `ft_message`** on `message` column for per-thread keyword search (`dm_chats_tables.ensure_fulltext_search_indexes`). |
+| `chat_upload_sessions` | `chat_uploads.ensure_tables` | Resumable multipart upload sessions: owner, DM/group context, R2 `object_key` + multipart `upload_id` (VARCHAR 512), expected bytes, status, expiry. Client outbox stores matching session metadata and completed part numbers for foreground resume; janitor: `/api/cron/chat-uploads-janitor`. |
 
 ### Group chat & DMs (SQL)
 

@@ -17,22 +17,22 @@ export default function SettingsPanel({ title, open, children, onBack }: Setting
 
   return (
     <section
-      className={`absolute inset-0 z-20 flex min-h-0 flex-col bg-black text-white transition-[transform,opacity] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+      className={`absolute inset-0 z-20 flex min-h-0 flex-col bg-c-bg-app text-c-text-primary transition-[transform,opacity] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
         open ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-95'
       }`}
       aria-hidden={!open}
     >
-      <div className="z-10 shrink-0 border-b border-white/[0.06] bg-black/95 px-5 pb-4 pt-4 backdrop-blur-xl">
+      <div className="z-10 shrink-0 border-b border-c-border bg-c-bg-app/95 px-5 pb-4 pt-4 backdrop-blur-xl">
         <div className="relative flex min-h-10 items-center justify-center">
           <button
             type="button"
             onClick={handleBack}
-            className="absolute left-0 inline-flex items-center gap-1 rounded-full py-2 pr-3 text-sm font-medium text-[#4db6ac] active:opacity-70"
+            className="absolute left-0 inline-flex items-center gap-1 rounded-full py-2 pr-3 text-sm font-medium text-cpoint-turquoise active:opacity-70"
           >
             <i className="fa-solid fa-chevron-left text-sm" />
             Back
           </button>
-          <h1 className="max-w-[58%] truncate text-center text-xl font-bold tracking-[-0.02em] text-white">{title}</h1>
+          <h1 className="max-w-[58%] truncate text-center text-xl font-bold tracking-[-0.02em] text-c-text-primary">{title}</h1>
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-6 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)] [-webkit-overflow-scrolling:touch]">

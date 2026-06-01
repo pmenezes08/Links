@@ -47,13 +47,13 @@ export default function CommunityResources(){
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary">
       <div
-        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+        className="fixed left-0 right-0 h-10 bg-c-bg-app/70 backdrop-blur z-40"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
       >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label="Back">
+          <button className="p-2 rounded-full hover:bg-c-hover-bg" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="flex-1 font-medium">Forum</div>
@@ -69,20 +69,20 @@ export default function CommunityResources(){
           '--app-subnav-height': '40px',
         } as CSSProperties}
       >
-        <div className="rounded-2xl border border-white/10 bg-white/[0.035]">
-          <div className="px-3 py-2 flex items-center justify-between border-b border-white/10">
+        <div className="rounded-2xl border border-c-border bg-white/[0.035]">
+          <div className="px-3 py-2 flex items-center justify-between border-b border-c-border">
             <div className="text-sm font-semibold">Create a Post</div>
-            <button className="px-2 py-1 rounded-full bg-[#4db6ac] text-black text-xs hover:brightness-110" onClick={()=> setShowForm(v=>!v)}>
+            <button className="px-2 py-1 rounded-full bg-cpoint-turquoise text-black text-xs hover:brightness-110" onClick={()=> setShowForm(v=>!v)}>
               {showForm ? 'Close' : 'New Post'}
             </button>
           </div>
           {showForm && (
             <div className="p-3 space-y-2">
-              <label className="text-xs text-[#9fb0b5]">Title
-                <input ref={titleRef} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
+              <label className="text-xs text-c-text-tertiary">Title
+                <input ref={titleRef} className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
               </label>
-              <label className="text-xs text-[#9fb0b5]">Category
-                <select ref={categoryRef} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none">
+              <label className="text-xs text-c-text-tertiary">Category
+                <select ref={categoryRef} className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm focus:border-teal-400/70 outline-none">
                   <option>General</option>
                   <option>Study Materials</option>
                   <option>Notes</option>
@@ -91,29 +91,29 @@ export default function CommunityResources(){
                   <option>Announcements</option>
                 </select>
               </label>
-              <label className="text-xs text-[#9fb0b5]">Content
-                <textarea ref={contentRef} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[100px]" />
+              <label className="text-xs text-c-text-tertiary">Content
+                <textarea ref={contentRef} className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[100px]" />
               </label>
-              <label className="text-xs text-[#9fb0b5]">Attachment URL (optional)
-                <input ref={attachRef} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" placeholder="https://..." />
+              <label className="text-xs text-c-text-tertiary">Attachment URL (optional)
+                <input ref={attachRef} className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm focus:border-teal-400/70 outline-none" placeholder="https://..." />
               </label>
               <div className="flex justify-end">
-                <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110" onClick={submitPost}>Post</button>
+                <button className="px-3 py-1.5 rounded-md bg-cpoint-turquoise text-black text-sm hover:brightness-110" onClick={submitPost}>Post</button>
               </div>
             </div>
           )}
         </div>
 
         <div className="mt-3 space-y-3">
-          {loading ? (<div className="text-[#9fb0b5]">Loading…</div>) : (
+          {loading ? (<div className="text-c-text-tertiary">Loading…</div>) : (
             posts.length === 0 ? (
-              <div className="text-[#9fb0b5]">No posts yet. Be the first to share!</div>
+              <div className="text-c-text-tertiary">No posts yet. Be the first to share!</div>
             ) : posts.map(p => (
-              <div key={p.id} className="rounded-2xl border border-white/10 bg-white/[0.035]">
-                <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
+              <div key={p.id} className="rounded-2xl border border-c-border bg-white/[0.035]">
+                <div className="px-3 py-2 border-b border-c-border flex items-center gap-2">
                   <Avatar username={p.username} url={resolveAvatar(p.profile_picture) || undefined} size={32} linkToProfile />
                   <div className="font-medium">{p.title}</div>
-                  <div className="text-xs text-[#9fb0b5] ml-auto">{new Date(p.created_at).toLocaleDateString()}</div>
+                  <div className="text-xs text-c-text-tertiary ml-auto">{new Date(p.created_at).toLocaleDateString()}</div>
                 </div>
                 <div className="px-3 py-2 text-sm">{p.content}</div>
                 {p.attachment_url ? (

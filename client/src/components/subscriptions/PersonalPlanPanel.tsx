@@ -54,17 +54,17 @@ export default function PersonalPlanPanel({
     <div className="space-y-4">
       <PanelCard>
         <div className="p-4">
-          <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/28">
+          <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-c-text-tertiary">
             {t('subscriptions.card_personal')}
           </div>
-          <div className="mt-2 text-xl font-bold text-white">{payload.name}</div>
-          <p className="mt-2 text-sm text-white/45">{payload.tagline}</p>
+          <div className="mt-2 text-xl font-bold text-c-text-primary">{payload.name}</div>
+          <p className="mt-2 text-sm text-c-text-tertiary">{payload.tagline}</p>
           <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-white">{formatEur(payload.price_eur)}</span>
-            <span className="text-sm text-white/45">{t('subscriptions.per_month')}</span>
+            <span className="text-2xl font-bold text-c-text-primary">{formatEur(payload.price_eur)}</span>
+            <span className="text-sm text-c-text-tertiary">{t('subscriptions.per_month')}</span>
           </div>
           {showEarlyOffer ? (
-            <p className="mt-2 text-sm font-medium text-[#4db6ac]">
+            <p className="mt-2 text-sm font-medium text-cpoint-turquoise">
               {t('subscriptions.early_offer', {
                 price: formatEur(payload.early_price_eur),
                 months: earlyMonths,
@@ -72,17 +72,17 @@ export default function PersonalPlanPanel({
             </p>
           ) : null}
           {storeProvider && showEarlyOffer ? (
-            <p className="mt-1 text-xs text-white/45">{t('subscriptions.early_offer_checkout_hint')}</p>
+            <p className="mt-1 text-xs text-c-text-tertiary">{t('subscriptions.early_offer_checkout_hint')}</p>
           ) : null}
         </div>
       </PanelCard>
 
       {payload.features.length > 0 ? (
         <PanelCard>
-          <ul className="divide-y divide-white/[0.055]">
+          <ul className="divide-y divide-c-border">
             {payload.features.slice(0, 5).map(feature => (
-              <li key={feature} className="flex items-start gap-3 px-4 py-3 text-sm text-white/80">
-                <i className="fa-solid fa-check mt-0.5 text-xs text-[#4db6ac]" aria-hidden="true" />
+              <li key={feature} className="flex items-start gap-3 px-4 py-3 text-sm text-c-text-secondary">
+                <i className="fa-solid fa-check mt-0.5 text-xs text-cpoint-turquoise" aria-hidden="true" />
                 <span>{feature}</span>
               </li>
             ))}
@@ -99,8 +99,8 @@ export default function PersonalPlanPanel({
         className={
           'flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 font-bold active:opacity-80 ' +
           (disabled
-            ? 'cursor-not-allowed border border-white/15 bg-white/5 text-white/40'
-            : 'bg-[#4db6ac] text-black')
+            ? 'cursor-not-allowed border border-c-border bg-c-hover-bg text-c-text-tertiary'
+            : 'bg-cpoint-turquoise text-black')
         }
       >
         {loading ? t('subscriptions.starting_checkout') : ctaLabel}
@@ -111,7 +111,7 @@ export default function PersonalPlanPanel({
           type="button"
           onClick={onRestore}
           disabled={restoreLoading}
-          className="w-full text-center text-xs font-semibold text-[#4db6ac] active:opacity-70 disabled:text-white/35"
+          className="w-full text-center text-xs font-semibold text-cpoint-turquoise active:opacity-70 disabled:text-c-text-tertiary"
         >
           {restoreLoading
             ? t('subscriptions.restoring')
@@ -123,18 +123,18 @@ export default function PersonalPlanPanel({
         <button
           type="button"
           onClick={() => openExternalBillingUrl(webBillingUrl)}
-          className="block w-full text-left text-xs text-[#4db6ac] underline"
+          className="block w-full text-left text-xs text-cpoint-turquoise underline"
         >
           {t('subscriptions.open_web_billing', { url: webBillingUrl })}
         </button>
       ) : null}
 
       {storeProvider && storeProductAvailable && iapProductionGrantsEnabled === false && !iapDisabledOnNative ? (
-        <p className="text-xs text-white/45">{t('subscriptions.iap_sandbox_review_notice')}</p>
+        <p className="text-xs text-c-text-tertiary">{t('subscriptions.iap_sandbox_review_notice')}</p>
       ) : null}
 
       {!payload.purchasable && !iapDisabledOnNative ? (
-        <p className="text-xs text-white/40">
+        <p className="text-xs text-c-text-tertiary">
           {storeProductAvailable
             ? t('subscriptions.store_billing_available', { provider: providerLabel(storeProvider!) })
             : t('subscriptions.stripe_price_pending')}

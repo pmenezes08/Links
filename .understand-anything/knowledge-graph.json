@@ -1,0 +1,1663 @@
+{
+  "version": "1.0.0",
+  "project": {
+    "name": "C-Point docs",
+    "languages": [
+      "markdown"
+    ],
+    "frameworks": [
+      "Capacitor",
+      "Flask",
+      "pytest",
+      "React",
+      "Vite"
+    ],
+    "description": "Living engineering documentation for the C-Point Python/React/Flask monorepo: API routes, architecture, deployment and recovery runbooks, Steve and AI pipelines, data-store maps, QA checklists, and agent merge guardrails. Product pricing and policy truth stay in the in-app Knowledge Base; these files describe structure and operations only.",
+    "analyzedAt": "2026-06-01T00:06:46.463Z",
+    "gitCommitHash": "64dc60869f0894176ad9109100dc1c4f57078079"
+  },
+  "nodes": [
+    {
+      "id": "document:ACCOUNT_ISOLATION_INVENTORY.md",
+      "type": "document",
+      "name": "ACCOUNT_ISOLATION_INVENTORY.md",
+      "filePath": "ACCOUNT_ISOLATION_INVENTORY.md",
+      "summary": "Baseline inventory of browser-scoped state keys and user-scoped API endpoints before account isolation, logout, and session-epoch work.",
+      "tags": [
+        "documentation",
+        "security",
+        "session",
+        "privacy",
+        "inventory"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:AGENT_TASK_CHECKLIST.md",
+      "type": "document",
+      "name": "AGENT_TASK_CHECKLIST.md",
+      "filePath": "AGENT_TASK_CHECKLIST.md",
+      "summary": "Pre-merge checklist for agents covering living-doc updates, blueprint structure, entitlements, AI usage logging, tests, and Notion roadmap sync.",
+      "tags": [
+        "documentation",
+        "development",
+        "checklist",
+        "living-docs",
+        "agent-guide"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:BACKEND_ROUTES.md",
+      "type": "document",
+      "name": "BACKEND_ROUTES.md",
+      "filePath": "BACKEND_ROUTES.md",
+      "summary": "Auto-generated inventory of Flask HTTP routes across blueprints and the monolith, with handler names, source lines, and client usage hints.",
+      "tags": [
+        "documentation",
+        "api-reference",
+        "routes",
+        "backend",
+        "generated"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Markdown reference with 246 sections; structured as a living engineering doc."
+    },
+    {
+      "id": "document:CHAT_MEDIA_UPLOAD_V2.md",
+      "type": "document",
+      "name": "CHAT_MEDIA_UPLOAD_V2.md",
+      "filePath": "CHAT_MEDIA_UPLOAD_V2.md",
+      "summary": "Locked policy and session API spec for resumable multipart chat media uploads in DM and group threads, including outbox resume and quality tiers.",
+      "tags": [
+        "documentation",
+        "chat",
+        "uploads",
+        "api-spec",
+        "media"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:C_POINT_ARCHITECTURE.md",
+      "type": "document",
+      "name": "C_POINT_ARCHITECTURE.md",
+      "filePath": "C_POINT_ARCHITECTURE.md",
+      "summary": "Top-level engineering map of runtime topology, blueprints, services, client/admin surfaces, dependencies, suppliers, and pointers to living docs.",
+      "tags": [
+        "documentation",
+        "architecture",
+        "overview",
+        "onboarding",
+        "integrations"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Markdown reference with 28 sections; structured as a living engineering doc."
+    },
+    {
+      "id": "document:DEPLOYMENT_INSTANCES.md",
+      "type": "document",
+      "name": "DEPLOYMENT_INSTANCES.md",
+      "filePath": "DEPLOYMENT_INSTANCES.md",
+      "summary": "Maps informal environment names to Cloud Run services, domains, build configs, Capacitor prod host, and shared-database caveats.",
+      "tags": [
+        "documentation",
+        "deployment",
+        "cloud-run",
+        "infrastructure",
+        "environments"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:DESIGN.md",
+      "type": "document",
+      "name": "DESIGN.md",
+      "filePath": "DESIGN.md",
+      "summary": "C-Point design system covering brand narrative, color, typography, motion, navigation, logo usage, and light-mode opt-in positioning.",
+      "tags": [
+        "documentation",
+        "design-system",
+        "branding",
+        "ui",
+        "light-mode"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:I18N_ROADMAP.md",
+      "type": "document",
+      "name": "I18N_ROADMAP.md",
+      "filePath": "I18N_ROADMAP.md",
+      "summary": "Canonical engineering roadmap for en/pt-PT internationalization: locale resolution, API contract, PR sequence, style guide, and documentation rules.",
+      "tags": [
+        "documentation",
+        "i18n",
+        "localization",
+        "roadmap",
+        "engineering"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Markdown reference with 29 sections; structured as a living engineering doc."
+    },
+    {
+      "id": "document:LIGHT_MODE_BRAND_SIGNOFF.md",
+      "type": "document",
+      "name": "LIGHT_MODE_BRAND_SIGNOFF.md",
+      "filePath": "LIGHT_MODE_BRAND_SIGNOFF.md",
+      "summary": "Brand-approved light mode decisions including Steve surface treatment, logo rules, UI copy, ship conditions, and anti-patterns.",
+      "tags": [
+        "documentation",
+        "branding",
+        "light-mode",
+        "sign-off",
+        "ui"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:LIGHT_MODE_TOKENS.md",
+      "type": "document",
+      "name": "LIGHT_MODE_TOKENS.md",
+      "filePath": "LIGHT_MODE_TOKENS.md",
+      "summary": "Complete light-mode CSS token specification with semantic --c-* layer, glass morphism rules, chat bubbles, WCAG contrast, and Tailwind extensions.",
+      "tags": [
+        "documentation",
+        "design-system",
+        "css",
+        "tokens",
+        "accessibility"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Markdown reference with 45 sections; structured as a living engineering doc."
+    },
+    {
+      "id": "document:MONOLITH_REDUCTION_ROADMAP.md",
+      "type": "document",
+      "name": "MONOLITH_REDUCTION_ROADMAP.md",
+      "filePath": "MONOLITH_REDUCTION_ROADMAP.md",
+      "summary": "Engineering initiative to decompose oversized client pages, blueprints, services, and bodybuilding_app.py with prioritized epics and acceptance criteria.",
+      "tags": [
+        "documentation",
+        "refactoring",
+        "roadmap",
+        "monolith",
+        "engineering"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:MYSQL_AND_FIRESTORE.md",
+      "type": "document",
+      "name": "MYSQL_AND_FIRESTORE.md",
+      "filePath": "MYSQL_AND_FIRESTORE.md",
+      "summary": "Living data-store map of Firestore collections and MySQL tables with owning modules and cross-links to routes and Steve features.",
+      "tags": [
+        "documentation",
+        "database",
+        "firestore",
+        "schema",
+        "data-model"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:OPERATIONS.md",
+      "type": "document",
+      "name": "OPERATIONS.md",
+      "filePath": "OPERATIONS.md",
+      "summary": "Founder operations playbook for deploys, Cloud SQL backups, user resets, Stripe wiring, QA harness, cost privacy, CSRF rollout, and backlog.",
+      "tags": [
+        "documentation",
+        "operations",
+        "deployment",
+        "runbook",
+        "infrastructure"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Markdown reference with 29 sections; structured as a living engineering doc."
+    },
+    {
+      "id": "document:PRODUCT_JOURNEYS.md",
+      "type": "document",
+      "name": "PRODUCT_JOURNEYS.md",
+      "filePath": "PRODUCT_JOURNEYS.md",
+      "summary": "Cross-system flow narratives spanning auth, Stripe, entitlements, Steve AI, enterprise seats, crons, onboarding, messaging, i18n, and deploy smoke.",
+      "tags": [
+        "documentation",
+        "architecture",
+        "billing",
+        "messaging",
+        "cross-system"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Markdown reference with 28 sections; structured as a living engineering doc."
+    },
+    {
+      "id": "document:PROD_CLOUD_RUN_RECOVERY.md",
+      "type": "document",
+      "name": "PROD_CLOUD_RUN_RECOVERY.md",
+      "filePath": "PROD_CLOUD_RUN_RECOVERY.md",
+      "summary": "Runbook for production Cloud Run outages when staging works: secret binding restoration, cookie issues, safe deploy, and smoke verification.",
+      "tags": [
+        "documentation",
+        "runbook",
+        "production",
+        "cloud-run",
+        "incident-response"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:QA_CHECKLIST.md",
+      "type": "document",
+      "name": "QA_CHECKLIST.md",
+      "filePath": "QA_CHECKLIST.md",
+      "summary": "Manual QA companion mapped to KB Tests rows covering Steve, entitlements, chat media upload, i18n, session invalidation, and Wave 2 polish.",
+      "tags": [
+        "documentation",
+        "qa",
+        "manual-testing",
+        "checklist",
+        "steve"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Markdown reference with 58 sections; structured as a living engineering doc."
+    },
+    {
+      "id": "document:STAGING_BACKUP_SNAPSHOT.md",
+      "type": "document",
+      "name": "STAGING_BACKUP_SNAPSHOT.md",
+      "filePath": "STAGING_BACKUP_SNAPSHOT.md",
+      "summary": "Rollback snapshot metadata (git tag, Cloud Run revision, Cloud SQL) taken before the native UX and monolith reduction epic.",
+      "tags": [
+        "documentation",
+        "backup",
+        "rollback",
+        "staging",
+        "snapshot"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:STEVE_AND_VOICE_NOTES.md",
+      "type": "document",
+      "name": "STEVE_AND_VOICE_NOTES.md",
+      "filePath": "STEVE_AND_VOICE_NOTES.md",
+      "summary": "Mandatory guide for adding Steve surfaces and voice-note pipelines via entitlements, ai_usage, whisper_service, and approved service map.",
+      "tags": [
+        "documentation",
+        "steve",
+        "ai",
+        "voice-notes",
+        "entitlements"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Markdown reference with 25 sections; structured as a living engineering doc."
+    },
+    {
+      "id": "document:STEVE_COMMUNITY_WELCOME.md",
+      "type": "document",
+      "name": "STEVE_COMMUNITY_WELCOME.md",
+      "filePath": "STEVE_COMMUNITY_WELCOME.md",
+      "summary": "Spec for Steve welcome posts and owner DMs on community creation, backfill, card variants, cohort rules, and versioning.",
+      "tags": [
+        "documentation",
+        "steve",
+        "onboarding",
+        "communities",
+        "automation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:STEVE_GROUP_AGENT.md",
+      "type": "document",
+      "name": "STEVE_GROUP_AGENT.md",
+      "filePath": "STEVE_GROUP_AGENT.md",
+      "summary": "Steve preset agent for exclusive group feeds: package gate, Ask Steve flow, delayed cron, auto-reply budget, and pool usage.",
+      "tags": [
+        "documentation",
+        "steve",
+        "group-chat",
+        "cron",
+        "ai-agent"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:STEVE_PERSONA.md",
+      "type": "document",
+      "name": "STEVE_PERSONA.md",
+      "filePath": "STEVE_PERSONA.md",
+      "summary": "Canonical persona card defining how Steve sounds, forbidden and encouraged phrases, self-reference rules, and boundaries—enforced in system prompts and content-generation post-processing before any Steve-facing copy ships.",
+      "tags": [
+        "documentation",
+        "steve",
+        "persona",
+        "prompt-policy",
+        "canonical"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "Companion to engineering runbooks; separates voice (this file) from model routing and entitlements in STEVE_AND_VOICE_NOTES."
+    },
+    {
+      "id": "document:STEVE_PLATFORM_KB.md",
+      "type": "document",
+      "name": "STEVE_PLATFORM_KB.md",
+      "filePath": "STEVE_PLATFORM_KB.md",
+      "summary": "Modular platform-manual knowledge cards (YAML id/title/intents/surfaces) seeded as KB slug steve-platform-manual—defines what Steve may say about C-Point, retrieval rules, and card-level answers without web search for platform questions.",
+      "tags": [
+        "documentation",
+        "steve",
+        "knowledge-base",
+        "platform-manual",
+        "canonical"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Twenty topical sections from platform.identity through founder.paulo.short; cards target steve_dm and steve_group surfaces with explicit no-web-search rule for platform Q&A."
+    },
+    {
+      "id": "document:STEVE_PRIVACY_GATE.md",
+      "type": "document",
+      "name": "STEVE_PRIVACY_GATE.md",
+      "filePath": "STEVE_PRIVACY_GATE.md",
+      "summary": "Canonical privacy rules for Steve user KB access: user_can_access_steve_kb must run before get_steve_context_for_user, with permissive root-parent checks on community surfaces and strict root-network intersection in group chats.",
+      "tags": [
+        "documentation",
+        "steve",
+        "privacy",
+        "authorization",
+        "canonical"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "Includes mermaid flow for community vs group vs DM surfaces and lists blueprint call sites (steve_profiling_gates, group_chat, communities)."
+    },
+    {
+      "id": "document:STORE_BILLING_SETUP.md",
+      "type": "document",
+      "name": "STORE_BILLING_SETUP.md",
+      "filePath": "STORE_BILLING_SETUP.md",
+      "summary": "Mobile store billing checklist aligning Apple and Google product IDs with /api/iap/config and KB caps—covers Premium, community tier SKUs, Steve Community Package, webhook URLs, and production Cloud Run IAP secrets.",
+      "tags": [
+        "documentation",
+        "billing",
+        "iap",
+        "mobile",
+        "operations"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:cloud-scheduler-cron.md",
+      "type": "document",
+      "name": "cloud-scheduler-cron.md",
+      "filePath": "cloud-scheduler-cron.md",
+      "summary": "Operations runbook for Cloud Scheduler jobs hitting /api/cron/* on staging and production Cloud Run with X-Cron-Secret—covers entitlements lifecycle crons, secret wiring, monitoring, staging parity, and recipes for new scheduled endpoints.",
+      "tags": [
+        "documentation",
+        "cron",
+        "cloud-scheduler",
+        "entitlements",
+        "operations"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Documents run.app vs custom-domain redirect constraint and bulk-pause patterns; includes Steve reminder-vault and group-steve-agent-due schedules."
+    },
+    {
+      "id": "document:workflow-state-wave-2.md",
+      "type": "document",
+      "name": "workflow-state-wave-2.md",
+      "filePath": "workflow-state-wave-2.md",
+      "summary": "Living iteration log for Pilot Wave 2 (composer and profile polish): PR-1–PR-7 scope, deferred chat surfaces, acceptance bar, decisions log, and cross-links to KB roadmap row manual:pilot_wave_2.",
+      "tags": [
+        "documentation",
+        "workflow-state",
+        "frontend-polish",
+        "pilot-wave-2",
+        "qa"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:workflow-state.md",
+      "type": "document",
+      "name": "workflow-state.md",
+      "filePath": "workflow-state.md",
+      "summary": "Living iteration log for the native page-transitions pilot (Wave 1): VITE_PAGE_TRANSITIONS staging flag, PR-0–PR-10 status, staging QA checklist for tab cross-fade and push/pop motion, and open acceptance gates.",
+      "tags": [
+        "documentation",
+        "workflow-state",
+        "page-transitions",
+        "frontend-polish",
+        "qa"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:audit/LOGOUT_REMEDIATION_PLAN.md",
+      "type": "document",
+      "name": "LOGOUT_REMEDIATION_PLAN.md",
+      "filePath": "audit/LOGOUT_REMEDIATION_PLAN.md",
+      "summary": "Master remediation plan for Capacitor logout session persistence: ranks ten root causes (RC-1 through RC-10), maps cookie-clear asymmetries, and sequences seven PRs (A–G) with verification gates pending PO sign-off.",
+      "tags": [
+        "documentation",
+        "security-audit",
+        "logout",
+        "remediation-plan",
+        "mobile"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Cross-platform audit synthesis with file:line evidence pointing at backend auth hooks, native shells, and frontend logout flow."
+    },
+    {
+      "id": "document:audit/LOGOUT_SECURITY_REVIEW.md",
+      "type": "document",
+      "name": "LOGOUT_SECURITY_REVIEW.md",
+      "filePath": "audit/LOGOUT_SECURITY_REVIEW.md",
+      "summary": "Independent security review confirming RC-1 as the smoking gun, validating each proposed PR (A–G), and listing mandatory hardening (audit logging, PR-D co-ship) plus follow-up gaps like CSRF and token lifetime.",
+      "tags": [
+        "documentation",
+        "security-audit",
+        "security-review",
+        "logout",
+        "sign-off"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:audit/android_logout_audit.md",
+      "type": "document",
+      "name": "android_logout_audit.md",
+      "filePath": "audit/android_logout_audit.md",
+      "summary": "Android Capacitor logout audit covering a 15-layer persistence matrix, CookieManager flush race as top root cause, Google Sign-In silent re-auth, and concrete reproduction steps for staging validation.",
+      "tags": [
+        "documentation",
+        "security-audit",
+        "android",
+        "logout",
+        "capacitor"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:audit/ios_logout_audit.md",
+      "type": "document",
+      "name": "ios_logout_audit.md",
+      "filePath": "audit/ios_logout_audit.md",
+      "summary": "iOS Capacitor logout audit documenting dual cookie-jar risk (URLSession.shared vs WKWebView), WKWebView 302 Set-Cookie fragility, resume-handler races, and prioritized reproduction steps.",
+      "tags": [
+        "documentation",
+        "security-audit",
+        "ios",
+        "logout",
+        "capacitor"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:release/LAUNCH_CHECKLIST.md",
+      "type": "document",
+      "name": "LAUNCH_CHECKLIST.md",
+      "filePath": "release/LAUNCH_CHECKLIST.md",
+      "summary": "Operator runbook for mobile store launch: store console SKUs and webhooks, prod Capacitor release binaries, QA gate (§7a/§8a), ordered production flip (IAP deploy, KB flags, entitlements enforcement), and pre-marketing infra upgrades.",
+      "tags": [
+        "documentation",
+        "release",
+        "mobile-store",
+        "operator-checklist",
+        "iap"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:release/PERF_RELIABILITY_SIGNOFF.md",
+      "type": "document",
+      "name": "PERF_RELIABILITY_SIGNOFF.md",
+      "filePath": "release/PERF_RELIABILITY_SIGNOFF.md",
+      "summary": "Draft engineering sign-off from four review lanes (cache/isolation, client performance, backend ops, UX/reliability) with consolidated P0–P2 findings, mandatory manual QA checklist, and conditional store-launch vs deferred ~50k scale verdict.",
+      "tags": [
+        "documentation",
+        "release",
+        "performance",
+        "reliability",
+        "sign-off"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "Coordinates lane verdicts with cross-audit blockers Y1–Y7 and references companion release and operations docs."
+    },
+    {
+      "id": "document:release/SCALE_AND_ECONOMICS_AUDIT.md",
+      "type": "document",
+      "name": "SCALE_AND_ECONOMICS_AUDIT.md",
+      "filePath": "release/SCALE_AND_ECONOMICS_AUDIT.md",
+      "summary": "Multi-agent read-only audit for ~50k-user growth covering subscription UX, monolith hotspots, Cloud SQL and AI usage economics, KB entitlements coherence, and revenue margin stress tests with merged P0/P1 blockers and flip criteria for IAP.",
+      "tags": [
+        "documentation",
+        "release",
+        "scale",
+        "economics",
+        "entitlements"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "document:release/STORE_RELEASE_AUDIT.md",
+      "type": "document",
+      "name": "STORE_RELEASE_AUDIT.md",
+      "filePath": "release/STORE_RELEASE_AUDIT.md",
+      "summary": "Store release audit for iOS update and Android first ship across subscription UI, backend IAP routes/webhooks, native Capacitor wiring, and §7a QA coverage—listing P0 blockers (native-purchases sync, staging API URL, receipt verification) and iap_purchases_enabled flip steps.",
+      "tags": [
+        "documentation",
+        "release",
+        "app-store",
+        "google-play",
+        "iap"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:design/gif_picker_spec.md",
+      "type": "document",
+      "name": "gif_picker_spec.md",
+      "filePath": "design/gif_picker_spec.md",
+      "summary": "Wave 2 design spec for rebuilding GifPicker as a keyboard-aware bottom sheet with liquid-glass styling, GIPHY search grid, drag-to-dismiss, motion tokens, accessibility requirements, implementation handoff to thread-engineer and capacitor-ux-polish, and brand-specialist PASS_WITH_ADJUSTMENTS sign-off.",
+      "tags": [
+        "documentation",
+        "design-spec",
+        "gif-picker",
+        "ui-component",
+        "wave-2"
+      ],
+      "complexity": "complex",
+      "languageNotes": "18 numbered sections plus brand sign-off; references frozen public API (isOpen, onClose, onSelect) and six composer call sites without modifying them."
+    }
+  ],
+  "edges": [
+    {
+      "source": "document:ACCOUNT_ISOLATION_INVENTORY.md",
+      "target": "document:QA_CHECKLIST.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:AGENT_TASK_CHECKLIST.md",
+      "target": "document:BACKEND_ROUTES.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:AGENT_TASK_CHECKLIST.md",
+      "target": "document:C_POINT_ARCHITECTURE.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:AGENT_TASK_CHECKLIST.md",
+      "target": "document:DEPLOYMENT_INSTANCES.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:AGENT_TASK_CHECKLIST.md",
+      "target": "document:I18N_ROADMAP.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:AGENT_TASK_CHECKLIST.md",
+      "target": "document:MONOLITH_REDUCTION_ROADMAP.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:AGENT_TASK_CHECKLIST.md",
+      "target": "document:MYSQL_AND_FIRESTORE.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:AGENT_TASK_CHECKLIST.md",
+      "target": "document:PRODUCT_JOURNEYS.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:AGENT_TASK_CHECKLIST.md",
+      "target": "document:PROD_CLOUD_RUN_RECOVERY.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:AGENT_TASK_CHECKLIST.md",
+      "target": "document:STEVE_AND_VOICE_NOTES.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:BACKEND_ROUTES.md",
+      "target": "document:MYSQL_AND_FIRESTORE.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:CHAT_MEDIA_UPLOAD_V2.md",
+      "target": "document:BACKEND_ROUTES.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:C_POINT_ARCHITECTURE.md",
+      "target": "document:AGENT_TASK_CHECKLIST.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:C_POINT_ARCHITECTURE.md",
+      "target": "document:BACKEND_ROUTES.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:C_POINT_ARCHITECTURE.md",
+      "target": "document:DEPLOYMENT_INSTANCES.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:C_POINT_ARCHITECTURE.md",
+      "target": "document:I18N_ROADMAP.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:C_POINT_ARCHITECTURE.md",
+      "target": "document:MONOLITH_REDUCTION_ROADMAP.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:C_POINT_ARCHITECTURE.md",
+      "target": "document:MYSQL_AND_FIRESTORE.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:C_POINT_ARCHITECTURE.md",
+      "target": "document:OPERATIONS.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:C_POINT_ARCHITECTURE.md",
+      "target": "document:PRODUCT_JOURNEYS.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:C_POINT_ARCHITECTURE.md",
+      "target": "document:PROD_CLOUD_RUN_RECOVERY.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:C_POINT_ARCHITECTURE.md",
+      "target": "document:QA_CHECKLIST.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:C_POINT_ARCHITECTURE.md",
+      "target": "document:STEVE_AND_VOICE_NOTES.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:C_POINT_ARCHITECTURE.md",
+      "target": "document:STEVE_COMMUNITY_WELCOME.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:C_POINT_ARCHITECTURE.md",
+      "target": "document:STEVE_GROUP_AGENT.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:DEPLOYMENT_INSTANCES.md",
+      "target": "document:MYSQL_AND_FIRESTORE.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:DEPLOYMENT_INSTANCES.md",
+      "target": "document:OPERATIONS.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:DEPLOYMENT_INSTANCES.md",
+      "target": "document:PROD_CLOUD_RUN_RECOVERY.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:DESIGN.md",
+      "target": "document:LIGHT_MODE_TOKENS.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:DESIGN.md",
+      "target": "document:QA_CHECKLIST.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:I18N_ROADMAP.md",
+      "target": "document:AGENT_TASK_CHECKLIST.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:I18N_ROADMAP.md",
+      "target": "document:BACKEND_ROUTES.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:I18N_ROADMAP.md",
+      "target": "document:C_POINT_ARCHITECTURE.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:I18N_ROADMAP.md",
+      "target": "document:MYSQL_AND_FIRESTORE.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:I18N_ROADMAP.md",
+      "target": "document:PRODUCT_JOURNEYS.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:I18N_ROADMAP.md",
+      "target": "document:QA_CHECKLIST.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:LIGHT_MODE_BRAND_SIGNOFF.md",
+      "target": "document:DESIGN.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:LIGHT_MODE_BRAND_SIGNOFF.md",
+      "target": "document:LIGHT_MODE_TOKENS.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:LIGHT_MODE_TOKENS.md",
+      "target": "document:DESIGN.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:MONOLITH_REDUCTION_ROADMAP.md",
+      "target": "document:BACKEND_ROUTES.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:MONOLITH_REDUCTION_ROADMAP.md",
+      "target": "document:CHAT_MEDIA_UPLOAD_V2.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:MYSQL_AND_FIRESTORE.md",
+      "target": "document:BACKEND_ROUTES.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:MYSQL_AND_FIRESTORE.md",
+      "target": "document:I18N_ROADMAP.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:MYSQL_AND_FIRESTORE.md",
+      "target": "document:STEVE_GROUP_AGENT.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:OPERATIONS.md",
+      "target": "document:DESIGN.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:OPERATIONS.md",
+      "target": "document:PROD_CLOUD_RUN_RECOVERY.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:OPERATIONS.md",
+      "target": "document:QA_CHECKLIST.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:PRODUCT_JOURNEYS.md",
+      "target": "document:AGENT_TASK_CHECKLIST.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:PRODUCT_JOURNEYS.md",
+      "target": "document:BACKEND_ROUTES.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:PRODUCT_JOURNEYS.md",
+      "target": "document:CHAT_MEDIA_UPLOAD_V2.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:PRODUCT_JOURNEYS.md",
+      "target": "document:C_POINT_ARCHITECTURE.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:PRODUCT_JOURNEYS.md",
+      "target": "document:DEPLOYMENT_INSTANCES.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:PRODUCT_JOURNEYS.md",
+      "target": "document:I18N_ROADMAP.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:PRODUCT_JOURNEYS.md",
+      "target": "document:MONOLITH_REDUCTION_ROADMAP.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:PRODUCT_JOURNEYS.md",
+      "target": "document:MYSQL_AND_FIRESTORE.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:PRODUCT_JOURNEYS.md",
+      "target": "document:OPERATIONS.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:PRODUCT_JOURNEYS.md",
+      "target": "document:QA_CHECKLIST.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:PRODUCT_JOURNEYS.md",
+      "target": "document:STEVE_AND_VOICE_NOTES.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:PRODUCT_JOURNEYS.md",
+      "target": "document:STEVE_GROUP_AGENT.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:PROD_CLOUD_RUN_RECOVERY.md",
+      "target": "document:DEPLOYMENT_INSTANCES.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:PROD_CLOUD_RUN_RECOVERY.md",
+      "target": "document:OPERATIONS.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:PROD_CLOUD_RUN_RECOVERY.md",
+      "target": "document:QA_CHECKLIST.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:QA_CHECKLIST.md",
+      "target": "document:CHAT_MEDIA_UPLOAD_V2.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:QA_CHECKLIST.md",
+      "target": "document:I18N_ROADMAP.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:QA_CHECKLIST.md",
+      "target": "document:OPERATIONS.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:QA_CHECKLIST.md",
+      "target": "document:STEVE_AND_VOICE_NOTES.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:STAGING_BACKUP_SNAPSHOT.md",
+      "target": "document:MONOLITH_REDUCTION_ROADMAP.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:STEVE_AND_VOICE_NOTES.md",
+      "target": "document:STEVE_GROUP_AGENT.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:STEVE_COMMUNITY_WELCOME.md",
+      "target": "document:QA_CHECKLIST.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:STEVE_COMMUNITY_WELCOME.md",
+      "target": "document:STEVE_AND_VOICE_NOTES.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:STEVE_GROUP_AGENT.md",
+      "target": "document:MYSQL_AND_FIRESTORE.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:STEVE_GROUP_AGENT.md",
+      "target": "document:PRODUCT_JOURNEYS.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:STEVE_GROUP_AGENT.md",
+      "target": "document:STEVE_AND_VOICE_NOTES.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:STEVE_PLATFORM_KB.md",
+      "target": "document:STEVE_PERSONA.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:STEVE_PLATFORM_KB.md",
+      "target": "document:STEVE_PRIVACY_GATE.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:STEVE_PERSONA.md",
+      "target": "document:STEVE_PRIVACY_GATE.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:workflow-state-wave-2.md",
+      "target": "document:workflow-state.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:STEVE_PERSONA.md",
+      "target": "document:STEVE_AND_VOICE_NOTES.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:STEVE_PERSONA.md",
+      "target": "document:STEVE_COMMUNITY_WELCOME.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:STEVE_PLATFORM_KB.md",
+      "target": "document:STEVE_COMMUNITY_WELCOME.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:STEVE_PLATFORM_KB.md",
+      "target": "document:STEVE_AND_VOICE_NOTES.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:STEVE_PRIVACY_GATE.md",
+      "target": "document:STEVE_AND_VOICE_NOTES.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:STEVE_PRIVACY_GATE.md",
+      "target": "document:QA_CHECKLIST.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:cloud-scheduler-cron.md",
+      "target": "document:STEVE_GROUP_AGENT.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:cloud-scheduler-cron.md",
+      "target": "document:DEPLOYMENT_INSTANCES.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:cloud-scheduler-cron.md",
+      "target": "document:PRODUCT_JOURNEYS.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:cloud-scheduler-cron.md",
+      "target": "document:AGENT_TASK_CHECKLIST.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:STORE_BILLING_SETUP.md",
+      "target": "document:release/LAUNCH_CHECKLIST.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:STORE_BILLING_SETUP.md",
+      "target": "document:PRODUCT_JOURNEYS.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:workflow-state-wave-2.md",
+      "target": "document:QA_CHECKLIST.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:workflow-state-wave-2.md",
+      "target": "document:design/gif_picker_spec.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:workflow-state.md",
+      "target": "document:QA_CHECKLIST.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:audit/LOGOUT_REMEDIATION_PLAN.md",
+      "target": "document:audit/android_logout_audit.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:audit/LOGOUT_REMEDIATION_PLAN.md",
+      "target": "document:audit/ios_logout_audit.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:audit/LOGOUT_SECURITY_REVIEW.md",
+      "target": "document:audit/LOGOUT_REMEDIATION_PLAN.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:audit/LOGOUT_SECURITY_REVIEW.md",
+      "target": "document:audit/android_logout_audit.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:audit/LOGOUT_SECURITY_REVIEW.md",
+      "target": "document:audit/ios_logout_audit.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:audit/android_logout_audit.md",
+      "target": "document:audit/ios_logout_audit.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/LAUNCH_CHECKLIST.md",
+      "target": "document:release/PERF_RELIABILITY_SIGNOFF.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/LAUNCH_CHECKLIST.md",
+      "target": "document:release/STORE_RELEASE_AUDIT.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/PERF_RELIABILITY_SIGNOFF.md",
+      "target": "document:release/SCALE_AND_ECONOMICS_AUDIT.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/PERF_RELIABILITY_SIGNOFF.md",
+      "target": "document:release/LAUNCH_CHECKLIST.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/PERF_RELIABILITY_SIGNOFF.md",
+      "target": "document:release/STORE_RELEASE_AUDIT.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/SCALE_AND_ECONOMICS_AUDIT.md",
+      "target": "document:release/STORE_RELEASE_AUDIT.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/SCALE_AND_ECONOMICS_AUDIT.md",
+      "target": "document:release/PERF_RELIABILITY_SIGNOFF.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/STORE_RELEASE_AUDIT.md",
+      "target": "document:release/LAUNCH_CHECKLIST.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/STORE_RELEASE_AUDIT.md",
+      "target": "document:release/SCALE_AND_ECONOMICS_AUDIT.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/LAUNCH_CHECKLIST.md",
+      "target": "document:QA_CHECKLIST.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/LAUNCH_CHECKLIST.md",
+      "target": "document:STORE_BILLING_SETUP.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/LAUNCH_CHECKLIST.md",
+      "target": "document:OPERATIONS.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/PERF_RELIABILITY_SIGNOFF.md",
+      "target": "document:QA_CHECKLIST.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/PERF_RELIABILITY_SIGNOFF.md",
+      "target": "document:ACCOUNT_ISOLATION_INVENTORY.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/PERF_RELIABILITY_SIGNOFF.md",
+      "target": "document:OPERATIONS.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/PERF_RELIABILITY_SIGNOFF.md",
+      "target": "document:MONOLITH_REDUCTION_ROADMAP.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/SCALE_AND_ECONOMICS_AUDIT.md",
+      "target": "document:PRODUCT_JOURNEYS.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/SCALE_AND_ECONOMICS_AUDIT.md",
+      "target": "document:OPERATIONS.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/SCALE_AND_ECONOMICS_AUDIT.md",
+      "target": "document:QA_CHECKLIST.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/SCALE_AND_ECONOMICS_AUDIT.md",
+      "target": "document:MONOLITH_REDUCTION_ROADMAP.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/SCALE_AND_ECONOMICS_AUDIT.md",
+      "target": "document:ACCOUNT_ISOLATION_INVENTORY.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/SCALE_AND_ECONOMICS_AUDIT.md",
+      "target": "document:STEVE_AND_VOICE_NOTES.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/STORE_RELEASE_AUDIT.md",
+      "target": "document:STORE_BILLING_SETUP.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/STORE_RELEASE_AUDIT.md",
+      "target": "document:PRODUCT_JOURNEYS.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:release/STORE_RELEASE_AUDIT.md",
+      "target": "document:QA_CHECKLIST.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:design/gif_picker_spec.md",
+      "target": "document:DESIGN.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:design/gif_picker_spec.md",
+      "target": "document:QA_CHECKLIST.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:design/gif_picker_spec.md",
+      "target": "document:workflow-state-wave-2.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    }
+  ],
+  "layers": [
+    {
+      "id": "layer:architecture-structure",
+      "name": "Architecture & Structure",
+      "description": "Living engineering maps of C-Point runtime topology, Flask route inventory, MySQL/Firestore data stores, monolith reduction epics, cross-system product journeys, and chat media upload API specs.",
+      "nodeIds": [
+        "document:C_POINT_ARCHITECTURE.md",
+        "document:BACKEND_ROUTES.md",
+        "document:MYSQL_AND_FIRESTORE.md",
+        "document:MONOLITH_REDUCTION_ROADMAP.md",
+        "document:PRODUCT_JOURNEYS.md",
+        "document:CHAT_MEDIA_UPLOAD_V2.md"
+      ]
+    },
+    {
+      "id": "layer:deployment-operations",
+      "name": "Deployment & Operations",
+      "description": "Cloud Run environment mapping, founder operations runbooks, production recovery procedures, Cloud Scheduler cron wiring, staging rollback snapshots, and mobile store billing setup.",
+      "nodeIds": [
+        "document:DEPLOYMENT_INSTANCES.md",
+        "document:OPERATIONS.md",
+        "document:PROD_CLOUD_RUN_RECOVERY.md",
+        "document:cloud-scheduler-cron.md",
+        "document:STAGING_BACKUP_SNAPSHOT.md",
+        "document:STORE_BILLING_SETUP.md"
+      ]
+    },
+    {
+      "id": "layer:ai-steve",
+      "name": "AI/Steve",
+      "description": "Canonical Steve AI surfaces covering voice-note pipelines, persona and platform KB cards, community welcome automation, group feed agent presets, and mandatory entitlements/ai_usage integration guides.",
+      "nodeIds": [
+        "document:STEVE_AND_VOICE_NOTES.md",
+        "document:STEVE_COMMUNITY_WELCOME.md",
+        "document:STEVE_GROUP_AGENT.md",
+        "document:STEVE_PERSONA.md",
+        "document:STEVE_PLATFORM_KB.md"
+      ]
+    },
+    {
+      "id": "layer:security-privacy",
+      "name": "Security & Privacy",
+      "description": "Account isolation inventories, Steve KB privacy gates, and Capacitor logout security audits with remediation plans and independent review sign-off for iOS and Android.",
+      "nodeIds": [
+        "document:ACCOUNT_ISOLATION_INVENTORY.md",
+        "document:STEVE_PRIVACY_GATE.md",
+        "document:audit/LOGOUT_REMEDIATION_PLAN.md",
+        "document:audit/LOGOUT_SECURITY_REVIEW.md",
+        "document:audit/android_logout_audit.md",
+        "document:audit/ios_logout_audit.md"
+      ]
+    },
+    {
+      "id": "layer:product-qa",
+      "name": "Product & QA",
+      "description": "Agent pre-merge checklists, manual QA companions mapped to KB Tests rows, and the en/pt-PT internationalization engineering roadmap with locale API contracts.",
+      "nodeIds": [
+        "document:AGENT_TASK_CHECKLIST.md",
+        "document:QA_CHECKLIST.md",
+        "document:I18N_ROADMAP.md"
+      ]
+    },
+    {
+      "id": "layer:design-ux",
+      "name": "Design & UX",
+      "description": "C-Point design system, light-mode brand sign-off and CSS token specifications, and Wave 2 component specs such as the GifPicker bottom-sheet rebuild.",
+      "nodeIds": [
+        "document:DESIGN.md",
+        "document:LIGHT_MODE_BRAND_SIGNOFF.md",
+        "document:LIGHT_MODE_TOKENS.md",
+        "document:design/gif_picker_spec.md"
+      ]
+    },
+    {
+      "id": "layer:release-audit",
+      "name": "Release & Audit",
+      "description": "Mobile store launch checklists, performance and reliability sign-offs, scale and economics audits for ~50k users, and iOS/Android store release readiness reviews.",
+      "nodeIds": [
+        "document:release/LAUNCH_CHECKLIST.md",
+        "document:release/PERF_RELIABILITY_SIGNOFF.md",
+        "document:release/SCALE_AND_ECONOMICS_AUDIT.md",
+        "document:release/STORE_RELEASE_AUDIT.md"
+      ]
+    },
+    {
+      "id": "layer:workflow-state",
+      "name": "Workflow State",
+      "description": "Living iteration logs for native page-transitions Pilot Wave 1 and composer/profile polish Wave 2, tracking PR scope, acceptance gates, and deferred surfaces.",
+      "nodeIds": [
+        "document:workflow-state.md",
+        "document:workflow-state-wave-2.md"
+      ]
+    }
+  ],
+  "tour": [
+    {
+      "order": 1,
+      "title": "Agent Onboarding Checklist",
+      "description": "Start here before touching code: this checklist is the contract for every change—when to regenerate living docs, how routes belong in blueprints, entitlements and AI usage logging rules, test expectations, and Notion roadmap sync. Treat it as the gate you re-read at PR time so architecture docs stay truthful.",
+      "nodeIds": [
+        "document:AGENT_TASK_CHECKLIST.md"
+      ]
+    },
+    {
+      "order": 2,
+      "title": "Engineering Architecture Map",
+      "description": "Building on the checklist, the architecture doc is the single map of runtime topology: Flask blueprints and services, client and admin surfaces, external suppliers, and explicit pointers to every other living doc. Read it once for orientation, then return whenever you need to know where a capability should live.",
+      "nodeIds": [
+        "document:C_POINT_ARCHITECTURE.md"
+      ]
+    },
+    {
+      "order": 3,
+      "title": "Routes and Data Stores",
+      "description": "The generated route inventory and the MySQL/Firestore map are the two references you grep during implementation—handlers, paths, and which tables or collections a feature owns. Together they bridge the architecture overview to concrete files and prevent duplicate endpoints or mystery schema.",
+      "nodeIds": [
+        "document:BACKEND_ROUTES.md",
+        "document:MYSQL_AND_FIRESTORE.md"
+      ],
+      "languageLesson": "Living engineering docs in this repo are regenerated or edited in the same PR as code: stale BACKEND_ROUTES or MYSQL_AND_FIRESTORE entries are treated as defects, not documentation debt."
+    },
+    {
+      "order": 4,
+      "title": "Monolith Reduction Priorities",
+      "description": "After you know where things live today, this roadmap explains what must shrink next—oversized React pages, bloated blueprints, services, and legacy monolith routes—with prioritized epics and acceptance criteria. Use it when a task touches a hotspot so you extend the decomposition instead of adding more weight.",
+      "nodeIds": [
+        "document:MONOLITH_REDUCTION_ROADMAP.md"
+      ]
+    },
+    {
+      "order": 5,
+      "title": "Cross-System Product Journeys",
+      "description": "Architecture and route maps show components; product journeys show how they cooperate across auth, Stripe, entitlements, Steve, enterprise seats, crons, onboarding, messaging, and deploy smoke. Read this when a bug spans stores or when you need the narrative order of operations, not just a single handler.",
+      "nodeIds": [
+        "document:PRODUCT_JOURNEYS.md",
+        "document:CHAT_MEDIA_UPLOAD_V2.md"
+      ]
+    },
+    {
+      "order": 6,
+      "title": "Steve AI Foundation",
+      "description": "Any Steve or voice-note work must follow the sanctioned pipeline—never call upstream LLM or Whisper APIs directly. This pair covers the mandatory service map, entitlements, and usage logging, plus the privacy gate that must run before Steve reads user KB context.",
+      "nodeIds": [
+        "document:STEVE_AND_VOICE_NOTES.md",
+        "document:STEVE_PRIVACY_GATE.md"
+      ]
+    },
+    {
+      "order": 7,
+      "title": "Steve Surfaces and Platform KB",
+      "description": "With the foundation in place, these docs specify how Steve sounds, what the platform manual may claim, and how preset agents behave in production surfaces—group feed agent, community welcome flows, and cron-backed automation. They connect persona and KB seed content to the journeys you traced in Step 5.",
+      "nodeIds": [
+        "document:STEVE_PERSONA.md",
+        "document:STEVE_PLATFORM_KB.md",
+        "document:STEVE_GROUP_AGENT.md"
+      ]
+    },
+    {
+      "order": 8,
+      "title": "Deployment Topology",
+      "description": "Shipping requires knowing which Cloud Run service, domain, build file, and Capacitor host name correspond to staging versus production. Deployment instances name those pairings; the cron runbook documents scheduled /api/cron/* jobs, X-Cron-Secret wiring, and how lifecycle crons tie back to entitlements journeys.",
+      "nodeIds": [
+        "document:DEPLOYMENT_INSTANCES.md",
+        "document:cloud-scheduler-cron.md"
+      ]
+    },
+    {
+      "order": 9,
+      "title": "Operations and Prod Recovery",
+      "description": "When production breaks but staging works—or you need founder-level deploy, backup, Stripe, or CSRF steps—these runbooks are the escalation path. Recovery doc focuses on secret binding and smoke verification; operations is the broader playbook referenced from architecture and release audits.",
+      "nodeIds": [
+        "document:PROD_CLOUD_RUN_RECOVERY.md",
+        "document:OPERATIONS.md"
+      ]
+    },
+    {
+      "order": 10,
+      "title": "Manual QA Harness",
+      "description": "The QA checklist is the most referenced doc in the graph for good reason: it maps manual test sections to KB Tests rows across Steve, entitlements, chat media upload, i18n, and session work. Run the relevant sections after deploys that touch revenue, AI counters, or mobile session behavior.",
+      "nodeIds": [
+        "document:QA_CHECKLIST.md"
+      ]
+    },
+    {
+      "order": 11,
+      "title": "Store Launch and Billing",
+      "description": "Mobile store work sits at the intersection of native binaries, IAP routes, KB caps, and the QA gates above. The launch checklist orders console setup, prod Capacitor builds, and production flips; store billing setup aligns Apple and Google SKUs with backend config and webhooks.",
+      "nodeIds": [
+        "document:release/LAUNCH_CHECKLIST.md",
+        "document:STORE_BILLING_SETUP.md"
+      ]
+    },
+    {
+      "order": 12,
+      "title": "Release Sign-Off Audits",
+      "description": "Cap the tour with the tightly coupled release audit cluster: performance and reliability sign-off, scale and economics stress tests, and the store release audit listing P0 blockers before IAP enforcement flips. Together they summarize what must be green before marketing-scale launch.",
+      "nodeIds": [
+        "document:release/PERF_RELIABILITY_SIGNOFF.md",
+        "document:release/SCALE_AND_ECONOMICS_AUDIT.md",
+        "document:release/STORE_RELEASE_AUDIT.md"
+      ]
+    }
+  ]
+}

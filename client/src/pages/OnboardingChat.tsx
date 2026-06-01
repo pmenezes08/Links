@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
+﻿import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
 import { FixedComposerShell } from '../components/FixedComposerShell'
 import BrandLogo from '../components/BrandLogo'
 import { useTranslation } from 'react-i18next'
@@ -158,7 +158,7 @@ interface Collected {
   professionalSectionComplete?: boolean
   activeProfileSection?: ProfileSection
   profileSectionOrder?: ProfileSection[]
-  /** B2B onboarding — persisted in Firestore for resume */
+  /** B2B onboarding \u2014 persisted in Firestore for resume */
   b2bNetworkSize?: string
   b2bOrgTypeHint?: string
   b2bParentName?: string
@@ -478,7 +478,7 @@ export default function OnboardingChat({
     } catch {}
   }, [])
 
-  // ── Initialize: load saved state or start fresh ──
+  // â”€â”€ Initialize: load saved state or start fresh â”€â”€
   useEffect(() => {
     if (initialized) return
     setInitialized(true)
@@ -677,7 +677,7 @@ export default function OnboardingChat({
         }
         const welcomeOpts: ChatMessage['options'] =
           mode === 'profile_builder' || communityName
-            ? [ocOpt(t, 'lets_go', 'start', '🚀')]
+            ? [ocOpt(t, 'lets_go', 'start', 'ðŸš€')]
             : [ocOpt(t, 'lets_go', 'start'), ocOpt(t, 'finish_later', 'open_defer_modal')]
         addSteveMessage(welcomeText, { options: welcomeOpts })
         break
@@ -685,7 +685,7 @@ export default function OnboardingChat({
       case 'profile_builder_summary': {
         const summary = profileSummaryBlock(t, data)
         addSteveMessage(oc(t, 'messages.pb_summary', { summary }), {
-          options: [ocOpt(t, 'pb_continue', 'pb_summary_continue', '➡️')],
+          options: [ocOpt(t, 'pb_continue', 'pb_summary_continue', 'âž¡ï¸')],
         })
         break
       }
@@ -699,8 +699,8 @@ export default function OnboardingChat({
         const raw = (data[field] || '').trim()
         addSteveMessage(oc(t, 'messages.pb_confirm', { field: pbFieldLabel(t, field), value: raw }), {
           options: [
-            ocOpt(t, 'yes', 'pb_confirm_yes', '✅'),
-            ocOpt(t, 'update', 'pb_confirm_update', '✏️'),
+            ocOpt(t, 'yes', 'pb_confirm_yes', 'âœ…'),
+            ocOpt(t, 'update', 'pb_confirm_update', 'âœï¸'),
           ],
         })
         break
@@ -724,8 +724,8 @@ export default function OnboardingChat({
             oc(t, 'messages.name_confirm', { firstName: data.firstName, lastName: data.lastName }),
             {
               options: [
-                ocOpt(t, 'thats_correct', 'confirm_name', '✅'),
-                ocOpt(t, 'let_me_fix', 'edit_name', '✏️'),
+                ocOpt(t, 'thats_correct', 'confirm_name', 'âœ…'),
+                ocOpt(t, 'let_me_fix', 'edit_name', 'âœï¸'),
               ],
             },
           )
@@ -752,9 +752,9 @@ export default function OnboardingChat({
               {
                 label: oc(t, 'options.yes_location', { city, country }),
                 value: 'confirm_location',
-                icon: '✅',
+                icon: 'âœ…',
               },
-              ocOpt(t, 'no_correct_location', 'edit_location', '✏️'),
+              ocOpt(t, 'no_correct_location', 'edit_location', 'âœï¸'),
             ],
           })
         } else {
@@ -771,7 +771,7 @@ export default function OnboardingChat({
         addSteveMessage(oc(t, 'messages.location_city', { country }), {
           inputType: 'text',
           inputPlaceholder: oc(t, 'placeholders.city_example'),
-          options: [ocOpt(t, 'skip_city', 'skip_city', '⏭️')],
+          options: [ocOpt(t, 'skip_city', 'skip_city', 'â­ï¸')],
         })
         break
       }
@@ -818,21 +818,21 @@ export default function OnboardingChat({
         addSteveMessage(oc(t, 'messages.talk_all_day'), {
           inputType: 'text',
           inputPlaceholder: oc(t, 'placeholders.type_answer'),
-          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back', '↩️')] : undefined,
+          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back', 'â†©ï¸')] : undefined,
         })
         break
       case 'reach_out':
         addSteveMessage(oc(t, 'messages.reach_out'), {
           inputType: 'text',
           inputPlaceholder: oc(t, 'placeholders.type_answer'),
-          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back', '↩️')] : undefined,
+          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back', 'â†©ï¸')] : undefined,
         })
         break
       case 'professional':
         addSteveMessage(oc(t, 'messages.professional_ask'), {
           inputType: 'text',
           inputPlaceholder: oc(t, 'placeholders.professional'),
-          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back', '↩️')] : undefined,
+          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back', 'â†©ï¸')] : undefined,
         })
         break
       case 'professional_confirm': {
@@ -841,18 +841,18 @@ export default function OnboardingChat({
         if (role && company) {
           addSteveMessage(oc(t, 'messages.professional_confirm_both', { role, company }), {
             options: [
-              ocOpt(t, 'yes_professional_correct', 'confirm_professional', '✅'),
-              ocOpt(t, 'fix_role', 'edit_role_only', '✏️'),
-              ocOpt(t, 'fix_company', 'edit_company_only', '✏️'),
-              ocOpt(t, 'fix_both', 'edit_professional', '✏️'),
+              ocOpt(t, 'yes_professional_correct', 'confirm_professional', 'âœ…'),
+              ocOpt(t, 'fix_role', 'edit_role_only', 'âœï¸'),
+              ocOpt(t, 'fix_company', 'edit_company_only', 'âœï¸'),
+              ocOpt(t, 'fix_both', 'edit_professional', 'âœï¸'),
             ],
           })
         } else if (role) {
           addSteveMessage(oc(t, 'messages.professional_confirm_role', { role }), {
             options: [
-              ocOpt(t, 'yes_professional_correct', 'confirm_professional', '✅'),
-              ocOpt(t, 'add_company', 'edit_company_only', '✏️'),
-              ocOpt(t, 'fix_role', 'edit_role_only', '✏️'),
+              ocOpt(t, 'yes_professional_correct', 'confirm_professional', 'âœ…'),
+              ocOpt(t, 'add_company', 'edit_company_only', 'âœï¸'),
+              ocOpt(t, 'fix_role', 'edit_role_only', 'âœï¸'),
             ],
           })
         } else {
@@ -872,7 +872,7 @@ export default function OnboardingChat({
             steps: professionalSectionSteps,
           },
           options: [
-            ocOpt(t, 'import_cv', 'start_cv_upload', '📄'),
+            ocOpt(t, 'import_cv', 'start_cv_upload', 'ðŸ“„'),
             ocOpt(t, 'start_professional_section', 'start_professional_section'),
             ocOpt(t, 'finish_later', 'open_defer_modal'),
           ],
@@ -882,8 +882,8 @@ export default function OnboardingChat({
         addSteveMessage(oc(t, 'messages.cv_upload'), {
           cvUpload: true,
           options: [
-            ocOpt(t, 'type_manually', 'cv_skip_to_manual', '✏️'),
-            ocOpt(t, 'go_back', 'go_back', '↩️'),
+            ocOpt(t, 'type_manually', 'cv_skip_to_manual', 'âœï¸'),
+            ocOpt(t, 'go_back', 'go_back', 'â†©ï¸'),
           ],
         })
         break
@@ -893,19 +893,19 @@ export default function OnboardingChat({
         addSteveMessage(oc(t, 'messages.professional_associations'), {
           inputType: 'text',
           inputPlaceholder: oc(t, 'placeholders.associations'),
-          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back', '↩️')] : undefined,
+          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back', 'â†©ï¸')] : undefined,
         })
         break
       case 'professional_strengths':
         addSteveMessage(oc(t, 'messages.professional_strengths'), {
           inputType: 'text',
           inputPlaceholder: oc(t, 'placeholders.strengths'),
-          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back', '↩️')] : undefined,
+          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back', 'â†©ï¸')] : undefined,
         })
         break
       case 'linkedin': {
-        const lnOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_linkedin', '⏭️')]
-        if (stageHistory.current.length > 1) lnOpts.push(ocOpt(t, 'go_back', 'go_back', '↩️'))
+        const lnOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_linkedin', 'â­ï¸')]
+        if (stageHistory.current.length > 1) lnOpts.push(ocOpt(t, 'go_back', 'go_back', 'â†©ï¸'))
         addSteveMessage(oc(t, 'messages.linkedin_ask'), {
           inputType: 'url',
           inputPlaceholder: oc(t, 'placeholders.linkedin'),
@@ -914,8 +914,8 @@ export default function OnboardingChat({
         break
       }
       case 'recommend': {
-        const recOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_recommend', '⏭️')]
-        if (stageHistory.current.length > 1) recOpts.push(ocOpt(t, 'go_back', 'go_back', '↩️'))
+        const recOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_recommend', 'â­ï¸')]
+        if (stageHistory.current.length > 1) recOpts.push(ocOpt(t, 'go_back', 'go_back', 'â†©ï¸'))
         addSteveMessage(oc(t, 'messages.recommend'), {
           inputType: 'text',
           inputPlaceholder: oc(t, 'placeholders.recommend'),
@@ -924,8 +924,8 @@ export default function OnboardingChat({
         break
       }
       case 'optional_social': {
-        const soOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_optional_social', '⏭️')]
-        if (stageHistory.current.length > 1) soOpts.push(ocOpt(t, 'go_back', 'go_back', '↩️'))
+        const soOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_optional_social', 'â­ï¸')]
+        if (stageHistory.current.length > 1) soOpts.push(ocOpt(t, 'go_back', 'go_back', 'â†©ï¸'))
         addSteveMessage(oc(t, 'messages.optional_social'), {
           inputType: 'textarea',
           inputPlaceholder: oc(t, 'placeholders.social_urls'),
@@ -938,8 +938,8 @@ export default function OnboardingChat({
           inputType: 'textarea',
           inputPlaceholder: oc(t, 'placeholders.journey'),
           options: (() => {
-            const opts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_journey', '⏭️')]
-            if (stageHistory.current.length > 1) opts.push(ocOpt(t, 'go_back', 'go_back', '↩️'))
+            const opts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_journey', 'â­ï¸')]
+            if (stageHistory.current.length > 1) opts.push(ocOpt(t, 'go_back', 'go_back', 'â†©ï¸'))
             return opts
           })(),
         })
@@ -1512,16 +1512,16 @@ export default function OnboardingChat({
             } else {
               addSteveMessage((j?.error as string) || oc(t, 'errors.cv_save'), {
                 options: [
-                  ocOpt(t, 'try_again', 'confirm_cv_import', '↻'),
-                  ocOpt(t, 'type_manually_short', 'reject_cv_import', '✏️'),
+                  ocOpt(t, 'try_again', 'confirm_cv_import', 'â†»'),
+                  ocOpt(t, 'type_manually_short', 'reject_cv_import', 'âœï¸'),
                 ],
               })
             }
           } catch {
             addSteveMessage(oc(t, 'errors.cv_save_network'), {
               options: [
-                ocOpt(t, 'try_again', 'confirm_cv_import', '↻'),
-                ocOpt(t, 'type_manually_short', 'reject_cv_import', '✏️'),
+                ocOpt(t, 'try_again', 'confirm_cv_import', 'â†»'),
+                ocOpt(t, 'type_manually_short', 'reject_cv_import', 'âœï¸'),
               ],
             })
           }
@@ -1553,8 +1553,8 @@ export default function OnboardingChat({
         addSteveMessage(oc(t, 'messages.cv_upload'), {
           cvUpload: true,
           options: [
-            ocOpt(t, 'type_manually', 'cv_skip_to_manual', '✏️'),
-            ocOpt(t, 'go_back', 'go_back', '↩️'),
+            ocOpt(t, 'type_manually', 'cv_skip_to_manual', 'âœï¸'),
+            ocOpt(t, 'go_back', 'go_back', 'â†©ï¸'),
           ],
         })
         break
@@ -1716,8 +1716,8 @@ export default function OnboardingChat({
       gibberishReturnStage.current = stage
       addSteveMessage(oc(t, 'messages.gibberish'), {
         options: [
-          ocOpt(t, 'yes_skip', 'gibberish_skip', '⏭️'),
-          ocOpt(t, 'no_try_again', 'gibberish_retry', '✏️'),
+          ocOpt(t, 'yes_skip', 'gibberish_skip', 'â­ï¸'),
+          ocOpt(t, 'no_try_again', 'gibberish_retry', 'âœï¸'),
         ],
       })
       return
@@ -1879,7 +1879,7 @@ export default function OnboardingChat({
           addSteveMessage(parsed.error || oc(t, 'validation.linkedin_fallback'), {
             inputType: 'url',
             inputPlaceholder: oc(t, 'placeholders.linkedin'),
-            options: [ocOpt(t, 'skip', 'skip_linkedin', '⏭️')],
+            options: [ocOpt(t, 'skip', 'skip_linkedin', 'â­ï¸')],
           })
           return
         }
@@ -2058,13 +2058,13 @@ export default function OnboardingChat({
       } else {
         addSteveMessage(j?.error || oc(t, 'errors.photo_upload'), {
           photoUpload: true,
-          options: [ocOpt(t, 'skip_photo', 'skip_photo', '⏭️')],
+          options: [ocOpt(t, 'skip_photo', 'skip_photo', 'â­ï¸')],
         })
       }
     } catch {
       addSteveMessage(oc(t, 'errors.photo_network'), {
         photoUpload: true,
-        options: [ocOpt(t, 'skip_photo', 'skip_photo', '⏭️')],
+        options: [ocOpt(t, 'skip_photo', 'skip_photo', 'â­ï¸')],
       })
     } finally {
       setUploadingPic(false)
@@ -2128,8 +2128,8 @@ export default function OnboardingChat({
         const startLine = newCollected.currentRoleStartYm
           ? oc(t, 'messages.cv_started', { ym: newCollected.currentRoleStartYm })
           : ''
-        const roleLine = newCollected.role?.trim() || '—'
-        const compLine = newCollected.company?.trim() || '—'
+        const roleLine = newCollected.role?.trim() || '\u2014'
+        const compLine = newCollected.company?.trim() || '\u2014'
         addSteveMessage(
           oc(t, 'messages.cv_extract', {
             role: roleLine,
@@ -2140,8 +2140,8 @@ export default function OnboardingChat({
           }),
           {
             options: [
-              ocOpt(t, 'confirm_cv', 'confirm_cv_import', '✅'),
-              ocOpt(t, 'type_instead', 'reject_cv_import', '✏️'),
+              ocOpt(t, 'confirm_cv', 'confirm_cv_import', 'âœ…'),
+              ocOpt(t, 'type_instead', 'reject_cv_import', 'âœï¸'),
             ],
           },
         )
@@ -2152,9 +2152,9 @@ export default function OnboardingChat({
         addSteveMessage(err, {
           cvUpload: true,
           options: [
-            ocOpt(t, 'try_another_file', 'cv_retry_pick', '↻'),
-            ocOpt(t, 'type_manually', 'cv_skip_to_manual', '✏️'),
-            ocOpt(t, 'go_back', 'go_back', '↩️'),
+            ocOpt(t, 'try_another_file', 'cv_retry_pick', 'â†»'),
+            ocOpt(t, 'type_manually', 'cv_skip_to_manual', 'âœï¸'),
+            ocOpt(t, 'go_back', 'go_back', 'â†©ï¸'),
           ],
         })
       }
@@ -2163,8 +2163,8 @@ export default function OnboardingChat({
       addSteveMessage(oc(t, 'errors.cv_network'), {
         cvUpload: true,
         options: [
-          ocOpt(t, 'try_again', 'cv_retry_pick', '↻'),
-          ocOpt(t, 'type_manually_short', 'cv_skip_to_manual', '✏️'),
+          ocOpt(t, 'try_again', 'cv_retry_pick', 'â†»'),
+          ocOpt(t, 'type_manually_short', 'cv_skip_to_manual', 'âœï¸'),
         ],
       })
     } finally {
@@ -2213,39 +2213,39 @@ export default function OnboardingChat({
 
   if (booting) {
     return (
-      <div className="fixed inset-0 z-[1200] bg-black flex items-center justify-center px-6" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+      <div className="fixed inset-0 z-[1200] bg-c-bg-app flex items-center justify-center px-6" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         <div className="flex flex-col items-center gap-4 text-center">
           <BrandLogo className="w-14 h-14 rounded-2xl object-contain" />
-          <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-[#4db6ac] animate-spin" />
-          <div className="text-sm text-white/65">{oc(t, 'ui.booting')}</div>
+          <div className="w-8 h-8 rounded-full border-2 border-c-border border-t-cpoint-turquoise animate-spin" />
+          <div className="text-sm text-c-text-secondary">{oc(t, 'ui.booting')}</div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="fixed inset-0 z-[1200] bg-black flex flex-col" style={{ height: '100dvh' }}>
+    <div className="fixed inset-0 z-[1200] bg-c-bg-app flex flex-col" style={{ height: '100dvh' }}>
       {/* Header with logo */}
-      <div className="shrink-0 border-b border-white/10 bg-black/95 backdrop-blur-sm">
+      <div className="shrink-0 border-b border-c-border bg-c-bg-app/95 backdrop-blur-sm">
         <div className="max-w-lg mx-auto px-4 pb-2 flex flex-col items-center" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}>
           <div className="flex items-center gap-2 mb-2">
             <BrandLogo className="w-8 h-8 rounded-lg object-contain" />
           </div>
           <div className="w-full flex items-center gap-3 pb-2">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#4db6ac] to-[#2a7a72] flex items-center justify-center text-[10px] font-bold text-black shrink-0">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-cpoint-turquoise to-[#2a7a72] flex items-center justify-center text-[10px] font-bold text-black shrink-0">
               S
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-xs font-semibold text-white">{oc(t, 'ui.steve')}</div>
+              <div className="text-xs font-semibold text-c-text-primary">{oc(t, 'ui.steve')}</div>
             </div>
             <button
               type="button"
               onClick={() => setShowDeferConfirm(true)}
-              className="rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-medium text-white/60 hover:text-white hover:border-white/20 transition"
+              className="rounded-full border border-c-border px-2.5 py-1 text-[10px] font-medium text-c-text-tertiary hover:text-c-text-primary hover:border-c-border-strong transition"
             >
               {oc(t, 'ui.exit_for_now')}
             </button>
-            <div className="text-[10px] text-white/30">
+            <div className="text-[10px] text-c-text-tertiary">
               {oc(t, 'ui.step_of', {
                 current: Math.min(Math.ceil(stageProgress(stage) / (100 / USER_FACING_STEPS)), USER_FACING_STEPS),
                 total: USER_FACING_STEPS,
@@ -2254,9 +2254,9 @@ export default function OnboardingChat({
           </div>
         </div>
         {/* Progress bar */}
-        <div className="h-0.5 bg-white/5">
+        <div className="h-0.5 bg-c-hover-bg">
           <div
-            className="h-full bg-[#4db6ac] transition-all duration-700 ease-out"
+            className="h-full bg-cpoint-turquoise transition-all duration-700 ease-out"
             style={{ width: `${stageProgress(stage)}%` }}
           />
         </div>
@@ -2269,26 +2269,26 @@ export default function OnboardingChat({
             <div key={i}>
               {msg.from === 'steve' ? (
                 <div className="flex items-start gap-2.5">
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#4db6ac] to-[#2a7a72] flex items-center justify-center text-[10px] font-bold text-black shrink-0 mt-0.5">
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-cpoint-turquoise to-[#2a7a72] flex items-center justify-center text-[10px] font-bold text-black shrink-0 mt-0.5">
                     S
                   </div>
                   <div className="max-w-[85%] space-y-2">
-                    <div className="bg-white/[0.06] border border-white/[0.08] rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-[13px] text-white/90 leading-relaxed whitespace-pre-line">
+                    <div className="bg-c-bg-surface border border-c-border rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-[13px] text-c-text-secondary leading-relaxed whitespace-pre-line">
                       {msg.text}
                     </div>
                     {msg.sectionCard && (
-                      <div className="rounded-2xl border border-[#4db6ac]/30 bg-[#4db6ac]/[0.06] px-4 py-3">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#4db6ac]">
+                      <div className="rounded-2xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/[0.06] px-4 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cpoint-turquoise">
                           {msg.sectionCard.title}
                         </div>
-                        <div className="mt-1 text-xs leading-relaxed text-white/70">
+                        <div className="mt-1 text-xs leading-relaxed text-c-text-secondary">
                           {msg.sectionCard.subtitle}
                         </div>
                         <div className="mt-3 grid gap-2">
                           {msg.sectionCard.steps.map((step, idx) => (
                             <div
                               key={step}
-                              className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[12px] text-white/60"
+                              className="rounded-lg border border-c-border bg-c-hover-bg px-3 py-2 text-[12px] text-c-text-tertiary"
                             >
                               {idx + 1}. {step}
                             </div>
@@ -2297,28 +2297,28 @@ export default function OnboardingChat({
                       </div>
                     )}
                     {msg.sectionPicker && (
-                      <div className="grid gap-2 rounded-2xl border border-[#4db6ac]/25 bg-[#4db6ac]/[0.05] px-4 py-3">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#4db6ac]">
+                      <div className="grid gap-2 rounded-2xl border border-cpoint-turquoise/25 bg-cpoint-turquoise/[0.05] px-4 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cpoint-turquoise">
                           {oc(t, 'ui.choose_next_section')}
                         </div>
                         <div className="grid gap-2 sm:grid-cols-2">
                           <button
                             type="button"
                             onClick={() => handleOptionClick('choose_personal_section')}
-                            className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-left transition hover:border-[#4db6ac]/35 hover:bg-[#4db6ac]/10"
-                          >
-                            <div className="text-[12px] font-semibold text-white">{oc(t, 'ui.personal_identity')}</div>
-                            <div className="mt-1 text-[11px] text-white/55">
+                            className="rounded-xl border border-c-border bg-c-hover-bg px-3 py-2 text-left transition hover:border-cpoint-turquoise/35 hover:bg-cpoint-turquoise/10"
+                            >
+                            <div className="text-[12px] font-semibold text-c-text-primary">{oc(t, 'ui.personal_identity')}</div>
+                            <div className="mt-1 text-[11px] text-c-text-tertiary">
                               {oc(t, 'ui.personal_card_meta', { status: msg.sectionPicker.personalStatus })}
                             </div>
                           </button>
                           <button
                             type="button"
                             onClick={() => handleOptionClick('choose_professional_section')}
-                            className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-left transition hover:border-[#4db6ac]/35 hover:bg-[#4db6ac]/10"
-                          >
-                            <div className="text-[12px] font-semibold text-white">{oc(t, 'ui.professional_identity')}</div>
-                            <div className="mt-1 text-[11px] text-white/55">
+                            className="rounded-xl border border-c-border bg-c-hover-bg px-3 py-2 text-left transition hover:border-cpoint-turquoise/35 hover:bg-cpoint-turquoise/10"
+                            >
+                            <div className="text-[12px] font-semibold text-c-text-primary">{oc(t, 'ui.professional_identity')}</div>
+                            <div className="mt-1 text-[11px] text-c-text-tertiary">
                               {oc(t, 'ui.professional_card_meta', { status: msg.sectionPicker.professionalStatus })}
                             </div>
                           </button>
@@ -2332,7 +2332,7 @@ export default function OnboardingChat({
                           <button
                             key={opt.value}
                             onClick={() => handleOptionClick(opt.value)}
-                            className="rounded-xl border border-[#4db6ac]/35 bg-black/25 px-4 py-2.5 text-left text-[12px] font-semibold text-[#d5fffb] transition-colors hover:bg-[#4db6ac]/10"
+                            className="rounded-xl border border-cpoint-turquoise/35 bg-c-hover-bg px-4 py-2.5 text-left text-[12px] font-semibold text-c-accent-ink transition-colors hover:bg-cpoint-turquoise/10"
                           >
                             {opt.label}
                           </button>
@@ -2346,7 +2346,7 @@ export default function OnboardingChat({
                           <button
                             key={opt.value}
                             onClick={() => handleOptionClick(opt.value)}
-                            className="rounded-xl border border-[#4db6ac]/35 bg-black/25 px-4 py-2.5 text-left text-[12px] font-semibold text-[#d5fffb] transition-colors hover:bg-[#4db6ac]/10"
+                            className="rounded-xl border border-cpoint-turquoise/35 bg-c-hover-bg px-4 py-2.5 text-left text-[12px] font-semibold text-c-accent-ink transition-colors hover:bg-cpoint-turquoise/10"
                           >
                             {opt.label}
                           </button>
@@ -2356,39 +2356,39 @@ export default function OnboardingChat({
                     {/* Composed bio preview with action buttons */}
                     {msg.composedBio && i === messages.length - 1 && (stage === 'personal_bio_review' || stage === 'professional_bio_review') && !composingBio && (
                       <div className="space-y-2 mt-1">
-                        <div className="rounded-xl border border-[#4db6ac]/20 bg-[#4db6ac]/5 px-3.5 py-3">
-                          <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#4db6ac]">
+                        <div className="rounded-xl border border-cpoint-turquoise/20 bg-cpoint-turquoise/5 px-3.5 py-3">
+                          <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-cpoint-turquoise">
                             {msg.composedBioKind === 'professional'
                               ? oc(t, 'ui.professional_bio_label')
                               : oc(t, 'ui.personal_bio_label')}
                           </div>
-                          <div className="text-[13px] text-white/90 leading-relaxed italic">"{msg.composedBio}"</div>
+                          <div className="text-[13px] text-c-text-secondary leading-relaxed italic">"{msg.composedBio}"</div>
                         </div>
                         {msg.composedBioKind === 'professional' && msg.composedCompanyIntel ? (
-                          <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-3">
-                            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/50">
+                          <div className="rounded-xl border border-c-border bg-c-bg-surface px-3.5 py-3">
+                            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-c-text-tertiary">
                               {oc(t, 'ui.company_intel')}
                             </div>
-                            <div className="text-[13px] text-white/90 leading-relaxed italic">"{msg.composedCompanyIntel}"</div>
+                            <div className="text-[13px] text-c-text-secondary leading-relaxed italic">"{msg.composedCompanyIntel}"</div>
                           </div>
                         ) : null}
                         <div className="flex flex-wrap gap-2">
-                          <button onClick={() => handleOptionClick('use_bio')} className="px-3.5 py-2 rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 text-[12px] font-medium text-[#4db6ac] hover:bg-[#4db6ac]/20 transition-colors">
+                          <button onClick={() => handleOptionClick('use_bio')} className="px-3.5 py-2 rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 text-[12px] font-medium text-cpoint-turquoise hover:bg-cpoint-turquoise/20 transition-colors">
                             {oc(t, 'options.use_this')}
                           </button>
-                          <button onClick={() => handleOptionClick('bio_more_natural')} className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[12px] font-medium text-white/60 hover:bg-white/10 transition-colors">
+                          <button onClick={() => handleOptionClick('bio_more_natural')} className="px-3.5 py-2 rounded-xl border border-c-border bg-c-hover-bg text-[12px] font-medium text-c-text-tertiary hover:bg-c-active-bg transition-colors">
                             {oc(t, 'options.more_natural')}
                           </button>
-                          <button onClick={() => handleOptionClick('bio_shorter')} className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[12px] font-medium text-white/60 hover:bg-white/10 transition-colors">
+                          <button onClick={() => handleOptionClick('bio_shorter')} className="px-3.5 py-2 rounded-xl border border-c-border bg-c-hover-bg text-[12px] font-medium text-c-text-tertiary hover:bg-c-active-bg transition-colors">
                             {oc(t, 'options.shorter')}
                           </button>
-                          <button onClick={() => handleOptionClick('bio_more_professional')} className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[12px] font-medium text-white/60 hover:bg-white/10 transition-colors">
+                          <button onClick={() => handleOptionClick('bio_more_professional')} className="px-3.5 py-2 rounded-xl border border-c-border bg-c-hover-bg text-[12px] font-medium text-c-text-tertiary hover:bg-c-active-bg transition-colors">
                             {oc(t, 'options.more_professional')}
                           </button>
-                          <button onClick={() => handleOptionClick('edit_bio')} className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[12px] font-medium text-white/60 hover:bg-white/10 transition-colors">
+                          <button onClick={() => handleOptionClick('edit_bio')} className="px-3.5 py-2 rounded-xl border border-c-border bg-c-hover-bg text-[12px] font-medium text-c-text-tertiary hover:bg-c-active-bg transition-colors">
                             {oc(t, 'options.edit')}
                           </button>
-                          <button onClick={() => handleOptionClick('redo_bio')} className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[12px] font-medium text-white/60 hover:bg-white/10 transition-colors">
+                          <button onClick={() => handleOptionClick('redo_bio')} className="px-3.5 py-2 rounded-xl border border-c-border bg-c-hover-bg text-[12px] font-medium text-c-text-tertiary hover:bg-c-active-bg transition-colors">
                             {oc(t, 'options.start_fresh')}
                           </button>
                         </div>
@@ -2396,27 +2396,27 @@ export default function OnboardingChat({
                     )}
                     {msg.profileReview && i === messages.length - 1 && (
                       <div className="space-y-2 mt-1">
-                        <div className="rounded-xl border border-[#4db6ac]/20 bg-[#4db6ac]/5 px-3.5 py-3">
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#4db6ac]">
+                        <div className="rounded-xl border border-cpoint-turquoise/20 bg-cpoint-turquoise/5 px-3.5 py-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-cpoint-turquoise">
                             {oc(t, 'ui.personal_bio_label')}
                           </div>
-                          <div className="mt-2 text-[13px] leading-relaxed text-white/90">
+                          <div className="mt-2 text-[13px] leading-relaxed text-c-text-secondary">
                             {msg.profileReview.personalBio || oc(t, 'ui.not_added_yet')}
                           </div>
                         </div>
-                        <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-3">
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/50">
+                        <div className="rounded-xl border border-c-border bg-c-bg-surface px-3.5 py-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-c-text-tertiary">
                             {oc(t, 'ui.professional_bio_label')}
                           </div>
-                          <div className="mt-2 text-[13px] leading-relaxed text-white/90">
+                          <div className="mt-2 text-[13px] leading-relaxed text-c-text-secondary">
                             {msg.profileReview.professionalBio || oc(t, 'ui.not_added_yet')}
                           </div>
-                          <div className="mt-3 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[12px] text-white/65">
+                          <div className="mt-3 rounded-lg border border-c-border bg-c-hover-bg px-3 py-2 text-[12px] text-c-text-secondary">
                             {oc(t, 'ui.linkedin_row', {
                               status: msg.profileReview.linkedinAdded ? oc(t, 'ui.added') : oc(t, 'ui.not_added'),
                             })}
                           </div>
-                          <div className="mt-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[12px] text-white/65">
+                          <div className="mt-2 rounded-lg border border-c-border bg-c-hover-bg px-3 py-2 text-[12px] text-c-text-secondary">
                             {oc(t, 'ui.company_intel_row', {
                               status: msg.profileReview.companyIntelAdded ? oc(t, 'ui.added') : oc(t, 'ui.not_added'),
                             })}
@@ -2432,42 +2432,42 @@ export default function OnboardingChat({
                             key={card.id}
                             className={`rounded-xl border px-3.5 py-3 transition-all ${
                               card.status === 'accepted'
-                                ? 'border-[#4db6ac]/40 bg-[#4db6ac]/10'
+                                ? 'border-cpoint-turquoise/40 bg-cpoint-turquoise/10'
                                 : card.status === 'dismissed'
-                                ? 'border-white/5 bg-white/[0.02] opacity-50'
-                                : 'border-white/10 bg-white/[0.04]'
+                                ? 'border-c-border bg-c-bg-surface opacity-50'
+                                : 'border-c-border bg-c-bg-surface'
                             }`}
                           >
-                            <div className="text-[11px] text-white/40 uppercase tracking-wider mb-1">{card.label}</div>
-                            <div className="text-[13px] text-white/80 leading-relaxed">{card.detail}</div>
+                            <div className="text-[11px] text-c-text-tertiary uppercase tracking-wider mb-1">{card.label}</div>
+                            <div className="text-[13px] text-c-text-secondary leading-relaxed">{card.detail}</div>
                             {card.status === 'pending' && (
                               <div className="flex gap-2 mt-2">
                                 <button
                                   onClick={() => handleCardAction(card.id, 'accepted')}
-                                  className="px-3 py-1.5 rounded-lg bg-[#4db6ac]/15 border border-[#4db6ac]/30 text-[11px] font-medium text-[#4db6ac]"
+                                  className="px-3 py-1.5 rounded-lg bg-cpoint-turquoise/15 border border-cpoint-turquoise/30 text-[11px] font-medium text-cpoint-turquoise"
                                 >
-                                  ✅ {oc(t, 'options.accept')}
+                                  âœ… {oc(t, 'options.accept')}
                                 </button>
                                 <button
                                   onClick={() => handleCardAction(card.id, 'dismissed')}
-                                  className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-[11px] font-medium text-white/50"
+                                  className="px-3 py-1.5 rounded-lg bg-c-hover-bg border border-c-border text-[11px] font-medium text-c-text-tertiary"
                                 >
-                                  ❌ {oc(t, 'options.dismiss')}
+                                  âŒ {oc(t, 'options.dismiss')}
                                 </button>
                               </div>
                             )}
                             {card.status === 'accepted' && (
-                              <div className="text-[10px] text-[#4db6ac]/70 mt-1.5">✅ {oc(t, 'ui.added_to_profile')}</div>
+                              <div className="text-[10px] text-cpoint-turquoise/70 mt-1.5">âœ… {oc(t, 'ui.added_to_profile')}</div>
                             )}
                             {card.status === 'dismissed' && (
-                              <div className="text-[10px] text-white/30 mt-1.5">{oc(t, 'ui.dismissed')}</div>
+                              <div className="text-[10px] text-c-text-tertiary mt-1.5">{oc(t, 'ui.dismissed')}</div>
                             )}
                           </div>
                         ))}
                         {allCardsReviewed() && (
                           <button
                             onClick={handleFinishReview}
-                            className="w-full mt-2 px-4 py-3 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110 transition"
+                            className="w-full mt-2 px-4 py-3 rounded-xl bg-cpoint-turquoise text-black text-sm font-semibold hover:brightness-110 transition"
                           >
                             {oc(t, 'ui.continue_btn')}
                           </button>
@@ -2478,7 +2478,7 @@ export default function OnboardingChat({
                 </div>
               ) : (
                 <div className="flex justify-end">
-                  <div className="max-w-[80%] bg-[#4db6ac]/20 border border-[#4db6ac]/20 rounded-2xl rounded-tr-sm px-3.5 py-2.5 text-[13px] text-white/90 leading-relaxed">
+                  <div className="max-w-[80%] bg-cpoint-turquoise/20 border border-cpoint-turquoise/20 rounded-2xl rounded-tr-sm px-3.5 py-2.5 text-[13px] text-c-text-secondary leading-relaxed">
                     {msg.text}
                   </div>
                 </div>
@@ -2489,12 +2489,12 @@ export default function OnboardingChat({
           {/* Typing indicator */}
           {(isTyping || enriching) && (
             <div className="flex items-start gap-2.5">
-              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#4db6ac] to-[#2a7a72] flex items-center justify-center text-[10px] font-bold text-black shrink-0 mt-0.5">
+              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-cpoint-turquoise to-[#2a7a72] flex items-center justify-center text-[10px] font-bold text-black shrink-0 mt-0.5">
                 S
               </div>
-              <div className="bg-white/[0.06] border border-white/[0.08] rounded-2xl rounded-tl-sm px-4 py-3">
+              <div className="bg-c-bg-surface border border-c-border rounded-2xl rounded-tl-sm px-4 py-3">
                 {bioDraftingKind && (
-                  <div className="mb-2 text-[12px] font-medium text-white/75">
+                  <div className="mb-2 text-[12px] font-medium text-c-text-secondary">
                     {oc(t, 'ui.drafting_bio', {
                       kind:
                         bioDraftingKind === 'professional'
@@ -2504,9 +2504,9 @@ export default function OnboardingChat({
                   </div>
                 )}
                 <div className="flex gap-1">
-                  <div className="w-2 h-2 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <div className="w-2 h-2 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <div className="w-2 h-2 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <div className="w-2 h-2 rounded-full bg-c-text-tertiary animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <div className="w-2 h-2 rounded-full bg-c-text-tertiary animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <div className="w-2 h-2 rounded-full bg-c-text-tertiary animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
               </div>
               {/* enriching indicator hidden as feature is now admin-only */}
@@ -2516,18 +2516,18 @@ export default function OnboardingChat({
         </div>
       </div>
 
-      {/* Composer — portaled for Android keyboard lift (matches ChatThread) */}
+      {/* Composer \u2014 portaled for Android keyboard lift (matches ChatThread) */}
       {showComposer && (
         <FixedComposerShell
           keyboardLift={keyboardLift}
           safeBottomPx={safeBottomPx}
           shellRef={composerRef}
           className="fixed left-0 right-0 z-[1201]"
-          spacerBackground="#000"
+          spacerBackground="var(--c-bg-app)"
         >
           <div
             ref={composerCardRef}
-            className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3"
+            className="shrink-0 border-t border-c-border bg-c-bg-app/95 px-4 py-3"
           >
             {showPhotoUpload && (
               <div className="max-w-lg mx-auto">
@@ -2540,20 +2540,20 @@ export default function OnboardingChat({
                 />
                 <div className="flex items-center gap-3">
                   {picPreview ? (
-                    <img src={picPreview} alt={oc(t, 'ui.preview_alt')} className="w-14 h-14 rounded-full object-cover border-2 border-[#4db6ac]/40" />
+                    <img src={picPreview} alt={oc(t, 'ui.preview_alt')} className="w-14 h-14 rounded-full object-cover border-2 border-cpoint-turquoise/40" />
                   ) : (
                     <div
                       onClick={() => fileInputRef.current?.click()}
-                      className="w-14 h-14 rounded-full border-2 border-dashed border-white/20 flex items-center justify-center cursor-pointer hover:border-[#4db6ac]/50 transition"
+                      className="w-14 h-14 rounded-full border-2 border-dashed border-c-border flex items-center justify-center cursor-pointer hover:border-cpoint-turquoise/50 transition"
                     >
-                      <i className="fa-solid fa-camera text-white/30" />
+                      <i className="fa-solid fa-camera text-c-text-tertiary" />
                     </div>
                   )}
                   <div className="flex-1">
                     {!picFile ? (
                       <button
                         onClick={() => fileInputRef.current?.click()}
-                        className="px-4 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white/70 hover:bg-white/[0.1] transition w-full"
+                        className="px-4 py-2.5 rounded-xl bg-c-bg-surface border border-c-border text-sm text-c-text-secondary hover:bg-c-hover-bg transition w-full"
                       >
                         {oc(t, 'ui.choose_photo')}
                       </button>
@@ -2561,7 +2561,7 @@ export default function OnboardingChat({
                       <button
                         onClick={handlePhotoUpload}
                         disabled={uploadingPic}
-                        className="px-4 py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110 transition w-full disabled:opacity-50"
+                        className="px-4 py-2.5 rounded-xl bg-cpoint-turquoise text-black text-sm font-semibold hover:brightness-110 transition w-full disabled:opacity-50"
                       >
                         {uploadingPic ? oc(t, 'ui.uploading') : oc(t, 'ui.upload_photo')}
                       </button>
@@ -2583,13 +2583,13 @@ export default function OnboardingChat({
                 <div className="flex items-center gap-3">
                   <div
                     onClick={() => !cvUploading && cvFileInputRef.current?.click()}
-                    className="w-14 h-14 rounded-xl border-2 border-dashed border-white/20 flex items-center justify-center cursor-pointer hover:border-[#4db6ac]/50 transition shrink-0"
+                    className="w-14 h-14 rounded-xl border-2 border-dashed border-c-border flex items-center justify-center cursor-pointer hover:border-cpoint-turquoise/50 transition shrink-0"
                     role="presentation"
                   >
-                    <i className="fa-solid fa-file-pdf text-white/35 text-lg" />
+                    <i className="fa-solid fa-file-pdf text-c-text-tertiary text-lg" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-[11px] text-white/50 truncate mb-1.5">
+                    <div className="text-[11px] text-c-text-tertiary truncate mb-1.5">
                       {cvFile ? cvFile.name : oc(t, 'ui.no_file')}
                     </div>
                     {!cvFile ? (
@@ -2597,7 +2597,7 @@ export default function OnboardingChat({
                         type="button"
                         onClick={() => cvFileInputRef.current?.click()}
                         disabled={cvUploading}
-                        className="px-4 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white/70 hover:bg-white/[0.1] transition w-full disabled:opacity-50"
+                        className="px-4 py-2.5 rounded-xl bg-c-bg-surface border border-c-border text-sm text-c-text-secondary hover:bg-c-hover-bg transition w-full disabled:opacity-50"
                       >
                         {oc(t, 'ui.choose_pdf')}
                       </button>
@@ -2606,7 +2606,7 @@ export default function OnboardingChat({
                         type="button"
                         onClick={handleCvParseUpload}
                         disabled={cvUploading}
-                        className="px-4 py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110 transition w-full disabled:opacity-50"
+                        className="px-4 py-2.5 rounded-xl bg-cpoint-turquoise text-black text-sm font-semibold hover:brightness-110 transition w-full disabled:opacity-50"
                       >
                         {cvUploading ? oc(t, 'ui.reading_cv') : oc(t, 'ui.upload_extract')}
                       </button>
@@ -2631,7 +2631,7 @@ export default function OnboardingChat({
                     }}
                     placeholder={lastSteveMsg.inputPlaceholder || oc(t, 'placeholders.type_here')}
                     rows={3}
-                    className="flex-1 px-3.5 py-2.5 rounded-xl border border-white/10 bg-white/[0.04] text-sm text-white placeholder-white/30 focus:border-[#4db6ac]/50 focus:outline-none resize-none"
+                    className="flex-1 px-3.5 py-2.5 rounded-xl border border-c-border bg-c-bg-surface text-sm text-c-text-primary placeholder-c-text-tertiary focus:border-cpoint-turquoise/50 focus:outline-none resize-none"
                   />
                 ) : (
                   <input
@@ -2646,14 +2646,14 @@ export default function OnboardingChat({
                       }
                     }}
                     placeholder={lastSteveMsg?.inputPlaceholder || oc(t, 'placeholders.type_here')}
-                    className="flex-1 px-3.5 py-2.5 rounded-xl border border-white/10 bg-white/[0.04] text-sm text-white placeholder-white/30 focus:border-[#4db6ac]/50 focus:outline-none"
+                    className="flex-1 px-3.5 py-2.5 rounded-xl border border-c-border bg-c-bg-surface text-sm text-c-text-primary placeholder-c-text-tertiary focus:border-cpoint-turquoise/50 focus:outline-none"
                     autoFocus
                   />
                 )}
                 <button
                   onClick={handleSubmit}
                   disabled={!inputValue.trim()}
-                  className="px-4 py-2.5 rounded-xl bg-[#4db6ac] text-black font-semibold text-sm hover:brightness-110 transition disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                  className="px-4 py-2.5 rounded-xl bg-cpoint-turquoise text-black font-semibold text-sm hover:brightness-110 transition disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
                 >
                   <i className="fa-solid fa-paper-plane" />
                 </button>
@@ -2664,10 +2664,10 @@ export default function OnboardingChat({
       )}
 
       {showDeferConfirm && (
-        <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-          <div className="w-full max-w-sm rounded-3xl border border-[#4db6ac]/25 bg-[#0d1214] p-5 shadow-[0_24px_80px_rgba(77,182,172,0.16)]">
-            <div className="text-lg font-semibold text-white">{oc(t, 'ui.need_more_time')}</div>
-            <div className="mt-3 text-sm leading-relaxed text-white/70">{oc(t, 'ui.defer_body')}</div>
+        <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-c-bg-overlay px-4 backdrop-blur-sm" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+          <div className="w-full max-w-sm rounded-3xl border border-cpoint-turquoise/25 bg-c-bg-elevated p-5 shadow-[0_24px_80px_rgba(0, 206, 200,0.16)]">
+            <div className="text-lg font-semibold text-c-text-primary">{oc(t, 'ui.need_more_time')}</div>
+            <div className="mt-3 text-sm leading-relaxed text-c-text-secondary">{oc(t, 'ui.defer_body')}</div>
             <div className="mt-5 flex flex-col gap-2 sm:flex-row">
               <button
                 type="button"
@@ -2675,7 +2675,7 @@ export default function OnboardingChat({
                   setDeferError('')
                   setShowDeferConfirm(false)
                 }}
-                className="flex-1 rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 px-4 py-2.5 text-sm font-semibold text-[#d5fffb] transition hover:bg-[#4db6ac]/15"
+                className="flex-1 rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-4 py-2.5 text-sm font-semibold text-c-accent-ink transition hover:bg-cpoint-turquoise/15"
               >
                 {oc(t, 'ui.keep_going')}
               </button>
@@ -2683,7 +2683,7 @@ export default function OnboardingChat({
                 type="button"
                 onClick={finishLater}
                 disabled={deferringProfile}
-                className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white/75 transition hover:bg-white/10 disabled:opacity-50"
+                className="flex-1 rounded-xl border border-c-border bg-c-hover-bg px-4 py-2.5 text-sm font-semibold text-c-text-secondary transition hover:bg-c-active-bg disabled:opacity-50"
               >
                 {deferringProfile ? oc(t, 'ui.saving') : oc(t, 'ui.finish_later_btn')}
               </button>
@@ -2699,21 +2699,21 @@ export default function OnboardingChat({
 
       {/* Platform tour modal */}
       {tourStep !== null && (
-        <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center px-4" onClick={() => setTourStep(null)}>
-          <div className="w-full max-w-sm bg-[#111] border border-white/10 rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[60] bg-c-bg-overlay backdrop-blur-sm flex items-center justify-center px-4" onClick={() => setTourStep(null)}>
+          <div className="w-full max-w-sm bg-c-bg-surface border border-c-border rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="px-6 pt-6 pb-4 flex flex-col items-center text-center">
-              <div className="w-16 h-16 rounded-2xl bg-[#4db6ac]/10 border border-[#4db6ac]/20 flex items-center justify-center mb-4">
-                <i className={`${tourSteps[tourStep].icon} text-2xl text-[#4db6ac]`} />
+              <div className="w-16 h-16 rounded-2xl bg-cpoint-turquoise/10 border border-cpoint-turquoise/20 flex items-center justify-center mb-4">
+                <i className={`${tourSteps[tourStep].icon} text-2xl text-cpoint-turquoise`} />
               </div>
-              <div className="text-base font-semibold text-white mb-1.5">{tourSteps[tourStep].title}</div>
-              <div className="text-sm text-white/60 leading-relaxed">{tourSteps[tourStep].description}</div>
+              <div className="text-base font-semibold text-c-text-primary mb-1.5">{tourSteps[tourStep].title}</div>
+              <div className="text-sm text-c-text-tertiary leading-relaxed">{tourSteps[tourStep].description}</div>
             </div>
             {/* Dot indicators */}
             <div className="flex justify-center gap-1.5 pb-3">
               {tourSteps.map((_, i) => (
                 <div
                   key={i}
-                  className={`w-1.5 h-1.5 rounded-full transition-colors ${i === tourStep ? 'bg-[#4db6ac]' : 'bg-white/20'}`}
+                  className={`w-1.5 h-1.5 rounded-full transition-colors ${i === tourStep ? 'bg-cpoint-turquoise' : 'bg-c-text-disabled'}`}
                 />
               ))}
             </div>
@@ -2721,11 +2721,11 @@ export default function OnboardingChat({
             <div className="px-6 pb-5 flex items-center justify-between">
               <button
                 onClick={() => setTourStep(tourStep > 0 ? tourStep - 1 : null)}
-                className="px-4 py-2 rounded-lg text-xs font-medium text-white/50 hover:text-white/80 transition-colors"
+                className="px-4 py-2 rounded-lg text-xs font-medium text-c-text-tertiary hover:text-c-text-secondary transition-colors"
               >
                 {tourStep > 0 ? oc(t, 'ui.tour_back') : oc(t, 'ui.tour_skip')}
               </button>
-              <div className="text-[10px] text-white/30">
+              <div className="text-[10px] text-c-text-tertiary">
                 {oc(t, 'ui.tour_counter', { current: tourStep + 1, total: tourSteps.length })}
               </div>
               <button
@@ -2738,7 +2738,7 @@ export default function OnboardingChat({
                     onComplete()
                   }
                 }}
-                className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-xs font-semibold hover:brightness-110 transition"
+                className="px-4 py-2 rounded-lg bg-cpoint-turquoise text-black text-xs font-semibold hover:brightness-110 transition"
               >
                 {tourStep < tourSteps.length - 1 ? oc(t, 'ui.tour_next') : oc(t, 'ui.tour_done')}
               </button>

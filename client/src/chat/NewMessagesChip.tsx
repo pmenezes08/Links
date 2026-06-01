@@ -18,7 +18,7 @@ export function NewMessagesChip({ count, bottom, onClick }: NewMessagesChipProps
   return (
     <button
       type="button"
-      className="fixed z-[999] left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full bg-[#4db6ac] text-black text-sm font-medium shadow-lg border border-[#4db6ac]/80 hover:brightness-110 transition-all"
+      className="fixed z-[999] left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full bg-cpoint-turquoise text-black text-sm font-medium shadow-lg border border-cpoint-turquoise/80 hover:brightness-110 transition-all"
       style={{ bottom }}
       onClick={onClick}
       aria-label={label}

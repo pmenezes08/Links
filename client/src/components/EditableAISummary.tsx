@@ -60,11 +60,11 @@ export default function EditableAISummary({ postId, replyId, initialSummary, isO
   };
 
   return (
-    <div className="px-3 py-2 rounded-lg bg-[#4db6ac]/10 border border-[#4db6ac]/30">
+    <div className="px-3 py-2 rounded-lg bg-cpoint-turquoise/10 border border-cpoint-turquoise/30">
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2">
-          <i className="fa-solid fa-sparkles text-[#4db6ac] text-xs" />
-          <span className="text-xs font-medium text-[#4db6ac]">
+          <i className="fa-solid fa-sparkles text-cpoint-turquoise text-xs" />
+          <span className="text-xs font-medium text-cpoint-turquoise">
             {translatedText ? t('feed.steve_summary_translated') : t('feed.steve_summary')}
           </span>
         </div>
@@ -75,7 +75,7 @@ export default function EditableAISummary({ postId, replyId, initialSummary, isO
                 e.stopPropagation();
                 setTranslatedText(null);
               }}
-              className="text-[#4db6ac] hover:text-[#4db6ac]/80 text-xs px-1"
+              className="text-cpoint-turquoise hover:text-cpoint-turquoise/80 text-xs px-1"
               title={t('feed.show_original')}
             >
               <i className="fa-solid fa-rotate-left" />
@@ -94,7 +94,7 @@ export default function EditableAISummary({ postId, replyId, initialSummary, isO
                 e.stopPropagation();
                 setIsEditing(true);
               }}
-              className="text-[#4db6ac] hover:text-[#4db6ac]/80 text-xs px-1"
+              className="text-cpoint-turquoise hover:text-cpoint-turquoise/80 text-xs px-1"
               title={t('feed.edit_summary')}
             >
               <i className="fa-solid fa-pencil" />
@@ -107,28 +107,28 @@ export default function EditableAISummary({ postId, replyId, initialSummary, isO
           <textarea
             value={summary}
             onChange={(e) => setSummary(e.target.value)}
-            className="w-full px-2 py-1 text-sm bg-[#1a1d29] text-white rounded border border-[#4db6ac]/30 focus:outline-none focus:border-[#4db6ac] min-h-[60px]"
+            className="w-full px-2 py-1 text-sm bg-c-bg-surface text-c-text-primary rounded border border-cpoint-turquoise/30 focus:outline-none focus:border-cpoint-turquoise min-h-[60px]"
             placeholder={t('feed.edit_steve_summary_placeholder')}
           />
           <div className="flex gap-2">
             <button
               onClick={handleSave}
               disabled={isSaving || !summary.trim()}
-              className="px-3 py-1 bg-[#4db6ac] text-white text-xs rounded hover:bg-[#4db6ac]/80 disabled:opacity-50"
+              className="px-3 py-1 bg-cpoint-turquoise text-white text-xs rounded hover:bg-cpoint-turquoise/80 disabled:opacity-50"
             >
               {isSaving ? t('account.language.saving') : t('common.save')}
             </button>
             <button
               onClick={handleCancel}
               disabled={isSaving}
-              className="px-3 py-1 bg-white/10 text-white text-xs rounded hover:bg-white/20"
+              className="px-3 py-1 bg-c-active-bg text-c-text-primary text-xs rounded hover:bg-white/20"
             >
               {t('common.cancel')}
             </button>
           </div>
         </div>
       ) : (
-        <p className="text-sm text-white/90 leading-relaxed">{translatedText || summary}</p>
+        <p className="text-sm text-c-text-primary leading-relaxed">{translatedText || summary}</p>
       )}
     </div>
   );

@@ -217,13 +217,13 @@ export default function CommunityPolls(){
 
   if (groupId) {
     return (
-      <div className="min-h-screen bg-black text-white">
+      <div className="min-h-screen bg-c-bg-app text-c-text-primary">
         <div
-          className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+          className="fixed left-0 right-0 h-10 bg-c-bg-app/70 backdrop-blur z-40"
           style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
         >
           <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-            <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(`/group_feed_react/${groupId}`)} aria-label={t('common.back')}>
+            <button className="p-2 rounded-full hover:bg-c-hover-bg" onClick={()=> navigate(`/group_feed_react/${groupId}`)} aria-label={t('common.back')}>
               <i className="fa-solid fa-arrow-left" />
             </button>
             <div className="flex-1 font-medium">{t('communities.polls_title')}</div>
@@ -237,7 +237,7 @@ export default function CommunityPolls(){
             '--app-subnav-height': '40px',
           } as CSSProperties}
         >
-          <p className="text-sm text-[#9fb0b5] py-8 leading-relaxed">
+          <p className="text-sm text-c-text-tertiary py-8 leading-relaxed">
             {t('communities.polls_group_stub')}
           </p>
         </div>
@@ -246,27 +246,27 @@ export default function CommunityPolls(){
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary">
       <div
-        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+        className="fixed left-0 right-0 h-10 bg-c-bg-app/70 backdrop-blur z-40"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
       >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label={t('common.back')}>
+          <button className="p-2 rounded-full hover:bg-c-hover-bg" onClick={()=> navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label={t('common.back')}>
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="flex-1 h-full flex">
-            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='active' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('active')}>
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='active' ? 'text-c-text-secondary' : 'text-c-text-tertiary hover:text-c-text-secondary'}`} onClick={()=> setActiveTab('active')}>
               <div className="pt-2">{t('communities.polls_tab_active')}</div>
-              <div className={`h-0.5 rounded-full w-12 mx-auto mt-1 ${activeTab==='active' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+              <div className={`h-0.5 rounded-full w-12 mx-auto mt-1 ${activeTab==='active' ? 'bg-cpoint-turquoise' : 'bg-transparent'}`} />
             </button>
-            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='archive' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('archive')}>
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='archive' ? 'text-c-text-secondary' : 'text-c-text-tertiary hover:text-c-text-secondary'}`} onClick={()=> setActiveTab('archive')}>
               <div className="pt-2">{t('communities.polls_tab_archive')}</div>
-              <div className={`h-0.5 rounded-full w-12 mx-auto mt-1 ${activeTab==='archive' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+              <div className={`h-0.5 rounded-full w-12 mx-auto mt-1 ${activeTab==='archive' ? 'bg-cpoint-turquoise' : 'bg-transparent'}`} />
             </button>
-            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='create' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('create')}>
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='create' ? 'text-c-text-secondary' : 'text-c-text-tertiary hover:text-c-text-secondary'}`} onClick={()=> setActiveTab('create')}>
               <div className="pt-2">{t('communities.polls_tab_create')}</div>
-              <div className={`h-0.5 rounded-full w-12 mx-auto mt-1 ${activeTab==='create' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+              <div className={`h-0.5 rounded-full w-12 mx-auto mt-1 ${activeTab==='create' ? 'bg-cpoint-turquoise' : 'bg-transparent'}`} />
             </button>
           </div>
         </div>
@@ -286,56 +286,56 @@ export default function CommunityPolls(){
         )}
 
         {activeTab === 'create' ? (
-          <form ref={formRef} className="rounded-2xl border border-white/10 p-3 bg-white/[0.035] space-y-3" onSubmit={(e)=> { e.preventDefault(); createPoll() }}>
+          <form ref={formRef} className="rounded-2xl border border-c-border p-3 bg-white/[0.035] space-y-3" onSubmit={(e)=> { e.preventDefault(); createPoll() }}>
             <div className="text-sm font-medium">{editingPollId ? t('communities.polls_edit_form_title') : t('communities.polls_create_form_title')}</div>
-            <label className="text-xs text-[#9fb0b5]">{t('communities.polls_question_label')}
-              <input value={question} onChange={e=> setQuestion(e.target.value)} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" placeholder={t('communities.poll_question_placeholder')} />
+            <label className="text-xs text-c-text-tertiary">{t('communities.polls_question_label')}
+              <input value={question} onChange={e=> setQuestion(e.target.value)} className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" placeholder={t('communities.poll_question_placeholder')} />
             </label>
             <div className="space-y-2">
               {options.map((opt, idx) => (
-                <input key={idx} value={opt} onChange={e=> setOptions(prev => prev.map((o,i)=> i===idx? e.target.value : o))} className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" placeholder={t('communities.poll_option_placeholder', { number: idx + 1 })} />
+                <input key={idx} value={opt} onChange={e=> setOptions(prev => prev.map((o,i)=> i===idx? e.target.value : o))} className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" placeholder={t('communities.poll_option_placeholder', { number: idx + 1 })} />
               ))}
               <div className="flex gap-2">
-                <button type="button" className="px-2 py-1 rounded-md border border-white/10 text-xs hover:bg-white/5" onClick={()=> setOptions(prev => [...prev, ''])}>{t('communities.add_option')}</button>
-                <button type="button" className="px-2 py-1 rounded-md border border-white/10 text-xs hover:bg-white/5" onClick={()=> setOptions(prev => prev.length>2? prev.slice(0,-1): prev)}>{t('communities.remove_option')}</button>
+                <button type="button" className="px-2 py-1 rounded-md border border-c-border text-xs hover:bg-c-hover-bg" onClick={()=> setOptions(prev => [...prev, ''])}>{t('communities.add_option')}</button>
+                <button type="button" className="px-2 py-1 rounded-md border border-c-border text-xs hover:bg-c-hover-bg" onClick={()=> setOptions(prev => prev.length>2? prev.slice(0,-1): prev)}>{t('communities.remove_option')}</button>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
               <div>
-                <button type="button" className={`px-2 py-1 rounded-md border text-sm whitespace-nowrap hover:bg:white/5 ${singleVote ? 'border-teal-500 text-teal-300 bg-teal-700/15' : 'border-white/10'}`} onClick={()=> setSingleVote(v=>!v)}>
+                <button type="button" className={`px-2 py-1 rounded-md border text-sm whitespace-nowrap hover:bg:white/5 ${singleVote ? 'border-teal-500 text-teal-300 bg-teal-700/15' : 'border-c-border'}`} onClick={()=> setSingleVote(v=>!v)}>
                   {t('communities.polls_single_vote')}
                 </button>
               </div>
               <div className="flex flex-col min-w-0">
-                <label className="text-sm text-[#9fb0b5]">{t('communities.polls_expiry_label')}</label>
+                <label className="text-sm text-c-text-tertiary">{t('communities.polls_expiry_label')}</label>
                 <div className="mt-1 flex items-center gap-2 min-w-0">
-                  <input type="datetime-local" value={expiresAt} onChange={e=> setExpiresAt(e.target.value)} className="flex-1 min-w-0 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" />
+                  <input type="datetime-local" value={expiresAt} onChange={e=> setExpiresAt(e.target.value)} className="flex-1 min-w-0 rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm focus:border-teal-400/70 outline-none" />
                   {expiresAt ? (
-                    <button type="button" className="px-2 py-1 rounded-md border border-white/10 text-xs text-[#9fb0b5] hover:bg-white/5" onClick={()=> setExpiresAt('')}>{t('communities.polls_clear_expiry')}</button>
+                    <button type="button" className="px-2 py-1 rounded-md border border-c-border text-xs text-c-text-tertiary hover:bg-c-hover-bg" onClick={()=> setExpiresAt('')}>{t('communities.polls_clear_expiry')}</button>
                   ) : null}
                 </div>
               </div>
             </div>
             <div className="flex justify-end gap-2">
               {editingPollId && (
-                <button type="button" className="px-3 py-1.5 rounded-md border border-white/10 text-sm hover:bg-white/5" onClick={()=> { setEditingPollId(null); setQuestion(''); setOptions(['','']); setSingleVote(true); setExpiresAt(''); navigate(`/community/${community_id}/polls_react`) }}>{t('common.cancel')}</button>
+                <button type="button" className="px-3 py-1.5 rounded-md border border-c-border text-sm hover:bg-c-hover-bg" onClick={()=> { setEditingPollId(null); setQuestion(''); setOptions(['','']); setSingleVote(true); setExpiresAt(''); navigate(`/community/${community_id}/polls_react`) }}>{t('common.cancel')}</button>
               )}
-              <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110">{editingPollId ? t('communities.polls_update') : t('communities.create_poll')}</button>
+              <button className="px-3 py-1.5 rounded-md bg-cpoint-turquoise text-black text-sm hover:brightness-110">{editingPollId ? t('communities.polls_update') : t('communities.create_poll')}</button>
             </div>
           </form>
         ) : activeTab === 'archive' ? (
           <div className="space-y-3">
             {loading ? (
-              <div className="text-[#9fb0b5]">{t('common.loading')}</div>
+              <div className="text-c-text-tertiary">{t('common.loading')}</div>
             ) : archivedPolls.length === 0 ? (
-              <div className="text-[#9fb0b5]">{t('communities.no_archived_polls')}</div>
+              <div className="text-c-text-tertiary">{t('communities.no_archived_polls')}</div>
             ) : (
               archivedPolls.map(p => (
-                <div key={p.id} className="rounded-2xl border border-white/10 bg-white/[0.035] opacity-75 overflow-hidden">
-                  <div className="px-3 py-2 flex items-center gap-2 border-b border-white/10">
+                <div key={p.id} className="rounded-2xl border border-c-border bg-white/[0.035] opacity-75 overflow-hidden">
+                  <div className="px-3 py-2 flex items-center gap-2 border-b border-c-border">
                     <div className="font-medium flex-1">{p.question}</div>
-                    <span className="text-xs text-[#9fb0b5]">🔒 {t('communities.polls_closed')}</span>
-                    <button title={t('communities.polls_voters')} className="px-2 py-1 rounded-md border border-[#4db6ac] text-[#4db6ac] hover:bg-[#4db6ac]/10 text-sm" onClick={()=> loadVoters(p.id)}>
+                    <span className="text-xs text-c-text-tertiary">🔒 {t('communities.polls_closed')}</span>
+                    <button title={t('communities.polls_voters')} className="px-2 py-1 rounded-md border border-cpoint-turquoise text-cpoint-turquoise hover:bg-cpoint-turquoise/10 text-sm" onClick={()=> loadVoters(p.id)}>
                       <i className="fa-solid fa-users mr-1" />
                       {t('communities.polls_voters')}
                     </button>
@@ -344,11 +344,11 @@ export default function CommunityPolls(){
                     {p.options?.map((o, i) => {
                       const pct = p.total_votes ? Math.round((o.votes / p.total_votes) * 100) : 0
                       return (
-                        <div key={i} className="w-full text-left px-3 py-2 rounded border border-white/10 relative overflow-hidden">
-                          <div className="absolute inset-0 bg-[#4db6ac]/20" style={{ width: `${pct}%` }} />
+                        <div key={i} className="w-full text-left px-3 py-2 rounded border border-c-border relative overflow-hidden">
+                          <div className="absolute inset-0 bg-cpoint-turquoise/20" style={{ width: `${pct}%` }} />
                           <div className="relative flex items-center justify-between">
                             <span>{o.option_text}</span>
-                            <span className="text-xs text-[#9fb0b5]">{o.votes} {pct > 0 ? `(${pct}%)` : ''}</span>
+                            <span className="text-xs text-c-text-tertiary">{o.votes} {pct > 0 ? `(${pct}%)` : ''}</span>
                           </div>
                         </div>
                       )
@@ -361,15 +361,15 @@ export default function CommunityPolls(){
         ) : (
           <div className="space-y-3">
             {loading ? (
-              <div className="text-[#9fb0b5]">{t('common.loading')}</div>
+              <div className="text-c-text-tertiary">{t('common.loading')}</div>
             ) : polls.length === 0 ? (
-              <div className="text-[#9fb0b5]">{t('communities.no_active_polls')}</div>
+              <div className="text-c-text-tertiary">{t('communities.no_active_polls')}</div>
             ) : (
               polls.map(p => (
-                <div key={p.id} className="rounded-2xl border border-white/10 bg-white/[0.035] overflow-hidden">
-                  <div className="px-3 py-2 flex items-center gap-2 border-b border-white/10">
+                <div key={p.id} className="rounded-2xl border border-c-border bg-white/[0.035] overflow-hidden">
+                  <div className="px-3 py-2 flex items-center gap-2 border-b border-c-border">
                     <div className="font-medium flex-1">{p.question}</div>
-                    <button title={t('communities.polls_voters')} className="px-2 py-1 rounded-md border border-[#4db6ac] text-[#4db6ac] hover:bg-[#4db6ac]/10 text-sm" onClick={()=> loadVoters(p.id)}>
+                    <button title={t('communities.polls_voters')} className="px-2 py-1 rounded-md border border-cpoint-turquoise text-cpoint-turquoise hover:bg-cpoint-turquoise/10 text-sm" onClick={()=> loadVoters(p.id)}>
                       <i className="fa-solid fa-users mr-1" />
                       {t('communities.polls_voters')}
                     </button>
@@ -379,9 +379,9 @@ export default function CommunityPolls(){
                   </div>
                   <div className="px-3 py-2 space-y-2">
                     {p.options?.map(o => (
-                      <button key={o.id} className="w-full text-left px-3 py-2 rounded border border-white/10 hover:bg-white/5 flex items-center justify-between" onClick={()=> vote(p.id, o.id)}>
+                      <button key={o.id} className="w-full text-left px-3 py-2 rounded border border-c-border hover:bg-c-hover-bg flex items-center justify-between" onClick={()=> vote(p.id, o.id)}>
                         <span>{o.option_text}</span>
-                        <span className="text-xs text-[#9fb0b5]">{o.votes}</span>
+                        <span className="text-xs text-c-text-tertiary">{o.votes}</span>
                       </button>
                     ))}
                   </div>
@@ -394,21 +394,21 @@ export default function CommunityPolls(){
 
       {viewingVoters && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={()=> { setViewingVoters(null); setVotersData(null) }}>
-          <div className="bg-black border border-white/10 rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden" onClick={(e)=> e.stopPropagation()}>
-            <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+          <div className="bg-c-bg-app border border-c-border rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden" onClick={(e)=> e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-c-border flex items-center justify-between">
               <div className="font-medium">{t('communities.polls_voters_modal')}</div>
-              <button className="p-2 hover:bg-white/5 rounded-full" onClick={()=> { setViewingVoters(null); setVotersData(null) }}>
+              <button className="p-2 hover:bg-c-hover-bg rounded-full" onClick={()=> { setViewingVoters(null); setVotersData(null) }}>
                 <i className="fa-solid fa-xmark" />
               </button>
             </div>
             <div className="overflow-y-auto max-h-[calc(80vh-60px)] p-4">
               {loadingVoters ? (
-                <div className="text-[#9fb0b5]">{t('communities.loading_voters')}</div>
+                <div className="text-c-text-tertiary">{t('communities.loading_voters')}</div>
               ) : votersData ? (
                 <div className="space-y-4">
                   {votersData.map((opt: any) => (
-                    <div key={opt.id} className="border border-white/10 rounded-lg p-3">
-                      <div className="font-medium text-sm mb-2 text-[#4db6ac]">{opt.option_text}</div>
+                    <div key={opt.id} className="border border-c-border rounded-lg p-3">
+                      <div className="font-medium text-sm mb-2 text-cpoint-turquoise">{opt.option_text}</div>
                       {opt.voters && opt.voters.length > 0 ? (
                         <div className="space-y-2">
                           {opt.voters.map((voter: any, idx: number) => (
@@ -419,13 +419,13 @@ export default function CommunityPolls(){
                           ))}
                         </div>
                       ) : (
-                        <div className="text-xs text-[#9fb0b5]">{t('communities.no_votes')}</div>
+                        <div className="text-xs text-c-text-tertiary">{t('communities.no_votes')}</div>
                       )}
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-[#9fb0b5]">{t('communities.no_data')}</div>
+                <div className="text-c-text-tertiary">{t('communities.no_data')}</div>
               )}
             </div>
           </div>

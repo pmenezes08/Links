@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+﻿import { useEffect, useState, useCallback } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
 
@@ -155,27 +155,27 @@ export default function AccountSecurity() {
   }
 
   return (
-    <div className="glass-page min-h-screen text-white pb-20">
+    <div className="glass-page min-h-screen text-c-text-primary pb-20">
       <div className="glass-card max-w-2xl mx-auto px-4 pb-6 space-y-4">
         <button
           type="button"
-          className="inline-flex items-center gap-2 text-sm text-[#9fb0b5] hover:text-white"
+          className="inline-flex items-center gap-2 text-sm text-c-text-tertiary hover:text-c-text-primary"
           onClick={() => navigate('/account_settings')}
         >
           <i className="fa-solid fa-arrow-left" />
           Back to Account Settings
         </button>
 
-        <div className="rounded-xl border border-white/10 bg-black p-6 space-y-4">
+        <div className="rounded-xl border border-c-border bg-c-bg-app p-6 space-y-4">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8ca0a8]">Privacy &amp; Security</p>
-            <h1 className="text-xl font-semibold text-white">Keep your data protected</h1>
-            <p className="text-sm text-white/60">
+            <h1 className="text-xl font-semibold text-c-text-primary">Keep your data protected</h1>
+            <p className="text-sm text-c-text-primary/60">
               Update your password and manage your privacy settings.
             </p>
           </div>
 
-          <div className="flex gap-1 rounded-full border border-white/10 bg-white/5 p-1 overflow-hidden">
+          <div className="flex gap-1 rounded-full border border-c-border bg-c-hover-bg p-1 overflow-hidden">
             {[
               { key: 'security', label: 'Security' },
               { key: 'privacy', label: 'Privacy' },
@@ -186,7 +186,7 @@ export default function AccountSecurity() {
                   key={tab.key}
                   type="button"
                   className={`flex-1 min-w-0 rounded-full px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition truncate ${
-                    isActive ? 'bg-white text-black' : 'text-white/70 hover:text-white'
+                    isActive ? 'bg-white text-black' : 'text-c-text-secondary hover:text-c-text-primary'
                   }`}
                   onClick={() => setActiveTab(tab.key as typeof activeTab)}
                 >
@@ -218,7 +218,7 @@ export default function AccountSecurity() {
                       value={currentPassword}
                       onChange={e => setCurrentPassword(e.target.value)}
                       placeholder="Enter current password"
-                      className="w-full rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-white focus:border-[#4db6ac] focus:outline-none"
+                      className="w-full rounded-lg border border-white/20 bg-c-hover-bg px-4 py-3 text-c-text-primary focus:border-cpoint-turquoise focus:outline-none"
                     />
                   </div>
                   <div>
@@ -228,7 +228,7 @@ export default function AccountSecurity() {
                       value={newPassword}
                       onChange={e => setNewPassword(e.target.value)}
                       placeholder="Enter new password"
-                      className="w-full rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-white focus:border-[#4db6ac] focus:outline-none"
+                      className="w-full rounded-lg border border-white/20 bg-c-hover-bg px-4 py-3 text-c-text-primary focus:border-cpoint-turquoise focus:outline-none"
                     />
                   </div>
                   <div>
@@ -238,13 +238,13 @@ export default function AccountSecurity() {
                       value={confirmPassword}
                       onChange={e => setConfirmPassword(e.target.value)}
                       placeholder="Confirm new password"
-                      className="w-full rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-white focus:border-[#4db6ac] focus:outline-none"
+                      className="w-full rounded-lg border border-white/20 bg-c-hover-bg px-4 py-3 text-c-text-primary focus:border-cpoint-turquoise focus:outline-none"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={handlePasswordUpdate}
-                    className="rounded-lg bg-[#4db6ac] px-6 py-3 font-medium text-black transition-colors hover:bg-[#45a99c]"
+                    className="rounded-lg bg-cpoint-turquoise px-6 py-3 font-medium text-black transition-colors hover:brightness-90"
                   >
                     Update Password
                   </button>
@@ -259,17 +259,17 @@ export default function AccountSecurity() {
                       <i className="fa-solid fa-ban text-red-400" />
                       Blocked Users
                     </h3>
-                    <p className="text-xs text-white/60 mt-1">
+                    <p className="text-xs text-c-text-primary/60 mt-1">
                       Blocked users can't see your posts or send you messages.
                     </p>
                   </div>
                   
                   {blockedUsersLoading ? (
                     <div className="text-center py-4">
-                      <i className="fa-solid fa-spinner fa-spin text-white/60" />
+                      <i className="fa-solid fa-spinner fa-spin text-c-text-primary/60" />
                     </div>
                   ) : blockedUsers.length === 0 ? (
-                    <div className="text-center py-4 text-white/50 text-sm rounded-lg bg-white/5 border border-white/10">
+                    <div className="text-center py-4 text-c-text-primary/50 text-sm rounded-lg bg-c-hover-bg border border-c-border">
                       <i className="fa-solid fa-check-circle mr-2 text-green-400" />
                       You haven't blocked anyone
                     </div>
@@ -278,10 +278,10 @@ export default function AccountSecurity() {
                       {blockedUsers.map(user => (
                         <div 
                           key={user.username}
-                          className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10"
+                          className="flex items-center justify-between p-3 rounded-lg bg-c-hover-bg border border-c-border"
                         >
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-9 h-9 rounded-full bg-white/10 overflow-hidden flex-shrink-0">
+                            <div className="w-9 h-9 rounded-full bg-c-active-bg overflow-hidden flex-shrink-0">
                               {user.profile_picture ? (
                                 <img 
                                   src={user.profile_picture} 
@@ -289,15 +289,15 @@ export default function AccountSecurity() {
                                   className="w-full h-full object-cover"
                                 />
                               ) : (
-                                <div className="w-full h-full flex items-center justify-center text-white/60">
+                                <div className="w-full h-full flex items-center justify-center text-c-text-primary/60">
                                   <i className="fa-solid fa-user text-xs" />
                                 </div>
                               )}
                             </div>
                             <div className="min-w-0">
                               <div className="font-medium text-sm truncate">@{user.username}</div>
-                              <div className="text-xs text-white/40 truncate">
-                                {user.reason && `${user.reason} • `}
+                              <div className="text-xs text-c-text-primary/40 truncate">
+                                {user.reason && `${user.reason} \u2022 `}
                                 {new Date(user.blocked_at).toLocaleDateString()}
                               </div>
                             </div>
@@ -305,7 +305,7 @@ export default function AccountSecurity() {
                           <button
                             onClick={() => handleUnblock(user.username)}
                             disabled={unblocking === user.username}
-                            className="px-3 py-1.5 text-xs rounded-lg border border-white/20 text-white hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                            className="px-3 py-1.5 text-xs rounded-lg border border-white/20 text-c-text-primary hover:bg-c-hover-bg disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                           >
                             {unblocking === user.username ? (
                               <i className="fa-solid fa-spinner fa-spin" />
@@ -320,23 +320,23 @@ export default function AccountSecurity() {
                 </div>
 
                 {/* Hidden Posts Section */}
-                <div className="space-y-3 pt-4 border-t border-white/10">
+                <div className="space-y-3 pt-4 border-t border-c-border">
                   <div>
                     <h3 className="text-base font-semibold flex items-center gap-2">
                       <i className="fa-solid fa-eye-slash text-orange-400" />
                       Hidden Posts
                     </h3>
-                    <p className="text-xs text-white/60 mt-1">
+                    <p className="text-xs text-c-text-primary/60 mt-1">
                       Posts you've hidden from your feed. Unhide them to see them again.
                     </p>
                   </div>
                   
                   {hiddenPostsLoading ? (
                     <div className="text-center py-4">
-                      <i className="fa-solid fa-spinner fa-spin text-white/60" />
+                      <i className="fa-solid fa-spinner fa-spin text-c-text-primary/60" />
                     </div>
                   ) : hiddenPosts.length === 0 ? (
-                    <div className="text-center py-4 text-white/50 text-sm rounded-lg bg-white/5 border border-white/10">
+                    <div className="text-center py-4 text-c-text-primary/50 text-sm rounded-lg bg-c-hover-bg border border-c-border">
                       <i className="fa-solid fa-check-circle mr-2 text-green-400" />
                       You haven't hidden any posts
                     </div>
@@ -345,21 +345,21 @@ export default function AccountSecurity() {
                       {hiddenPosts.map(post => (
                         <div 
                           key={post.post_id}
-                          className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10"
+                          className="flex items-center justify-between p-3 rounded-lg bg-c-hover-bg border border-c-border"
                         >
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
-                              <span className="text-xs font-medium text-[#4db6ac]">@{post.author}</span>
-                              <span className="text-xs text-white/40">
+                              <span className="text-xs font-medium text-cpoint-turquoise">@{post.author}</span>
+                              <span className="text-xs text-c-text-primary/40">
                                 {new Date(post.hidden_at).toLocaleDateString()}
                               </span>
                             </div>
-                            <div className="text-xs text-white/60 truncate">{post.preview}</div>
+                            <div className="text-xs text-c-text-primary/60 truncate">{post.preview}</div>
                           </div>
                           <button
                             onClick={() => handleUnhide(post.post_id)}
                             disabled={unhiding === post.post_id}
-                            className="ml-3 px-3 py-1.5 text-xs rounded-lg border border-white/20 text-white hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                            className="ml-3 px-3 py-1.5 text-xs rounded-lg border border-white/20 text-c-text-primary hover:bg-c-hover-bg disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                           >
                             {unhiding === post.post_id ? (
                               <i className="fa-solid fa-spinner fa-spin" />

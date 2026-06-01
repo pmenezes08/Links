@@ -81,7 +81,7 @@ function PostMediaCarousel({ post }: { post: Post }) {
       return (
         <div className="px-3" onClick={(e) => e.stopPropagation()}>
           <video
-            className="w-full max-h-[360px] rounded border border-white/10 bg-black"
+            className="w-full max-h-[360px] rounded border border-c-border bg-black"
             src={normalizeMediaPath(post.video_path) + '#t=0.1'}
             controls
             playsInline
@@ -126,7 +126,7 @@ function PostMediaCarousel({ post }: { post: Post }) {
       {current?.type === 'video' ? (
         <div className="px-3">
           <video
-            className="w-full max-h-[360px] rounded border border-white/10 bg-black"
+            className="w-full max-h-[360px] rounded border border-c-border bg-black"
             src={normalizeMediaPath(current.path) + '#t=0.1'}
             controls
             playsInline
@@ -196,11 +196,11 @@ function DashboardFeedCaughtUpEmpty() {
   const { t } = useTranslation()
   return (
     <div className="flex flex-col items-center justify-center py-12 px-4">
-      <div className="w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
-        <i className="fa-regular fa-comment-dots text-3xl text-white/30" />
+      <div className="w-20 h-20 rounded-full bg-c-hover-bg border border-c-border flex items-center justify-center mb-4">
+        <i className="fa-regular fa-comment-dots text-3xl text-c-accent-ink" />
       </div>
-      <h3 className="text-lg font-medium text-white/80 mb-2 text-center">{t('feed.caught_up')}</h3>
-      <p className="text-sm text-white/50 text-center max-w-xs">{t('feed.no_unread_posts')}</p>
+      <h3 className="text-lg font-medium text-c-text-primary mb-2 text-center">{t('feed.caught_up')}</h3>
+      <p className="text-sm text-c-text-tertiary text-center max-w-xs">{t('feed.no_unread_posts')}</p>
     </div>
   )
 }
@@ -235,12 +235,12 @@ function DashboardFeedNetworkPicker({
           aria-expanded={open}
         >
           <div className="min-w-0 flex-1">
-            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/28">
+            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-c-text-tertiary">
               {t('feed.filter_by_community')}
             </div>
-            <div className="mt-0.5 text-sm font-medium text-white truncate">{selectedLabel}</div>
+            <div className="mt-0.5 text-sm font-medium text-c-text-primary truncate">{selectedLabel}</div>
           </div>
-          <i className="fa-solid fa-chevron-down text-xs text-[#9fb0b5] shrink-0" />
+          <i className="fa-solid fa-chevron-down text-xs text-c-text-tertiary shrink-0" />
         </NativeListRow>
       </PanelCard>
       {open ? (
@@ -253,10 +253,10 @@ function DashboardFeedNetworkPicker({
             role="dialog"
             aria-modal="true"
             aria-label={t('feed.filter_by_community')}
-            className="w-full max-w-lg overflow-hidden rounded-3xl border border-[#4db6ac] bg-[#0d1214] shadow-[0_24px_56px_rgba(0,0,0,0.52)]"
+            className="w-full max-w-lg overflow-hidden rounded-3xl border border-cpoint-turquoise bg-c-bg-elevated shadow-[0_24px_56px_rgba(0,0,0,0.52)]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-4 py-3 border-b border-white/10 text-sm font-semibold text-white text-center">
+            <div className="px-4 py-3 border-b border-c-border text-sm font-semibold text-c-text-primary text-center">
               {t('feed.filter_by_community')}
             </div>
             <div className="max-h-[min(360px,55dvh)] overflow-y-auto">
@@ -265,16 +265,16 @@ function DashboardFeedNetworkPicker({
                 return (
                   <NativeListRow
                     key={opt.id ?? 'all'}
-                    className="px-4 py-3.5 gap-3 border-b border-white/[0.06] last:border-b-0"
+                    className="px-4 py-3.5 gap-3 border-b border-c-border last:border-b-0"
                     onClick={() => {
                       onSelect(opt.id)
                       setOpen(false)
                     }}
                   >
-                    <span className={`flex-1 text-sm ${selected ? 'text-[#4db6ac] font-medium' : 'text-white'}`}>
+                    <span className={`flex-1 text-sm ${selected ? 'text-cpoint-turquoise font-medium' : 'text-c-text-primary'}`}>
                       {opt.label}
                     </span>
-                    {selected ? <i className="fa-solid fa-check text-[#4db6ac] text-sm" /> : null}
+                    {selected ? <i className="fa-solid fa-check text-cpoint-turquoise text-sm" /> : null}
                   </NativeListRow>
                 )
               })}
@@ -297,11 +297,11 @@ function dashboardFeedLastNonemptyKey(scope: string): string {
 function DashboardFeedCommunityRule({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-3 py-2 my-2" aria-hidden>
-      <div className="h-px flex-1 bg-white/10" />
-      <span className="text-[10px] uppercase tracking-wider text-[#9fb0b5]/60 font-medium max-w-[min(280px,55vw)] truncate text-center">
+      <div className="h-px flex-1 bg-c-active-bg" />
+      <span className="text-[10px] uppercase tracking-wider text-c-text-tertiary font-medium max-w-[min(280px,55vw)] truncate text-center">
         {label}
       </span>
-      <div className="h-px flex-1 bg-white/10" />
+      <div className="h-px flex-1 bg-c-active-bg" />
     </div>
   )
 }
@@ -727,7 +727,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
 
   return (
     <div
-      className="fixed inset-x-0 bottom-0 bg-black text-white"
+      className="fixed inset-x-0 bottom-0 bg-c-bg-app text-c-text-primary"
       style={{ top: 'var(--app-header-offset, calc(56px + var(--sat-px, 0px)))' }}
     >
       <div
@@ -742,33 +742,33 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
           <PullToRefreshPuck dragY={ptrDragY} refreshing={ptrRefreshing} settling={ptrSettling} />
         )}
         {mode === 'dashboard_feed' && hasDashboardCommunities ? (
-          <div className="mb-4 rounded-2xl border border-white/10 bg-black p-3 shadow-sm shadow-black/20 space-y-4">
+          <div className="mb-4 rounded-2xl border border-c-border bg-c-bg-app p-3 shadow-sm shadow-black/20 space-y-4">
             <div className="flex items-center justify-center gap-6 sm:gap-8">
               <button
                 type="button"
                 className={`text-sm font-medium transition-opacity touch-manipulation ${
-                  feedMode === 'unread' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
+                  feedMode === 'unread' ? 'text-c-text-primary' : 'text-c-text-tertiary hover:text-c-text-primary'
                 }`}
                 onClick={() => setFeedMode('unread')}
               >
                 <div className="pt-1 whitespace-nowrap text-center">{t('feed.unread_tab')}</div>
                 <div
                   className={`h-0.5 rounded-full w-16 mx-auto mt-1 transition-shadow ${
-                    feedMode === 'unread' ? 'bg-[#4db6ac] shadow-[0_0_12px_rgba(77,182,172,0.35)]' : 'bg-transparent'
+                    feedMode === 'unread' ? 'bg-cpoint-turquoise shadow-[0_0_12px_rgba(0,206,200,0.35)]' : 'bg-transparent'
                   }`}
                 />
               </button>
               <button
                 type="button"
                 className={`text-sm font-medium transition-opacity touch-manipulation ${
-                  feedMode === 'recent48h' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
+                  feedMode === 'recent48h' ? 'text-c-text-primary' : 'text-c-text-tertiary hover:text-c-text-primary'
                 }`}
                 onClick={() => setFeedMode('recent48h')}
               >
                 <div className="pt-1 whitespace-nowrap text-center">{t('feed.last_48_hours_tab')}</div>
                 <div
                   className={`h-0.5 rounded-full w-16 mx-auto mt-1 transition-shadow ${
-                    feedMode === 'recent48h' ? 'bg-[#4db6ac] shadow-[0_0_12px_rgba(77,182,172,0.35)]' : 'bg-transparent'
+                    feedMode === 'recent48h' ? 'bg-cpoint-turquoise shadow-[0_0_12px_rgba(0,206,200,0.35)]' : 'bg-transparent'
                   }`}
                 />
               </button>
@@ -788,7 +788,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
           mode === 'dashboard_feed' && feedMode === 'unread' ? (
             <DashboardFeedCaughtUpEmpty />
           ) : (
-          <div className="p-3 text-[#9fb0b5]">
+          <div className="p-3 text-c-text-tertiary">
             {mode === 'dashboard_feed'
               ? feedMode === 'recent48h'
                 ? t('feed.no_posts_recent_window')
@@ -807,20 +807,20 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
                 prev != null &&
                 (prevCid !== cid || String(prev.community_name || '') !== String(p.community_name || ''))
               const cardShell =
-                'rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer'
+                'rounded-2xl border border-c-border bg-c-bg-app shadow-sm shadow-black/20 cursor-pointer'
               const cardEl = (
               <div className={cardShell} onClick={p.poll ? undefined : () => navigate(`/post/${p.id}`)}>
-                <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
+                <div className="px-3 py-2 border-b border-c-border flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
                   <Avatar username={p.username} url={p.profile_picture || undefined} size={32} linkToProfile />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-2 min-w-0">
                       <div className="font-medium tracking-[-0.01em] truncate">{p.username}</div>
                       {p.community_name ? (
-                        <div className="text-xs text-[#9fb0b5] truncate">{t('feed.in_community', { community: p.community_name })}</div>
+                        <div className="text-xs text-c-text-tertiary truncate">{t('feed.in_community', { community: p.community_name })}</div>
                       ) : null}
                     </div>
                   </div>
-                  <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatSmartTime(p.display_timestamp || p.timestamp)}</div>
+                  <div className="text-xs text-c-text-tertiary ml-auto tabular-nums">{formatSmartTime(p.display_timestamp || p.timestamp)}</div>
                 </div>
                 <div className="py-2 space-y-2">
                   {(() => {
@@ -881,11 +881,11 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
                   {p.poll && (
                     <div className="px-3 space-y-2" onClick={(e)=> e.stopPropagation()}>
                       <div className="flex items-center gap-2 mb-2">
-                        <i className="fa-solid fa-chart-bar text-[#4db6ac]" />
+                        <i className="fa-solid fa-chart-bar text-cpoint-turquoise" />
                         <div className="font-medium text-sm flex-1">
                           {p.poll.question}
                           {p.poll.expires_at ? (
-                            <span className="ml-2 text-[11px] text-[#9fb0b5]">• {t('feed.poll_closes', { date: (() => { try { const d = new Date(p.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch { } return String(p.poll.expires_at) })() })}</span>
+                            <span className="ml-2 text-[11px] text-c-text-tertiary">• {t('feed.poll_closes', { date: (() => { try { const d = new Date(p.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch { } return String(p.poll.expires_at) })() })}</span>
                           ) : null}
                         </div>
                       </div>
@@ -902,25 +902,25 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
                               key={option.id}
                               type="button"
                               disabled={isExpired}
-                              className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isExpired ? 'opacity-60 cursor-not-allowed' : (isUserVote ? 'border-[#4db6ac] bg-[#4db6ac]/10' : 'border-white/10 hover:bg-white/5')}`}
+                              className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isExpired ? 'opacity-60 cursor-not-allowed' : (isUserVote ? 'border-cpoint-turquoise bg-cpoint-turquoise/10' : 'border-c-border hover:bg-c-hover-bg')}`}
                               onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (!isExpired && handlePollVote) handlePollVote(p.id, p.poll!.id, option.id) }}
                             >
-                              <div className="absolute inset-0 bg-[#4db6ac]/20" style={{ width: `${percentage}%`, transition: 'width 0.3s ease' }} />
+                              <div className="absolute inset-0 bg-cpoint-turquoise/20" style={{ width: `${percentage}%`, transition: 'width 0.3s ease' }} />
                               <div className="relative flex items-center justify-between">
                                 <span className="text-sm">{option.text}</span>
-                                <span className="text-xs text-[#9fb0b5] font-medium">{option.votes} {percentage > 0 ? `(${percentage}%)` : ''}</span>
+                                <span className="text-xs text-c-text-tertiary font-medium">{option.votes} {percentage > 0 ? `(${percentage}%)` : ''}</span>
                               </div>
                             </button>
                           )
                         })}
                       </div>
-                      <div className="flex items-center justify-between text-xs text-[#9fb0b5] pt-1">
+                      <div className="flex items-center justify-between text-xs text-c-text-tertiary pt-1">
                         <span>{t('feed.vote_count', { count: p.poll.total_votes || 0 })}</span>
                         {p.community_id && (
                           <button 
                             type="button"
                             onClick={(e)=> { e.preventDefault(); e.stopPropagation(); navigate(`/community/${p.community_id}/polls_react`) }}
-                            className="text-[#4db6ac] hover:underline"
+                            className="text-cpoint-turquoise hover:underline"
                           >
                             {t('feed.view_all_polls')} →
                           </button>

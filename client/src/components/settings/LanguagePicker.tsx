@@ -10,7 +10,7 @@ import type { SupportedLocale } from '../../i18n'
  *
  * Mounts under the Notifications block (and above Danger Zone) per the
  * locked product decision in docs/I18N_ROADMAP.md. Visual style mirrors
- * the surrounding `rounded-xl border border-white/10` sections so the
+ * the surrounding `rounded-xl border border-c-border` sections so the
  * page rhythm stays intact.
  */
 export default function LanguagePicker() {
@@ -35,10 +35,10 @@ export default function LanguagePicker() {
   }
 
   return (
-    <div className="rounded-xl border border-white/10 p-6 space-y-4">
+    <div className="rounded-xl border border-c-border p-6 space-y-4">
       <div>
         <h2 className="text-lg font-semibold">{t('account.language.section_title')}</h2>
-        <p className="mt-1 text-sm text-white/60">{t('account.language.helper')}</p>
+        <p className="mt-1 text-sm text-c-text-tertiary">{t('account.language.helper')}</p>
       </div>
 
       <div className="space-y-2">
@@ -49,8 +49,8 @@ export default function LanguagePicker() {
               key={opt.value}
               className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
                 checked
-                  ? 'border-emerald-400/60 bg-emerald-400/5 text-white'
-                  : 'border-white/10 bg-white/5 text-white/80 hover:border-white/20'
+                  ? 'border-emerald-400/60 bg-emerald-400/5 text-c-text-primary'
+                  : 'border-c-border bg-c-hover-bg text-c-text-secondary hover:border-white/20'
               }`}
             >
               <input
@@ -75,13 +75,13 @@ export default function LanguagePicker() {
         type="button"
         onClick={() => void handleSave()}
         disabled={!hasChanges || saving}
-        className="inline-flex items-center justify-center rounded-lg bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black transition hover:bg-[#45a99c] disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex items-center justify-center rounded-lg bg-cpoint-turquoise px-4 py-2 text-sm font-semibold text-black transition hover:bg-[#45a99c] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {saving ? t('account.language.saving') : t('common.save')}
       </button>
 
       <div className="min-h-[1.25rem] text-xs">
-        {saving && <span className="text-white/50">{t('account.language.saving')}</span>}
+        {saving && <span className="text-c-text-tertiary">{t('account.language.saving')}</span>}
         {!saving && saved && !error && (
           <span className="text-emerald-300">{t('account.language.saved')}</span>
         )}

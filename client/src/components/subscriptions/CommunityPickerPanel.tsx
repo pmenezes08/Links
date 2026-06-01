@@ -120,7 +120,7 @@ export default function CommunityPickerPanel({
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-white/45">
+      <p className="text-sm text-c-text-tertiary">
         {downgradeFlow
           ? t('subscriptions.picker_downgrade_hint')
           : t('subscriptions.picker_upgrade_hint', {
@@ -142,7 +142,7 @@ export default function CommunityPickerPanel({
             <button
               type="button"
               onClick={() => openExternalBillingUrl(webBillingUrl)}
-              className="mt-3 block text-left text-[#4db6ac] underline"
+              className="mt-3 block text-left text-cpoint-turquoise underline"
             >
               {t('subscriptions.open_web_billing', { url: webBillingUrl })}
             </button>
@@ -151,12 +151,12 @@ export default function CommunityPickerPanel({
       ) : null}
 
       {communities === null && !loadErr ? (
-        <div className="text-sm text-white/50">{t('subscriptions.picker_loading_communities')}</div>
+        <div className="text-sm text-c-text-tertiary">{t('subscriptions.picker_loading_communities')}</div>
       ) : null}
 
       {communities !== null && communities.length === 0 ? (
         <PanelCard>
-          <div className="p-4 text-sm text-white/60">
+          <div className="p-4 text-sm text-c-text-tertiary">
             {t('subscriptions.picker_no_eligible', { tier: tierLabel(tier.tier_code) })}
           </div>
         </PanelCard>
@@ -182,16 +182,16 @@ export default function CommunityPickerPanel({
                   setSelectedId(c.id)
                 }}
                 className={
-                  'flex w-full items-center justify-between px-4 py-4 text-left transition-colors active:bg-white/[0.08] ' +
-                  (index < communities.length - 1 ? 'border-b border-white/[0.055] ' : '') +
+                  'flex w-full items-center justify-between px-4 py-4 text-left transition-colors active:bg-c-active-bg ' +
+                  (index < communities.length - 1 ? 'border-b border-c-border ' : '') +
                   (blockedHigher ? 'cursor-not-allowed opacity-55 ' : '') +
-                  (checked ? 'bg-[#4db6ac]/[0.08] ' : '')
+                  (checked ? 'bg-cpoint-turquoise/[0.08] ' : '')
                 }
               >
                 <span className="min-w-0 flex-1 pr-3">
-                  <span className="block text-base font-semibold text-white">{c.name}</span>
+                  <span className="block text-base font-semibold text-c-text-primary">{c.name}</span>
                   {tierHint ? (
-                    <span className="mt-0.5 block text-sm text-white/40">{tierHint}</span>
+                    <span className="mt-0.5 block text-sm text-c-text-tertiary">{tierHint}</span>
                   ) : null}
                   {blockedHigher ? (
                     <span className="mt-1 block text-[11px] text-amber-200/80">
@@ -199,7 +199,7 @@ export default function CommunityPickerPanel({
                     </span>
                   ) : null}
                 </span>
-                {checked ? <i className="fa-solid fa-check text-[#4db6ac]" /> : null}
+                {checked ? <i className="fa-solid fa-check text-cpoint-turquoise" /> : null}
               </button>
             )
           })}
@@ -213,8 +213,8 @@ export default function CommunityPickerPanel({
         className={
           'flex w-full items-center justify-center rounded-2xl px-4 py-3 font-bold active:opacity-80 ' +
           (selectedId && !loading
-            ? 'bg-[#4db6ac] text-black'
-            : 'cursor-not-allowed border border-white/15 bg-white/5 text-white/40')
+            ? 'bg-cpoint-turquoise text-black'
+            : 'cursor-not-allowed border border-c-border bg-c-hover-bg text-c-text-tertiary')
         }
       >
         {loading ? t('subscriptions.starting_checkout') : t('subscriptions.continue_checkout')}
@@ -224,7 +224,7 @@ export default function CommunityPickerPanel({
         <button
           type="button"
           onClick={onCreate}
-          className="flex w-full items-center justify-center rounded-2xl border border-white/10 px-4 py-3 font-bold text-white/75 active:bg-white/10"
+          className="flex w-full items-center justify-center rounded-2xl border border-c-border px-4 py-3 font-bold text-c-text-secondary active:bg-c-active-bg"
         >
           {t('subscriptions.create_community')}
         </button>

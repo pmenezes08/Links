@@ -176,22 +176,22 @@ export default function Signup(){
   }
 
   return (
-    <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold mb-2">{t('auth.signup.title')}</h1>
           {invitationInfo ? (
             <div className="bg-cpoint-turquoise/10 border border-cpoint-turquoise/30 rounded-lg p-3 mt-3">
-              <p className="text-white text-sm font-medium">
+              <p className="text-c-text-primary text-sm font-medium">
                 {t('auth.signup.invited_to_join', { community: invitationInfo.community_name })}
               </p>
-              <p className="text-white/60 text-xs mt-1">
+              <p className="text-c-text-tertiary text-xs mt-1">
                 {t('auth.signup.invited_by', { username: invitationInfo.invited_by })}
               </p>
             </div>
           ) : (
-            <p className="text-white/60 text-sm">{t('auth.signup.join_today')}</p>
+            <p className="text-c-text-tertiary text-sm">{t('auth.signup.join_today')}</p>
           )}
         </div>
 
@@ -217,7 +217,7 @@ export default function Signup(){
               onChange={e => handleInputChange('username', e.target.value)}
               placeholder={t('auth.signup.username_placeholder')}
               required
-              className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
+              className="w-full px-3 py-2.5 bg-c-hover-bg border border-white/20 rounded-lg text-sm text-c-text-primary placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
             />
           </div>
             <div>
@@ -228,7 +228,7 @@ export default function Signup(){
                 onChange={e => handleInputChange('first_name', e.target.value)}
                 placeholder={t('auth.signup.first_name_placeholder')}
                 required
-                className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
+                className="w-full px-3 py-2.5 bg-c-hover-bg border border-white/20 rounded-lg text-sm text-c-text-primary placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
               />
             </div>
             <div>
@@ -239,7 +239,7 @@ export default function Signup(){
                 onChange={e => handleInputChange('last_name', e.target.value)}
                 placeholder={t('auth.signup.last_name_placeholder')}
                 required
-                className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
+                className="w-full px-3 py-2.5 bg-c-hover-bg border border-white/20 rounded-lg text-sm text-c-text-primary placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
               />
             </div>
           </div>
@@ -254,10 +254,10 @@ export default function Signup(){
               placeholder={t('auth.signup.email_placeholder')}
               required
               disabled={emailLocked}
-              className={`w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors ${emailLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+              className={`w-full px-3 py-2.5 bg-c-hover-bg border border-white/20 rounded-lg text-sm text-c-text-primary placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors ${emailLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
             />
             {emailLocked && (
-              <p className="text-xs text-white/50 mt-1">{t('auth.signup.email_locked')}</p>
+              <p className="text-xs text-c-text-tertiary mt-1">{t('auth.signup.email_locked')}</p>
             )}
           </div>
 
@@ -269,7 +269,7 @@ export default function Signup(){
               value={formData.mobile}
               onChange={e => handleInputChange('mobile', e.target.value)}
               placeholder="+1 (555) 123-4567"
-              className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
+              className="w-full px-3 py-2.5 bg-c-hover-bg border border-white/20 rounded-lg text-sm text-c-text-primary placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
             />
           </div>
 
@@ -282,7 +282,7 @@ export default function Signup(){
               onChange={e => handleInputChange('password', e.target.value)}
               placeholder="********"
               required
-              className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
+              className="w-full px-3 py-2.5 bg-c-hover-bg border border-white/20 rounded-lg text-sm text-c-text-primary placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
             />
           </div>
 
@@ -295,7 +295,7 @@ export default function Signup(){
               onChange={e => handleInputChange('confirm_password', e.target.value)}
               placeholder="********"
               required
-              className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
+              className="w-full px-3 py-2.5 bg-c-hover-bg border border-white/20 rounded-lg text-sm text-c-text-primary placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
             />
           </div>
 
@@ -322,7 +322,7 @@ export default function Signup(){
 
         {/* Login Link */}
         <div className="mt-4 text-center">
-          <p className="text-white/60 text-xs">
+          <p className="text-c-text-tertiary text-xs">
             {t('auth.signup.have_account')}{' '}
             <button
               className="text-cpoint-turquoise hover:brightness-110 transition-colors text-xs rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
@@ -341,7 +341,7 @@ export default function Signup(){
 
         {/* Terms */}
         <div className="mt-4 text-center">
-          <p className="text-white/40 text-xs">
+          <p className="text-c-text-tertiary text-xs">
             {t('auth.signup.terms_prefix')}{' '}
             <a
               href="https://www.c-point.co/terms"
@@ -365,15 +365,15 @@ export default function Signup(){
 
         {/* Verify Email Modal */}
         {showVerify && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" aria-modal="true" role="dialog" aria-labelledby="signup-verify-title">
-            <div className="w-[90%] max-w-md rounded-xl border border-white/10 bg-black p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-c-bg-app/70" aria-modal="true" role="dialog" aria-labelledby="signup-verify-title">
+            <div className="w-[90%] max-w-md rounded-xl border border-c-border bg-c-bg-app p-4">
               <div id="signup-verify-title" className="text-lg font-semibold mb-1">{t('auth.signup.verify.title')}</div>
-              <div className="text-sm text-white/80">
+              <div className="text-sm text-c-text-secondary">
                 {t('auth.signup.verify.body', { email: pendingEmail || formData.email || t('auth.signup.verify.fallback_email') })}
               </div>
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button
-                  className="px-3 py-2 rounded-md border border-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                  className="px-3 py-2 rounded-md border border-c-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
                   onClick={async ()=>{
                     try{
                       const r = await fetch('/resend_verification_pending', { method:'POST', credentials:'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: pendingEmail || formData.email }) })
@@ -386,13 +386,13 @@ export default function Signup(){
                   {t('auth.signup.verify.resend')}
                 </button>
                 <button
-                  className="px-3 py-2 rounded-md border border-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                  className="px-3 py-2 rounded-md border border-c-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
                   onClick={()=> { setShowVerify(false) }}
                 >
                   {t('auth.signup.verify.edit_email')}
                 </button>
                 <button
-                  className="px-3 py-2 rounded-md border border-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                  className="px-3 py-2 rounded-md border border-c-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
                   onClick={()=> { setShowVerify(false); navigate('/') }}
                 >
                   {t('auth.signup.verify.go_start')}

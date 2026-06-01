@@ -9,7 +9,7 @@ export default function NewMessage(){
   useEffect(() => { setTitle(t('chat.new_message_title')) }, [setTitle, t])
 
   return (
-    <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white overflow-y-auto">
+    <div className="fixed inset-x-0 top-14 bottom-0 bg-c-bg-app text-c-text-primary overflow-y-auto">
       <div className="max-w-3xl mx-auto px-3 py-3">
         <ParentCommunityPicker title={t('chat.select_community_title')} />
       </div>

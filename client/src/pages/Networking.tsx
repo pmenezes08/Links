@@ -68,7 +68,7 @@ const NETWORKING_CHAT_HISTORY_SEND_CAP = 50
 
 function DebugJsonBlock({ data }: { data: unknown }) {
   return (
-    <pre className="max-h-[58vh] overflow-auto whitespace-pre-wrap rounded-xl border border-white/10 bg-black/70 p-3 text-[11px] leading-relaxed text-[#c8d6db]">
+    <pre className="max-h-[58vh] overflow-auto whitespace-pre-wrap rounded-xl border border-c-border bg-c-bg-app/70 p-3 text-[11px] leading-relaxed text-c-text-secondary">
       {JSON.stringify(data ?? {}, null, 2)}
     </pre>
   )
@@ -87,29 +87,29 @@ function SteveDebugModal({
 }) {
   const { t } = useTranslation()
   return (
-    <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm px-3 py-6" role="dialog" aria-modal="true" aria-label={t('networking.debug.modal_aria')}>
-      <div className="mx-auto flex max-h-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-[#4db6ac]/25 bg-[#050707] shadow-2xl">
-        <div className="flex items-start justify-between gap-3 border-b border-white/10 p-4">
+    <div className="fixed inset-0 z-[80] bg-c-bg-overlay backdrop-blur-sm px-3 py-6" role="dialog" aria-modal="true" aria-label={t('networking.debug.modal_aria')}>
+      <div className="mx-auto flex max-h-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-cpoint-turquoise/25 bg-c-bg-elevated shadow-2xl">
+        <div className="flex items-start justify-between gap-3 border-b border-c-border p-4">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#4db6ac]">{t('networking.debug.staging_label')}</p>
-            <h2 className="mt-1 text-lg font-semibold text-white">{t('networking.debug.title')}</h2>
-            <p className="mt-1 text-xs text-[#8ca0a8]">{t('networking.debug.subtitle')}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cpoint-turquoise">{t('networking.debug.staging_label')}</p>
+            <h2 className="mt-1 text-lg font-semibold text-c-text-primary">{t('networking.debug.title')}</h2>
+            <p className="mt-1 text-xs text-c-text-tertiary">{t('networking.debug.subtitle')}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/80 hover:border-white/35"
+            className="rounded-lg border border-c-border px-3 py-1.5 text-xs text-c-text-secondary hover:border-c-border-strong"
           >
             {t('networking.debug.close')}
           </button>
         </div>
-        <div className="flex flex-wrap gap-2 border-b border-white/10 p-3">
+        <div className="flex flex-wrap gap-2 border-b border-c-border p-3">
           {DEBUG_TABS.map(tab => (
             <button
               key={tab.key}
               type="button"
               onClick={() => onTabChange(tab.key)}
-              className={`rounded-full border px-3 py-1.5 text-xs transition ${activeTab === tab.key ? 'border-[#4db6ac]/60 bg-[#4db6ac]/10 text-[#4db6ac]' : 'border-white/15 text-[#a7b8be] hover:border-white/35'}`}
+              className={`rounded-full border px-3 py-1.5 text-xs transition ${activeTab === tab.key ? 'border-cpoint-turquoise/60 bg-cpoint-turquoise/10 text-cpoint-turquoise' : 'border-c-border text-c-text-secondary hover:border-c-border-strong'}`}
             >
               {t(tab.labelKey)}
             </button>
@@ -127,7 +127,7 @@ function SteveDebugModal({
 function SteveWelcomeCopy({ communityName, activeMemberCount }: { communityName: string; activeMemberCount: number }) {
   const { t } = useTranslation()
   return (
-    <div className="space-y-3 text-[13px] leading-relaxed text-[#c8d6db]">
+    <div className="space-y-3 text-[13px] leading-relaxed text-c-text-secondary">
       <p>
         {t(activeMemberCount === 1 ? 'networking.welcome_members_one' : 'networking.welcome_members_other', {
           community: communityName,
@@ -135,7 +135,7 @@ function SteveWelcomeCopy({ communityName, activeMemberCount }: { communityName:
         })}
       </p>
       <p>
-        <span className="font-semibold text-white/95">{t('networking.welcome_prompt_bold')}</span>
+        <span className="font-semibold text-c-text-secondary">{t('networking.welcome_prompt_bold')}</span>
         {' '}
         {t('networking.welcome_prompt_rest')}
       </p>
@@ -547,25 +547,25 @@ export default function Networking() {
   const sectionTabLabel = (key: SectionKey) =>
     key === 'steve' ? t('steve.recommendations') : t('networking.tab_personal')
 
-  if (loading || profileGateLoading) return <div className="glass-page min-h-screen text-white flex items-center justify-center"><span className="text-[#9fb0b5]">{t('networking.loading')}</span></div>
+  if (loading || profileGateLoading) return <div className="glass-page min-h-screen text-c-text-primary flex items-center justify-center"><span className="text-c-text-tertiary">{t('networking.loading')}</span></div>
 
   if (!profileReadyForNetworking) {
     return (
-      <div className="glass-page min-h-screen text-white">
+      <div className="glass-page min-h-screen bg-c-bg-app text-c-text-primary">
         <div className="max-w-xl mx-auto px-4 pt-10">
-          <div className="rounded-2xl border border-[#4db6ac]/25 bg-[#4db6ac]/10 p-5 space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-[#4db6ac]/15 border border-[#4db6ac]/25 flex items-center justify-center">
-              <i className="fa-solid fa-user-check text-[#4db6ac] text-lg" />
+          <div className="rounded-2xl border border-cpoint-turquoise/25 bg-cpoint-turquoise/10 p-5 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-cpoint-turquoise/15 border border-cpoint-turquoise/25 flex items-center justify-center">
+              <i className="fa-solid fa-user-check text-cpoint-turquoise text-lg" />
             </div>
             <div className="space-y-2">
-              <div className="text-lg font-semibold text-white">{t('networking.profile_gate_title')}</div>
-              <div className="text-sm text-white/70 leading-relaxed">
+              <div className="text-lg font-semibold text-c-text-primary">{t('networking.profile_gate_title')}</div>
+              <div className="text-sm text-c-text-secondary leading-relaxed">
                 {t('networking.profile_gate_body')}
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
               {missingProfileFields.map(field => (
-                <span key={field} className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs text-white/80">
+                <span key={field} className="rounded-full border border-c-border bg-c-hover-bg px-3 py-1 text-xs text-c-text-secondary">
                   {profileFieldLabel(field, t)}
                 </span>
               ))}
@@ -573,7 +573,7 @@ export default function Networking() {
             <button
               type="button"
               onClick={() => navigate('/profile')}
-              className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110 transition"
+              className="rounded-full bg-cpoint-turquoise px-4 py-2 text-sm font-semibold text-black hover:brightness-110 transition"
             >
               {t('networking.complete_profile')}
             </button>
@@ -584,10 +584,10 @@ export default function Networking() {
   }
 
   return (
-    <div className="glass-page min-h-screen text-white">
+    <div className="glass-page min-h-screen bg-c-bg-app text-c-text-primary">
       {/* Fixed sub-nav tabs — same as Followers page */}
       <div
-        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+        className="fixed left-0 right-0 h-10 bg-c-bg-app/70 backdrop-blur z-40"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))' }}
       >
         <div className="max-w-3xl mx-auto h-full flex items-center px-2">
@@ -598,11 +598,11 @@ export default function Networking() {
                 <button
                   key={section.key}
                   type="button"
-                  className={`flex-1 text-center text-sm font-medium ${isActive ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
+                  className={`flex-1 text-center text-sm font-medium ${isActive ? 'text-c-text-secondary' : 'text-c-text-tertiary hover:text-c-text-secondary'}`}
                   onClick={() => setActiveSection(section.key)}
                 >
                   <div className="pt-2">{sectionTabLabel(section.key)}</div>
-                  <div className={`h-0.5 rounded-full w-20 mx-auto mt-1 ${isActive ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+                  <div className={`h-0.5 rounded-full w-20 mx-auto mt-1 ${isActive ? 'bg-cpoint-turquoise' : 'bg-transparent'}`} />
                 </button>
               )
             })}
@@ -617,11 +617,11 @@ export default function Networking() {
         {/* ── Steve Recommendations ── */}
         {activeSection === 'steve' && (
           <div className="space-y-3">
-            <section className="rounded-xl border border-white/10 bg-black p-3 space-y-2.5">
+            <section className="rounded-xl border border-c-border bg-c-bg-app p-3 space-y-2.5">
               <div className="space-y-1.5">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8ca0a8]">{t('networking.steve_kicker')}</p>
-                <h1 className="text-xl font-semibold tracking-tight text-white">{t('networking.steve_headline')}</h1>
-                <p className="text-[13px] leading-relaxed text-[#a7b8be]">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-c-text-tertiary">{t('networking.steve_kicker')}</p>
+                <h1 className="text-xl font-semibold tracking-tight text-c-text-primary">{t('networking.steve_headline')}</h1>
+                <p className="text-[13px] leading-relaxed text-c-text-secondary">
                   {t('steve.networking_helper')}
                 </p>
               </div>
@@ -638,33 +638,33 @@ export default function Networking() {
                   setLastSteveDebugTrace(null)
                   setShowDebugModal(false)
                 }}
-                className="w-full rounded-lg border border-white/15 bg-transparent px-3 py-2 text-xs text-white focus:outline-none focus:border-[#4db6ac]"
+                className="w-full rounded-lg border border-c-border bg-transparent px-3 py-2 text-xs text-c-text-primary focus:outline-none focus:border-cpoint-turquoise"
               >
-                {communities.map(c => <option key={c.id} value={c.id} className="bg-black">{c.name}</option>)}
+                {communities.map(c => <option key={c.id} value={c.id} className="bg-c-bg-app">{c.name}</option>)}
               </select>
 
               {/* Session controls */}
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={startNewChat}
-                  className="flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white hover:border-white/35 transition"
+                  className="flex items-center gap-1.5 rounded-lg border border-c-border px-3 py-1.5 text-xs text-c-text-secondary hover:border-c-border-strong transition"
                 >
-                  <i className="fa-solid fa-plus text-[10px] text-[#4db6ac]" />
+                  <i className="fa-solid fa-plus text-[10px] text-cpoint-turquoise" />
                   {t('networking.new_chat')}
                 </button>
                 <button
                   onClick={() => setShowSessionList(prev => !prev)}
-                  className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition ${showSessionList ? 'border-[#4db6ac]/50 text-[#4db6ac]' : 'border-white/15 text-white hover:border-white/35'}`}
+                  className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition ${showSessionList ? 'border-cpoint-turquoise/50 text-cpoint-turquoise' : 'border-c-border text-c-text-secondary hover:border-c-border-strong'}`}
                 >
                   <i className="fa-solid fa-clock-rotate-left text-[10px]" />
                   {t('networking.history')}
-                  {steveSessions.length > 0 && <span className="text-[10px] text-[#6f7c81]">({steveSessions.length})</span>}
+                  {steveSessions.length > 0 && <span className="text-[10px] text-c-text-tertiary">({steveSessions.length})</span>}
                 </button>
                 {isAppAdmin && (
                   <button
                     type="button"
                     onClick={() => setSteveDebugEnabled(prev => !prev)}
-                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition ${steveDebugEnabled ? 'border-[#4db6ac]/60 bg-[#4db6ac]/10 text-[#4db6ac]' : 'border-white/15 text-white hover:border-white/35'}`}
+                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition ${steveDebugEnabled ? 'border-cpoint-turquoise/60 bg-cpoint-turquoise/10 text-cpoint-turquoise' : 'border-c-border text-c-text-secondary hover:border-c-border-strong'}`}
                     title={t('networking.debug_toggle_title')}
                   >
                     <i className="fa-solid fa-bug text-[10px]" />
@@ -675,7 +675,7 @@ export default function Networking() {
                   <button
                     type="button"
                     onClick={() => { setDebugTab('planner'); setShowDebugModal(true) }}
-                    className="flex items-center gap-1.5 rounded-lg border border-[#4db6ac]/50 px-3 py-1.5 text-xs text-[#4db6ac] hover:bg-[#4db6ac]/10 transition"
+                    className="flex items-center gap-1.5 rounded-lg border border-cpoint-turquoise/50 px-3 py-1.5 text-xs text-cpoint-turquoise hover:bg-cpoint-turquoise/10 transition"
                   >
                     <i className="fa-solid fa-magnifying-glass-chart text-[10px]" />
                     {t('networking.view_reasoning')}
@@ -685,11 +685,11 @@ export default function Networking() {
 
               {/* Session history list */}
               {showSessionList && (
-                <div className="rounded-xl border border-white/10 bg-black/60 p-2 max-h-[200px] overflow-y-auto space-y-1">
+                <div className="rounded-xl border border-c-border bg-c-bg-app/60 p-2 max-h-[200px] overflow-y-auto space-y-1">
                   {sessionsLoading ? (
-                    <div className="text-xs text-[#6f7c81] py-2 text-center">{t('networking.loading')}</div>
+                    <div className="text-xs text-c-text-tertiary py-2 text-center">{t('networking.loading')}</div>
                   ) : steveSessions.length === 0 ? (
-                    <div className="text-xs text-[#6f7c81] py-2 text-center">{t('networking.no_previous_chats')}</div>
+                    <div className="text-xs text-c-text-tertiary py-2 text-center">{t('networking.no_previous_chats')}</div>
                   ) : (
                     steveSessions.map(s => (
                       <div key={s.id} className="relative">
@@ -699,20 +699,20 @@ export default function Networking() {
                           onTouchEnd={handleSessionLongPressEnd}
                           onTouchCancel={handleSessionLongPressEnd}
                           onContextMenu={e => { e.preventDefault(); setDeletingSessionId(s.id) }}
-                          className={`w-full text-left rounded-lg px-3 py-2 text-xs transition select-none ${s.id === steveSessionId ? 'bg-white/10 text-white' : 'text-[#a7b8be] hover:bg-white/5'}`}
+                          className={`w-full text-left rounded-lg px-3 py-2 text-xs transition select-none ${s.id === steveSessionId ? 'bg-c-active-bg text-c-text-primary' : 'text-c-text-secondary hover:bg-c-hover-bg'}`}
                         >
                           <div className="truncate font-medium">{s.first_message || t('networking.session_new_chat')}</div>
-                          <div className="text-[10px] text-[#6f7c81] mt-0.5">{new Date(s.created_at.replace(' ', 'T') + 'Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                          <div className="text-[10px] text-c-text-tertiary mt-0.5">{new Date(s.created_at.replace(' ', 'T') + 'Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
                         </button>
                         {deletingSessionId === s.id && (
                           <div
-                            className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-black/90 border border-red-500/30 backdrop-blur-sm"
+                            className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-c-bg-overlay border border-red-500/30 backdrop-blur-sm"
                             onClick={e => e.stopPropagation()}
                             onPointerDown={e => e.stopPropagation()}
                             onTouchStart={e => e.stopPropagation()}
                           >
                             <div className="flex items-center gap-2">
-                              <span className="text-[11px] text-[#a7b8be]">{t('networking.delete_confirm')}</span>
+                              <span className="text-[11px] text-c-text-secondary">{t('networking.delete_confirm')}</span>
                               <button
                                 type="button"
                                 onClick={e => {
@@ -731,7 +731,7 @@ export default function Networking() {
                                   e.stopPropagation()
                                   setDeletingSessionId(null)
                                 }}
-                                className="rounded-md border border-white/15 px-2.5 py-1 text-[11px] font-medium text-[#a7b8be] hover:bg-white/5 transition"
+                                className="rounded-md border border-c-border px-2.5 py-1 text-[11px] font-medium text-c-text-secondary hover:bg-c-hover-bg transition"
                               >
                                 {t('common.cancel')}
                               </button>
@@ -745,15 +745,15 @@ export default function Networking() {
               )}
 
               {/* Chat area */}
-              <div className="rounded-xl border border-white/10 bg-black/50 p-3 min-h-[280px] max-h-[50vh] overflow-y-auto space-y-3">
+              <div className="rounded-xl border border-c-border bg-c-bg-app/50 p-3 min-h-[280px] max-h-[50vh] overflow-y-auto space-y-3">
                 {steveMessages.length === 0 ? (
                   (sessionsLoading || steveMembersLoading || steveMemberCount === null) ? (
                     <div className="flex flex-col items-center justify-center py-16 text-center">
-                      <p className="text-sm text-[#9fb0b5]">{t('networking.loading')}</p>
+                      <p className="text-sm text-c-text-tertiary">{t('networking.loading')}</p>
                     </div>
                   ) : (
                     <div className="flex justify-start">
-                      <div className="max-w-[85%] rounded-2xl rounded-bl-md px-3.5 py-2 text-[13px] leading-relaxed bg-transparent text-[#c8d6db]">
+                      <div className="max-w-[85%] rounded-2xl rounded-bl-md px-3.5 py-2 text-[13px] leading-relaxed bg-transparent text-c-text-secondary">
                         <SteveWelcomeCopy
                           communityName={communities.find(c => c.id === steveCommunity)?.name ?? t('networking.welcome_community_fallback')}
                           activeMemberCount={steveMemberCount}
@@ -768,25 +768,25 @@ export default function Networking() {
                       <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed ${
                           msg.role === 'user'
-                            ? 'bg-white/10 text-white rounded-br-md'
-                            : 'bg-transparent text-[#c8d6db] rounded-bl-md'
+                            ? 'bg-c-active-bg text-c-text-primary rounded-br-md'
+                            : 'bg-transparent text-c-text-secondary rounded-bl-md'
                         }`}>
                           {msg.role === 'steve' ? (
                             <>
                               <div className="whitespace-pre-wrap">{renderTextWithSourceLinks(msg.text, false, handleMentionClick)}</div>
                               {mentions.length > 0 && (
-                                <div className="mt-2 pt-1.5 border-t border-white/[0.06] flex flex-wrap gap-x-3 gap-y-1">
+                                <div className="mt-2 pt-1.5 border-t border-c-border-subtle flex flex-wrap gap-x-3 gap-y-1">
                                   {mentions.map(u => (
-                                    <span key={u} className="inline-flex items-center gap-1 text-[11px] text-white/40">
-                                      <span className="text-white/25">@{u}</span>
+                                    <span key={u} className="inline-flex items-center gap-1 text-[11px] text-c-text-tertiary">
+                                      <span className="text-c-text-disabled">@{u}</span>
                                       <button
                                         onClick={() => submitFeedback(u, 'up')}
-                                        className={`p-0.5 rounded transition ${steveFeedback[u]?.feedback === 'up' ? 'text-[#4db6ac]' : 'text-white/20 hover:text-white/50'}`}
+                                        className={`p-0.5 rounded transition ${steveFeedback[u]?.feedback === 'up' ? 'text-cpoint-turquoise' : 'text-c-text-disabled hover:text-c-text-tertiary'}`}
                                         title={t('networking.feedback_good')}
                                       ><i className="fa-solid fa-thumbs-up text-[10px]" /></button>
                                       <button
                                         onClick={() => submitFeedback(u, 'down')}
-                                        className={`p-0.5 rounded transition ${steveFeedback[u]?.feedback === 'down' ? 'text-red-400/80' : 'text-white/20 hover:text-white/50'}`}
+                                        className={`p-0.5 rounded transition ${steveFeedback[u]?.feedback === 'down' ? 'text-red-400/80' : 'text-c-text-disabled hover:text-c-text-tertiary'}`}
                                         title={t('networking.feedback_not_relevant')}
                                       ><i className="fa-solid fa-thumbs-down text-[10px]" /></button>
                                     </span>
@@ -802,12 +802,12 @@ export default function Networking() {
                 )}
                 {(steveSending || autoMatching) && (
                   <div className="flex justify-start">
-                    <div className="flex items-center gap-1.5 px-3 py-2 text-[13px] text-[#9fb0b5]">
+                    <div className="flex items-center gap-1.5 px-3 py-2 text-[13px] text-c-text-tertiary">
                       <span>{t('networking.steve_thinking')}</span>
                       <span className="flex gap-0.5">
-                        <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        <span className="w-1.5 h-1.5 bg-cpoint-turquoise rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 bg-cpoint-turquoise rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1.5 h-1.5 bg-cpoint-turquoise rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                       </span>
                     </div>
                   </div>
@@ -824,7 +824,7 @@ export default function Networking() {
         {/* Steve input bar — fixed at viewport bottom, lifted above keyboard */}
         {activeSection === 'steve' && (
           <div
-            className="fixed left-0 right-0 z-50 bg-black border-t border-white/10 px-3 py-2"
+            className="fixed left-0 right-0 z-50 bg-c-bg-app border-t border-c-border px-3 py-2"
             style={{
               bottom: showKeyboard ? `${keyboardLift}px` : 0,
               paddingBottom: showKeyboard ? '4px' : `calc(${safeBottomPx}px + 8px)`,
@@ -835,10 +835,10 @@ export default function Networking() {
               <button
                 onClick={triggerAutoMatch}
                 disabled={autoMatching || steveSending || !steveCommunity}
-                className="w-9 h-9 rounded-lg border border-white/15 flex items-center justify-center flex-shrink-0 hover:border-white/35 disabled:opacity-40 transition"
+                className="w-9 h-9 rounded-lg border border-c-border flex items-center justify-center flex-shrink-0 hover:border-c-border-strong disabled:opacity-40 transition"
                 title={t('networking.auto_match_title')}
               >
-                <i className="fa-solid fa-wand-magic-sparkles text-xs text-[#4db6ac]" />
+                <i className="fa-solid fa-wand-magic-sparkles text-xs text-cpoint-turquoise" />
               </button>
               <textarea
                 value={steveInput}
@@ -846,16 +846,16 @@ export default function Networking() {
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSteveMessage() } }}
                 placeholder={t('networking.input_placeholder')}
                 rows={1}
-                className="flex-1 rounded-lg border border-white/15 bg-transparent px-3 py-2.5 text-sm text-white placeholder-[#6f7c81] focus:outline-none focus:border-[#4db6ac] resize-none overflow-y-auto"
+                className="flex-1 rounded-lg border border-c-border bg-transparent px-3 py-2.5 text-sm text-c-text-primary placeholder-c-text-tertiary focus:outline-none focus:border-cpoint-turquoise resize-none overflow-y-auto"
                 style={{ maxHeight: 120 }}
                 disabled={steveSending || autoMatching}
               />
               <button
                 onClick={sendSteveMessage}
                 disabled={!steveInput.trim() || steveSending || autoMatching}
-                className="w-9 h-9 rounded-lg border border-white/15 flex items-center justify-center flex-shrink-0 hover:border-white/35 disabled:opacity-40 transition"
+                className="w-9 h-9 rounded-lg border border-c-border flex items-center justify-center flex-shrink-0 hover:border-c-border-strong disabled:opacity-40 transition"
               >
-                <i className="fa-solid fa-arrow-up text-xs text-white" />
+                <i className="fa-solid fa-arrow-up text-xs text-c-text-primary" />
               </button>
             </div>
           </div>
@@ -864,11 +864,11 @@ export default function Networking() {
         {/* ── Personal ── */}
         {activeSection === 'personal' && (
           <div className="space-y-3">
-            <section className="rounded-xl border border-white/10 bg-black p-3 space-y-2.5">
+            <section className="rounded-xl border border-c-border bg-c-bg-app p-3 space-y-2.5">
               <div className="space-y-1.5">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8ca0a8]">{t('networking.personal_kicker')}</p>
-                <h1 className="text-xl font-semibold tracking-tight text-white">{t('networking.personal_headline')}</h1>
-                <p className="text-[13px] leading-relaxed text-[#a7b8be]">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-c-text-tertiary">{t('networking.personal_kicker')}</p>
+                <h1 className="text-xl font-semibold tracking-tight text-c-text-primary">{t('networking.personal_headline')}</h1>
+                <p className="text-[13px] leading-relaxed text-c-text-secondary">
                   {t('networking.personal_intro')}
                 </p>
               </div>
@@ -877,9 +877,9 @@ export default function Networking() {
               <select
                 value={personalCommunity || ''}
                 onChange={e => setPersonalCommunity(Number(e.target.value))}
-                className="w-full rounded-lg border border-white/15 bg-transparent px-3 py-2 text-xs text-white focus:outline-none focus:border-[#4db6ac]"
+                className="w-full rounded-lg border border-c-border bg-transparent px-3 py-2 text-xs text-c-text-primary focus:outline-none focus:border-cpoint-turquoise"
               >
-                {communities.map(c => <option key={c.id} value={c.id} className="bg-black">{c.name}</option>)}
+                {communities.map(c => <option key={c.id} value={c.id} className="bg-c-bg-app">{c.name}</option>)}
               </select>
 
               {/* Filters */}
@@ -887,50 +887,50 @@ export default function Networking() {
                 <select
                   value={selectedLocation}
                   onChange={e => setSelectedLocation(e.target.value)}
-                  className="rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-[10px] text-white focus:outline-none focus:border-[#4db6ac]"
+                  className="rounded-lg border border-c-border bg-transparent px-2.5 py-1.5 text-[10px] text-c-text-primary focus:outline-none focus:border-cpoint-turquoise"
                 >
-                  <option value="" className="bg-black">{t('networking.filter_location')}</option>
+                  <option value="" className="bg-c-bg-app">{t('networking.filter_location')}</option>
                   {filterOptions.locations.filter(Boolean).sort().map(loc => (
-                    <option key={loc} value={loc} className="bg-black">{loc}</option>
+                    <option key={loc} value={loc} className="bg-c-bg-app">{loc}</option>
                   ))}
                 </select>
                 <select
                   value={selectedIndustry}
                   onChange={e => setSelectedIndustry(e.target.value)}
-                  className="rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-[10px] text-white focus:outline-none focus:border-[#4db6ac]"
+                  className="rounded-lg border border-c-border bg-transparent px-2.5 py-1.5 text-[10px] text-c-text-primary focus:outline-none focus:border-cpoint-turquoise"
                 >
-                  <option value="" className="bg-black">{t('networking.filter_industry')}</option>
+                  <option value="" className="bg-c-bg-app">{t('networking.filter_industry')}</option>
                   {filterOptions.industries.filter(Boolean).sort().map(ind => (
-                    <option key={ind} value={ind} className="bg-black">{ind}</option>
+                    <option key={ind} value={ind} className="bg-c-bg-app">{ind}</option>
                   ))}
                 </select>
                 <select
                   value={selectedInterest}
                   onChange={e => setSelectedInterest(e.target.value)}
-                  className="rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-[10px] text-white focus:outline-none focus:border-[#4db6ac]"
+                  className="rounded-lg border border-c-border bg-transparent px-2.5 py-1.5 text-[10px] text-c-text-primary focus:outline-none focus:border-cpoint-turquoise"
                 >
-                  <option value="" className="bg-black">{t('networking.filter_interests')}</option>
+                  <option value="" className="bg-c-bg-app">{t('networking.filter_interests')}</option>
                   {filterOptions.interests.filter(Boolean).sort().map(int => (
-                    <option key={int} value={int} className="bg-black">{int}</option>
+                    <option key={int} value={int} className="bg-c-bg-app">{int}</option>
                   ))}
                 </select>
               </div>
 
               {/* Search */}
               <div className="relative">
-                <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-[#6f7c81]" />
+                <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-c-text-tertiary" />
                 <input
                   value={memberSearch}
                   onChange={e => setMemberSearch(e.target.value)}
                   placeholder={t('networking.search_placeholder')}
-                  className="w-full rounded-lg border border-white/15 bg-transparent pl-8 pr-3 py-1.5 text-xs text-white placeholder-[#6f7c81] focus:outline-none focus:border-[#4db6ac]"
+                  className="w-full rounded-lg border border-c-border bg-transparent pl-8 pr-3 py-1.5 text-xs text-c-text-primary placeholder-c-text-tertiary focus:outline-none focus:border-cpoint-turquoise"
                 />
               </div>
 
               {/* Results */}
-              <div className="rounded-xl border border-white/10 bg-black/50 p-3">
+              <div className="rounded-xl border border-c-border bg-c-bg-app/50 p-3">
                 {personalLoading ? (
-                  <div className="text-[#9fb0b5]">{t('networking.loading')}</div>
+                  <div className="text-c-text-tertiary">{t('networking.loading')}</div>
                 ) : (() => {
                   const q = memberSearch.trim().toLowerCase()
                   const filtered = q
@@ -939,10 +939,10 @@ export default function Networking() {
                         m.username.toLowerCase().includes(q))
                     : personalMembers
                   return filtered.length === 0 ? (
-                    <div className="text-[#9fb0b5]">{t('networking.no_members_match')}</div>
+                    <div className="text-c-text-tertiary">{t('networking.no_members_match')}</div>
                   ) : (
                   <div>
-                    <div className="text-[11px] text-[#6f7c81] mb-2">
+                    <div className="text-[11px] text-c-text-tertiary mb-2">
                       {t(filtered.length === 1 ? 'networking.member_count_one' : 'networking.member_count_other', { count: filtered.length })}
                     </div>
                     <div className="divide-y divide-white/5">
@@ -954,10 +954,10 @@ export default function Networking() {
                         >
                           <Avatar username={m.username} url={m.profile_picture || undefined} size={40} />
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-semibold truncate text-white">{m.display_name || m.username}</div>
-                            <div className="text-[11px] text-[#6f7c81]">@{m.username}</div>
+                            <div className="text-sm font-semibold truncate text-c-text-primary">{m.display_name || m.username}</div>
+                            <div className="text-[11px] text-c-text-tertiary">@{m.username}</div>
                             {(m.city || m.country) && (
-                              <div className="text-[11px] text-[#6f7c81] flex items-center gap-1">
+                              <div className="text-[11px] text-c-text-tertiary flex items-center gap-1">
                                 <i className="fa-solid fa-location-dot text-[8px]" />
                                 {[m.city, m.country].filter(Boolean).join(', ')}
                               </div>
@@ -965,13 +965,13 @@ export default function Networking() {
                           </div>
                           <div className="flex flex-col items-stretch gap-1.5 sm:flex-row sm:items-center">
                             <button
-                              className="rounded-full border border-white/15 px-3 py-1 text-xs font-medium text-white hover:border-white/40"
+                              className="rounded-full border border-c-border px-3 py-1 text-xs font-medium text-c-text-primary hover:border-c-border-strong"
                               onClick={(e) => { e.stopPropagation(); navigate(`/profile/${m.username}`) }}
                             >
                               {t('networking.view')}
                             </button>
                             <button
-                              className="rounded-full border border-white/15 px-3 py-1 text-xs font-medium text-white hover:border-white/40"
+                              className="rounded-full border border-c-border px-3 py-1 text-xs font-medium text-c-text-primary hover:border-c-border-strong"
                               onClick={(e) => { e.stopPropagation(); navigate(`/user_chat/chat/${m.username}`) }}
                             >
                               {t('networking.message')}

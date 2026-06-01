@@ -35,7 +35,8 @@ import {
   chatMessagesDeviceCacheKey,
   chatProfileDeviceCacheKey,
 } from '../utils/chatThreadsCache'
-import { sendImageMessage, sendVideoMessage, sendMultiMediaMessage, sendDocumentMessage, SENDING_MEDIA_LABEL, type UploadProgress } from '../chat/mediaSenders'
+import { sendImageMessage, sendVideoMessage, sendMultiMediaMessage, sendDocumentMessage, type UploadProgress } from '../chat/mediaSenders'
+import { comparableMediaUrl, consumeDeletedMedia, mediaDeleteScopeForDm, type DeletedMediaItem } from '../chat/mediaDeletionEvents'
 import ChatThreadSearch from '../chat/ChatThreadSearch'
 import type { ChatMessage } from '../types/chat'
 
@@ -78,6 +79,7 @@ import { mentionsSteve } from '../utils/steveClientGate'
 import SteveTypingIndicator from '../components/chat/SteveTypingIndicator'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
 import { useAndroidBackButton } from '../hooks/useAndroidBackButton'
+import { getStoredMediaQuality, setStoredMediaQuality, type MediaQuality } from '../chat/upload'
 import { hapticImpactLight } from '../utils/haptics'
 import {
   takePendingShareFilesOnce,
@@ -87,6 +89,34 @@ import {
 } from '../services/shareImportStore'
 
 type Message = ChatMessage
+
+function removeDeletedMediaFromDmMessages(messages: Message[], deletedItems: DeletedMediaItem[]): Message[] {
+  if (!deletedItems.length) return messages
+  const deletedByMessage = new Map<number, Set<string>>()
+  for (const item of deletedItems) {
+    const set = deletedByMessage.get(item.message_id) || new Set<string>()
+    set.add(comparableMediaUrl(item.media_url))
+    deletedByMessage.set(item.message_id, set)
+  }
+  return messages
+    .map(message => {
+      const deleted = deletedByMessage.get(Number(message.id))
+      if (!deleted) return message
+      const keep = (url?: string | null) => !!url && !deleted.has(comparableMediaUrl(url))
+      const mediaPaths = (message.media_paths || []).filter(keep)
+      return {
+        ...message,
+        media_paths: mediaPaths.length ? mediaPaths : undefined,
+        image_path: keep(message.image_path) ? message.image_path : undefined,
+        video_path: keep(message.video_path) ? message.video_path : undefined,
+      }
+    })
+    .filter(message => {
+      const hasBody = !!(message.text || '').trim()
+      const hasMedia = !!message.image_path || !!message.video_path || !!message.audio_path || !!message.file_path || !!message.media_paths?.length
+      return hasBody || hasMedia
+    })
+}
 
 export default function ChatThread(){
   const { t } = useTranslation()
@@ -144,6 +174,20 @@ export default function ChatThread(){
 
   const [otherUserId, setOtherUserId] = useState<number | ''>('')
   const [messages, setMessages] = useState<Message[]>([])
+  useEffect(() => {
+    if (!username) return
+    const scope = mediaDeleteScopeForDm(username)
+    const apply = (items: DeletedMediaItem[]) => {
+      if (items.length) setMessages(prev => removeDeletedMediaFromDmMessages(prev, items))
+    }
+    apply(consumeDeletedMedia(scope))
+    const onDeleted = (event: Event) => {
+      const detail = (event as CustomEvent<{ scope?: string; items?: DeletedMediaItem[] }>).detail
+      if (detail?.scope === scope) apply(detail.items || [])
+    }
+    window.addEventListener('chat-media-deleted', onDeleted)
+    return () => window.removeEventListener('chat-media-deleted', onDeleted)
+  }, [username])
   const [loading, setLoading] = useState(false)
   const [steveIsTyping, setSteveIsTyping] = useState(false)
   const [editingId, setEditingId] = useState<number|string| null>(null)
@@ -252,7 +296,9 @@ export default function ChatThread(){
   const lastFetchTime = useRef<number>(0)
   const [pastedImage, setPastedImage] = useState<File | null>(null)
   const [videoUploadProgress, setVideoUploadProgress] = useState<UploadProgress | null>(null)
+  const [cancelActiveUpload, setCancelActiveUpload] = useState<(() => void) | null>(null)
   const [pendingMedia, setPendingMedia] = useState<Array<{ file: File; previewUrl: string; type: 'image' | 'video' | 'audio' }>>([])
+  const [mediaQuality, setMediaQuality] = useState<MediaQuality>(() => getStoredMediaQuality())
   const [previewIndex, setPreviewIndex] = useState(0)
   const [viewingMedia, setViewingMedia] = useState<{ urls: string[]; index: number } | null>(null)
   const pendingDeletions = useRef<Set<number|string>>(new Set())
@@ -1490,7 +1536,7 @@ export default function ChatThread(){
       if (item.type === 'image') {
         handleImageFile(item.file, 'photo')
       } else if (item.type === 'video') {
-        handleVideoFile(item.file)
+        handleVideoFile(item.file, undefined, mediaQuality)
       } else {
         await uploadSharedAudioFile(item.file)
       }
@@ -1520,6 +1566,9 @@ export default function ChatThread(){
       idBridgeRef,
       setSending,
       lockComposer: false,
+      quality: mediaQuality,
+      onLimitReached: entitlementsHandler.showError,
+      onCancelReady: (cancel) => setCancelActiveUpload(() => cancel),
       onProgress: (progress) => {
         setVideoUploadProgress(progress)
         if (progress.stage === 'done' || progress.stage === 'error') {
@@ -1537,6 +1586,11 @@ export default function ChatThread(){
     })
     setPendingMedia([])
     setPreviewIndex(0)
+  }
+
+  function handleMediaQualityChange(next: MediaQuality) {
+    setMediaQuality(next)
+    setStoredMediaQuality(next)
   }
 
   async function handleGifSelection(gif: GifSelection) {
@@ -1564,11 +1618,12 @@ export default function ChatThread(){
       idBridgeRef,
       setSending,
       setPastedImage,
+      onLimitReached: entitlementsHandler.showError,
       cleanup,
     })
   }
 
-  function handleVideoFile(file: File, cleanup?: () => void) {
+  function handleVideoFile(file: File, cleanup?: () => void, quality: MediaQuality = mediaQuality) {
     if (tryBlockSteveIntentSend('')) return
     sendVideoMessage({
       file,
@@ -1579,7 +1634,10 @@ export default function ChatThread(){
       recentOptimisticRef,
       idBridgeRef,
       setSending,
+      onLimitReached: entitlementsHandler.showError,
+      onCancelReady: (cancel) => setCancelActiveUpload(() => cancel),
       cleanup,
+      quality,
       onProgress: (progress) => {
         setVideoUploadProgress(progress)
         // Clear progress after completion or error
@@ -2294,7 +2352,7 @@ export default function ChatThread(){
     <>
     {/* Main container with overflow:hidden */}
     <div 
-      className="glass-page text-white chat-thread-bg"
+      className="glass-page text-c-text-primary chat-thread-bg"
       style={{
         position: 'fixed',
         left: 0,
@@ -2309,7 +2367,7 @@ export default function ChatThread(){
     >
       {/* Header - fixed at top with safe area, full viewport width */}
       <div 
-        className="flex-shrink-0 border-b border-[#262f30]"
+        className="flex-shrink-0 border-b border-c-border bg-c-header-bg"
         style={{
           position: 'fixed',
           top: 0,
@@ -2320,16 +2378,15 @@ export default function ChatThread(){
           paddingTop: 'env(safe-area-inset-top, 0px)',
           paddingLeft: 'env(safe-area-inset-left, 0px)',
           paddingRight: 'env(safe-area-inset-right, 0px)',
-          background: '#000',
         }}
       >
         <div className="h-12 flex items-center gap-2 px-3">
           <button 
-            className="p-2 rounded-full hover:bg-white/10 transition-colors" 
+            className="p-2 rounded-full hover:bg-c-hover-bg transition-colors" 
             onClick={()=> { hapticImpactLight(); navigate('/user_chat') }} 
             aria-label={t('chat.back_to_messages')}
           >
-            <i className="fa-solid fa-arrow-left text-white" />
+            <i className="fa-solid fa-arrow-left text-c-text-primary" />
           </button>
             <Avatar 
               key={`${username || ''}:${otherProfile?.profile_picture || ''}`}
@@ -2341,22 +2398,22 @@ export default function ChatThread(){
               loading="eager"
             />
           <div className="flex-1 min-w-0">
-            <div className="font-semibold truncate text-white text-sm">
+            <div className="font-semibold truncate text-c-text-primary text-sm">
               {otherProfile?.display_name || username || 'Chat'}
             </div>
             {/* Online/typing label removed as requested */}
           </div>
           <button
             type="button"
-            className="p-2 rounded-full hover:bg-white/10 transition-colors"
+            className="p-2 rounded-full hover:bg-c-hover-bg transition-colors"
             aria-label="Search messages"
             onClick={() => setSearchOpen(true)}
           >
-            <i className="fa-solid fa-magnifying-glass text-white/70" />
+            <i className="fa-solid fa-magnifying-glass text-c-text-secondary" />
           </button>
           <button 
             type="button"
-            className="p-2 rounded-full hover:bg-white/10 transition-colors" 
+            className="p-2 rounded-full hover:bg-c-hover-bg transition-colors" 
             aria-label={t('chat.more_options')}
             aria-haspopup="true"
             aria-expanded={headerMenuOpen}
@@ -2366,7 +2423,7 @@ export default function ChatThread(){
               setHeaderMenuOpen(prev => !prev)
             }}
           >
-            <i className="fa-solid fa-ellipsis-vertical text-white/70" />
+            <i className="fa-solid fa-ellipsis-vertical text-c-text-secondary" />
           </button>
           {headerMenuOpen && (
             <div
@@ -2375,17 +2432,17 @@ export default function ChatThread(){
               onMouseDown={(event)=> event.stopPropagation()}
               onClick={(event)=> event.stopPropagation()}
             >
-              <div className="rounded-xl border border-white/10 bg-[#111111] shadow-lg shadow-black/40 py-1">
+              <div className="rounded-xl border border-c-border bg-c-bg-surface shadow-lg shadow-c-card py-1">
                 <Link
                   to={profilePath || '/profile'}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-c-text-secondary hover:bg-c-hover-bg transition-colors"
                   onClick={() => setHeaderMenuOpen(false)}
                 >
                   <i className="fa-solid fa-user text-xs text-cpoint-turquoise" />
                   <span>{t('chat.view_profile')}</span>
                 </Link>
                 <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-c-text-secondary hover:bg-c-hover-bg transition-colors"
                   onClick={() => {
                     setHeaderMenuOpen(false)
                     navigate(`/chat/${username}/media`)
@@ -2395,7 +2452,7 @@ export default function ChatThread(){
                   <span>{t('chat.view_media')}</span>
                 </button>
                 <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-c-text-secondary hover:bg-c-hover-bg transition-colors"
                   onClick={() => {
                     setHeaderMenuOpen(false)
                     navigate(`/chat/${username}/documents`)
@@ -2407,7 +2464,7 @@ export default function ChatThread(){
                 {isSteveDm && (
                   <button
                     type="button"
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-c-text-secondary hover:bg-c-hover-bg transition-colors"
                     onClick={() => {
                       setHeaderMenuOpen(false)
                       setReminderVaultOpen(true)
@@ -2420,7 +2477,7 @@ export default function ChatThread(){
                 )}
                 {(username || '').toLowerCase() === 'steve' && (
                   <button
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-c-text-secondary hover:bg-c-hover-bg transition-colors"
                     onClick={() => {
                       setHeaderMenuOpen(false)
                       if (!confirm(t('chat.reset_steve_confirm'))) return
@@ -2446,7 +2503,7 @@ export default function ChatThread(){
                   </button>
                 )}
                 <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/10 transition-colors"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-c-hover-bg transition-colors"
                   onClick={() => {
                     setHeaderMenuOpen(false)
                     setShowBlockModal(true)
@@ -2476,7 +2533,7 @@ export default function ChatThread(){
       {/* ====== MESSAGES LIST - SCROLLABLE (inverted: column-reverse) ====== */}
       <div
         ref={listRef}
-        className={`flex-1 overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-list-inset${insetMotionIdle ? ' chat-list-idle-smooth' : ''}`}
+        className={`flex-1 overflow-y-auto overflow-x-hidden text-c-text-primary px-2.5 sm:px-3 chat-list-inset${insetMotionIdle ? ' chat-list-idle-smooth' : ''}`}
         style={{
           WebkitOverflowScrolling: 'touch',
           overscrollBehaviorY: 'auto',
@@ -2516,7 +2573,7 @@ export default function ChatThread(){
             <>
               {showDateSeparator && (
                 <div className="flex justify-center my-3">
-                  <div className="liquid-glass-chip px-3 py-1 text-xs text-white/80 border">
+                  <div className="liquid-glass-chip px-3 py-1 text-xs text-c-text-secondary border">
                     {formatDateLabel(m.time)}
                   </div>
                 </div>
@@ -2532,7 +2589,7 @@ export default function ChatThread(){
                     className={`w-6 h-6 flex-shrink-0 rounded-full flex items-center justify-center border-2 transition-all ${
                       selectedMessages.has(m.id)
                         ? 'bg-cpoint-turquoise border-cpoint-turquoise'
-                        : 'bg-transparent border-white/40'
+                        : 'bg-transparent border-c-border-strong'
                     }`}
                     onClick={(e) => {
                       e.stopPropagation()
@@ -2540,7 +2597,7 @@ export default function ChatThread(){
                     }}
                   >
                     {selectedMessages.has(m.id) && (
-                      <i className="fa-solid fa-check text-white text-xs" />
+                      <i className="fa-solid fa-check text-c-text-primary text-xs" />
                     )}
                   </button>
                 )}
@@ -2709,12 +2766,12 @@ export default function ChatThread(){
           </div>
         )}
         {messages.length === 0 && loading && navigator.onLine && (
-          <div className="flex flex-col items-center justify-center py-20 text-[#9fb0b5]">
+          <div className="flex flex-col items-center justify-center py-20 text-c-text-tertiary">
             <i className="fa-solid fa-spinner fa-spin text-2xl mb-3 opacity-70" />
           </div>
         )}
         {messages.length === 0 && !loading && !navigator.onLine && (
-          <div className="flex flex-col items-center justify-center py-20 text-[#9fb0b5]">
+          <div className="flex flex-col items-center justify-center py-20 text-c-text-tertiary">
             <i className="fa-solid fa-wifi-slash text-3xl mb-3 opacity-50" />
             <div className="text-sm">{t('chat.offline_unavailable')}</div>
             <div className="text-xs mt-1 opacity-70">{t('chat.offline_go_online')}</div>
@@ -2804,7 +2861,7 @@ export default function ChatThread(){
                 }}
               />
               <div 
-                className="absolute z-50 liquid-glass-surface border border-white/10 rounded-2xl shadow-xl overflow-hidden min-w-[190px]"
+                className="absolute z-50 liquid-glass-surface border border-c-border rounded-2xl shadow-xl overflow-hidden min-w-[190px]"
                 style={{
                   touchAction: 'manipulation',
                   bottom: 'calc(100% + 8px)',
@@ -2816,8 +2873,8 @@ export default function ChatThread(){
                     <i className="fa-solid fa-image text-cpoint-turquoise text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.photos')}</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.send_from_gallery')}</div>
+                    <div className="text-c-text-primary font-medium text-sm sm:text-base">{t('chat.photos')}</div>
+                    <div className="text-c-text-tertiary text-[10px] sm:text-xs">{t('chat.send_from_gallery')}</div>
                   </div>
                 </ChatAttachMenuRow>
                 <ChatAttachMenuRow onClick={handleCameraOpen}>
@@ -2825,8 +2882,8 @@ export default function ChatThread(){
                     <i className="fa-solid fa-camera text-cpoint-turquoise text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.camera')}</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.take_photo')}</div>
+                    <div className="text-c-text-primary font-medium text-sm sm:text-base">{t('chat.camera')}</div>
+                    <div className="text-c-text-tertiary text-[10px] sm:text-xs">{t('chat.take_photo')}</div>
                   </div>
                 </ChatAttachMenuRow>
                 <ChatAttachMenuRow onClick={() => { setShowAttachMenu(false); setGifPickerOpen(true) }}>
@@ -2834,8 +2891,8 @@ export default function ChatThread(){
                     <i className="fa-solid fa-images text-cpoint-turquoise text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">GIF</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.powered_by_giphy')}</div>
+                    <div className="text-c-text-primary font-medium text-sm sm:text-base">GIF</div>
+                    <div className="text-c-text-tertiary text-[10px] sm:text-xs">{t('chat.powered_by_giphy')}</div>
                   </div>
                 </ChatAttachMenuRow>
                 <ChatAttachMenuRow onClick={handleVideoSelect}>
@@ -2843,8 +2900,8 @@ export default function ChatThread(){
                     <i className="fa-solid fa-video text-cpoint-turquoise text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.video')}</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.attach_from_library')}</div>
+                    <div className="text-c-text-primary font-medium text-sm sm:text-base">{t('chat.video')}</div>
+                    <div className="text-c-text-tertiary text-[10px] sm:text-xs">{t('chat.attach_from_library')}</div>
                   </div>
                 </ChatAttachMenuRow>
                 <ChatAttachMenuRow onClick={handleDocumentSelect}>
@@ -2852,8 +2909,8 @@ export default function ChatThread(){
                     <i className="fa-solid fa-file-pdf text-cpoint-turquoise text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.document')}</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.send_pdf')}</div>
+                    <div className="text-c-text-primary font-medium text-sm sm:text-base">{t('chat.document')}</div>
+                    <div className="text-c-text-tertiary text-[10px] sm:text-xs">{t('chat.send_pdf')}</div>
                   </div>
                 </ChatAttachMenuRow>
               </div>
@@ -2862,7 +2919,7 @@ export default function ChatThread(){
 
           {/* Video upload progress bar */}
           {videoUploadProgress && (
-            <div className="mb-2 px-3 py-2.5 bg-white/5 rounded-lg">
+            <div className="mb-2 px-3 py-2.5 bg-c-hover-bg rounded-lg">
               <div className="flex items-center gap-3">
                 <div className="flex-shrink-0">
                   {videoUploadProgress.stage === 'uploading' && (
@@ -2876,14 +2933,16 @@ export default function ChatThread(){
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm text-white/80 truncate">
+                  <div className="text-sm text-c-text-secondary truncate">
                     {videoUploadProgress.stage === 'uploading'
-                      ? SENDING_MEDIA_LABEL
+                      ? t('chat.upload_sending_media')
                       : videoUploadProgress.stage === 'done'
-                        ? (videoUploadProgress.message || 'Sent!')
-                        : (videoUploadProgress.message || 'Could not send')}
+                        ? (videoUploadProgress.message || t('chat.upload_sent'))
+                        : (videoUploadProgress.message === 'Upload cancelled'
+                          ? t('chat.upload_cancelled_full')
+                          : (videoUploadProgress.message || t('chat.upload_failed_short')))}
                   </div>
-                  <div className="mt-1.5 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                  <div className="mt-1.5 h-1.5 bg-c-active-bg rounded-full overflow-hidden">
                     <div 
                       className={`h-full rounded-full transition-all duration-300 ${
                         videoUploadProgress.stage === 'error' ? 'bg-red-400' : 'bg-cpoint-turquoise'
@@ -2892,21 +2951,32 @@ export default function ChatThread(){
                     />
                   </div>
                 </div>
-                <div className="flex-shrink-0 text-xs text-white/50">
+                <div className="flex-shrink-0 text-xs text-c-text-tertiary">
                   {Math.round(videoUploadProgress.progress)}%
                 </div>
+                {videoUploadProgress.stage === 'uploading' && cancelActiveUpload ? (
+                  <button
+                    type="button"
+                    onClick={cancelActiveUpload}
+                    className="flex-shrink-0 w-8 h-8 rounded-full bg-white/10 text-c-text-primary hover:bg-white/20"
+                    aria-label={t('chat.cancel_upload')}
+                    title={t('chat.cancel_upload')}
+                  >
+                    <i className="fa-solid fa-xmark" />
+                  </button>
+                ) : null}
               </div>
             </div>
           )}
 
           {replyTo && (
-            <div className="mb-2 flex items-stretch gap-0 bg-white/5 rounded-lg overflow-hidden">
+            <div className="mb-2 flex items-stretch gap-0 bg-c-hover-bg rounded-lg overflow-hidden">
               {/* WhatsApp-style left accent bar */}
               <div className="w-1 bg-cpoint-turquoise flex-shrink-0" />
               <div className="flex-1 px-3 py-2 min-w-0 flex items-start gap-2">
                 {/* Media thumbnail preview */}
                 {replyTo.image_path && (
-                  <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-black/30">
+                  <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-c-bg-recessed">
                     <img 
                       src={normalizeMediaPath(replyTo.image_path)} 
                       alt="Photo" 
@@ -2915,26 +2985,26 @@ export default function ChatThread(){
                   </div>
                 )}
                 {replyTo.video_path && !replyTo.image_path && (
-                  <div className="w-10 h-10 rounded bg-black/30 flex items-center justify-center flex-shrink-0">
-                    <i className="fa-solid fa-video text-white/60 text-sm" />
+                  <div className="w-10 h-10 rounded bg-c-bg-recessed flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-video text-c-text-tertiary text-sm" />
                   </div>
                 )}
                 {replyTo.audio_path && !replyTo.image_path && !replyTo.video_path && (
-                  <div className="w-10 h-10 rounded bg-black/30 flex items-center justify-center flex-shrink-0">
-                    <i className="fa-solid fa-microphone text-white/60 text-sm" />
+                  <div className="w-10 h-10 rounded bg-c-bg-recessed flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-microphone text-c-text-tertiary text-sm" />
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="text-[12px] text-cpoint-turquoise font-medium truncate">
                     {replyTo.sender === 'You' ? 'You' : (otherProfile?.display_name || username || 'User')}
                   </div>
-                  <div className="mt-0.5 text-[13px] text-white/70 whitespace-pre-wrap break-words leading-[1.25]">
+                  <div className="mt-0.5 text-[13px] text-c-text-secondary whitespace-pre-wrap break-words leading-[1.25]">
                     {replyTo.image_path ? (
-                      <><i className="fa-solid fa-camera text-[11px] text-white/50 mr-1" />{(replyTo.text || 'Photo').slice(0, 80)}</>
+                      <><i className="fa-solid fa-camera text-[11px] text-c-text-tertiary mr-1" />{(replyTo.text || 'Photo').slice(0, 80)}</>
                     ) : replyTo.video_path ? (
-                      <><i className="fa-solid fa-video text-[11px] text-white/50 mr-1" />{(replyTo.text || 'Video').slice(0, 80)}</>
+                      <><i className="fa-solid fa-video text-[11px] text-c-text-tertiary mr-1" />{(replyTo.text || 'Video').slice(0, 80)}</>
                     ) : replyTo.audio_path ? (
-                      <><i className="fa-solid fa-microphone text-[11px] text-white/50 mr-1" />{replyTo.audio_summary ? replyTo.audio_summary.slice(0, 80) + (replyTo.audio_summary.length > 80 ? '…' : '') : 'Voice message'}</>
+                      <><i className="fa-solid fa-microphone text-[11px] text-c-text-tertiary mr-1" />{replyTo.audio_summary ? replyTo.audio_summary.slice(0, 80) + (replyTo.audio_summary.length > 80 ? '…' : '') : 'Voice message'}</>
                     ) : (
                       replyTo.text.length > 80 ? replyTo.text.slice(0, 80) + '…' : replyTo.text
                     )}
@@ -2942,7 +3012,7 @@ export default function ChatThread(){
                 </div>
               </div>
               <button 
-                className="px-3 flex items-center justify-center text-white/40 hover:text-white/70 transition-colors flex-shrink-0" 
+                className="px-3 flex items-center justify-center text-c-text-tertiary hover:text-c-text-secondary transition-colors flex-shrink-0" 
                 onClick={()=> setReplyTo(null)}
               >
                 <i className="fa-solid fa-xmark text-sm" />
@@ -2961,7 +3031,7 @@ export default function ChatThread(){
                 setShowAttachMenu(!showAttachMenu)
               }}
             >
-              <i className={`fa-solid text-white text-base sm:text-lg transition-transform duration-200 pointer-events-none ${
+              <i className={`fa-solid text-c-text-primary text-base sm:text-lg transition-transform duration-200 pointer-events-none ${
                 showAttachMenu ? 'fa-xmark rotate-90' : 'fa-plus'
               }`} />
             </NativeIconButton>
@@ -3020,7 +3090,7 @@ export default function ChatThread(){
 
           {/* Message input container */}
           <div 
-            className="flex-1 flex items-center rounded-lg bg-white/8 overflow-hidden relative"
+            className="flex-1 flex items-center rounded-lg bg-c-bg-recessed overflow-hidden relative"
             style={{
               touchAction: 'manipulation',
               WebkitTapHighlightColor: 'transparent'
@@ -3030,12 +3100,12 @@ export default function ChatThread(){
             {MIC_ENABLED && recording && (
               <div className="flex-1 flex items-center px-3 py-2 gap-2">
                 {/* Level bar */}
-                <div className="flex-1 h-2 bg-white/10 rounded overflow-hidden">
+                <div className="flex-1 h-2 bg-c-active-bg rounded overflow-hidden">
                   <div className="h-full bg-[#7fe7df] transition-all" style={{ width: `${Math.max(6, Math.min(96, (level||0)*100))}%` }} />
                 </div>
                 
                 {/* Duration display */}
-                <div className="text-sm font-mono text-white tabular-nums flex-shrink-0 min-w-[45px] text-right">
+                <div className="text-sm font-mono text-c-text-primary tabular-nums flex-shrink-0 min-w-[45px] text-right">
                   {formatRecordingTime(recordMs || 0)}
                 </div>
               </div>
@@ -3080,10 +3150,10 @@ export default function ChatThread(){
                 
                 {/* Waveform placeholder / duration */}
                 <div className="flex-1 flex items-center gap-2">
-                  <div className="flex-1 h-1.5 bg-white/20 rounded-full overflow-hidden">
+                  <div className="flex-1 h-1.5 bg-c-bg-recessed rounded-full overflow-hidden">
                     <div className="h-full bg-cpoint-turquoise w-full" />
                   </div>
-                  <span className="text-xs text-white/70 tabular-nums flex-shrink-0">
+                  <span className="text-xs text-c-text-secondary tabular-nums flex-shrink-0">
                     {formatRecordingTime(((recordingPreview as any).duration || 0) * 1000)}
                   </span>
                 </div>
@@ -3096,7 +3166,7 @@ export default function ChatThread(){
               <textarea
                 ref={textareaRef}
                 rows={1}
-                className="flex-1 bg-transparent px-3 sm:px-3.5 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-40 min-h-[38px]"
+                className="flex-1 bg-transparent px-3 sm:px-3.5 py-2 text-[15px] text-c-text-primary placeholder-c-text-tertiary outline-none resize-none max-h-40 min-h-[38px]"
                 placeholder={t('chat.message_placeholder')}
                 defaultValue=""
                 autoComplete="off"
@@ -3175,7 +3245,7 @@ export default function ChatThread(){
               size="lg"
               haptic="light"
               preventBlur
-              className="text-white/80"
+              className="text-c-text-secondary"
               onClick={(e) => {
                 if (justSentRef.current) return
                 e.preventDefault()
@@ -3197,7 +3267,7 @@ export default function ChatThread(){
                 haptic="light"
                 preventBlur
                 variant="muted"
-                className="!bg-white/15 hover:!bg-white/25"
+                className="!bg-c-active-bg hover:!bg-c-hover-bg"
                 onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
@@ -3257,10 +3327,10 @@ export default function ChatThread(){
             <button
               className={`w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center ${
                 sending 
-                  ? 'bg-gray-600 text-gray-300' 
+                  ? 'bg-c-active-bg text-c-text-tertiary' 
                   : draftDisplay.trim()
                     ? 'bg-cpoint-turquoise text-black'
-                    : 'bg-white/12 text-white/70'
+                    : 'bg-c-active-bg text-c-text-secondary'
               } active:scale-95`}
               onPointerDown={(e) => {
                 if (!draftDisplay.trim() || sending) return
@@ -3293,10 +3363,9 @@ export default function ChatThread(){
       </ChatComposerCard>
       {/* Safe area spacer — hidden when keyboard is open to avoid double spacing */}
       <div 
-        className={`chat-composer-spacer-smooth${keyboardChromeActive ? ' chat-composer-spacer-keyboard' : ''}`}
+        className={`chat-composer-spacer-smooth bg-c-composer-bg${keyboardChromeActive ? ' chat-composer-spacer-keyboard' : ''}`}
         style={{
           height: keyboardChromeActive ? '0px' : `${safeBottomPx}px`,
-          background: '#000',
           flexShrink: 0,
         }}
       />
@@ -3304,15 +3373,15 @@ export default function ChatThread(){
 
       {/* Permission guide modal */}
       {showPermissionGuide && (
-        <div className="fixed inset-0 bg-black/90 z-[9999] flex items-center justify-center p-4">
-          <div className="bg-[#1a1a1a] rounded-2xl border border-white/20 p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-c-bg-overlay z-[9999] flex items-center justify-center p-4">
+          <div className="bg-c-bg-elevated rounded-2xl border border-c-border p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
             {/* Header */}
             <div className="text-center mb-6">
               <div className="w-16 h-16 bg-red-600/20 rounded-full flex items-center justify-center mx-auto mb-3">
                 <i className="fa-solid fa-microphone-slash text-red-400 text-2xl" />
               </div>
-              <h3 className="text-white text-lg font-medium mb-2">{t('chat.microphone_access_needed')}</h3>
-              <p className="text-white/70 text-sm">
+              <h3 className="text-c-text-primary text-lg font-medium mb-2">{t('chat.microphone_access_needed')}</h3>
+              <p className="text-c-text-secondary text-sm">
                 To enable voice messages, please allow microphone access in your browser settings.
               </p>
             </div>
@@ -3320,12 +3389,12 @@ export default function ChatThread(){
             {/* Instructions based on device/browser */}
             <div className="space-y-4 mb-6">
               {/* Safari on iPhone */}
-              <div className="bg-gray-800/50 rounded-lg p-4">
-                <h4 className="text-white font-medium mb-3 flex items-center gap-2">
+              <div className="bg-c-bg-recessed rounded-lg p-4">
+                <h4 className="text-c-text-primary font-medium mb-3 flex items-center gap-2">
                   <i className="fa-brands fa-safari text-blue-400" />
                   Safari (iPhone/iPad)
                 </h4>
-                <ol className="text-sm text-white/80 space-y-2 list-decimal list-inside">
+                <ol className="text-sm text-c-text-secondary space-y-2 list-decimal list-inside">
                   <li>Tap the <strong>AA</strong> icon in the address bar</li>
                   <li>Select <strong>"Website Settings"</strong></li>
                   <li>Tap <strong>"Microphone"</strong></li>
@@ -3335,12 +3404,12 @@ export default function ChatThread(){
               </div>
 
               {/* Chrome on mobile */}
-              <div className="bg-gray-800/50 rounded-lg p-4">
-                <h4 className="text-white font-medium mb-3 flex items-center gap-2">
+              <div className="bg-c-bg-recessed rounded-lg p-4">
+                <h4 className="text-c-text-primary font-medium mb-3 flex items-center gap-2">
                   <i className="fa-brands fa-chrome text-blue-400" />
                   Chrome (Mobile)
                 </h4>
-                <ol className="text-sm text-white/80 space-y-2 list-decimal list-inside">
+                <ol className="text-sm text-c-text-secondary space-y-2 list-decimal list-inside">
                   <li>Tap the <strong>lock icon</strong> or <strong>three dots</strong> in the address bar</li>
                   <li>Tap <strong>"Site settings"</strong> or <strong>"Permissions"</strong></li>
                   <li>Find <strong>"Microphone"</strong></li>
@@ -3350,12 +3419,12 @@ export default function ChatThread(){
               </div>
 
               {/* General mobile */}
-              <div className="bg-gray-800/50 rounded-lg p-4">
-                <h4 className="text-white font-medium mb-3 flex items-center gap-2">
+              <div className="bg-c-bg-recessed rounded-lg p-4">
+                <h4 className="text-c-text-primary font-medium mb-3 flex items-center gap-2">
                   <i className="fa-solid fa-mobile-alt text-green-400" />
                   Other Mobile Browsers
                 </h4>
-                <ol className="text-sm text-white/80 space-y-2 list-decimal list-inside">
+                <ol className="text-sm text-c-text-secondary space-y-2 list-decimal list-inside">
                   <li>Look for a <strong>microphone icon</strong> or <strong>lock icon</strong> in the address bar</li>
                   <li>Tap it and select <strong>"Allow microphone"</strong></li>
                   <li>Or go to browser <strong>Settings → Site Permissions → Microphone</strong></li>
@@ -3368,7 +3437,7 @@ export default function ChatThread(){
             <div className="flex gap-3">
               <button
                 onClick={() => setShowPermissionGuide(false)}
-                className="flex-1 px-4 py-3 bg-gray-700/50 text-gray-300 border border-gray-600/50 rounded-xl hover:bg-gray-700/70 transition-colors font-medium"
+                className="flex-1 px-4 py-3 bg-c-hover-bg text-c-text-secondary border border-c-border rounded-xl hover:bg-c-active-bg transition-colors font-medium"
               >
                 Close
               </button>
@@ -3390,15 +3459,15 @@ export default function ChatThread(){
 
       {/* Microphone permission modal */}
       {showMicPermissionModal && (
-        <div className="fixed inset-0 bg-black/90 z-[9999] flex items-center justify-center p-4">
-          <div className="bg-[#1a1a1a] rounded-2xl border border-white/20 p-6 max-w-sm w-full mx-4">
+        <div className="fixed inset-0 bg-c-bg-overlay z-[9999] flex items-center justify-center p-4">
+          <div className="bg-c-bg-elevated rounded-2xl border border-c-border p-6 max-w-sm w-full mx-4">
             {/* Header */}
             <div className="text-center mb-6">
               <div className="w-16 h-16 bg-cpoint-turquoise/20 rounded-full flex items-center justify-center mx-auto mb-3">
                 <i className="fa-solid fa-microphone text-cpoint-turquoise text-2xl" />
               </div>
-              <h3 className="text-white text-lg font-medium mb-2">{t('chat.microphone_access')}</h3>
-              <p className="text-white/70 text-sm leading-relaxed">
+              <h3 className="text-c-text-primary text-lg font-medium mb-2">{t('chat.microphone_access')}</h3>
+              <p className="text-c-text-secondary text-sm leading-relaxed">
                 To send voice messages, we need access to your microphone. 
                 {isMobile ? ' Your browser will ask for permission.' : ' Click "Allow" when your browser asks for permission.'}
               </p>
@@ -3406,15 +3475,15 @@ export default function ChatThread(){
 
             {/* Features list */}
             <div className="mb-6 space-y-2">
-              <div className="flex items-center gap-3 text-sm text-white/80">
+              <div className="flex items-center gap-3 text-sm text-c-text-secondary">
                 <i className="fa-solid fa-check text-cpoint-turquoise text-xs" />
                 <span>{t('chat.mic_record_voice')}</span>
               </div>
-              <div className="flex items-center gap-3 text-sm text-white/80">
+              <div className="flex items-center gap-3 text-sm text-c-text-secondary">
                 <i className="fa-solid fa-check text-cpoint-turquoise text-xs" />
                 <span>{t('chat.mic_preview_before_send')}</span>
               </div>
-              <div className="flex items-center gap-3 text-sm text-white/80">
+              <div className="flex items-center gap-3 text-sm text-c-text-secondary">
                 <i className="fa-solid fa-check text-cpoint-turquoise text-xs" />
                 <span>{t('chat.mic_audio_private')}</span>
               </div>
@@ -3424,7 +3493,7 @@ export default function ChatThread(){
             <div className="flex gap-3">
               <button
                 onClick={() => setShowMicPermissionModal(false)}
-                className="flex-1 px-4 py-3 bg-gray-700/50 text-gray-300 border border-gray-600/50 rounded-xl hover:bg-gray-700/70 transition-colors font-medium"
+                className="flex-1 px-4 py-3 bg-c-hover-bg text-c-text-secondary border border-c-border rounded-xl hover:bg-c-active-bg transition-colors font-medium"
               >
                 Cancel
               </button>
@@ -3445,11 +3514,11 @@ export default function ChatThread(){
       {/* Translate language picker modal */}
       {dmLangPickerId !== null && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => setDmLangPickerId(null)}>
-          <div className="absolute inset-0 bg-black/60" />
-          <div className="relative bg-[#1a1a2e] rounded-2xl border border-white/15 w-[80%] max-w-xs p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="absolute inset-0 bg-c-bg-overlay" />
+          <div className="relative bg-c-bg-elevated rounded-2xl border border-c-border w-[80%] max-w-xs p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-3">
               <i className="fa-solid fa-globe text-cpoint-turquoise" />
-              <span className="text-white font-semibold text-sm">{t('chat.translate_to')}</span>
+              <span className="text-c-text-primary font-semibold text-sm">{t('chat.translate_to')}</span>
             </div>
             <div className="space-y-1">
               {dmTranslateLanguages.map(lang => (
@@ -3474,7 +3543,7 @@ export default function ChatThread(){
                     } catch {}
                     setDmTranslatingId(null)
                   }}
-                  className="w-full px-3 py-2 text-left text-sm text-white hover:bg-white/10 rounded-lg flex items-center gap-3"
+                  className="w-full px-3 py-2 text-left text-sm text-c-text-primary hover:bg-c-hover-bg rounded-lg flex items-center gap-3"
                 >
                   <span className="text-lg">{lang.flag}</span>
                   <span>{lang.name}</span>
@@ -3494,18 +3563,18 @@ export default function ChatThread(){
             setEditingVaultId(null)
           }}
         >
-          <div className="absolute inset-0 bg-black/70" />
+          <div className="absolute inset-0 bg-c-bg-overlay" />
           <div
-            className="relative bg-[#1a1a2e] rounded-2xl border border-white/15 w-full max-w-lg max-h-[min(560px,80vh)] shadow-2xl flex flex-col"
+            className="relative bg-c-bg-elevated rounded-2xl border border-c-border w-full max-w-lg max-h-[min(560px,80vh)] shadow-2xl flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 flex-shrink-0">
-              <span className="text-white font-semibold text-sm flex items-center gap-2">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-c-border flex-shrink-0">
+              <span className="text-c-text-primary font-semibold text-sm flex items-center gap-2">
                 <i className="fa-solid fa-clock text-cpoint-turquoise" aria-hidden /> Reminder Vault
               </span>
               <button
                 type="button"
-                className="p-2 rounded-full hover:bg-white/10 text-white/70"
+                className="p-2 rounded-full hover:bg-c-hover-bg text-c-text-secondary"
                 aria-label={t('common.close')}
                 onClick={() => {
                   setReminderVaultOpen(false)
@@ -3516,38 +3585,38 @@ export default function ChatThread(){
               </button>
             </div>
             <div className="p-4 overflow-y-auto flex-1 text-sm min-h-0">
-              {reminderVaultLoading && <div className="text-white/60 text-center py-6">Loading…</div>}
+              {reminderVaultLoading && <div className="text-c-text-tertiary text-center py-6">Loading…</div>}
               {reminderVaultError && (
                 <div className="text-amber-300/90 text-center py-3">{reminderVaultError}</div>
               )}
               {!reminderVaultLoading && !reminderVaultError && !reminderRows.length && (
-                <div className="text-white/60 text-center py-6">
+                <div className="text-c-text-tertiary text-center py-6">
                   No scheduled reminders yet. Tell Steve something like: “Steve, remind me to call Alex Tuesday at 3pm”.
                 </div>
               )}
               <ul className="space-y-3">
                 {reminderRows.map((row) => (
-                  <li key={row.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <li key={row.id} className="rounded-xl border border-c-border bg-c-hover-bg p-3">
                     {editingVaultId === row.id ? (
                       <div className="space-y-2">
-                        <label className="block text-[11px] uppercase tracking-wide text-white/45">{t('chat.reminder_description')}</label>
+                        <label className="block text-[11px] uppercase tracking-wide text-c-text-tertiary">{t('chat.reminder_description')}</label>
                         <textarea
                           value={editVaultText}
                           onChange={(e) => setEditVaultText(e.target.value)}
                           rows={3}
-                          className="w-full bg-white/10 border border-white/20 rounded-lg px-2 py-2 text-white text-sm resize-none focus:outline-none focus:border-cpoint-turquoise"
+                          className="w-full bg-c-active-bg border border-c-border rounded-lg px-2 py-2 text-c-text-primary text-sm resize-none focus:outline-none focus:border-cpoint-turquoise"
                         />
-                        <label className="block text-[11px] uppercase tracking-wide text-white/45 mt-2">{t('chat.reminder_when')}</label>
+                        <label className="block text-[11px] uppercase tracking-wide text-c-text-tertiary mt-2">{t('chat.reminder_when')}</label>
                         <input
                           type="datetime-local"
                           value={editVaultIso}
                           onChange={(e) => setEditVaultIso(e.target.value)}
-                          className="w-full bg-white/10 border border-white/20 rounded-lg px-2 py-2 text-white text-sm focus:outline-none focus:border-cpoint-turquoise"
+                          className="w-full bg-c-active-bg border border-c-border rounded-lg px-2 py-2 text-c-text-primary text-sm focus:outline-none focus:border-cpoint-turquoise"
                         />
                         <div className="flex gap-2 justify-end pt-1">
                           <button
                             type="button"
-                            className="px-3 py-1.5 text-xs rounded-lg bg-white/10 text-white/80 hover:bg-white/15"
+                            className="px-3 py-1.5 text-xs rounded-lg bg-c-active-bg text-c-text-secondary hover:bg-c-hover-bg"
                             onClick={() => setEditingVaultId(null)}
                           >
                             Cancel
@@ -3588,10 +3657,10 @@ export default function ChatThread(){
                     ) : (
                       <div>
                         <div className="flex items-start justify-between gap-2">
-                          <div className="text-white/90 whitespace-pre-wrap flex-1 min-w-0">{row.reminder_text}</div>
+                          <div className="text-c-text-primary whitespace-pre-wrap flex-1 min-w-0">{row.reminder_text}</div>
                           <button
                             type="button"
-                            className="flex-shrink-0 p-2 rounded-lg text-white/40 hover:text-rose-300 hover:bg-white/10 disabled:opacity-40"
+                            className="flex-shrink-0 p-2 rounded-lg text-c-text-tertiary hover:text-rose-300 hover:bg-c-hover-bg disabled:opacity-40"
                             title="Remove reminder"
                             aria-label={t('chat.reminder_delete_aria', { id: row.id })}
                             disabled={vaultDeletingId === row.id}
@@ -3620,7 +3689,7 @@ export default function ChatThread(){
                             <i className="fa-solid fa-trash" aria-hidden />
                           </button>
                         </div>
-                        <div className="text-xs text-white/45 mt-1">
+                        <div className="text-xs text-c-text-tertiary mt-1">
                           #{row.id} · {row.fire_at_utc} UTC · tz {row.tz_label}
                         </div>
                         <button
@@ -3658,19 +3727,19 @@ export default function ChatThread(){
       {/* Edit Steve summary modal */}
       {editingSummaryId !== null && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => { setEditingSummaryId(null); setEditSummaryText('') }}>
-          <div className="absolute inset-0 bg-black/70" />
+          <div className="absolute inset-0 bg-c-bg-overlay" />
           <div 
-            className="relative bg-[#1a1a2e] rounded-2xl border border-white/15 w-[90%] max-w-md p-5 shadow-2xl"
+            className="relative bg-c-bg-elevated rounded-2xl border border-c-border w-[90%] max-w-md p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-2 mb-3">
               <i className="fa-solid fa-wand-magic-sparkles text-cpoint-turquoise" />
-              <span className="text-white font-semibold text-sm">{t('chat.edit_summary')}</span>
+              <span className="text-c-text-primary font-semibold text-sm">{t('chat.edit_summary')}</span>
             </div>
             <textarea
               value={editSummaryText}
               onChange={(e) => setEditSummaryText(e.target.value)}
-              className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-3 text-sm text-white resize-none focus:outline-none focus:border-cpoint-turquoise leading-relaxed"
+              className="w-full bg-c-active-bg border border-c-border rounded-xl px-3 py-3 text-sm text-c-text-primary resize-none focus:outline-none focus:border-cpoint-turquoise leading-relaxed"
               rows={4}
               autoFocus
               placeholder={t('chat.edit_summary_placeholder')}
@@ -3678,7 +3747,7 @@ export default function ChatThread(){
             <div className="flex gap-2 mt-3 justify-end">
               <button
                 onClick={() => { setEditingSummaryId(null); setEditSummaryText('') }}
-                className="px-4 py-2 text-sm rounded-lg bg-white/10 text-white/70 hover:bg-white/15"
+                className="px-4 py-2 text-sm rounded-lg bg-c-active-bg text-c-text-secondary hover:bg-c-hover-bg"
               >{t('chat.cancel')}</button>
               <button
                 onClick={async () => {
@@ -3715,13 +3784,13 @@ export default function ChatThread(){
       {/* Photo preview modal */}
       {previewImage && (
         <div 
-          className="fixed inset-0 bg-black z-[9999] flex flex-col"
+          className="theme-always-dark fixed inset-0 bg-black z-[9999] flex flex-col"
           onClick={() => setPreviewImage(null)}
         >
           {/* Header with back button */}
           <div className="h-14 flex items-center px-4 flex-shrink-0">
             <button 
-              className="p-2 rounded-full hover:bg-white/10 transition-colors"
+              className="p-2 rounded-full hover:bg-c-hover-bg transition-colors"
               onClick={() => setPreviewImage(null)}
                 aria-label={t('chat.back_to_chat')}
             >
@@ -3764,7 +3833,7 @@ export default function ChatThread(){
                     setPreviewImage(null)
                     setPastedImage(null)
                   }}
-                  className="flex-1 max-w-[140px] px-4 py-3 rounded-xl border border-white/20 text-white hover:bg-white/5 text-sm font-medium flex items-center justify-center gap-2"
+                  className="flex-1 max-w-[140px] px-4 py-3 rounded-xl border border-white/20 text-white hover:bg-c-hover-bg text-sm font-medium flex items-center justify-center gap-2"
                 >
                   <i className="fa-regular fa-trash-can" />
                   Discard
@@ -3786,7 +3855,7 @@ export default function ChatThread(){
               /* Regular photo view - just back button */
               <div className="flex items-center justify-center">
                 <button 
-                  className="px-4 py-2 border border-white/30 text-white rounded-lg hover:border-white/50 hover:bg-white/5 transition-colors text-sm flex items-center gap-2"
+                  className="px-4 py-2 border border-white/30 text-white rounded-lg hover:border-white/50 hover:bg-c-hover-bg transition-colors text-sm flex items-center gap-2"
                   onClick={() => setPreviewImage(null)}
                 >
                   <i className="fa-solid fa-arrow-left text-sm" />
@@ -3809,20 +3878,20 @@ export default function ChatThread(){
       {/* Block User Modal */}
       {showBlockModal && (
         <div 
-          className="fixed inset-0 z-[10000] bg-black/80 backdrop-blur flex items-center justify-center p-4"
+          className="fixed inset-0 z-[10000] bg-c-bg-overlay backdrop-blur flex items-center justify-center p-4"
           onClick={(e) => e.currentTarget === e.target && !blockSubmitting && setShowBlockModal(false)}
         >
-          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-5">
+          <div className="w-full max-w-sm rounded-2xl border border-c-border bg-c-bg-elevated p-5">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
                 <i className="fa-solid fa-ban text-red-400" />
               </div>
-              <div className="font-semibold text-lg text-white">Block @{username}</div>
+              <div className="font-semibold text-lg text-c-text-primary">Block @{username}</div>
             </div>
-            <p className="text-sm text-[#9fb0b5] mb-4">
+            <p className="text-sm text-c-text-tertiary mb-4">
               Blocking this user will:
             </p>
-            <ul className="text-sm text-[#9fb0b5] mb-4 space-y-1 pl-4">
+            <ul className="text-sm text-c-text-tertiary mb-4 space-y-1 pl-4">
               <li>• Hide all their posts from your feed</li>
               <li>• Prevent messaging between you</li>
               <li>• Notify our moderation team</li>
@@ -3830,11 +3899,11 @@ export default function ChatThread(){
             </ul>
             
             <div className="mb-4">
-              <label className="block text-sm text-[#9fb0b5] mb-2">Reason for blocking (optional)</label>
+              <label className="block text-sm text-c-text-tertiary mb-2">Reason for blocking (optional)</label>
               <select
                 value={blockReason}
                 onChange={(e) => setBlockReason(e.target.value)}
-                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-red-500/50"
+                className="w-full px-3 py-2 bg-c-hover-bg border border-c-border rounded-lg text-sm text-c-text-primary focus:outline-none focus:border-red-500/50"
                 disabled={blockSubmitting}
               >
                 <option value="">Select a reason...</option>
@@ -3848,7 +3917,7 @@ export default function ChatThread(){
 
             <div className="flex gap-3">
               <button
-                className="flex-1 py-2.5 rounded-lg border border-white/10 text-white hover:bg-white/5 transition-colors"
+                className="flex-1 py-2.5 rounded-lg border border-c-border text-c-text-primary hover:bg-c-hover-bg transition-colors"
                 onClick={() => {
                   setShowBlockModal(false)
                   setBlockReason('')
@@ -3881,6 +3950,8 @@ export default function ChatThread(){
         onPreviewIndexChange={setPreviewIndex}
         onCancel={cancelMediaPreview}
         onRemove={removeMediaFromPreview}
+        quality={mediaQuality}
+        onQualityChange={handleMediaQualityChange}
         onSend={confirmSendMedia}
       />
 

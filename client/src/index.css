@@ -60,8 +60,8 @@
     height: 100%;
     min-height: 100dvh;
     overflow: hidden;
-    background-color: #000;
-    color: #fff;
+    background-color: var(--c-bg-app);
+    color: var(--c-text-primary);
   }
 
   @supports (height: 100svh) {
@@ -90,7 +90,8 @@
   }
 }
 
-:root {
+:root,
+:root[data-theme='dark'] {
   /* C-Point brand tokens (see docs/DESIGN.md § Color).
      These mirror the canonical hex values used in marketing + product.
      The product accent is brand turquoise (#00CEC8) exposed via
@@ -106,6 +107,7 @@
      hex value inline; edit here to retint the app. */
   --cpoint-accent-rgb: 0, 206, 200;
 
+  /* Legacy glass tokens (aliased for migration) */
   --glass-base: rgba(12, 12, 16, 0.68);
   --glass-tint: rgba(var(--cpoint-accent-rgb), 0.22);
   --glass-border: rgba(255, 255, 255, 0.14);
@@ -122,6 +124,80 @@
       transparent 50%
     ),
     #020202;
+
+  /* ===== Semantic tokens (--c-*) — Dark theme ===== */
+  
+  /* Canvas & Surfaces */
+  --c-bg-app: #000000;
+  --c-bg-elevated: rgba(12, 12, 16, 0.72);
+  --c-bg-surface: rgba(18, 20, 24, 0.78);
+  --c-bg-recessed: rgba(18, 18, 22, 0.8);
+  --c-bg-overlay: rgba(0, 0, 0, 0.6);
+
+  /* Text */
+  --c-text-primary: #FFFFFF;
+  --c-text-secondary: rgba(255, 255, 255, 0.7);
+  --c-text-tertiary: rgba(255, 255, 255, 0.45);
+  --c-text-disabled: rgba(255, 255, 255, 0.25);
+  --c-text-link: #00CEC8;
+  --c-text-on-accent: #FFFFFF;
+
+  /* Borders */
+  --c-border-default: rgba(255, 255, 255, 0.14);
+  --c-border-subtle: rgba(255, 255, 255, 0.06);
+  --c-border-strong: rgba(255, 255, 255, 0.22);
+  --c-border-accent: rgba(0, 206, 200, 0.65);
+
+  /* Glass Morphism */
+  --c-glass-base: rgba(12, 12, 16, 0.68);
+  --c-glass-tint: rgba(0, 206, 200, 0.22);
+  --c-glass-border: rgba(255, 255, 255, 0.14);
+  --c-glass-highlight: rgba(255, 255, 255, 0.09);
+  --c-glass-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  --c-glass-blur: 32px;
+  --c-glass-saturate: 160%;
+
+  /* Chat Bubbles */
+  --c-bubble-sent-bg: linear-gradient(135deg, rgba(0, 206, 200, 0.9), rgba(32, 84, 78, 0.85));
+  --c-bubble-sent-text: #FFFFFF;
+  --c-bubble-sent-border: rgba(0, 206, 200, 0.65);
+  --c-bubble-received-bg: rgba(18, 18, 22, 0.78);
+  --c-bubble-received-text: #FFFFFF;
+  --c-bubble-received-border: rgba(255, 255, 255, 0.14);
+
+  /* Chrome (Header, Nav, Composer) */
+  --c-header-bg: rgba(0, 0, 0, 0.75);
+  --c-nav-bg: rgba(0, 0, 0, 0.82);
+  --c-nav-text: #cfd8dc;
+  --c-composer-bg: rgba(18, 18, 22, 0.92);
+  --c-composer-input-bg: rgba(255, 255, 255, 0.06);
+
+  /* Interactive States */
+  --c-hover-bg: rgba(255, 255, 255, 0.06);
+  --c-active-bg: rgba(255, 255, 255, 0.10);
+  --c-focus-ring: 0 0 0 2px rgba(0, 206, 200, 0.6);
+  --c-hover-accent: rgba(0, 206, 200, 0.12);
+  --c-active-accent: rgba(0, 206, 200, 0.2);
+  --c-disabled-opacity: 0.4;
+
+  /* Accent */
+  --c-accent: #00CEC8;
+  --c-accent-hover: #00B8B3;
+  --c-accent-active: #009E99;
+  --c-accent-muted: rgba(0, 206, 200, 0.15);
+  --c-accent-ink: #8ff4e9;
+
+  /* Skeleton Loading */
+  --c-skeleton-strong: rgba(255, 255, 255, 0.08);
+  --c-skeleton-subtle: rgba(255, 255, 255, 0.04);
+
+  /* Reply snippet */
+  --c-reply-snippet-bg: rgba(0, 0, 0, 0.22);
+
+  /* Card elevation */
+  --c-shadow-card: 0 8px 24px rgba(0, 0, 0, 0.35);
+
+  /* Layout tokens */
   --keyboard-offset: 0px;
   /* Default to env() so CSS consumers (calc/var) already reflect the device
      safe area on first paint. The inline probe in index.html also writes
@@ -139,8 +215,148 @@
   --app-feed-content-pad-bottom: calc(var(--app-feed-bottom-nav-height) + 12px);
 }
 
+:root[data-theme='light'] {
+  /* Legacy tokens (light overrides) */
+  --cpoint-bg-app: #ECEEF2;
+  --glass-base: rgba(255, 255, 255, 0.80);
+  --glass-tint: rgba(0, 206, 200, 0.10);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-highlight: rgba(255, 255, 255, 0.6);
+  --glass-shadow: 0 8px 24px rgba(15, 23, 42, 0.10);
+  --glass-gradient: radial-gradient(
+      circle at 10% 20%,
+      rgba(0, 206, 200, 0.06),
+      transparent 55%
+    ),
+    radial-gradient(
+      circle at 80% 10%,
+      rgba(105, 119, 255, 0.04),
+      transparent 50%
+    ),
+    #FFFFFF;
+
+  /* ===== Semantic tokens (--c-*) — Light theme ===== */
+  
+  /* Canvas & Surfaces */
+  --c-bg-app: #ECEEF2;
+  --c-bg-elevated: #FFFFFF;
+  --c-bg-surface: #FFFFFF;
+  --c-bg-recessed: #E4E7EC;
+  --c-bg-overlay: rgba(15, 20, 25, 0.42);
+
+  /* Text */
+  --c-text-primary: #0F1419;
+  --c-text-secondary: #536471;
+  --c-text-tertiary: #6E7B8A;
+  --c-text-disabled: rgba(15, 20, 25, 0.32);
+  --c-text-link: #007D77;
+  --c-text-on-accent: #0F1419;
+
+  /* Borders */
+  --c-border-default: rgba(0, 0, 0, 0.10);
+  --c-border-subtle: rgba(0, 0, 0, 0.05);
+  --c-border-strong: rgba(0, 0, 0, 0.16);
+  --c-border-accent: rgba(0, 206, 200, 0.5);
+
+  /* Glass Morphism */
+  --c-glass-base: rgba(255, 255, 255, 0.80);
+  --c-glass-tint: rgba(0, 206, 200, 0.10);
+  --c-glass-border: rgba(0, 0, 0, 0.08);
+  --c-glass-highlight: rgba(255, 255, 255, 0.6);
+  --c-glass-shadow: 0 8px 24px rgba(15, 23, 42, 0.10);
+  --c-glass-blur: 24px;
+  --c-glass-saturate: 120%;
+
+  /* Chat Bubbles */
+  --c-bubble-sent-bg: linear-gradient(135deg, rgba(0, 206, 200, 0.95), rgba(0, 158, 153, 0.95));
+  --c-bubble-sent-text: #FFFFFF;
+  --c-bubble-sent-border: rgba(0, 158, 153, 0.45);
+  --c-bubble-received-bg: #ECEEF2;
+  --c-bubble-received-text: #0F1419;
+  --c-bubble-received-border: rgba(0, 0, 0, 0.06);
+
+  /* Chrome (Header, Nav, Composer) */
+  --c-header-bg: rgba(245, 247, 250, 0.90);
+  --c-nav-bg: rgba(255, 255, 255, 0.90);
+  --c-nav-text: #536471;
+  --c-composer-bg: rgba(255, 255, 255, 0.96);
+  --c-composer-input-bg: #EEF1F5;
+
+  /* Interactive States */
+  --c-hover-bg: rgba(15, 20, 25, 0.04);
+  --c-active-bg: rgba(15, 20, 25, 0.08);
+  --c-focus-ring: 0 0 0 2px rgba(0, 125, 119, 0.55);
+  --c-hover-accent: rgba(0, 206, 200, 0.08);
+  --c-active-accent: rgba(0, 206, 200, 0.14);
+  --c-disabled-opacity: 0.5;
+
+  /* Accent (stable across themes) */
+  --c-accent: #00CEC8;
+  --c-accent-hover: #00B8B3;
+  --c-accent-active: #009E99;
+  --c-accent-muted: rgba(0, 206, 200, 0.12);
+  --c-accent-ink: #007D77;
+
+  /* Card elevation */
+  --c-shadow-card: 0 2px 8px rgba(15, 23, 42, 0.06);
+
+  /* Skeleton Loading */
+  --c-skeleton-strong: rgba(15, 20, 25, 0.09);
+  --c-skeleton-subtle: rgba(15, 20, 25, 0.05);
+
+  /* Reply snippet */
+  --c-reply-snippet-bg: rgba(0, 125, 119, 0.12);
+
+  color-scheme: light;
+}
+
+/* Force-dark utility for surfaces that remain dark regardless of theme */
+.theme-always-dark {
+  --c-bg-app: #000000;
+  --c-bg-elevated: rgba(12, 12, 16, 0.72);
+  --c-bg-surface: rgba(18, 20, 24, 0.78);
+  --c-bg-recessed: rgba(18, 18, 22, 0.8);
+  --c-bg-overlay: rgba(0, 0, 0, 0.6);
+  --c-text-primary: #FFFFFF;
+  --c-text-secondary: rgba(255, 255, 255, 0.7);
+  --c-text-tertiary: rgba(255, 255, 255, 0.45);
+  --c-text-disabled: rgba(255, 255, 255, 0.25);
+  --c-text-on-accent: #FFFFFF;
+  --c-accent-ink: #8ff4e9;
+  --c-border-default: rgba(255, 255, 255, 0.14);
+  --c-border-subtle: rgba(255, 255, 255, 0.06);
+  --c-border-strong: rgba(255, 255, 255, 0.22);
+  --c-header-bg: rgba(0, 0, 0, 0.75);
+  --c-composer-bg: rgba(18, 18, 22, 0.92);
+  --c-composer-input-bg: rgba(255, 255, 255, 0.06);
+  --c-hover-bg: rgba(255, 255, 255, 0.06);
+  --c-active-bg: rgba(255, 255, 255, 0.10);
+  --c-glass-base: rgba(12, 12, 16, 0.68);
+  --c-glass-border: rgba(255, 255, 255, 0.14);
+  --c-glass-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  --c-skeleton-strong: rgba(255, 255, 255, 0.08);
+  --c-skeleton-subtle: rgba(255, 255, 255, 0.04);
+  --c-reply-snippet-bg: rgba(0, 0, 0, 0.22);
+  --c-shadow-card: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+/* Smooth theme transition (applied briefly on theme switch) */
+:root.theme-transitioning,
+:root.theme-transitioning * {
+  transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease,
+              box-shadow 200ms ease !important;
+}
+
 .chat-thread-bg {
   background: var(--glass-gradient);
+}
+
+/* Light mode: chat thread stays white so grey received bubbles read */
+html[data-theme='light'] .chat-thread-bg {
+  background: #FFFFFF;
+}
+html[data-theme='light'] .liquid-glass-bubble--received {
+  background: #ECEEF2;
 }
 
 /* Chat thread specific styles for keyboard handling */
@@ -238,6 +454,99 @@
     transform: translate3d(0, 0, 0) scale(1);
   }
 }
+
+/* ===== Light mode — glass class overrides =====
+   Dark mode classes above use hardcoded dark values.
+   These overrides swap visuals for light theme while
+   keeping structural CSS (radius, position, overflow) untouched. */
+
+html[data-theme='light'] .glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(0, 0, 0, 0.06);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(24px) saturate(120%);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+}
+
+html[data-theme='light'] .glass-section {
+  background: #FFFFFF;
+  border-color: rgba(0, 0, 0, 0.04);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme='light'] .glass-highlight {
+  border-color: rgba(0, 206, 200, 0.25);
+  background: linear-gradient(135deg, rgba(0, 206, 200, 0.10), rgba(240, 253, 252, 0.92));
+  color: #0F1419;
+  box-shadow: 0 12px 36px rgba(0, 206, 200, 0.10);
+}
+
+html[data-theme='light'] .liquid-glass-surface {
+  backdrop-filter: blur(24px) saturate(120%);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+}
+
+html[data-theme='light'] .liquid-glass-surface::before {
+  opacity: 0.6;
+}
+
+html[data-theme='light'] .liquid-glass-bubble {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+}
+
+html[data-theme='light'] .liquid-glass-bubble--sent {
+  background: linear-gradient(135deg, rgba(0, 206, 200, 0.92), rgba(0, 158, 153, 0.88));
+  border-color: rgba(0, 206, 200, 0.35);
+  box-shadow: 0 4px 16px rgba(0, 158, 153, 0.15);
+}
+
+html[data-theme='light'] .liquid-glass-bubble--received {
+  background: #F4F5F7;
+  border-color: rgba(0, 0, 0, 0.06);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-theme='light'] .liquid-glass-input {
+  background: #F4F5F7;
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.03), 0 2px 8px rgba(0, 0, 0, 0.04);
+  backdrop-filter: blur(16px) saturate(120%);
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+}
+
+html[data-theme='light'] .liquid-glass-chip {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+html[data-theme='light'] .chat-thread-bg {
+  background: var(--c-bg-app);
+}
+
+html[data-theme='light'] .burger-menu-backdrop {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+html[data-theme='light'] .burger-menu-sheet {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 8px 0 32px rgba(0, 0, 0, 0.08);
+}
+
+@keyframes searchHighlightLight {
+  0% { background-color: rgba(0, 158, 153, 0.18); }
+  100% { background-color: transparent; }
+}
+
+html[data-theme='light'] .chat-search-highlight {
+  animation-name: searchHighlightLight;
+}
+
+/* ===== End light mode glass overrides ===== */
 
 @media (prefers-reduced-motion: reduce) {
   .burger-menu-backdrop,

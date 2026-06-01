@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface MessageVideoProps {
   src: string
@@ -6,10 +7,12 @@ interface MessageVideoProps {
 }
 
 export default function MessageVideo({ src, className = '' }: MessageVideoProps) {
+  const { t } = useTranslation()
   const videoRef = useRef<HTMLVideoElement>(null)
   const [showOverlay, setShowOverlay] = useState(true)
   const [isLoading, setIsLoading] = useState(true)
   const [hasFrame, setHasFrame] = useState(false)
+  const [hasError, setHasError] = useState(false)
 
   // Add timestamp to force browser to load first frame
   // This is a common technique to show video thumbnail
@@ -24,6 +27,10 @@ export default function MessageVideo({ src, className = '' }: MessageVideoProps)
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
+    setHasError(false)
+    setIsLoading(true)
+    setHasFrame(false)
+    setShowOverlay(true)
 
     const handleLoadedMetadata = () => {
       // Seek to beginning to ensure first frame is rendered
@@ -44,8 +51,8 @@ export default function MessageVideo({ src, className = '' }: MessageVideoProps)
     }
 
     const handleError = () => {
-      // Still hide loading on error
       setIsLoading(false)
+      setHasError(true)
     }
 
     video.addEventListener('loadedmetadata', handleLoadedMetadata)
@@ -73,11 +80,18 @@ export default function MessageVideo({ src, className = '' }: MessageVideoProps)
   }
 
   return (
-    <div className={`relative w-full rounded-lg overflow-hidden bg-black ${className}`}>
+    <div className={`relative w-full min-h-[120px] rounded-lg overflow-hidden bg-black ${className}`}>
+      {hasError ? (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-white/5 p-4 text-white/55">
+          <i className="fa-solid fa-video-slash text-xl" />
+          <div className="text-xs font-medium">{t('chat.video_unavailable')}</div>
+          <div className="text-[10px] text-white/35">{t('chat.media_deleted')}</div>
+        </div>
+      ) : null}
       {/* Video element */}
       <video
         ref={videoRef}
-        className="block w-full max-h-64 object-contain"
+        className={`block w-full max-h-64 object-contain ${hasError ? 'opacity-0' : ''}`}
         controls={!showOverlay}
         playsInline
         preload="auto"
@@ -86,7 +100,7 @@ export default function MessageVideo({ src, className = '' }: MessageVideoProps)
       />
       
       {/* Play button overlay - only shown when video has loaded */}
-      {showOverlay && (
+      {showOverlay && !hasError && (
         <div 
           onClick={handlePlayClick}
           className={`absolute inset-0 flex items-center justify-center cursor-pointer transition-colors ${

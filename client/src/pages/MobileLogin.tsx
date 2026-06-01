@@ -433,26 +433,26 @@ export default function MobileLogin() {
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-black text-white p-5 relative">
-      <div className="w-full max-w-xs rounded-xl p-6 relative z-10 bg-black border border-white/10">
+    <div className="min-h-screen w-full flex items-center justify-center bg-c-bg-app text-c-text-primary p-5 relative">
+      <div className="w-full max-w-xs rounded-xl p-6 relative z-10 bg-c-bg-app border border-c-border">
         {step !== 'password' && (
           <div className="text-center mb-5">
             <BrandLogo className="w-16 h-16 rounded-2xl object-contain mx-auto mb-3" />
             <h1 className="text-lg font-semibold">C-Point</h1>
             {invitationInfo ? (
               <div className="mt-3 p-3 bg-cpoint-turquoise/10 border border-cpoint-turquoise/30 rounded-lg">
-                <p className="text-xs text-white font-medium">
+                <p className="text-xs text-c-text-primary font-medium">
                   You've been invited to join
                 </p>
                 <p className="text-sm text-cpoint-turquoise font-semibold mt-1">
                   {invitationInfo.community_name}
                 </p>
-                <p className="text-xs text-white/60 mt-1">
+                <p className="text-xs text-c-text-tertiary mt-1">
                   by {invitationInfo.invited_by}
                 </p>
               </div>
             ) : (
-              <p className="text-xs text-white/60 mt-1">{t('auth.login.subtitle')}</p>
+              <p className="text-xs text-c-text-tertiary mt-1">{t('auth.login.subtitle')}</p>
             )}
           </div>
         )}
@@ -543,8 +543,8 @@ export default function MobileLogin() {
             }}
           >
             <div className="text-center mb-4">
-              <h2 className="text-xl font-semibold text-white mb-1">{t('auth.login.welcome_back')}</h2>
-              <p className="text-white/70 text-base">{pendingUsername}</p>
+              <h2 className="text-xl font-semibold text-c-text-primary mb-1">{t('auth.login.welcome_back')}</h2>
+              <p className="text-c-text-secondary text-base">{pendingUsername}</p>
             </div>
             <div className="relative">
               <input
@@ -553,14 +553,14 @@ export default function MobileLogin() {
                 placeholder={t('auth.login.password_placeholder')}
                 required
                 autoFocus
-                className="w-full rounded-md bg-black border border-white/10 px-3 py-2.5 text-sm text-white outline-none pr-10 focus:border-cpoint-turquoise/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2.5 text-sm text-c-text-primary outline-none pr-10 focus:border-cpoint-turquoise/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
                 aria-pressed={showPassword}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 rounded"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-c-text-tertiary hover:text-c-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 rounded"
               >
                 {showPassword ? (
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -584,7 +584,7 @@ export default function MobileLogin() {
             <button
               type="button"
               onClick={() => navigate('/login')}
-              className="w-full rounded-xl border border-white/10 bg-white/5 text-white py-3 text-sm font-medium active:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+              className="w-full rounded-xl border border-c-border bg-c-hover-bg text-c-text-primary py-3 text-sm font-medium active:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
             >
               {t('auth.login.back')}
             </button>
@@ -677,7 +677,7 @@ export default function MobileLogin() {
                 placeholder={t('auth.login.username_placeholder')}
                 required
                 autoComplete="username"
-                className="w-full rounded-md border border-white/10 bg-white/10 px-3 py-3 text-base outline-none focus:border-cpoint-turquoise/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                className="w-full rounded-md border border-c-border bg-c-active-bg px-3 py-3 text-base outline-none focus:border-cpoint-turquoise/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
               />
             </div>
             <button
@@ -700,10 +700,10 @@ export default function MobileLogin() {
 
         {step !== 'password' && (
           <>
-            <div className="flex items-center gap-3 my-4 text-white/40 text-[12px]">
-              <div className="flex-1 h-px bg-white/10" />
+            <div className="flex items-center gap-3 my-4 text-c-text-tertiary text-[12px]">
+              <div className="flex-1 h-px bg-c-active-bg" />
               <span>{t('auth.login.or')}</span>
-              <div className="flex-1 h-px bg-white/10" />
+              <div className="flex-1 h-px bg-c-active-bg" />
             </div>
 
             <div className="flex flex-col gap-3">
@@ -712,7 +712,7 @@ export default function MobileLogin() {
                   <button
                     type="button"
                     disabled={googleLoading || isSubmitting || !window.__googleAuthReady}
-                    className="w-full rounded-lg border border-white/10 bg-white/5 py-2.5 text-sm font-medium active:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                    className="w-full rounded-lg border border-c-border bg-c-hover-bg py-2.5 text-sm font-medium active:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
                     onClick={async () => {
                       const isAndroid = Capacitor.getPlatform() === 'android'
                       setGoogleLoading(true)
@@ -812,7 +812,7 @@ export default function MobileLogin() {
                 >
                   {/* Visual match to native (iOS/Android); GIS button sits underneath (invisible) for JWT. */}
                   <div
-                    className="pointer-events-none relative z-[1] flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 py-2.5 text-sm font-medium text-white"
+                    className="pointer-events-none relative z-[1] flex w-full items-center justify-center gap-2 rounded-lg border border-c-border bg-c-hover-bg py-2.5 text-sm font-medium text-c-text-primary"
                     aria-hidden
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24">
@@ -843,7 +843,7 @@ export default function MobileLogin() {
                 </div>
               )}
 
-              <a href={inviteToken ? `/signup?invite=${inviteToken}` : '/signup'} className="block w-full text-center rounded-lg border border-white/10 bg-white/5 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50">{t('auth.login.create_account_cta')}</a>
+              <a href={inviteToken ? `/signup?invite=${inviteToken}` : '/signup'} className="block w-full text-center rounded-lg border border-c-border bg-c-hover-bg py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50">{t('auth.login.create_account_cta')}</a>
 
               {Capacitor.getPlatform() !== 'web' && !inviteToken && authCheckDone && (
                 <div className="space-y-2">
@@ -851,11 +851,11 @@ export default function MobileLogin() {
                     type="button"
                     disabled={inviteFromInstallBusy}
                     onClick={() => setShowInviteClipboardModal(true)}
-                    className="w-full rounded-lg border border-white/10 bg-white/5 py-2 text-sm text-center active:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                    className="w-full rounded-lg border border-c-border bg-c-hover-bg py-2 text-sm text-center active:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
                   >
                     Use Community Invite
                   </button>
-                  <p className="text-white/40 text-[11px] text-center leading-snug">
+                  <p className="text-c-text-tertiary text-[11px] text-center leading-snug">
                     After installing C-Point from an invite link, tap here before you sign in
                   </p>
                 </div>
@@ -866,7 +866,7 @@ export default function MobileLogin() {
 
         {/* Terms and Privacy Policy */}
         <div className="mt-4 text-center">
-          <p className="text-white/40 text-xs">
+          <p className="text-c-text-tertiary text-xs">
             By signing in, you agree to our{' '}
             <a
               href="https://www.c-point.co/terms"
@@ -901,7 +901,7 @@ export default function MobileLogin() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="invite-clipboard-title"
-            className="relative w-full max-w-[360px] rounded-2xl border border-white/10 bg-black p-5 text-white shadow-[0_20px_60px_rgba(0,0,0,0.5)]"
+            className="relative w-full max-w-[360px] rounded-2xl border border-c-border bg-c-bg-app p-5 text-c-text-primary shadow-[0_20px_60px_rgba(0,0,0,0.5)]"
             onClick={e => e.stopPropagation()}
           >
             <div className="text-center mb-4">
@@ -910,7 +910,7 @@ export default function MobileLogin() {
               </div>
               <h3 id="invite-clipboard-title" className="text-lg font-semibold m-0">{t('auth.login.use_invite_title')}</h3>
             </div>
-            <p className="text-sm text-white/70 text-center mb-4 leading-relaxed">
+            <p className="text-sm text-c-text-secondary text-center mb-4 leading-relaxed">
               We&apos;ll read your clipboard once to find your community invite. On the next step, iOS may ask you to allow paste — that&apos;s expected.
             </p>
             <div className="flex flex-col gap-2">
@@ -926,7 +926,7 @@ export default function MobileLogin() {
                 type="button"
                 disabled={inviteFromInstallBusy}
                 onClick={() => setShowInviteClipboardModal(false)}
-                className="w-full rounded-xl bg-white/5 text-white/60 text-sm py-3 border-0 active:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                className="w-full rounded-xl bg-c-hover-bg text-c-text-tertiary text-sm py-3 border-0 active:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
               >
                 Not now
               </button>
@@ -941,13 +941,13 @@ export default function MobileLogin() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="forgot-password-title"
-            className="w-[90%] max-w-sm bg-black border border-white/10 rounded-xl"
+            className="w-[90%] max-w-sm bg-c-bg-app border border-c-border rounded-xl"
           >
-            <div className="flex items-center justify-between p-4 border-b border-white/10">
-              <h2 id="forgot-password-title" className="text-white text-base font-semibold">{t('auth.login.reset_title')}</h2>
+            <div className="flex items-center justify-between p-4 border-b border-c-border">
+              <h2 id="forgot-password-title" className="text-c-text-primary text-base font-semibold">{t('auth.login.reset_title')}</h2>
               <button
                 aria-label={t('common.close')}
-                className="text-white/60 hover:text-white text-2xl rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                className="text-c-text-tertiary hover:text-c-text-primary text-2xl rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
                 onClick={() => setShowForgot(false)}
               >
                 &times;
@@ -956,7 +956,7 @@ export default function MobileLogin() {
             <div className="p-4">
               {!resetSent ? (
                 <>
-                  <p className="text-white/70 text-sm mb-4">{t('auth.login.reset_helper')}</p>
+                  <p className="text-c-text-secondary text-sm mb-4">{t('auth.login.reset_helper')}</p>
                   {error && (
                     <p className="text-red-400 text-sm mb-3" role="alert">{error}</p>
                   )}
@@ -967,7 +967,7 @@ export default function MobileLogin() {
                       value={resetEmail}
                       onChange={e => setResetEmail(e.target.value)}
                       required
-                      className="w-full rounded-md border border-white/10 bg-white/10 px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                      className="w-full rounded-md border border-c-border bg-c-active-bg px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
                     />
                     <button
                       type="submit"
@@ -980,9 +980,9 @@ export default function MobileLogin() {
               ) : (
                 <>
                   <div className="w-full rounded-md border border-cpoint-turquoise text-cpoint-turquoise bg-cpoint-turquoise/10 px-3 py-2 text-sm text-center">{t('auth.login.reset_sent_short')}</div>
-                  <p className="text-white/70 text-sm mt-4 text-center">{t('auth.login.reset_sent_helper')}</p>
+                  <p className="text-c-text-secondary text-sm mt-4 text-center">{t('auth.login.reset_sent_helper')}</p>
                   <button
-                    className="w-full mt-4 rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                    className="w-full mt-4 rounded-xl border border-c-border bg-c-hover-bg py-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
                     onClick={() => setShowForgot(false)}
                   >
                     {t('common.close')}

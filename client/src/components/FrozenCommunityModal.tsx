@@ -34,8 +34,8 @@ export default function FrozenCommunityModal({
       aria-labelledby="frozen-community-modal-title"
       className="fixed inset-0 z-[100] flex items-stretch justify-center bg-black/85 backdrop-blur sm:items-center sm:p-6"
     >
-      <div className="flex h-full w-full flex-col border-white/10 bg-black text-white shadow-2xl sm:h-auto sm:max-w-lg sm:rounded-2xl sm:border">
-        <div className="border-b border-white/10 px-5 py-4">
+      <div className="flex h-full w-full flex-col border-c-border bg-c-bg-app text-c-text-primary shadow-2xl sm:h-auto sm:max-w-lg sm:rounded-2xl sm:border">
+        <div className="border-b border-c-border px-5 py-4">
           <div className="text-xs uppercase tracking-[0.22em] text-cpoint-turquoise">
             {t('communities.frozen_subscription_expired')}
           </div>
@@ -48,43 +48,43 @@ export default function FrozenCommunityModal({
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
-          <p className="text-sm leading-6 text-white/75">
+          <p className="text-sm leading-6 text-c-text-secondary">
             {t('communities.frozen_body', { cap: freeMemberCap })}
           </p>
 
-          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm">
+          <div className="rounded-xl border border-c-border bg-white/[0.03] p-4 text-sm">
             <div className="flex items-center justify-between">
-              <span className="text-white/60">{t('communities.frozen_members_label')}</span>
-              <span className="font-semibold text-white">{memberCount}</span>
+              <span className="text-c-text-tertiary">{t('communities.frozen_members_label')}</span>
+              <span className="font-semibold text-c-text-primary">{memberCount}</span>
             </div>
             <div className="mt-2 flex items-center justify-between">
-              <span className="text-white/60">{t('communities.frozen_limit_label')}</span>
-              <span className="font-semibold text-white">{freeMemberCap}</span>
+              <span className="text-c-text-tertiary">{t('communities.frozen_limit_label')}</span>
+              <span className="font-semibold text-c-text-primary">{freeMemberCap}</span>
             </div>
             {overflow > 0 && (
               <div className="mt-2 flex items-center justify-between">
-                <span className="text-white/60">{t('communities.frozen_over_limit_label')}</span>
+                <span className="text-c-text-tertiary">{t('communities.frozen_over_limit_label')}</span>
                 <span className="font-semibold text-cpoint-turquoise">{overflow}</span>
               </div>
             )}
             {frozenAtDisplay && (
               <div className="mt-2 flex items-center justify-between">
-                <span className="text-white/60">{t('communities.frozen_suspended_on_label')}</span>
-                <span className="font-semibold text-white">{frozenAtDisplay}</span>
+                <span className="text-c-text-tertiary">{t('communities.frozen_suspended_on_label')}</span>
+                <span className="font-semibold text-c-text-primary">{frozenAtDisplay}</span>
               </div>
             )}
           </div>
 
-          <p className="text-xs leading-5 text-white/50">
+          <p className="text-xs leading-5 text-c-text-tertiary">
             {t('communities.frozen_footer_note')}
           </p>
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-white/10 px-5 py-4 sm:flex-row sm:justify-end">
+        <div className="flex flex-col gap-3 border-t border-c-border px-5 py-4 sm:flex-row sm:justify-end">
           <button
             type="button"
             onClick={onManageMembers}
-            className="rounded-full border border-white/15 px-5 py-2.5 text-sm text-white/85 transition hover:bg-white/5"
+            className="rounded-full border border-c-border px-5 py-2.5 text-sm text-c-text-secondary transition hover:bg-c-hover-bg"
           >
             {t('communities.frozen_remove_members')}
           </button>

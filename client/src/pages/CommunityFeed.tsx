@@ -206,7 +206,7 @@ export default function CommunityFeed() {
   const feedScrollHeaderBodyPx = 56
   const storyViewerShellClass = useMemo(
     () => Capacitor.getPlatform() === 'web'
-      ? 'relative h-full w-full overflow-hidden bg-black shadow-2xl lg:h-[calc(100dvh-48px)] lg:max-h-[860px] lg:max-w-[430px] lg:rounded-[32px] lg:border lg:border-white/10'
+      ? 'relative h-full w-full overflow-hidden bg-c-bg-app shadow-2xl lg:h-[calc(100dvh-48px)] lg:max-h-[860px] lg:max-w-[430px] lg:rounded-[32px] lg:border lg:border-c-border'
       : 'relative h-full w-full overflow-hidden bg-black',
     []
   )
@@ -2396,18 +2396,18 @@ export default function CommunityFeed() {
   const visiblePosts = useMemo(() => postsOnly.slice(0, visiblePostCount), [postsOnly, visiblePostCount])
 
   const feedBackButton = (
-    <div style={{ paddingTop: 'var(--sat-px, 0px)', background: '#000' }}>
+    <div style={{ paddingTop: 'var(--sat-px, 0px)', background: 'var(--c-bg-app)' }}>
       <div className="h-12 flex items-center px-3">
-        <button className="p-2 rounded-full hover:bg-white/10" onClick={() => { hapticImpactLight(); navigate(-1) }} aria-label={t('navigation.back')}>
-          <i className="fa-solid fa-arrow-left text-white" />
+        <button className="p-2 rounded-full hover:bg-c-hover-bg" onClick={() => { hapticImpactLight(); navigate(-1) }} aria-label={t('navigation.back')}>
+          <i className="fa-solid fa-arrow-left text-c-text-primary" />
         </button>
-        <span className="ml-2 text-white font-semibold truncate">{data?.community?.name || t('feed.community_fallback')}</span>
+        <span className="ml-2 text-c-text-primary font-semibold truncate">{data?.community?.name || t('feed.community_fallback')}</span>
       </div>
     </div>
   )
 
   if (loading) return (
-    <div className="min-h-screen bg-black text-white flex flex-col">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary flex flex-col">
       {feedBackButton}
       <div className="flex-1">
         <SkeletonFeedList count={4} />
@@ -2421,12 +2421,12 @@ export default function CommunityFeed() {
     </div>
   )
   if (error) return (
-    <div className="min-h-screen bg-black text-white flex flex-col">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary flex flex-col">
       {feedBackButton}
       <div className="flex-1 flex items-center justify-center px-4">
         <div className="text-center">
           <div className="text-red-400 mb-2">{error || t('feed.failed_to_load_feed')}</div>
-          <button onClick={() => window.location.reload()} className="px-4 py-2 rounded-lg bg-white/10 text-white text-sm hover:bg-white/20">
+          <button onClick={() => window.location.reload()} className="px-4 py-2 rounded-lg bg-c-active-bg text-c-text-primary text-sm hover:bg-c-hover-bg">
             {t('common.retry')}
           </button>
         </div>
@@ -2434,10 +2434,10 @@ export default function CommunityFeed() {
     </div>
   )
   if (!data) return (
-    <div className="min-h-screen bg-black text-white flex flex-col">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary flex flex-col">
       {feedBackButton}
       <div className="flex-1 flex items-center justify-center px-4">
-        <div className="text-center text-[#9fb0b5]">
+        <div className="text-center text-c-text-tertiary">
           <i className={`fa-solid ${navigator.onLine ? 'fa-folder-open' : 'fa-wifi-slash'} text-3xl mb-3 opacity-50`} />
           <div className="text-sm">{navigator.onLine ? t('feed.no_posts_yet') : t('feed.not_available_offline')}</div>
           {!navigator.onLine && <div className="text-xs mt-1 opacity-70">{t('feed.go_back_online_load_feed')}</div>}
@@ -2466,7 +2466,7 @@ export default function CommunityFeed() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary">
       {/* Subscription-expired auto-freeze owner modal. Non-owners are
           blocked at the API layer by ``frozen_access_payload`` so they
           never see this surface. */}
@@ -2502,10 +2502,10 @@ export default function CommunityFeed() {
         )}
       {/* Fixed Header */}
       <div
-        className="fixed left-0 right-0 top-0 z-[1000] border-b border-white/10"
+        className="fixed left-0 right-0 top-0 z-[1000] border-b border-c-border"
         style={{
           paddingTop: 'var(--sat-px, 0px)',
-          background: '#000',
+          background: 'var(--c-bg-app)',
         }}
       >
         <div className="h-14 flex items-center gap-2 px-3">
@@ -2522,7 +2522,7 @@ export default function CommunityFeed() {
           </button>
           {/* Back button */}
           <button 
-            className="p-2 rounded-full hover:bg-white/10 transition-colors" 
+            className="p-2 rounded-full hover:bg-c-hover-bg transition-colors" 
             onClick={() => {
               const rootParentId = data?.root_parent_id
               const targetId = rootParentId || data?.community?.parent_community_id || community_id
@@ -2530,36 +2530,36 @@ export default function CommunityFeed() {
             }} 
             aria-label={t('navigation.back')}
           >
-            <i className="fa-solid fa-arrow-left text-white" />
+            <i className="fa-solid fa-arrow-left text-c-text-primary" />
           </button>
           <button
             type="button"
-            className="flex-1 min-w-0 rounded-xl px-2 py-1 text-left transition hover:bg-white/[0.04] focus:outline-none focus:ring-1 focus:ring-cpoint-turquoise/50"
+            className="flex-1 min-w-0 rounded-xl px-2 py-1 text-left transition hover:bg-c-hover-bg focus:outline-none focus:ring-1 focus:ring-cpoint-turquoise/50"
             onClick={() => setCommunityInfoOpen(open => !open)}
             aria-expanded={communityInfoOpen}
             aria-label={t('feed.show_community_description')}
           >
-            <div className="font-semibold truncate text-white text-sm">{data?.community?.name || t('feed.community_fallback')}</div>
+            <div className="font-semibold truncate text-c-text-primary text-sm">{data?.community?.name || t('feed.community_fallback')}</div>
             {data?.community?.description ? (
-              <div className="text-xs text-[#9fb0b5] truncate">{data.community.description}</div>
+              <div className="text-xs text-c-text-tertiary truncate">{data.community.description}</div>
             ) : (
-              <div className="text-xs text-[#9fb0b5] truncate">{t('feed.tap_for_community_details')}</div>
+              <div className="text-xs text-c-text-tertiary truncate">{t('feed.tap_for_community_details')}</div>
             )}
           </button>
           <div className="flex items-center gap-1">
             <button 
-              className="p-2 rounded-full hover:bg-white/10 transition-colors" 
+              className="p-2 rounded-full hover:bg-c-hover-bg transition-colors" 
               aria-label={t('common.search')}
               onClick={() => { setShowSearch(true); setTimeout(() => { try { (document.getElementById('hashtag-input') as HTMLInputElement)?.focus() } catch {} }, 50) }}
             >
-              <i className="fa-solid fa-magnifying-glass text-white" />
+              <i className="fa-solid fa-magnifying-glass text-c-text-primary" />
             </button>
             <button 
-              className="relative p-2 rounded-full hover:bg-white/10 transition-colors" 
+              className="relative p-2 rounded-full hover:bg-c-hover-bg transition-colors" 
               onClick={() => navigate('/user_chat')} 
               aria-label={t('navigation.messages')}
             >
-              <i className="fa-solid fa-comments text-white" />
+              <i className="fa-solid fa-comments text-c-text-primary" />
               {unreadMsgs > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-cpoint-turquoise text-black text-[10px] flex items-center justify-center">
                   {unreadMsgs > 99 ? '99+' : unreadMsgs}
@@ -2567,11 +2567,11 @@ export default function CommunityFeed() {
               )}
             </button>
             <button 
-              className="relative p-2 rounded-full hover:bg-white/10 transition-colors" 
+              className="relative p-2 rounded-full hover:bg-c-hover-bg transition-colors" 
               onClick={() => navigate('/notifications')} 
               aria-label={t('navigation.notifications')}
             >
-              <i className="fa-regular fa-bell text-white" />
+              <i className="fa-regular fa-bell text-c-text-primary" />
               {unreadNotifs > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-cpoint-turquoise text-black text-[10px] flex items-center justify-center">
                   {unreadNotifs > 99 ? '99+' : unreadNotifs}
@@ -2589,24 +2589,24 @@ export default function CommunityFeed() {
               onClick={() => setCommunityInfoOpen(false)}
             />
             <div
-              className="fixed left-3 right-3 z-[1002] rounded-3xl border border-cpoint-turquoise/25 bg-[#070909]/95 p-4 text-white shadow-2xl shadow-black/70 ring-1 ring-white/[0.04] backdrop-blur-md sm:left-1/2 sm:right-auto sm:w-[420px] sm:-translate-x-1/2"
+              className="fixed left-3 right-3 z-[1002] rounded-3xl border border-cpoint-turquoise/25 bg-c-bg-elevated p-4 text-c-text-primary shadow-2xl shadow-black/20 ring-1 ring-c-border backdrop-blur-md sm:left-1/2 sm:right-auto sm:w-[420px] sm:-translate-x-1/2"
               style={{ top: 'calc(var(--sat-px, 0px) + 64px)' }}
             >
               <div className="mb-2 flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cpoint-turquoise/80">{t('feed.community_fallback')}</div>
-                  <h2 className="mt-1 text-base font-semibold text-white">{data?.community?.name || t('feed.community_fallback')}</h2>
+                  <h2 className="mt-1 text-base font-semibold text-c-text-primary">{data?.community?.name || t('feed.community_fallback')}</h2>
                 </div>
                 <button
                   type="button"
-                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/70 hover:border-cpoint-turquoise/50 hover:text-cpoint-turquoise"
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-c-border bg-c-hover-bg text-c-text-secondary hover:border-cpoint-turquoise/50 hover:text-cpoint-turquoise"
                   onClick={() => setCommunityInfoOpen(false)}
                   aria-label={t('feed.close_community_description')}
                 >
                   <i className="fa-solid fa-xmark text-xs" />
                 </button>
               </div>
-              <p className="max-h-[40dvh] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-white/75">
+              <p className="max-h-[40dvh] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-c-text-secondary">
                 {data?.community?.description || t('feed.no_community_description')}
               </p>
             </div>
@@ -2630,7 +2630,7 @@ export default function CommunityFeed() {
           className="fixed left-0 right-0 z-50 flex items-center justify-center pointer-events-none transition-transform duration-150"
           style={{ top: 'calc(var(--sat-px, 0px) + 56px + 16px)', transform: `translateY(${Math.min(pullPx * 0.3, 20)}px)` }}
         >
-            <div className="px-3 py-1.5 text-xs rounded-full bg-black/80 border border-white/15 text-white/80 flex items-center gap-2">
+            <div className="px-3 py-1.5 text-xs rounded-full bg-c-bg-elevated border border-c-border text-c-text-secondary flex items-center gap-2">
               {isRefreshing ? (
                 <>
                   <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
@@ -2674,7 +2674,7 @@ export default function CommunityFeed() {
           <div className="flex flex-col gap-3">
           {/* Top header image from legacy template */}
           {data.community?.background_path ? (
-            <div className="community-header-image overflow-hidden rounded-xl border border-white/10 relative">
+            <div className="community-header-image overflow-hidden rounded-xl border border-c-border relative">
               {/* Dark overlay during reaction highlight */}
               {highlightStep === 'reaction' && (
                 <div className="absolute inset-0 bg-black/90 z-[45] pointer-events-none" />
@@ -2698,19 +2698,19 @@ export default function CommunityFeed() {
               />
               
               {/* Loading overlay - same size as image container */}
-              <div className="loading-overlay absolute inset-0 bg-white/5 flex items-center justify-center">
+              <div className="loading-overlay absolute inset-0 bg-c-hover-bg flex items-center justify-center">
                 <div className="flex flex-col items-center gap-2">
-                  <div className="w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full animate-spin"></div>
-                  <div className="text-xs text-white/50">{t('feed.loading_header')}</div>
+                  <div className="w-6 h-6 border-2 border-c-border border-t-c-text-secondary rounded-full animate-spin"></div>
+                  <div className="text-xs text-c-text-tertiary">{t('feed.loading_header')}</div>
                 </div>
               </div>
             </div>
           ) : null}
           {/* Stories panel - below community header image */}
-          <div className="rounded-2xl border border-white/10 bg-white/[0.025] px-3 py-2.5 mb-3 shadow-lg shadow-black/20">
+          <div className="rounded-2xl border border-c-border bg-c-bg-surface px-3 py-2.5 mb-3 shadow-lg shadow-black/10">
             <div className="flex gap-4 overflow-x-auto no-scrollbar">
               <button
-                className="flex flex-col items-center gap-1 min-w-[60px] text-white/80 transition hover:text-cpoint-turquoise disabled:opacity-50"
+                className="flex flex-col items-center gap-1 min-w-[60px] text-c-text-secondary transition hover:text-cpoint-turquoise disabled:opacity-50"
                 onClick={handleStoryUploadClick}
                 disabled={storyUploading || !community_id}
                 aria-label={t('feed.add_story')}
@@ -2718,19 +2718,19 @@ export default function CommunityFeed() {
                 <span className="w-14 h-14 rounded-full border-[3px] border-dashed border-cpoint-turquoise/50 bg-cpoint-turquoise/10 flex items-center justify-center">
                   <i className="fa-solid fa-plus text-base" />
                 </span>
-                <span className="text-[11px] text-[#9fb0b5]">{storyUploading ? t('feed.posting') : t('feed.your_story')}</span>
+                <span className="text-[11px] text-c-text-tertiary">{storyUploading ? t('feed.posting') : t('feed.your_story')}</span>
               </button>
               {storiesLoading && storyGroups.length === 0 ? (
-                <div className="text-[10px] text-[#9fb0b5] flex items-center">{t('common.loading')}</div>
+                <div className="text-[10px] text-c-text-tertiary flex items-center">{t('common.loading')}</div>
               ) : storyGroups.length === 0 ? (
-                <div className="text-[10px] text-[#9fb0b5] flex items-center">{t('feed.no_stories')}</div>
+                <div className="text-[10px] text-c-text-tertiary flex items-center">{t('feed.no_stories')}</div>
               ) : storyGroups.map((group, idx) => (
                 <button
                   key={`${group.username}-${idx}`}
                   className="flex flex-col items-center gap-1 min-w-[60px]"
                   onClick={() => openStory(idx, 0)}
                 >
-                  <span className={`w-14 h-14 rounded-full border-[3px] ${group.has_unseen ? 'border-cpoint-turquoise' : 'border-white/20'} p-0.5`}>
+                  <span className={`w-14 h-14 rounded-full border-[3px] ${group.has_unseen ? 'border-cpoint-turquoise' : 'border-c-border'} p-0.5`}>
                     <Avatar
                       username={group.username}
                       url={group.profile_picture || undefined}
@@ -2738,7 +2738,7 @@ export default function CommunityFeed() {
                       linkToProfile={false}
                     />
                   </span>
-                  <span className="text-[11px] text-[#cfd8dc] truncate max-w-[56px]">@{group.username}</span>
+                  <span className="text-[11px] text-c-text-secondary truncate max-w-[56px]">@{group.username}</span>
                 </button>
               ))}
             </div>
@@ -2751,11 +2751,11 @@ export default function CommunityFeed() {
             {/* Feed items */}
             {postsOnly.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 px-4">
-                <div className="w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
-                  <i className="fa-regular fa-comment-dots text-3xl text-white/30" />
+                <div className="w-20 h-20 rounded-full bg-c-hover-bg border border-c-border flex items-center justify-center mb-4">
+                  <i className="fa-regular fa-comment-dots text-3xl text-c-text-tertiary" />
                 </div>
-                <h3 className="text-lg font-medium text-white/80 mb-2">{t('feed.no_posts_yet')}</h3>
-                <p className="text-sm text-white/50 text-center max-w-xs mb-6">
+                <h3 className="text-lg font-medium text-c-text-secondary mb-2">{t('feed.no_posts_yet')}</h3>
+                <p className="text-sm text-c-text-tertiary text-center max-w-xs mb-6">
                   {t('feed.first_to_share_community')}
                 </p>
                 <NativeActionButton
@@ -2823,7 +2823,7 @@ export default function CommunityFeed() {
             {visiblePostCount < postsOnly.length && (
               <div className="flex justify-center py-6">
                 <button
-                  className="px-4 py-2 rounded-full border border-white/20 text-sm hover:bg-white/5"
+                  className="px-4 py-2 rounded-full border border-c-border text-sm hover:bg-c-hover-bg"
                   onClick={() => setVisiblePostCount(count => Math.min(count + LOAD_MORE_STEP, postsOnly.length))}
                 >
                   Load older posts
@@ -2843,7 +2843,7 @@ export default function CommunityFeed() {
       />
       {activeStoryPointer && currentStory && (
         <div
-          className="fixed inset-0 z-[1100] flex items-center justify-center bg-black lg:bg-black/95 lg:p-6"
+          className="theme-always-dark fixed inset-0 z-[1100] flex items-center justify-center bg-black lg:bg-black/95 lg:p-6"
           onClick={handleStoryBackdropClick}
         >
           <div className={storyViewerShellClass}>
@@ -2933,7 +2933,7 @@ export default function CommunityFeed() {
             {hasPrevStory && (
               <div className="absolute left-0 top-0 bottom-0 w-[40%] z-[3] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
                 <div className="absolute inset-y-0 left-0 w-full bg-gradient-to-r from-black/20 to-transparent" />
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-c-active-bg backdrop-blur-sm flex items-center justify-center">
                   <i className="fa-solid fa-chevron-left text-white text-sm" />
                 </div>
               </div>
@@ -2941,7 +2941,7 @@ export default function CommunityFeed() {
             {hasNextStory && (
               <div className="absolute right-0 top-0 bottom-0 w-[40%] z-[3] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
                 <div className="absolute inset-y-0 right-0 w-full bg-gradient-to-l from-black/20 to-transparent" />
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-c-active-bg backdrop-blur-sm flex items-center justify-center">
                   <i className="fa-solid fa-chevron-right text-white text-sm" />
                 </div>
               </div>
@@ -2987,7 +2987,7 @@ export default function CommunityFeed() {
                 <div className="flex flex-shrink-0 items-center gap-1.5">
                   <button
                     type="button"
-                    className="flex h-10 min-w-10 items-center justify-center gap-1 rounded-full border border-white/10 bg-black/55 px-3 text-xs font-medium text-white/80 backdrop-blur-md transition hover:border-cpoint-turquoise/50 hover:text-cpoint-turquoise"
+                    className="flex h-10 min-w-10 items-center justify-center gap-1 rounded-full border border-c-border bg-black/55 px-3 text-xs font-medium text-white/80 backdrop-blur-md transition hover:border-cpoint-turquoise/50 hover:text-cpoint-turquoise"
                     style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={() => openStoryViewers(currentStory.id)}
@@ -2999,7 +2999,7 @@ export default function CommunityFeed() {
                   {(currentStory.username?.toLowerCase() === data?.username?.toLowerCase()) && (
                     <div className="relative">
                       <button
-                        className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white/75 backdrop-blur-md transition hover:border-red-400/40 hover:text-red-300 disabled:opacity-50"
+                        className="flex h-10 w-10 items-center justify-center rounded-full border border-c-border bg-black/55 text-white/75 backdrop-blur-md transition hover:border-red-400/40 hover:text-red-300 disabled:opacity-50"
                         onClick={() => {
                           const groupStories = currentStoryGroup?.stories || []
                           if (groupStories.length <= 1) {
@@ -3014,21 +3014,21 @@ export default function CommunityFeed() {
                         <i className={`fa-solid ${deletingStory ? 'fa-spinner fa-spin' : 'fa-trash-can'} text-sm`} />
                       </button>
                       {storyDeleteMenuOpen && (
-                        <div className="absolute right-0 top-12 z-[45] w-52 overflow-hidden rounded-2xl border border-white/10 bg-[#080808]/95 shadow-2xl shadow-black/60 backdrop-blur-xl">
+                        <div className="absolute right-0 top-12 z-[45] w-52 overflow-hidden rounded-2xl border border-c-border bg-[#080808]/95 shadow-2xl shadow-black/60 backdrop-blur-xl">
                           <button
-                            className="w-full px-4 py-3 text-left text-sm text-white transition-colors hover:bg-white/10"
+                            className="w-full px-4 py-3 text-left text-sm text-white transition-colors hover:bg-c-hover-bg"
                             onClick={() => { if (confirm('Delete this slide?')) handleDeleteStory(currentStory.id) }}
                           >
                             Delete this slide
                           </button>
                           <button
-                            className="w-full border-t border-white/10 px-4 py-3 text-left text-sm text-red-300 transition-colors hover:bg-white/10"
+                            className="w-full border-t border-c-border px-4 py-3 text-left text-sm text-red-300 transition-colors hover:bg-c-hover-bg"
                             onClick={() => { if (confirm('Delete the entire story (all slides)?')) handleDeleteStoryGroup(currentStory.story_group_id) }}
                           >
                             Delete entire story
                           </button>
                           <button
-                            className="w-full border-t border-white/10 px-4 py-3 text-left text-xs text-white/50 transition-colors hover:bg-white/10"
+                            className="w-full border-t border-c-border px-4 py-3 text-left text-xs text-c-text-tertiary transition-colors hover:bg-c-hover-bg"
                             onClick={() => setStoryDeleteMenuOpen(false)}
                           >
                             Cancel
@@ -3039,7 +3039,7 @@ export default function CommunityFeed() {
                   )}
                   {/* Back to feed button */}
                   <button
-                    className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white/80 backdrop-blur-md transition hover:border-cpoint-turquoise/50 hover:text-cpoint-turquoise"
+                    className="flex h-10 w-10 items-center justify-center rounded-full border border-c-border bg-black/55 text-white/80 backdrop-blur-md transition hover:border-cpoint-turquoise/50 hover:text-cpoint-turquoise"
                     onClick={closeStoryViewer}
                     aria-label="Close story viewer"
                   >
@@ -3054,22 +3054,22 @@ export default function CommunityFeed() {
           {/* Comments panel - slides up over media */}
           {storyCommentPanelOpen && (
             <div
-              className="absolute left-0 right-0 z-[130] bg-black/95 backdrop-blur-lg rounded-t-2xl border-t border-white/10"
+              className="theme-always-dark absolute left-0 right-0 z-[130] bg-black/95 backdrop-blur-lg rounded-t-2xl border-t border-c-border"
               style={{ bottom: keyboardHeight > 0 ? `${keyboardHeight}px` : '0px', maxHeight: keyboardHeight > 0 ? '45%' : '55%', display: 'flex', flexDirection: 'column' }}
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
               onPointerUp={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 flex-shrink-0">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-c-border flex-shrink-0">
                 <span className="font-semibold text-white text-sm">Comments ({storyComments.length})</span>
-                <button onClick={() => setStoryCommentPanelOpen(false)} className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-white/80 text-xs"><i className="fa-solid fa-xmark" /></button>
+                <button onClick={() => setStoryCommentPanelOpen(false)} className="w-7 h-7 rounded-full bg-c-active-bg flex items-center justify-center text-white/80 text-xs"><i className="fa-solid fa-xmark" /></button>
               </div>
               <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3">
                 {storyCommentsLoading ? (
-                  <div className="text-center text-white/40 text-sm py-6">Loading...</div>
+                  <div className="text-center text-c-text-tertiary text-sm py-6">Loading...</div>
                 ) : storyComments.length === 0 ? (
-                  <div className="text-center text-white/40 text-sm py-6">No comments yet. Be the first!</div>
+                  <div className="text-center text-c-text-tertiary text-sm py-6">No comments yet. Be the first!</div>
                 ) : storyComments.map(c => (
                   <div key={c.id} className="flex gap-2.5">
                     <Avatar username={c.username} url={c.profile_picture || undefined} size={28} linkToProfile />
@@ -3086,7 +3086,7 @@ export default function CommunityFeed() {
                   </div>
                 ))}
               </div>
-              <div className="flex items-center gap-2 px-4 py-3 border-t border-white/10 flex-shrink-0" style={{ paddingBottom: keyboardHeight > 0 ? '8px' : 'max(12px, env(safe-area-inset-bottom, 0px))' }}>
+              <div className="flex items-center gap-2 px-4 py-3 border-t border-c-border flex-shrink-0" style={{ paddingBottom: keyboardHeight > 0 ? '8px' : 'max(12px, env(safe-area-inset-bottom, 0px))' }}>
                 <textarea
                   ref={storyCommentInputRef}
                   value={storyCommentText}
@@ -3098,7 +3098,7 @@ export default function CommunityFeed() {
                   }}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && storyCommentText.trim()) { e.preventDefault(); handleSubmitStoryComment(currentStory.id) } }}
                   placeholder="Add a comment..."
-                  className="flex-1 min-h-9 bg-white/10 border border-white/20 rounded-2xl px-4 py-1 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-cpoint-turquoise resize-none overflow-y-auto"
+                  className="flex-1 min-h-9 bg-c-active-bg border border-white/20 rounded-2xl px-4 py-1 text-sm text-white placeholder:text-c-text-tertiary focus:outline-none focus:border-cpoint-turquoise resize-none overflow-y-auto"
                   style={{ maxHeight: '120px' }}
                   rows={1}
                   disabled={storyCommentSending}
@@ -3141,14 +3141,14 @@ export default function CommunityFeed() {
             )}
             {/* Caption (per-media) */}
             {currentStory.caption && (
-              <div className="px-4 pt-1 pb-2 text-sm text-white/80 whitespace-pre-wrap break-words max-h-12 overflow-y-auto border-b border-white/10">
+              <div className="px-4 pt-1 pb-2 text-sm text-white/80 whitespace-pre-wrap break-words max-h-12 overflow-y-auto border-b border-c-border">
                 {currentStory.caption}
               </div>
             )}
             
             {/* Private reply inline input */}
             {storyPrivateReplyOpen && currentStory.username?.toLowerCase() !== data?.username?.toLowerCase() && (
-              <div className="px-4 py-2 flex items-center gap-2 border-b border-white/10">
+              <div className="px-4 py-2 flex items-center gap-2 border-b border-c-border">
                 <textarea
                   ref={storyPrivateReplyInputRef}
                   value={storyPrivateReplyText}
@@ -3160,7 +3160,7 @@ export default function CommunityFeed() {
                   }}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && storyPrivateReplyText.trim()) { e.preventDefault(); handleSendPrivateReply(currentStory) } }}
                   placeholder={`Message @${currentStory.username} privately...`}
-                  className="flex-1 min-h-9 bg-white/10 border border-white/20 rounded-2xl px-4 py-1 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-cpoint-turquoise resize-none overflow-y-auto"
+                  className="flex-1 min-h-9 bg-c-active-bg border border-white/20 rounded-2xl px-4 py-1 text-sm text-white placeholder:text-c-text-tertiary focus:outline-none focus:border-cpoint-turquoise resize-none overflow-y-auto"
                   style={{ maxHeight: '120px' }}
                   rows={1}
                   disabled={storyPrivateReplySending}
@@ -3180,7 +3180,7 @@ export default function CommunityFeed() {
                     <i className="fa-solid fa-paper-plane text-xs pointer-events-none" />
                   )}
                 </NativeActionButton>
-                <button onClick={() => { setStoryPrivateReplyOpen(false); setStoryPrivateReplyText('') }} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/70 text-xs flex-shrink-0 mb-0.5"><i className="fa-solid fa-xmark" /></button>
+                <button onClick={() => { setStoryPrivateReplyOpen(false); setStoryPrivateReplyText('') }} className="w-8 h-8 rounded-full bg-c-active-bg flex items-center justify-center text-c-text-secondary text-xs flex-shrink-0 mb-0.5"><i className="fa-solid fa-xmark" /></button>
               </div>
             )}
 
@@ -3208,7 +3208,7 @@ export default function CommunityFeed() {
                         onFocus={() => setStoryCommentFocused(true)}
                         onBlur={() => { setTimeout(() => { if (!storyCommentText.trim()) setStoryCommentFocused(false) }, 150) }}
                         placeholder="Comment..."
-                        className={`w-full min-h-9 bg-white/10 border border-white/20 px-4 py-1 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-cpoint-turquoise resize-none overflow-y-auto transition-all duration-200 ${
+                        className={`w-full min-h-9 bg-c-active-bg border border-white/20 px-4 py-1 text-sm text-white placeholder:text-c-text-tertiary focus:outline-none focus:border-cpoint-turquoise resize-none overflow-y-auto transition-all duration-200 ${
                           storyCommentFocused || storyCommentText.trim() ? 'rounded-2xl' : 'rounded-full'
                         }`}
                         style={{ maxHeight: '120px' }}
@@ -3221,7 +3221,7 @@ export default function CommunityFeed() {
                       <>
                         <button
                           type="button"
-                          className="w-11 h-11 rounded-full flex items-center justify-center text-white/70 hover:bg-white/10 relative flex-shrink-0"
+                          className="w-11 h-11 rounded-full flex items-center justify-center text-c-text-secondary hover:bg-c-hover-bg relative flex-shrink-0"
                           style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
                           onPointerDown={(e) => e.stopPropagation()}
                           onClick={() => setStoryCommentPanelOpen(true)}
@@ -3234,7 +3234,7 @@ export default function CommunityFeed() {
 
                         <button
                           type="button"
-                          className="w-11 h-11 rounded-full flex items-center justify-center text-white/70 hover:bg-white/10 flex-shrink-0"
+                          className="w-11 h-11 rounded-full flex items-center justify-center text-c-text-secondary hover:bg-c-hover-bg flex-shrink-0"
                           style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
                           onPointerDown={(e) => e.stopPropagation()}
                           onClick={() => { setStoryPrivateReplyOpen(true); setTimeout(() => storyPrivateReplyInputRef.current?.focus(), 100) }}
@@ -3248,7 +3248,7 @@ export default function CommunityFeed() {
                             key={emoji}
                             type="button"
                             className={`w-10 h-10 rounded-full flex items-center justify-center text-xl transition-transform active:scale-90 flex-shrink-0 ${
-                              currentStory.user_reaction === emoji ? 'bg-white/20 scale-110' : 'hover:bg-white/10'
+                              currentStory.user_reaction === emoji ? 'bg-white/20 scale-110' : 'hover:bg-c-hover-bg'
                             }`}
                             onClick={() => handleStoryReaction(currentStory, emoji)}
                           >
@@ -3275,7 +3275,7 @@ export default function CommunityFeed() {
                     )}
                   </div>
                 ) : (
-                  <div className="flex items-center justify-center gap-2 text-white/70 text-sm">
+                  <div className="flex items-center justify-center gap-2 text-c-text-secondary text-sm">
                     <button
                       type="button"
                       className="flex items-center gap-2 hover:text-white transition py-3 px-4"
@@ -3304,7 +3304,7 @@ export default function CommunityFeed() {
             {/* Sound toggle for videos */}
             {currentStory.media_type === 'video' && (
               <button
-                className="absolute -top-14 right-4 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/70 text-white backdrop-blur-md transition hover:border-cpoint-turquoise/50 hover:text-cpoint-turquoise"
+                className="absolute -top-14 right-4 flex h-10 w-10 items-center justify-center rounded-full border border-c-border bg-black/70 text-white backdrop-blur-md transition hover:border-cpoint-turquoise/50 hover:text-cpoint-turquoise"
                 onClick={(e) => {
                   e.stopPropagation()
                   setStoryMuted(!storyMuted)
@@ -3328,11 +3328,11 @@ export default function CommunityFeed() {
             if (e.target === e.currentTarget) closeStoryViewersModal()
           }}
         >
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0b0b0b] p-5 max-h-[80vh] overflow-y-auto">
+          <div className="w-full max-w-md rounded-2xl border border-c-border bg-[#0b0b0b] p-5 max-h-[80vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-3">
               <div className="text-white font-semibold text-lg">{t('feed.story_viewers')}</div>
               <button
-                className="w-8 h-8 rounded-full border border-white/20 text-white/70 hover:bg-white/10 flex items-center justify-center"
+                className="w-8 h-8 rounded-full border border-white/20 text-c-text-secondary hover:bg-c-hover-bg flex items-center justify-center"
                 onClick={closeStoryViewersModal}
                 aria-label={t('feed.close_viewers_modal')}
               >
@@ -3340,14 +3340,14 @@ export default function CommunityFeed() {
               </button>
             </div>
             {storyViewersState.loading ? (
-              <div className="flex items-center justify-center py-6 text-white/70 gap-2">
+              <div className="flex items-center justify-center py-6 text-c-text-secondary gap-2">
                 <i className="fa-solid fa-spinner fa-spin" />
                 {t('feed.loading_viewers')}
               </div>
             ) : storyViewersState.error ? (
               <div className="text-sm text-red-300">{storyViewersState.error}</div>
             ) : storyViewersState.viewers.length === 0 ? (
-              <div className="text-sm text-white/70">{t('feed.no_viewers_yet')}</div>
+              <div className="text-sm text-c-text-secondary">{t('feed.no_viewers_yet')}</div>
             ) : (
               <div className="space-y-3">
                 {storyViewersState.viewers.map(viewer => (
@@ -3368,7 +3368,7 @@ export default function CommunityFeed() {
       {/* Story Editor Modal */}
       {storyEditorOpen && storyEditorFiles.length > 0 && (
         <div 
-          className="fixed left-0 right-0 z-[1100] bg-[#050505]" 
+          className="theme-always-dark fixed left-0 right-0 z-[1100] bg-[#050505]" 
           style={{ 
             top: 'var(--app-header-height, 56px)', 
             bottom: 0,
@@ -3379,11 +3379,11 @@ export default function CommunityFeed() {
         >
           {/* Header - compact and black */}
           <div 
-            className="w-full bg-black/95 px-4 py-3 flex items-center justify-between flex-shrink-0 border-b border-white/10 backdrop-blur"
+            className="w-full bg-black/95 px-4 py-3 flex items-center justify-between flex-shrink-0 border-b border-c-border backdrop-blur"
           >
             <button
               onClick={handleStoryEditorClose}
-              className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-white/85 font-medium text-sm hover:border-cpoint-turquoise/50 hover:text-cpoint-turquoise"
+              className="rounded-full border border-c-border bg-white/[0.04] px-4 py-2 text-white/85 font-medium text-sm hover:border-cpoint-turquoise/50 hover:text-cpoint-turquoise"
             >
               {t('common.cancel')}
             </button>
@@ -3408,7 +3408,7 @@ export default function CommunityFeed() {
           <div className="flex items-center justify-center overflow-hidden px-6" style={{ flex: '1 1 0%', minHeight: 0, pointerEvents: 'none', paddingTop: '24px', paddingBottom: keyboardHeight ? '20px' : (storyEditorFiles.length > 1 ? '195px' : '120px') }}>
             <div 
               ref={storyEditorMediaRef}
-              className="relative aspect-[9/16] bg-black/50 rounded-[28px] overflow-hidden border border-white/10 shadow-2xl shadow-black/60"
+              className="relative aspect-[9/16] bg-black/50 rounded-[28px] overflow-hidden border border-c-border shadow-2xl shadow-black/60"
               style={{ 
                 touchAction: 'auto', 
                 pointerEvents: 'auto',
@@ -3456,9 +3456,9 @@ export default function CommunityFeed() {
                     ))}
                     <button
                       onClick={() => storyFileInputRef.current?.click()}
-                      className="w-16 h-16 rounded-lg flex-shrink-0 border-2 border-dashed border-white/30 bg-white/5 hover:bg-white/10 flex items-center justify-center"
+                      className="w-16 h-16 rounded-lg flex-shrink-0 border-2 border-dashed border-white/30 bg-c-hover-bg hover:bg-c-hover-bg flex items-center justify-center"
                     >
-                      <i className="fa-solid fa-plus text-white/70 text-xl" />
+                      <i className="fa-solid fa-plus text-c-text-secondary text-xl" />
                     </button>
                   </div>
                 </SortableContext>
@@ -3467,14 +3467,14 @@ export default function CommunityFeed() {
           )}
           
           {/* Tools panel */}
-          <div className="px-4 border-t border-white/10 space-y-3 absolute left-0 right-0 bg-black/95 backdrop-blur" style={{ bottom: keyboardHeight ? `${keyboardHeight}px` : '0', zIndex: 9999, paddingTop: '16px', paddingBottom: keyboardHeight ? '8px' : 'max(16px, env(safe-area-inset-bottom, 0px))', pointerEvents: 'auto' }}>
+          <div className="px-4 border-t border-c-border space-y-3 absolute left-0 right-0 bg-black/95 backdrop-blur" style={{ bottom: keyboardHeight ? `${keyboardHeight}px` : '0', zIndex: 9999, paddingTop: '16px', paddingBottom: keyboardHeight ? '8px' : 'max(16px, env(safe-area-inset-bottom, 0px))', pointerEvents: 'auto' }}>
             <input
               type="text"
               value={storyEditorDescription}
               onChange={(e) => setStoryEditorDescription(e.target.value)}
               placeholder={t('feed.story_description_placeholder')}
               maxLength={2000}
-              className="w-full px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-cpoint-turquoise/50"
+              className="w-full px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-c-border text-white placeholder:text-c-text-tertiary text-sm focus:outline-none focus:border-cpoint-turquoise/50"
             />
             <input
               type="text"
@@ -3482,7 +3482,7 @@ export default function CommunityFeed() {
               onChange={(e) => updateActiveStoryEditorFile({ caption: e.target.value })}
               placeholder={storyEditorFiles.length > 1 ? t('feed.caption_for_slide', { number: storyEditorActiveIndex + 1 }) : t('feed.add_caption')}
               maxLength={500}
-              className="w-full px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-cpoint-turquoise/50"
+              className="w-full px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-c-border text-white placeholder:text-c-text-tertiary text-sm focus:outline-none focus:border-cpoint-turquoise/50"
             />
           </div>
         </div>
@@ -3491,14 +3491,14 @@ export default function CommunityFeed() {
       {/* Announcements modal */}
       {showAnnouncements && (
         <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && _setShowAnnouncements(false)}>
-            <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
+            <div className="w-[92%] max-w-[560px] rounded-2xl border border-c-border bg-c-bg-app p-3">
               <div className="flex items-center justify-between mb-2">
                 <div className="font-semibold">{t('feed.announcements')}</div>
-                <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> _setShowAnnouncements(false)}>{t('common.close')}</button>
+                <button className="px-2 py-1 rounded-full border border-c-border" onClick={()=> _setShowAnnouncements(false)}>{t('common.close')}</button>
               </div>
               {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
-                <div className="mb-3 p-2 rounded-xl border border-white/10 bg-white/[0.02]">
-                  <textarea value={newAnnouncement} onChange={(e)=> setNewAnnouncement(e.target.value)} placeholder={t('feed.write_announcement_placeholder')} className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-cpoint-turquoise/70 outline-none min-h-[72px]" />
+                <div className="mb-3 p-2 rounded-xl border border-c-border bg-white/[0.02]">
+                  <textarea value={newAnnouncement} onChange={(e)=> setNewAnnouncement(e.target.value)} placeholder={t('feed.write_announcement_placeholder')} className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm focus:border-cpoint-turquoise/70 outline-none min-h-[72px]" />
                   <div className="text-right mt-2">
                     <NativeActionButton
                       haptic="light"
@@ -3513,14 +3513,14 @@ export default function CommunityFeed() {
               )}
               <div className="space-y-3 max-h-[420px] overflow-y-auto">
                 {_announcements.length === 0 ? (
-                  <div className="text-sm text-[#9fb0b5]">{t('feed.no_announcements')}</div>
+                  <div className="text-sm text-c-text-tertiary">{t('feed.no_announcements')}</div>
                 ) : _announcements.map((a:any)=> (
-                  <div key={a.id} className="rounded-xl border border-white/10 p-3 bg-white/[0.03]">
-                    <div className="text-xs text-[#9fb0b5] mb-1">{a.created_by} - {(() => { try { const d = new Date(a.created_at); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch { } const s = String(a.created_at||'').split(' '); return s[0] || String(a.created_at||''); })()}</div>
+                  <div key={a.id} className="rounded-xl border border-c-border p-3 bg-white/[0.03]">
+                    <div className="text-xs text-c-text-tertiary mb-1">{a.created_by} - {(() => { try { const d = new Date(a.created_at); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch { } const s = String(a.created_at||'').split(' '); return s[0] || String(a.created_at||''); })()}</div>
                     <div className="whitespace-pre-wrap text-sm">{a.content}</div>
                     {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
                       <div className="mt-2 text-right">
-                        <button className="px-2 py-1 rounded-full border border-white/10 text-xs hover:bg-white/5" onClick={()=> deleteAnnouncement(a.id)}>{t('common.delete')}</button>
+                        <button className="px-2 py-1 rounded-full border border-c-border text-xs hover:bg-c-hover-bg" onClick={()=> deleteAnnouncement(a.id)}>{t('common.delete')}</button>
                       </div>
                     )}
                   </div>
@@ -3533,21 +3533,21 @@ export default function CommunityFeed() {
       {/* Search modal */}
       {showSearch && (
         <div className="fixed inset-0 z-[90] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowSearch(false)}>
-          <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
+          <div className="w-[92%] max-w-[560px] rounded-2xl border border-c-border bg-c-bg-app p-3">
             <div className="flex items-center gap-2 mb-2">
               <i className="fa-solid fa-hashtag text-cpoint-turquoise" />
-              <input id="hashtag-input" value={q} onChange={(e)=> setQ(e.target.value)} placeholder="#hashtag" className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-cpoint-turquoise/70 outline-none" />
+              <input id="hashtag-input" value={q} onChange={(e)=> setQ(e.target.value)} placeholder="#hashtag" className="flex-1 rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm focus:border-cpoint-turquoise/70 outline-none" />
               <NativeActionButton haptic="selection" className="px-3 py-2 rounded-md text-sm" onClick={runSearch}>
                 {t('common.search')}
               </NativeActionButton>
             </div>
               <div className="max-h-[320px] overflow-y-auto space-y-2">
                 {results.length === 0 ? (
-                  <div className="text-[#9fb0b5] text-sm">{t('feed.no_results')}</div>
+                  <div className="text-c-text-tertiary text-sm">{t('feed.no_results')}</div>
                 ) : results.map(r => (
-                  <button key={r.id} className="w-full text-left rounded-xl border border-white/10 p-2 hover:bg-white/5" onClick={()=> scrollToPost(r.id)}>
-                    <div className="text-sm text-white/90 truncate">{r.content}</div>
-                    <div className="text-xs text-[#9fb0b5]">{r.username} - {formatSmartTime(r.timestamp)}</div>
+                  <button key={r.id} className="w-full text-left rounded-xl border border-c-border p-2 hover:bg-c-hover-bg" onClick={()=> scrollToPost(r.id)}>
+                    <div className="text-sm text-c-text-primary truncate">{r.content}</div>
+                    <div className="text-xs text-c-text-tertiary">{r.username} - {formatSmartTime(r.timestamp)}</div>
                   </button>
                 ))}
               </div>
@@ -3676,37 +3676,37 @@ export default function CommunityFeed() {
           onClick={(e)=> e.currentTarget===e.target && closeMoreMenu()}
         >
           <div
-            className={`w-[75%] max-w-sm mr-2 bg-black backdrop-blur-sm border border-white/10 rounded-2xl p-2 space-y-2 transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+            className={`w-[75%] max-w-sm mr-2 bg-c-bg-app backdrop-blur-sm border border-c-border rounded-2xl p-2 space-y-2 transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] ${
               moreOpen ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0'
             }`}
             style={{ marginBottom: 'var(--app-feed-bottom-nav-height)' }}
           >
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/key_posts`) }}>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/key_posts`) }}>
               {t('feed.key_posts')}
             </button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/polls_react`) }}>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg flex items-center justify-end gap-2" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/polls_react`) }}>
               {t('feed.polls')}
               {hasUnansweredPolls && <span className="w-2 h-2 bg-cpoint-turquoise rounded-full" />}
             </button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/calendar_react`) }}>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg flex items-center justify-end gap-2" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/calendar_react`) }}>
               {t('feed.calendar')}
               {hasPendingRsvps && <span className="w-2 h-2 bg-cpoint-turquoise rounded-full" />}
             </button>
             {showTasks && (
-              <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/tasks_react`) }}>{t('feed.tasks')}</button>
+              <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/tasks_react`) }}>{t('feed.tasks')}</button>
             )}
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/photos_react`) }}>{t('feed.media')}</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/photos_react`) }}>{t('feed.media')}</button>
             {/* Forum/Useful Links visibility */}
             {showResourcesSection && (
               <>
-                <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/resources_react`) }}>{t('feed.forum')}</button>
-                <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/useful_links_react`) }}>
+                <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/resources_react`) }}>{t('feed.forum')}</button>
+                <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg flex items-center justify-end gap-2" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/useful_links_react`) }}>
                   {t('feed.useful_links_docs')}
                   {hasUnseenDocs && <span className="w-2 h-2 bg-cpoint-turquoise rounded-full" />}
                 </button>
               </>
             )}
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={async () => {
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg flex items-center justify-end gap-2" onClick={async () => {
               try {
                 const r = await fetch('/api/community/mute', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ community_id: Number(community_id), muted: !communityMuted }) })
                 const d = await r.json()
@@ -3714,10 +3714,10 @@ export default function CommunityFeed() {
               } catch {}
               closeMoreMenu()
             }}>
-              <i className={`fa-solid ${communityMuted ? 'fa-bell' : 'fa-bell-slash'} text-xs ${communityMuted ? 'text-cpoint-turquoise' : 'text-white/40'}`} />
+              <i className={`fa-solid ${communityMuted ? 'fa-bell' : 'fa-bell-slash'} text-xs ${communityMuted ? 'text-cpoint-turquoise' : 'text-c-text-tertiary'}`} />
               {communityMuted ? t('feed.unmute_notifications') : t('feed.mute_notifications')}
             </button>
-            <p className="text-[10px] text-white/30 text-right px-4 pb-1">
+            <p className="text-[10px] text-c-text-tertiary text-right px-4 pb-1">
               {communityMuted ? t('feed.push_notifications_disabled') : t('feed.muting_push_only')}
             </p>
             <ContentGenerationButton
@@ -3733,23 +3733,23 @@ export default function CommunityFeed() {
       {/* Voters modal */}
       {viewingVotersPollId && (
         <div className="fixed inset-0 z-[95] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setViewingVotersPollId(null)}>
-            <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
+            <div className="w-[92%] max-w-[560px] rounded-2xl border border-c-border bg-c-bg-app p-3">
               <div className="flex items-center justify-between mb-2">
                 <div className="font-semibold">{t('feed.voters')}</div>
-                <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setViewingVotersPollId(null)}>{t('common.close')}</button>
+                <button className="px-2 py-1 rounded-full border border-c-border" onClick={()=> setViewingVotersPollId(null)}>{t('common.close')}</button>
               </div>
               {votersLoading ? (
-                <div className="text-[#9fb0b5] text-sm">{t('feed.loading_voters')}</div>
+                <div className="text-c-text-tertiary text-sm">{t('feed.loading_voters')}</div>
               ) : (
               <div className="space-y-3 max-h-[420px] overflow-y-auto">
                 {votersData.length === 0 ? (
-                  <div className="text-sm text-[#9fb0b5]">{t('feed.no_voters_yet')}</div>
+                  <div className="text-sm text-c-text-tertiary">{t('feed.no_voters_yet')}</div>
                 ) : votersData.map(opt => (
-                  <div key={opt.id} className="rounded-lg border border-white/10 p-2">
-                    <div className="text-xs text-white/80 mb-1">{opt.option_text}</div>
+                  <div key={opt.id} className="rounded-lg border border-c-border p-2">
+                    <div className="text-xs text-c-text-secondary mb-1">{opt.option_text}</div>
                     <div className="flex flex-col gap-1">
                       {(opt.voters||[]).map(v => (
-                        <div key={`${opt.id}-${v.username}-${v.voted_at||''}`} className="flex items-center gap-2 text-xs text-[#9fb0b5]">
+                        <div key={`${opt.id}-${v.username}-${v.voted_at||''}`} className="flex items-center gap-2 text-xs text-c-text-tertiary">
                           <Avatar username={v.username} url={v.profile_picture || undefined} size={18} linkToProfile />
                           <div className="flex-1 truncate">@{v.username}</div>
                           {/* remove timestamp in feed voters modal */}
@@ -3771,11 +3771,11 @@ export default function CommunityFeed() {
           className="fixed inset-0 z-[95] bg-black/70 backdrop-blur flex items-center justify-center"
           onClick={(e)=> e.currentTarget===e.target && closeReactorsModal()}
         >
-          <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
+          <div className="w-[92%] max-w-[560px] rounded-2xl border border-c-border bg-c-bg-app p-3">
               <div className="flex items-center justify-between mb-2">
                 <div className="font-semibold">{t('feed.reactions')}</div>
                 <button
-                  className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center text-sm text-white/80 hover:bg-white/10"
+                  className="w-8 h-8 rounded-full border border-c-border flex items-center justify-center text-sm text-c-text-secondary hover:bg-c-hover-bg"
                   onClick={closeReactorsModal}
                   aria-label={t('feed.close_reactions')}
                 >
@@ -3783,16 +3783,16 @@ export default function CommunityFeed() {
                 </button>
               </div>
             {reactorsLoading ? (
-              <div className="text-[#9fb0b5] text-sm">{t('common.loading')}</div>
+              <div className="text-c-text-tertiary text-sm">{t('common.loading')}</div>
             ) : (
               <div className="space-y-3 max-h-[420px] overflow-y-auto">
-                <div className="rounded-lg border border-white/10 p-2">
-                  <div className="flex items-center justify-between text-xs text-white/80 uppercase tracking-wide">
+                <div className="rounded-lg border border-c-border p-2">
+                  <div className="flex items-center justify-between text-xs text-c-text-secondary uppercase tracking-wide">
                     <span>{t('feed.views')}</span>
-                    <span className="text-sm font-semibold text-white">{reactorViewCount ?? 0}</span>
+                    <span className="text-sm font-semibold text-c-text-primary">{reactorViewCount ?? 0}</span>
                   </div>
                   {reactorViewers.length === 0 ? (
-                    <div className="mt-2 text-xs text-[#9fb0b5]">{t('feed.no_views_yet')}</div>
+                    <div className="mt-2 text-xs text-c-text-tertiary">{t('feed.no_views_yet')}</div>
                   ) : (
                     <div className="mt-2 flex flex-col gap-1">
                       {reactorViewers.map((viewer) => {
@@ -3800,7 +3800,7 @@ export default function CommunityFeed() {
                         return (
                           <div
                             key={`viewer-${viewer.username}-${viewer.viewed_at ?? ''}`}
-                            className="flex items-center gap-2 text-xs text-[#9fb0b5]"
+                            className="flex items-center gap-2 text-xs text-c-text-tertiary"
                           >
                             <Avatar
                               username={viewer.username}
@@ -3809,7 +3809,7 @@ export default function CommunityFeed() {
                               linkToProfile
                             />
                             <div className="flex-1 truncate">@{viewer.username}</div>
-                            {viewedLabel ? <div className="text-[10px] text-white/40">{viewedLabel}</div> : null}
+                            {viewedLabel ? <div className="text-[10px] text-c-text-tertiary">{viewedLabel}</div> : null}
                           </div>
                         )
                       })}
@@ -3817,13 +3817,13 @@ export default function CommunityFeed() {
                   )}
                 </div>
                 {reactorGroups.length === 0 ? (
-                  <div className="text-sm text-[#9fb0b5]">{t('feed.no_reactions_yet')}</div>
+                  <div className="text-sm text-c-text-tertiary">{t('feed.no_reactions_yet')}</div>
                 ) : reactorGroups.map((group) => (
-                  <div key={group.reaction_type} className="rounded-lg border border-white/10 p-2">
-                    <div className="text-xs text-white/80 mb-1 capitalize">{group.reaction_type.replace('-', ' ')}</div>
+                  <div key={group.reaction_type} className="rounded-lg border border-c-border p-2">
+                    <div className="text-xs text-c-text-secondary mb-1 capitalize">{group.reaction_type.replace('-', ' ')}</div>
                     <div className="flex flex-col gap-1">
                       {(group.users || []).map((u) => (
-                        <div key={`${group.reaction_type}-${u.username}`} className="flex items-center gap-2 text-xs text-[#9fb0b5]">
+                        <div key={`${group.reaction_type}-${u.username}`} className="flex items-center gap-2 text-xs text-c-text-tertiary">
                           <Avatar username={u.username} url={u.profile_picture || undefined} size={18} linkToProfile />
                           <div className="flex-1 truncate">@{u.username}</div>
                         </div>
@@ -3843,14 +3843,14 @@ export default function CommunityFeed() {
           className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
           onClick={(e) => e.currentTarget === e.target && setHideModalPost(null)}
         >
-          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-5">
+          <div className="w-full max-w-sm rounded-2xl border border-c-border bg-c-bg-surface p-5">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center">
                 <i className="fa-solid fa-eye-slash text-orange-400" />
               </div>
-              <div className="font-semibold text-lg text-white">{t('feed.hide_post')}</div>
+              <div className="font-semibold text-lg text-c-text-primary">{t('feed.hide_post')}</div>
             </div>
-            <p className="text-sm text-[#9fb0b5] mb-5">
+            <p className="text-sm text-c-text-tertiary mb-5">
               {t('feed.hide_post_body')}
             </p>
             <div className="flex flex-col gap-2">
@@ -3876,7 +3876,7 @@ export default function CommunityFeed() {
                 {t('feed.block_user', { username: hideModalPost.username })}
               </button>
               <button
-                className="w-full py-2.5 rounded-lg bg-white/10 text-white border border-white/10 font-medium hover:bg-white/15 transition-colors"
+                className="w-full py-2.5 rounded-lg bg-c-active-bg text-c-text-primary border border-c-border font-medium hover:bg-c-hover-bg transition-colors"
                 onClick={() => {
                   const post = hideModalPost
                   setHideModalPost(null)
@@ -3886,7 +3886,7 @@ export default function CommunityFeed() {
                 {t('feed.just_hide_post')}
               </button>
               <button
-                className="w-full py-2.5 rounded-lg text-[#9fb0b5] hover:text-white transition-colors"
+                className="w-full py-2.5 rounded-lg text-c-text-tertiary hover:text-c-text-primary transition-colors"
                 onClick={() => setHideModalPost(null)}
               >
                 {t('common.cancel')}
@@ -3902,17 +3902,17 @@ export default function CommunityFeed() {
           className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
           onClick={(e) => e.currentTarget === e.target && !blockSubmitting && setBlockModalUser(null)}
         >
-          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-5">
+          <div className="w-full max-w-sm rounded-2xl border border-c-border bg-c-bg-surface p-5">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
                 <i className="fa-solid fa-ban text-red-400" />
               </div>
-              <div className="font-semibold text-lg text-white">{t('feed.block_user', { username: blockModalUser.username })}</div>
+              <div className="font-semibold text-lg text-c-text-primary">{t('feed.block_user', { username: blockModalUser.username })}</div>
             </div>
-            <p className="text-sm text-[#9fb0b5] mb-4">
+            <p className="text-sm text-c-text-tertiary mb-4">
               {t('feed.block_user_body')}
             </p>
-            <ul className="text-sm text-[#9fb0b5] mb-4 space-y-1 pl-4">
+            <ul className="text-sm text-c-text-tertiary mb-4 space-y-1 pl-4">
               <li>• {t('feed.block_user_effect_hide_posts')}</li>
               <li>• {t('feed.block_user_effect_messages')}</li>
               <li>• {t('feed.block_user_effect_moderation')}</li>
@@ -3920,11 +3920,11 @@ export default function CommunityFeed() {
             </ul>
             
             <div className="mb-4">
-              <label className="block text-sm text-[#9fb0b5] mb-2">{t('feed.block_reason_label')}</label>
+              <label className="block text-sm text-c-text-tertiary mb-2">{t('feed.block_reason_label')}</label>
               <select
                 value={blockReason}
                 onChange={(e) => setBlockReason(e.target.value)}
-                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-red-500/50"
+                className="w-full px-3 py-2 bg-c-hover-bg border border-c-border rounded-lg text-sm text-c-text-primary focus:outline-none focus:border-red-500/50"
                 disabled={blockSubmitting}
               >
                 <option value="">{t('feed.select_reason')}</option>
@@ -3938,7 +3938,7 @@ export default function CommunityFeed() {
 
             <div className="flex gap-3">
               <button
-                className="flex-1 py-2.5 rounded-lg border border-white/10 text-white hover:bg-white/5 transition-colors"
+                className="flex-1 py-2.5 rounded-lg border border-c-border text-c-text-primary hover:bg-c-hover-bg transition-colors"
                 onClick={() => {
                   setBlockModalUser(null)
                   setBlockReason('')
@@ -3965,14 +3965,14 @@ export default function CommunityFeed() {
           className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
           onClick={(e) => e.currentTarget === e.target && !reportSubmitting && setReportModalPost(null)}
         >
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0b0f10] p-5 max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-md rounded-2xl border border-c-border bg-c-bg-surface p-5 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
                 <i className="fa-solid fa-flag text-red-400" />
               </div>
-              <div className="font-semibold text-lg text-white">{t('feed.report_post')}</div>
+              <div className="font-semibold text-lg text-c-text-primary">{t('feed.report_post')}</div>
             </div>
-            <p className="text-sm text-[#9fb0b5] mb-4">
+            <p className="text-sm text-c-text-tertiary mb-4">
               {t('feed.report_post_body')}
             </p>
             
@@ -3989,8 +3989,8 @@ export default function CommunityFeed() {
                   key={reason}
                   className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
                     reportReason === reason 
-                      ? 'border-red-500/50 bg-red-500/10 text-white' 
-                      : 'border-white/10 bg-white/5 text-[#9fb0b5] hover:bg-white/10'
+                      ? 'border-red-500/50 bg-red-500/10 text-c-text-primary' 
+                      : 'border-c-border bg-c-hover-bg text-c-text-tertiary hover:bg-c-hover-bg'
                   }`}
                   onClick={() => setReportReason(reason)}
                   disabled={reportSubmitting}
@@ -4002,12 +4002,12 @@ export default function CommunityFeed() {
 
             {reportReason && (
               <div className="mb-4">
-                <label className="block text-sm text-[#9fb0b5] mb-2">{t('feed.additional_details_optional')}</label>
+                <label className="block text-sm text-c-text-tertiary mb-2">{t('feed.additional_details_optional')}</label>
                 <textarea
                   value={reportDetails}
                   onChange={(e) => setReportDetails(e.target.value)}
                   placeholder={t('feed.report_details_placeholder')}
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-white/40 focus:outline-none focus:border-red-500/50 resize-none"
+                  className="w-full px-3 py-2 bg-c-hover-bg border border-c-border rounded-lg text-sm text-c-text-primary placeholder:text-c-text-tertiary focus:outline-none focus:border-red-500/50 resize-none"
                   rows={3}
                   disabled={reportSubmitting}
                 />
@@ -4016,7 +4016,7 @@ export default function CommunityFeed() {
 
             <div className="flex gap-3">
               <button
-                className="flex-1 py-2.5 rounded-lg border border-white/10 text-white hover:bg-white/5 transition-colors"
+                className="flex-1 py-2.5 rounded-lg border border-c-border text-c-text-primary hover:bg-c-hover-bg transition-colors"
                 onClick={() => {
                   setReportModalPost(null)
                   setReportReason('')
@@ -4497,10 +4497,18 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
       alert(t('feed.update_post_failed'))
     }
   }
+  const isRecentPost = (() => {
+    try {
+      const ts = Date.parse((post as any).display_timestamp || post.timestamp)
+      return !Number.isNaN(ts) && (Date.now() - ts) < 24 * 60 * 60 * 1000
+    } catch {
+      return false
+    }
+  })()
   return (
-    <div ref={cardRef} id={`post-${post.id}`} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20" onClick={post.poll ? undefined : onOpen}>
+    <div ref={cardRef} id={`post-${post.id}`} className={`rounded-2xl border border-c-border bg-c-bg-app shadow-sm shadow-black/20 ${isRecentPost ? 'border-l-2 border-l-cpoint-turquoise' : ''}`} onClick={post.poll ? undefined : onOpen}>
       {!post.poll && (
-        <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
+        <div className="px-3 py-2 border-b border-c-border flex items-center gap-2">
           <Avatar username={post.username} url={post.profile_picture || undefined} size={32} linkToProfile />
           <div className="font-medium tracking-[-0.01em]">{post.username}</div>
           {!!post.is_system_post && (
@@ -4512,7 +4520,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
             </span>
           )}
           <div className="ml-auto flex items-center gap-2">
-            <div className="text-xs text-[#9fb0b5] tabular-nums">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
+            <div className="text-xs text-c-text-tertiary tabular-nums">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
             <div className="flex items-center gap-2">
               {/* Personal star (turquoise when selected) */}
               <button className="px-2 py-1 rounded-full" title={personalStarred ? t('feed.unstar_yours') : t('feed.star_yours')} onClick={toggleStar} aria-label={t('feed.star_yours')}>
@@ -4540,7 +4548,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
               {post.username !== currentUser && (
                 <div className="relative">
                   <button 
-                    className="px-2 py-1 rounded-full text-[#6c757d] hover:text-white"
+                    className="px-2 py-1 rounded-full text-[#6c757d] hover:text-c-text-primary"
                     title={t('chat.more_options')}
                     onClick={(e) => { 
                       e.stopPropagation()
@@ -4551,11 +4559,11 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                   </button>
                   {showMoreMenu === post.id && (
                     <div 
-                      className="absolute right-0 top-8 z-50 w-44 bg-[#1a1f25] border border-white/10 rounded-xl shadow-xl overflow-hidden"
+                      className="absolute right-0 top-8 z-50 w-44 bg-c-bg-surface border border-c-border rounded-xl shadow-xl overflow-hidden"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <button
-                        className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
+                        className="w-full px-4 py-3 text-left text-sm text-c-text-primary hover:bg-c-hover-bg flex items-center gap-3"
                         onClick={(e) => { 
                           e.stopPropagation()
                           setShowMoreMenu(null)
@@ -4566,7 +4574,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                         {t('feed.summary')}
                       </button>
                       <button
-                        className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
+                        className="w-full px-4 py-3 text-left text-sm text-c-text-primary hover:bg-c-hover-bg flex items-center gap-3"
                         onClick={(e) => { 
                           e.stopPropagation()
                           setShowMoreMenu(null)
@@ -4577,7 +4585,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                         {t('feed.hide_post')}
                       </button>
                       <button
-                        className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
+                        className="w-full px-4 py-3 text-left text-sm text-c-text-primary hover:bg-c-hover-bg flex items-center gap-3"
                         onClick={(e) => { 
                           e.stopPropagation()
                           setShowMoreMenu(null)
@@ -4588,7 +4596,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                         {t('feed.report_post')}
                       </button>
                       <button
-                        className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3 border-t border-white/10"
+                        className="w-full px-4 py-3 text-left text-sm text-c-text-primary hover:bg-c-hover-bg flex items-center gap-3 border-t border-c-border"
                         onClick={(e) => { 
                           e.stopPropagation()
                           setShowMoreMenu(null)
@@ -4631,11 +4639,11 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
           </>
         ) : (
           <div className="px-3 space-y-2" onClick={(e)=> e.stopPropagation()}>
-            <textarea className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-cpoint-turquoise/70 outline-none min-h-[100px]" value={editText} onChange={(e)=> setEditText(e.target.value)} />
+            <textarea className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-cpoint-turquoise/70 outline-none min-h-[100px]" value={editText} onChange={(e)=> setEditText(e.target.value)} />
             
             {/* Current/New Media Preview */}
             {!removeMedia && (editMediaPreview || post.image_path || post.video_path) && (
-              <div style={{ position: 'relative' }} className="rounded-lg border border-white/10 overflow-hidden">
+              <div style={{ position: 'relative' }} className="rounded-lg border border-c-border overflow-hidden">
                 {editMediaPreview ? (
                   // New media preview
                   editMediaFile?.type.startsWith('video/') ? (
@@ -4688,7 +4696,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                 onChange={handleMediaSelect}
               />
               <button
-                className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm flex items-center gap-2"
+                className="px-3 py-1.5 rounded-md border border-c-border hover:bg-c-hover-bg text-sm flex items-center gap-2"
                 onClick={() => mediaInputRef.current?.click()}
               >
                 <i className="fa-solid fa-image" />
@@ -4702,13 +4710,13 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
             {/* Detected links */}
             {detectedLinks.length > 0 && (
               <div className="space-y-2">
-                <div className="text-xs text-[#9fb0b5] font-medium">{t('feed.detected_links')}</div>
+                <div className="text-xs text-c-text-tertiary font-medium">{t('feed.detected_links')}</div>
                 {detectedLinks.map((link, idx) => (
-                  <div key={idx} className="flex items-center gap-2 p-2 rounded-lg border border-white/10 bg-white/5">
+                  <div key={idx} className="flex items-center gap-2 p-2 rounded-lg border border-c-border bg-c-hover-bg">
                     <div className="flex-1 min-w-0">
                       <div className="text-xs text-cpoint-turquoise truncate">{link.displayText}</div>
                       {link.displayText !== link.url && (
-                        <div className="text-xs text-white/50 truncate">{link.url}</div>
+                        <div className="text-xs text-c-text-tertiary truncate">{link.url}</div>
                       )}
                     </div>
                     <button
@@ -4723,7 +4731,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
             )}
             
             <div className="flex gap-2 justify-end">
-              <button className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm" onClick={cancelEdit}>{t('common.cancel')}</button>
+              <button className="px-3 py-1.5 rounded-md border border-c-border hover:bg-c-hover-bg text-sm" onClick={cancelEdit}>{t('common.cancel')}</button>
               <button className="px-3 py-1.5 rounded-md bg-cpoint-turquoise text-black text-sm hover:brightness-110" onClick={saveEdit}>{t('common.save')}</button>
             </div>
           </div>
@@ -4762,7 +4770,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
               <div className="px-3">
                 <LazyVideo
                   src={normalizeMediaPath(parsedMediaPaths[mediaCarouselIndex].path)}
-                  className="w-full max-h-[420px] rounded border border-white/10 bg-black"
+                  className="w-full max-h-[420px] rounded border border-c-border bg-c-bg-app"
                   playsInline
                 />
               </div>
@@ -4771,7 +4779,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                 <ImageLoader
                   src={normalizeMediaPath(parsedMediaPaths[mediaCarouselIndex]?.path || '')}
                   alt={t('feed.post_media_alt', { number: mediaCarouselIndex + 1 })}
-                  className="block mx-auto max-w-full max-h-[520px] rounded border border-white/10 cursor-zoom-in"
+                  className="block mx-auto max-w-full max-h-[520px] rounded border border-c-border cursor-zoom-in"
                   onClick={() => onPreviewImage && onPreviewImage(normalizeMediaPath(parsedMediaPaths[mediaCarouselIndex]?.path || ''))}
                 />
               </div>
@@ -4814,7 +4822,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
             <ImageLoader
               src={normalizeMediaPath(post.image_path || '')}
               alt={t('feed.post_image_alt')}
-              className="block mx-auto max-w-full max-h-[520px] rounded border border-white/10 cursor-zoom-in"
+              className="block mx-auto max-w-full max-h-[520px] rounded border border-c-border cursor-zoom-in"
               onClick={() => onPreviewImage && onPreviewImage(normalizeMediaPath(post.image_path || ''))}
             />
           </div>
@@ -4822,7 +4830,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
           <div className="px-3" onClick={(e)=> e.stopPropagation()}>
             <LazyVideo
               src={normalizeMediaPath(post.video_path)}
-              className="w-full max-h-[420px] rounded border border-white/10 bg-black"
+              className="w-full max-h-[420px] rounded border border-c-border bg-c-bg-app"
               playsInline
             />
           </div>
@@ -4867,7 +4875,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
               <div className="font-medium text-sm flex-1">
                 {post.poll.question}
                 {post.poll.expires_at ? (
-                  <span className="ml-2 text-[11px] text-[#9fb0b5]">{t('feed.poll_closes', { date: (() => { try { const d = new Date(post.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch { } return String(post.poll.expires_at) })() })}</span>
+                  <span className="ml-2 text-[11px] text-c-text-tertiary">{t('feed.poll_closes', { date: (() => { try { const d = new Date(post.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch { } return String(post.poll.expires_at) })() })}</span>
                 ) : null}
               </div>
               {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
@@ -4920,19 +4928,19 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                     key={option.id}
                     type="button"
                     disabled={isExpired}
-                    className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isExpired ? 'opacity-60 cursor-not-allowed' : (isUserVote ? 'border-cpoint-turquoise bg-cpoint-turquoise/10' : 'border-white/10 hover:bg-white/5')}`}
+                    className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isExpired ? 'opacity-60 cursor-not-allowed' : (isUserVote ? 'border-cpoint-turquoise bg-cpoint-turquoise/10' : 'border-c-border hover:bg-c-hover-bg')}`}
                     onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (!isExpired && onPollVote) { void triggerHaptic('selection'); onPollVote(post.id, post.poll!.id, option.id) } }}
                   >
                     <div className="absolute inset-0 bg-cpoint-turquoise/20" style={{ width: `${percentage}%`, transition: 'width 0.3s ease' }} />
                     <div className="relative flex items-center justify-between">
                       <span className="text-sm">{option.text}</span>
-                      <span className="text-xs text-[#9fb0b5] font-medium">{option.votes} {percentage > 0 ? `(${percentage}%)` : ''}</span>
+                      <span className="text-xs text-c-text-tertiary font-medium">{option.votes} {percentage > 0 ? `(${percentage}%)` : ''}</span>
                     </div>
                   </button>
                 )
               })}
             </div>
-            <div className="flex items-center justify-between text-xs text-[#9fb0b5] pt-1">
+            <div className="flex items-center justify-between text-xs text-c-text-tertiary pt-1">
               {(() => { const sv = (post.poll as any)?.single_vote; const isSingle = !(sv === false || sv === 0 || sv === '0' || sv === 'false'); return isSingle })() && (
                 <span>{t('feed.vote_count', { count: post.poll.total_votes || 0 })}</span>
               )}
@@ -4960,7 +4968,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
             </div>
             <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> onToggleReaction(post.id, 'thumbs-up')} />
             <ReactionFA icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> onToggleReaction(post.id, 'thumbs-down')} />
-            <button className="px-2 py-1 rounded-full text-[#9fb0b5] hover:text-white" title={t('feed.view_reactions')} onClick={(e)=> { 
+            <button className="px-2 py-1 rounded-full text-c-text-tertiary hover:text-c-text-primary" title={t('feed.view_reactions')} onClick={(e)=> { 
               e.stopPropagation()
               if (onOpenReactions) {
                 onOpenReactions()
@@ -4968,7 +4976,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
             }}>
               <i className="fa-solid fa-users" />
             </button>
-            <button className="ml-auto px-2.5 py-1 rounded-full text-[#cfd8dc]"
+            <button className="ml-auto px-2.5 py-1 rounded-full text-c-text-secondary"
               onClick={(e)=> { e.stopPropagation(); onOpen() }}>
               <i className="fa-regular fa-comment" />
               <span className="ml-1">{post.replies?.length || 0}</span>
@@ -4978,7 +4986,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
         </div>
         {/* Inline recent replies - only top-level comments (X-style) */}
         {!post.poll && Array.isArray(post.replies) && post.replies.length > 0 && (
-          <div className="px-3 pb-2 pt-2 mt-2 border-t border-white/10 space-y-2" onClick={(e)=> e.stopPropagation()}>
+          <div className="px-3 pb-2 pt-2 mt-2 border-t border-c-border space-y-2" onClick={(e)=> e.stopPropagation()}>
             {(() => {
             // Filter to only show top-level replies (no parent_reply_id)
             const topLevelReplies = post.replies.filter((r: any) => !r.parent_reply_id)
@@ -4986,7 +4994,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
             return displayReplies.map(r => (
               <div 
                 key={r.id} 
-                className="flex items-start gap-2 text-sm cursor-pointer hover:bg-white/[0.02] rounded-lg p-1 -m-1"
+                className="flex items-start gap-2 text-sm cursor-pointer hover:bg-c-hover-bg rounded-lg p-1 -m-1"
                 onClick={() => window.location.href = `/reply/${r.id}`}
               >
                 <div onClick={(e) => e.stopPropagation()}>
@@ -4995,17 +5003,17 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{r.username}</span>
-                    <span className="text-[11px] text-[#9fb0b5]">{formatSmartTime(r.timestamp)}</span>
+                    <span className="text-[11px] text-c-text-tertiary">{formatSmartTime(r.timestamp)}</span>
                     <div className="ml-auto flex items-center gap-1">
                       <button
-                        className={`px-2 py-0.5 rounded-full text-[11px] ${activeChildReplyFor === r.id ? 'text-cpoint-turquoise' : 'text-[#9fb0b5] hover:text-cpoint-turquoise'}`}
+                        className={`px-2 py-0.5 rounded-full text-[11px] ${activeChildReplyFor === r.id ? 'text-cpoint-turquoise' : 'text-c-text-tertiary hover:text-cpoint-turquoise'}`}
                         onClick={(e)=> { e.stopPropagation(); setActiveChildReplyFor(id => id === r.id ? null : r.id); setChildReplyText('') }}
                       >
                         {t('feed.reply')}
                       </button>
                       {(r.username === currentUser || isAdmin || currentUser === 'admin') && (
                         <button
-                          className="px-2 py-0.5 rounded-full text-[11px] text-[#9fb0b5] hover:text-red-400"
+                          className="px-2 py-0.5 rounded-full text-[11px] text-c-text-tertiary hover:text-red-400"
                           onClick={async (e) => {
                             e.stopPropagation()
                             if (!confirm(t('feed.delete_reply_confirm'))) return
@@ -5044,7 +5052,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                     </div>
                   </div>
                   {r.content ? (
-                    <div className="text-[#dfe6e9] whitespace-pre-wrap break-words">
+                    <div className="text-c-text-primary whitespace-pre-wrap break-words">
                       {renderTextWithSourceLinks(r.content, false, mentionToProfile, openExternalArticle)}
                     </div>
                   ) : null}
@@ -5056,7 +5064,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                           <ImageLoader 
                             src={replySrc}
                             alt={t('feed.reply_image_alt')} 
-                            className="block mx-auto max-h-[200px] rounded border border-white/10 cursor-zoom-in"
+                            className="block mx-auto max-h-[200px] rounded border border-c-border cursor-zoom-in"
                             onClick={() => onPreviewImage && onPreviewImage(replySrc)}
                           />
                         )
@@ -5092,7 +5100,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                     {/* Heart reaction */}
                     <button
                       className={`text-[11px] flex items-center gap-1 transition ${
-                        r.user_reaction === '❤️' ? 'text-red-400' : 'text-[#9fb0b5] hover:text-red-400'
+                        r.user_reaction === '❤️' ? 'text-red-400' : 'text-c-text-tertiary hover:text-red-400'
                       }`}
                       onClick={async (e) => {
                         e.stopPropagation()
@@ -5119,7 +5127,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                     {/* Thumbs up */}
                     <button
                       className={`text-[11px] flex items-center gap-1 transition ${
-                        r.user_reaction === '👍' ? 'text-cpoint-turquoise' : 'text-[#9fb0b5] hover:text-cpoint-turquoise'
+                        r.user_reaction === '👍' ? 'text-cpoint-turquoise' : 'text-c-text-tertiary hover:text-cpoint-turquoise'
                       }`}
                       onClick={async (e) => {
                         e.stopPropagation()
@@ -5145,7 +5153,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                     {/* Thumbs down */}
                     <button
                       className={`text-[11px] flex items-center gap-1 transition ${
-                        r.user_reaction === '👎' ? 'text-[#e57373]' : 'text-[#9fb0b5] hover:text-[#e57373]'
+                        r.user_reaction === '👎' ? 'text-[#e57373]' : 'text-c-text-tertiary hover:text-[#e57373]'
                       }`}
                       onClick={async (e) => {
                         e.stopPropagation()
@@ -5170,7 +5178,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                     </button>
                     {/* Reply count - click to view thread */}
                     <button
-                      className="text-[11px] text-[#9fb0b5] hover:text-cpoint-turquoise flex items-center gap-1"
+                      className="text-[11px] text-c-text-tertiary hover:text-cpoint-turquoise flex items-center gap-1"
                       onClick={(e) => { e.stopPropagation(); window.location.href = `/reply/${r.id}` }}
                     >
                       <i className="fa-regular fa-comment text-[10px]" />
@@ -5179,7 +5187,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                   </div>
 
                   {activeChildReplyFor === r.id && !isGifPickerOpen && (
-                    <div className="mt-2 rounded-lg border border-white/5 bg-white/[0.03] px-2 pt-2 pb-2 space-y-2" onClick={(e)=> e.stopPropagation()}>
+                    <div className="mt-2 rounded-lg border border-c-border bg-c-hover-bg px-2 pt-2 pb-2 space-y-2" onClick={(e)=> e.stopPropagation()}>
                       <MentionTextarea
                         value={childReplyText}
                         onChange={setChildReplyText}
@@ -5187,16 +5195,16 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                         postId={post.id}
                         replyId={r.id as any}
                         placeholder={t('feed.reply_to_user', { username: r.username })}
-                        className="w-full resize-none rounded-lg bg-transparent border-0 outline-none text-[14px] placeholder-white/40 px-1"
+                        className="w-full resize-none rounded-lg bg-transparent border-0 outline-none text-[14px] placeholder:text-c-text-tertiary px-1"
                         rows={2}
                       />
                       {childReplyGif && (
-                        <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 p-2">
+                        <div className="flex items-center gap-2 rounded-lg border border-c-border bg-c-hover-bg p-2">
                           <img src={childReplyGif.previewUrl} alt={t('feed.selected_gif_alt')} className="h-16 w-16 rounded object-cover" loading="lazy" />
                           <button
                             type="button"
-                            className="ml-auto text-white/60 hover:text-white"
-                            onClick={(ev)=> { ev.stopPropagation(); setChildReplyGif(null) }}
+                    className="ml-auto text-c-text-tertiary hover:text-c-text-primary"
+                    onClick={(ev)=> { ev.stopPropagation(); setChildReplyGif(null) }}
                             aria-label={t('feed.remove_gif')}
                           >
                             <i className="fa-solid fa-xmark" />
@@ -5206,7 +5214,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                       <div className="flex items-center justify-between gap-2">
                         <button
                           type="button"
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] rounded-lg bg-white/5 border border-white/10 text-white/70 hover:text-white uppercase tracking-wide transition"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] rounded-lg bg-c-hover-bg border border-c-border text-c-text-secondary hover:text-c-text-primary uppercase tracking-wide transition"
                           onClick={(ev)=> { ev.stopPropagation(); setGifPickerTarget(r.id) }}
                         >
                           <i className="fa-solid fa-images" />
@@ -5253,14 +5261,14 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
           })()}
           {/* Steve is typing indicator */}
           {steveIsTyping && (
-            <div className="flex items-center gap-2 py-2 text-xs text-white/60">
+            <div className="flex items-center gap-2 py-2 text-xs text-c-text-secondary">
               <div className="flex items-center gap-1">
                 <span className="font-medium text-cpoint-turquoise">Steve</span>
                 <span>{t('feed.is_typing')}</span>
                 <span className="inline-flex gap-0.5">
-                  <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <span className="w-1 h-1 bg-c-text-secondary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1 h-1 bg-c-text-secondary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1 h-1 bg-c-text-secondary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                 </span>
               </div>
             </div>
@@ -5269,14 +5277,14 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
       )}
       {/* Steve is typing indicator (when no replies yet) */}
       {steveIsTyping && (!post.replies || post.replies.length === 0) && (
-        <div className="px-3 pb-2 flex items-center gap-2 text-xs text-white/60">
+        <div className="px-3 pb-2 flex items-center gap-2 text-xs text-c-text-secondary">
           <div className="flex items-center gap-1">
             <span className="font-medium text-cpoint-turquoise">Steve</span>
             <span>{t('feed.is_typing')}</span>
             <span className="inline-flex gap-0.5">
-              <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              <span className="w-1 h-1 bg-c-text-secondary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-1 h-1 bg-c-text-secondary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-1 h-1 bg-c-text-secondary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
             </span>
           </div>
         </div>
@@ -5285,22 +5293,22 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
       {/* Hidden when child reply is active or the GIF picker is open */}
       {!post.poll && activeChildReplyFor === null && !isGifPickerOpen && (
         <div className="px-3 pb-3" onClick={(e)=> e.stopPropagation()}>
-          <div className="rounded-xl border border-white/5 bg-white/[0.03] px-2 pt-2 pb-2 space-y-2">
+          <div className="rounded-xl border border-c-border bg-c-hover-bg px-2 pt-2 pb-2 space-y-2">
               <MentionTextarea
                 value={replyText}
                 onChange={setReplyText}
                 communityId={communityId as any}
                 postId={post.id}
                 placeholder={t('feed.write_reply_placeholder')}
-                className="w-full resize-none rounded-xl bg-transparent border-0 outline-none text-[14px] placeholder-white/40 px-1"
+                className="w-full resize-none rounded-xl bg-transparent border-0 outline-none text-[14px] placeholder:text-c-text-tertiary px-1"
                 rows={2}
               />
             {replyGif && (
-              <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 p-2">
+              <div className="flex items-center gap-2 rounded-lg border border-c-border bg-c-hover-bg p-2">
                 <img src={replyGif.previewUrl} alt={t('feed.selected_gif_alt')} className="h-20 w-20 rounded object-cover" loading="lazy" />
                 <button
                   type="button"
-                  className="ml-auto text-white/60 hover:text-white"
+                  className="ml-auto text-c-text-tertiary hover:text-c-text-primary"
                   onClick={()=> setReplyGif(null)}
                   aria-label={t('feed.remove_gif')}
                 >
@@ -5311,7 +5319,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
             <div className="flex items-center justify-between gap-2">
               <button
                 type="button"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] uppercase tracking-wide rounded-lg bg-white/5 border border-white/10 text-white/70 hover:text-white transition"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] uppercase tracking-wide rounded-lg bg-c-hover-bg border border-c-border text-c-text-secondary hover:text-c-text-primary transition"
                 onClick={()=> setGifPickerTarget('main')}
               >
                 <i className="fa-solid fa-images" />
@@ -5364,22 +5372,22 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
       {/* Rename link modal */}
       {renamingLink && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-sm" onClick={(e)=> e.stopPropagation()}>
-          <div className="w-[90%] max-w-md rounded-2xl border border-cpoint-turquoise/30 bg-[#0b0b0b] p-6 shadow-[0_0_40px_rgba(0,206,200,0.3)]">
-            <h3 className="text-lg font-bold text-white mb-4">{t('feed.rename_link')}</h3>
+          <div className="w-[90%] max-w-md rounded-2xl border border-cpoint-turquoise/30 bg-c-bg-surface p-6 shadow-[0_0_40px_rgba(0,206,200,0.3)]">
+            <h3 className="text-lg font-bold text-c-text-primary mb-4">{t('feed.rename_link')}</h3>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-[#9fb0b5] mb-1 block">{t('feed.original_url')}</label>
-                <div className="text-xs text-white/70 truncate p-2 rounded bg-white/5 border border-white/10">
+                <label className="text-xs text-c-text-tertiary mb-1 block">{t('feed.original_url')}</label>
+                <div className="text-xs text-c-text-secondary truncate p-2 rounded bg-c-hover-bg border border-c-border">
                   {renamingLink.url}
                 </div>
               </div>
               <div>
-                <label className="text-xs text-[#9fb0b5] mb-1 block">{t('feed.display_as')}</label>
+                <label className="text-xs text-c-text-tertiary mb-1 block">{t('feed.display_as')}</label>
                 <input
                   type="text"
                   value={linkDisplayName}
                   onChange={(e) => setLinkDisplayName(e.target.value)}
-                  className="w-full p-2 rounded bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:ring-1 focus:ring-cpoint-turquoise"
+                  className="w-full p-2 rounded bg-c-hover-bg border border-c-border text-sm text-c-text-primary focus:outline-none focus:ring-1 focus:ring-cpoint-turquoise"
                   placeholder={t('feed.display_name_placeholder')}
                   autoFocus
                   onClick={(e) => e.stopPropagation()}
@@ -5388,7 +5396,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
             </div>
             <div className="flex gap-2 mt-6">
               <button
-                className="flex-1 px-4 py-2 rounded-lg border border-white/20 text-white/80 text-sm hover:bg-white/5"
+                className="flex-1 px-4 py-2 rounded-lg border border-c-border text-c-text-secondary text-sm hover:bg-c-hover-bg"
                 onClick={(e)=> { e.stopPropagation(); cancelRenaming() }}
               >
                 {t('common.cancel')}
@@ -5411,17 +5419,17 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
           onClick={() => setShowSummaryModal(false)}
         >
           <div 
-            className="bg-black rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden border border-white/10 shadow-2xl"
+            className="bg-c-bg-app rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden border border-c-border shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-c-border">
               <div className="flex items-center gap-2">
                 <i className="fa-solid fa-wand-magic-sparkles text-cpoint-turquoise" />
-                <span className="font-semibold text-white">{t('feed.steve_summary')}</span>
+                <span className="font-semibold text-c-text-primary">{t('feed.steve_summary')}</span>
               </div>
               <button 
-                className="text-white/60 hover:text-white p-1"
+                className="text-c-text-tertiary hover:text-c-text-primary p-1"
                 onClick={() => setShowSummaryModal(false)}
               >
                 <i className="fa-solid fa-xmark text-lg" />
@@ -5433,7 +5441,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
               {summaryLoading && (
                 <div className="flex flex-col items-center justify-center py-8 gap-3">
                   <div className="w-8 h-8 border-2 border-cpoint-turquoise border-t-transparent rounded-full animate-spin" />
-                  <span className="text-white/60 text-sm">{t('feed.steve_summary_loading')}</span>
+                  <span className="text-c-text-secondary text-sm">{t('feed.steve_summary_loading')}</span>
                 </div>
               )}
               
@@ -5445,14 +5453,14 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
               )}
               
               {summaryText && !summaryLoading && (
-                <div className="text-white text-[15px] leading-relaxed whitespace-pre-wrap">
+                <div className="text-c-text-primary text-[15px] leading-relaxed whitespace-pre-wrap">
                   {summaryText}
                 </div>
               )}
             </div>
             
             {/* Footer */}
-            <div className="px-4 py-3 border-t border-white/10">
+            <div className="px-4 py-3 border-t border-c-border">
               <button
                 className="w-full py-2.5 rounded-xl bg-cpoint-turquoise text-black font-medium hover:brightness-110"
                 onClick={() => setShowSummaryModal(false)}
@@ -5483,7 +5491,7 @@ function ReactionFA({ icon, count, active, onClick, isHighlighted }:{ icon: stri
   return (
     <button
       type="button"
-      className="px-2 py-1 rounded transition-[transform,background-color] duration-100 active:scale-95 active:bg-white/5 select-none cursor-pointer touch-manipulation"
+      className="px-2 py-1 rounded transition-[transform,background-color] duration-100 active:scale-95 active:bg-c-hover-bg select-none cursor-pointer touch-manipulation"
       style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
       onClick={handleClick}
     >
@@ -5515,7 +5523,7 @@ function EditCommunityButton({ communityId, onClose }:{ communityId: string, onC
   }, [communityId])
   if (!allowed) return null
   return (
-    <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { onClose(); navigate(`/community/${communityId}/edit`) }}>
+    <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg" onClick={()=> { onClose(); navigate(`/community/${communityId}/edit`) }}>
       {t('feed.manage_community')}
     </button>
   )
@@ -5544,7 +5552,7 @@ function ContentGenerationButton({ communityId, onClose, onOpen }:{ communityId:
 
   if (!allowed) return null
   return (
-    <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={() => { onClose(); onOpen() }}>
+    <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg" onClick={() => { onClose(); onOpen() }}>
       {t('feed.content_generation')}
     </button>
   )

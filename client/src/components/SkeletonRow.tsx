@@ -6,10 +6,10 @@ type SkeletonRowProps = {
 export function SkeletonRow({ className = '' }: SkeletonRowProps) {
   return (
     <div className={`flex items-center gap-3 px-3 py-2 animate-pulse ${className}`}>
-      <div className="h-12 w-12 shrink-0 rounded-full bg-white/10" />
+      <div className="h-12 w-12 shrink-0 rounded-full bg-c-active-bg" />
       <div className="flex-1 min-w-0 space-y-2">
-        <div className="h-3.5 w-2/5 rounded bg-white/10" />
-        <div className="h-3 w-4/5 rounded bg-white/5" />
+        <div className="h-3.5 w-2/5 rounded bg-c-active-bg" />
+        <div className="h-3 w-4/5 rounded bg-c-hover-bg" />
       </div>
     </div>
   )
@@ -30,21 +30,21 @@ export function SkeletonFeedCard({ className = '' }: { className?: string }) {
   return (
     <div className={`px-4 py-4 animate-pulse ${className}`}>
       <div className="flex items-center gap-3 mb-3">
-        <div className="h-10 w-10 shrink-0 rounded-full bg-white/10" />
+        <div className="h-10 w-10 shrink-0 rounded-full bg-c-active-bg" />
         <div className="flex-1 space-y-1.5">
-          <div className="h-3.5 w-1/3 rounded bg-white/10" />
-          <div className="h-2.5 w-1/5 rounded bg-white/5" />
+          <div className="h-3.5 w-1/3 rounded bg-c-active-bg" />
+          <div className="h-2.5 w-1/5 rounded bg-c-hover-bg" />
         </div>
       </div>
       <div className="space-y-2 mb-3">
         <div className="h-3 w-full rounded bg-white/8" />
         <div className="h-3 w-4/5 rounded bg-white/8" />
-        <div className="h-3 w-3/5 rounded bg-white/5" />
+        <div className="h-3 w-3/5 rounded bg-c-hover-bg" />
       </div>
-      <div className="flex items-center gap-4 pt-2 border-t border-white/5">
-        <div className="h-6 w-14 rounded-full bg-white/5" />
-        <div className="h-6 w-14 rounded-full bg-white/5" />
-        <div className="h-6 w-14 rounded-full bg-white/5" />
+      <div className="flex items-center gap-4 pt-2 border-t border-c-border">
+        <div className="h-6 w-14 rounded-full bg-c-hover-bg" />
+        <div className="h-6 w-14 rounded-full bg-c-hover-bg" />
+        <div className="h-6 w-14 rounded-full bg-c-hover-bg" />
       </div>
     </div>
   )
@@ -65,16 +65,16 @@ export function SkeletonFeedList({ count = 3 }: { count?: number }) {
 export function SkeletonCommunityCard({ className = '' }: { className?: string }) {
   return (
     <div
-      className={`relative flex min-h-[8.5rem] w-full rounded-2xl overflow-hidden border border-white/15 animate-pulse ${className}`}
+      className={`relative flex min-h-[8.5rem] w-full rounded-2xl overflow-hidden border border-c-border animate-pulse ${className}`}
       style={{ background: 'rgba(255,255,255,0.03)' }}
     >
       <div className="flex flex-col gap-3 p-6 sm:p-7 w-full">
-        <div className="h-4 w-2/3 rounded bg-white/10" />
-        <div className="h-3 w-full rounded bg-white/5" />
-        <div className="h-3 w-4/5 rounded bg-white/5" />
+        <div className="h-4 w-2/3 rounded bg-c-active-bg" />
+        <div className="h-3 w-full rounded bg-c-hover-bg" />
+        <div className="h-3 w-4/5 rounded bg-c-hover-bg" />
         <div className="flex items-center gap-3 mt-auto">
-          <div className="h-3 w-16 rounded bg-white/5" />
-          <div className="h-3 w-20 rounded bg-white/5" />
+          <div className="h-3 w-16 rounded bg-c-hover-bg" />
+          <div className="h-3 w-20 rounded bg-c-hover-bg" />
         </div>
       </div>
     </div>
@@ -114,7 +114,7 @@ export function SkeletonSettingsRow({ className = '' }: { className?: string }) 
       <div className="flex-1 min-w-0">
         <div className="h-3.5 w-2/5 rounded bg-white/8" />
       </div>
-      <div className="h-4 w-4 rounded bg-white/5" />
+      <div className="h-4 w-4 rounded bg-c-hover-bg" />
     </div>
   )
 }
@@ -133,11 +133,11 @@ export function SkeletonSettingsList({ count = 8 }: { count?: number }) {
 /** Single notification row placeholder: avatar + 2-line preview + timestamp pill. */
 export function SkeletonNotificationRow({ className = '' }: { className?: string }) {
   return (
-    <div className={`flex items-start gap-3 px-3 py-2.5 rounded-xl border border-white/10 bg-white/[0.03] animate-pulse ${className}`}>
+    <div className={`flex items-start gap-3 px-3 py-2.5 rounded-xl border border-c-border bg-white/[0.03] animate-pulse ${className}`}>
       <div className="h-10 w-10 shrink-0 rounded-full bg-white/8" />
       <div className="flex-1 min-w-0 space-y-1.5">
         <div className="h-3.5 w-4/5 rounded bg-white/8" />
-        <div className="h-3 w-3/5 rounded bg-white/5" />
+        <div className="h-3 w-3/5 rounded bg-c-hover-bg" />
       </div>
       <div className="h-4 w-10 rounded-md bg-white/8 shrink-0 mt-0.5" />
     </div>
@@ -162,7 +162,7 @@ export function SkeletonFollowerRow({ className = '' }: { className?: string }) 
       <div className="h-11 w-11 shrink-0 rounded-full bg-white/8" />
       <div className="flex-1 min-w-0 space-y-1.5">
         <div className="h-3.5 w-1/3 rounded bg-white/8" />
-        <div className="h-3 w-1/5 rounded bg-white/5" />
+        <div className="h-3 w-1/5 rounded bg-c-hover-bg" />
       </div>
       <div className="h-7 w-16 rounded-full bg-white/8" />
     </div>
@@ -185,26 +185,26 @@ export function SkeletonPostDetail({ className = '' }: { className?: string }) {
   return (
     <div className={`px-4 py-4 animate-pulse ${className}`} aria-busy="true" aria-label="Loading post">
       <div className="flex items-center gap-3 mb-4">
-        <div className="h-10 w-10 shrink-0 rounded-full bg-white/10" />
+        <div className="h-10 w-10 shrink-0 rounded-full bg-c-active-bg" />
         <div className="flex-1 space-y-1.5">
-          <div className="h-3.5 w-1/3 rounded bg-white/10" />
-          <div className="h-2.5 w-1/4 rounded bg-white/5" />
+          <div className="h-3.5 w-1/3 rounded bg-c-active-bg" />
+          <div className="h-2.5 w-1/4 rounded bg-c-hover-bg" />
         </div>
       </div>
       <div className="space-y-2.5 mb-4">
         <div className="h-3.5 w-full rounded bg-white/8" />
         <div className="h-3.5 w-full rounded bg-white/8" />
         <div className="h-3.5 w-4/5 rounded bg-white/8" />
-        <div className="h-3.5 w-2/3 rounded bg-white/5" />
+        <div className="h-3.5 w-2/3 rounded bg-c-hover-bg" />
       </div>
-      <div className="h-48 w-full rounded-lg bg-white/5 mb-4" />
-      <div className="flex items-center gap-4 py-3 border-t border-b border-white/5 mb-4">
-        <div className="h-6 w-16 rounded-full bg-white/5" />
-        <div className="h-6 w-16 rounded-full bg-white/5" />
-        <div className="h-6 w-16 rounded-full bg-white/5" />
+      <div className="h-48 w-full rounded-lg bg-c-hover-bg mb-4" />
+      <div className="flex items-center gap-4 py-3 border-t border-b border-c-border mb-4">
+        <div className="h-6 w-16 rounded-full bg-c-hover-bg" />
+        <div className="h-6 w-16 rounded-full bg-c-hover-bg" />
+        <div className="h-6 w-16 rounded-full bg-c-hover-bg" />
       </div>
       <div className="space-y-3">
-        <div className="h-3 w-20 rounded bg-white/10" />
+        <div className="h-3 w-20 rounded bg-c-active-bg" />
         <SkeletonRow />
         <SkeletonRow />
       </div>

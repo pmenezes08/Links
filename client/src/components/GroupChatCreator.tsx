@@ -230,7 +230,7 @@ export default function GroupChatCreator() {
   const filteredCommunities = useMemo(() => communities, [communities])
 
   const searchInputClasses =
-    'w-full rounded-lg border border-white/12 bg-[#0f1318] pl-9 pr-3 py-2 text-sm text-white/90 outline-none focus:border-[#4db6ac]/70 focus:ring-0 transition'
+    'w-full rounded-lg border border-c-border bg-[#0f1318] pl-9 pr-3 py-2 text-sm text-c-text-secondary outline-none focus:border-cpoint-turquoise/70 focus:ring-0 transition'
 
   function renderMembers(commId: number) {
     const members = membersByCommunity[commId] || []
@@ -240,7 +240,7 @@ export default function GroupChatCreator() {
       : members
 
     if (loadingMembers[commId]) {
-      return <div className="px-3 py-3 text-sm text-[#9fb0b5]">{t('chat.loading_members')}</div>
+      return <div className="px-3 py-3 text-sm text-c-text-tertiary">{t('chat.loading_members')}</div>
     }
 
     if (memberErrors[commId]) {
@@ -248,12 +248,12 @@ export default function GroupChatCreator() {
     }
 
     if (!members.length) {
-      return <div className="px-3 py-3 text-sm text-[#9fb0b5]">{t('chat.no_members_available')}</div>
+      return <div className="px-3 py-3 text-sm text-c-text-tertiary">{t('chat.no_members_available')}</div>
     }
 
     if (!filteredMembers.length) {
       return (
-        <div className="px-3 py-3 text-sm text-[#9fb0b5]">
+        <div className="px-3 py-3 text-sm text-c-text-tertiary">
           {t('chat.no_members_match', { query: searchTerms[commId]?.trim() ?? '' })}
         </div>
       )
@@ -273,16 +273,16 @@ export default function GroupChatCreator() {
               disabled={isDisabled}
               className={`w-full px-3 py-2 rounded-lg flex items-center gap-3 transition ${
                 isSelected
-                  ? 'bg-[#4db6ac]/20 border border-[#4db6ac]/50'
+                  ? 'bg-cpoint-turquoise/20 border border-cpoint-turquoise/50'
                   : isDisabled
                     ? 'opacity-50 cursor-not-allowed'
-                    : 'hover:bg-white/5 border border-transparent'
+                    : 'hover:bg-c-hover-bg border border-transparent'
               }`}
             >
               <Avatar username={member.username} url={member.profile_picture || undefined} size={32} />
               <span className="truncate flex-1 text-left text-[14px]">{member.display_name || member.username}</span>
               {isSelected && (
-                <i className="fa-solid fa-check text-[#4db6ac] text-sm" />
+                <i className="fa-solid fa-check text-cpoint-turquoise text-sm" />
               )}
             </button>
           )
@@ -295,16 +295,16 @@ export default function GroupChatCreator() {
     <div className="space-y-3">
       {/* Selected Members */}
       {selectedMembers.length > 0 && (
-        <div className="rounded-xl border border-white/10 bg-black p-3">
+        <div className="rounded-xl border border-c-border bg-c-bg-app p-3">
           <div className="flex items-center justify-between mb-2">
-            <div className="text-sm font-semibold text-white/80">
+            <div className="text-sm font-semibold text-c-text-secondary">
               {t('chat.selected_count', { current: selectedMembers.length, max: MAX_GROUP_MEMBERS })}
             </div>
             {selectedMembers.length > 0 && (
               <button
                 type="button"
                 onClick={() => setSelectedMembers([])}
-                className="text-xs text-[#9fb0b5] hover:text-white"
+                className="text-xs text-c-text-tertiary hover:text-white"
               >
                 {t('chat.clear_all')}
               </button>
@@ -314,14 +314,14 @@ export default function GroupChatCreator() {
             {selectedMembers.map(member => (
               <div
                 key={member.username}
-                className="flex items-center gap-2 px-2 py-1 rounded-full bg-[#4db6ac]/20 border border-[#4db6ac]/40"
+                className="flex items-center gap-2 px-2 py-1 rounded-full bg-cpoint-turquoise/20 border border-cpoint-turquoise/40"
               >
                 <Avatar username={member.username} url={member.profile_picture || undefined} size={20} />
-                <span className="text-xs text-white/90">{member.display_name || member.username}</span>
+                <span className="text-xs text-c-text-secondary">{member.display_name || member.username}</span>
                 <button
                   type="button"
                   onClick={() => removeMember(member.username)}
-                  className="text-white/60 hover:text-white ml-1"
+                  className="text-c-text-tertiary hover:text-white ml-1"
                 >
                   <i className="fa-solid fa-xmark text-xs" />
                 </button>
@@ -333,7 +333,7 @@ export default function GroupChatCreator() {
 
       {/* Group Name Input */}
       {selectedMembers.length >= 2 && (
-        <div className="rounded-xl border border-white/10 bg-black p-3">
+        <div className="rounded-xl border border-c-border bg-c-bg-app p-3">
           <label className="block text-sm font-semibold text-white/80 mb-2">{t('chat.group_name_label')}</label>
           <input
             type="text"
@@ -348,7 +348,7 @@ export default function GroupChatCreator() {
 
       {/* Create Button */}
       {selectedMembers.length >= 2 && (
-        <div className="rounded-xl border border-white/10 bg-black p-3">
+        <div className="rounded-xl border border-c-border bg-c-bg-app p-3">
           {createError && (
             <div className="mb-3 p-2 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
               {createError}
@@ -358,7 +358,7 @@ export default function GroupChatCreator() {
             type="button"
             onClick={handleCreateGroup}
             disabled={creating || !groupName.trim()}
-            className="w-full px-4 py-3 bg-[#4db6ac] text-black font-semibold rounded-lg hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            className="w-full px-4 py-3 bg-cpoint-turquoise text-black font-semibold rounded-lg hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
             {creating ? (
               <>
@@ -376,39 +376,39 @@ export default function GroupChatCreator() {
       )}
 
       {/* Community Picker */}
-      <div className="rounded-xl border border-white/10 bg-black">
-        <div className="p-3 border-b border-white/10">
+      <div className="rounded-xl border border-c-border bg-c-bg-app">
+        <div className="p-3 border-b border-c-border">
           <div className="font-semibold text-[15px]">{t('chat.select_members_title')}</div>
-          <div className="mt-1 text-xs text-[#9fb0b5]">
+          <div className="mt-1 text-xs text-c-text-tertiary">
             {t('chat.select_members_hint', { max: MAX_GROUP_MEMBERS })}
           </div>
         </div>
         
         {loading ? (
-          <div className="p-4 text-sm text-[#9fb0b5]">{t('chat.loading_communities')}</div>
+          <div className="p-4 text-sm text-c-text-tertiary">{t('chat.loading_communities')}</div>
         ) : error ? (
           <div className="p-4 text-sm text-red-400">{error}</div>
         ) : !filteredCommunities.length ? (
-          <div className="p-4 text-sm text-[#9fb0b5]">{t('chat.no_communities_joined')}</div>
+          <div className="p-4 text-sm text-c-text-tertiary">{t('chat.no_communities_joined')}</div>
         ) : (
-          <div className="divide-y divide-white/10">
+          <div className="divide-y divide-c-border">
             {filteredCommunities.map(comm => {
               const isOpen = !!expanded[comm.id]
               return (
                 <div key={comm.id}>
                   <button
-                    className="w-full px-3 py-2 text-left hover:bg-white/5 flex items-center justify-between text-[14px]"
+                    className="w-full px-3 py-2 text-left hover:bg-c-hover-bg flex items-center justify-between text-[14px]"
                     onClick={() => handleToggle(comm.id)}
                   >
                     <span className="font-medium">{comm.name}</span>
                     <i
-                      className={`fa-solid ${isOpen ? 'fa-chevron-down' : 'fa-chevron-right'} text-xs text-[#9fb0b5] transition-transform duration-150`}
+                      className={`fa-solid ${isOpen ? 'fa-chevron-down' : 'fa-chevron-right'} text-xs text-c-text-tertiary transition-transform duration-150`}
                     />
                   </button>
                   {isOpen && (
                     <div className="px-3 pb-3">
                       <div className="relative">
-                        <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-xs" />
+                        <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-c-text-tertiary text-xs" />
                         <input
                           value={searchTerms[comm.id] || ''}
                           onChange={event =>

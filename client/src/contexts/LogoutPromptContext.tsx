@@ -33,24 +33,24 @@ export function LogoutPromptProvider({ children }: { children: ReactNode }) {
             if (e.target === e.currentTarget) cancel()
           }}
         >
-          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-6 shadow-xl">
-            <h2 id="logout-confirm-title" className="text-lg font-semibold text-white">
+          <div className="w-full max-w-sm rounded-2xl border border-c-border bg-c-bg-elevated p-6 shadow-xl">
+            <h2 id="logout-confirm-title" className="text-lg font-semibold text-c-text-primary">
               Log out of C-Point?
             </h2>
-            <p className="mt-2 text-sm text-white/65">
+            <p className="mt-2 text-sm text-c-text-secondary">
               This signs you out on every device where you're logged in. You'll need to sign in again on each one.
             </p>
             <div className="mt-6 flex justify-end gap-3">
               <button
                 type="button"
-                className="rounded-xl border border-white/15 px-4 py-2.5 text-sm text-white hover:bg-white/10"
+                className="rounded-xl border border-c-border px-4 py-2.5 text-sm text-c-text-primary hover:bg-c-hover-bg"
                 onClick={cancel}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                className="rounded-xl bg-[#4db6ac] px-4 py-2.5 text-sm font-semibold text-black hover:brightness-110"
+                className="rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-sm font-semibold text-black hover:brightness-110"
                 onClick={confirm}
               >
                 Log out

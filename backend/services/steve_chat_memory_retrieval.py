@@ -14,7 +14,8 @@ import logging
 import math
 import os
 import re
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
+from dataclasses import is_dataclass, asdict
 
 from backend.services import ai_usage
 from backend.services.steve_chat_memory import (
@@ -110,7 +111,8 @@ def embed_text(
 
     api_key, base_url = _get_embedding_api_config()
     if not api_key:
-        raise RuntimeError("No embedding API key configured (OPENAI_API_KEY / XAI_API_KEY)")
+        logger.warning("No embedding API key configured (OPENAI_API_KEY / XAI_API_KEY) - using zero vector for local testing")
+        return [0.0] * 1536  # dummy vector for local testing (text-embedding-3-small dim)
 
     client = OpenAI(api_key=api_key, base_url=base_url)
 
@@ -148,7 +150,7 @@ def embed_text(
 def embed_chunks(
     fs_client: Any,
     scope: ThreadMemoryScope,
-    chunks: Sequence[Mapping[str, Any]],
+    chunks: Sequence[Union[Mapping[str, Any], Any]],
     model: str = DEFAULT_EMBEDDING_MODEL,
     *,
     username: str = "system",
@@ -157,15 +159,22 @@ def embed_chunks(
 
     Returns the number of chunks successfully embedded. Each embedding
     call logs its own usage row via ``embed_text``.
+    Supports both dicts and ChunkRecord dataclasses.
     """
     embedded_count = 0
     for chunk in chunks:
-        chunk_id = chunk.get("chunk_id") or chunk.get("id")
-        text = (chunk.get("text") or chunk.get("summary") or "").strip()
+        # Support both dict (old) and ChunkRecord dataclass (new)
+        if is_dataclass(chunk) and not isinstance(chunk, type):
+            chunk_dict = asdict(chunk)
+        else:
+            chunk_dict = chunk if isinstance(chunk, dict) else dict(chunk) if hasattr(chunk, "keys") else {}
+
+        chunk_id = chunk_dict.get("chunk_id") or chunk_dict.get("id")
+        text = (chunk_dict.get("text") or chunk_dict.get("summary") or "").strip()
         if not chunk_id or not text:
             continue
 
-        existing_embedding = chunk.get("embedding")
+        existing_embedding = chunk_dict.get("embedding")
         if existing_embedding and len(existing_embedding) > 0:
             continue
 

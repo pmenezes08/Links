@@ -48,7 +48,7 @@ export function ChatThreadShell({
   androidKeyboardOpen = false,
   insetMotionIdle = false,
   maxWidthClass = 'max-w-3xl',
-  listClassName = 'flex-1 overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-list-inset',
+  listClassName = 'flex-1 overflow-y-auto overflow-x-hidden text-c-text-primary px-2.5 sm:px-3 chat-list-inset',
   loadOlderSlot,
   children,
 }: ChatThreadShellProps) {
@@ -57,7 +57,7 @@ export function ChatThreadShell({
     : listClassName
   return (
     <div
-      className="glass-page text-white chat-thread-bg"
+      className="glass-page text-c-text-primary chat-thread-bg"
       style={{
         position: 'fixed',
         left: 0,

@@ -48,7 +48,7 @@ export default function ImageLoader({ src, alt, className = '', onClick, style, 
   return (
     <div className={`relative overflow-hidden ${className}`} style={containerStyle} onClick={onClick}>
       {loading && (
-        <div className="absolute inset-0 bg-white/5 rounded-md animate-pulse" />
+        <div className="absolute inset-0 bg-c-hover-bg rounded-md animate-pulse" />
       )}
 
       <img

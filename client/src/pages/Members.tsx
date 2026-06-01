@@ -370,15 +370,15 @@ export default function Members(){
   }
 
   return (
-    <div className="min-h-screen bg-black text-white pb-safe">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary pb-safe">
       <div
-        className="fixed left-0 right-0 h-12 border-b border-white/10 bg-black/95 backdrop-blur flex items-center px-3 z-40"
+        className="fixed left-0 right-0 h-12 border-b border-c-border bg-c-bg-app/95 backdrop-blur flex items-center px-3 z-40"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '48px' } as CSSProperties}
       >
-        <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label={t('common.back')}>
+        <button className="px-3 py-2 rounded-full text-c-text-secondary hover:text-cpoint-turquoise" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label={t('common.back')}>
           <i className="fa-solid fa-arrow-left" />
         </button>
-        <div className="ml-2 text-xs text-[#9fb0b5]">
+        <div className="ml-2 text-xs text-c-text-tertiary">
           {t('social.member_count', { count: members.length })}
         </div>
         <div className="ml-auto flex items-center gap-2">
@@ -394,7 +394,7 @@ export default function Members(){
             {canManage && canInviteCurrentCommunity && (
             <button
                 onClick={handleOpenInviteModal}
-              className="px-3 py-1.5 bg-[#4db6ac] text-black rounded-lg text-xs font-medium hover:bg-[#45a099]"
+              className="px-3 py-1.5 bg-cpoint-turquoise text-black rounded-lg text-xs font-medium hover:bg-cpoint-turquoise/90"
             >
               <i className="fa-solid fa-envelope mr-1.5" />
               {t('social.invite')}
@@ -407,15 +407,15 @@ export default function Members(){
         style={{ minHeight: 'calc(100vh - var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))))', '--app-subnav-height': '48px' } as CSSProperties}
       >
         {loading ? (
-          <div className="text-[#9fb0b5]">{t('social.members_loading')}</div>
+          <div className="text-c-text-tertiary">{t('social.members_loading')}</div>
         ) : error ? (
           <div className="text-red-400">{error}</div>
         ) : (
           <div className="space-y-2">
             {members.length === 0 ? (
-              <div className="text-[#9fb0b5]">{t('social.no_members')}</div>
+              <div className="text-c-text-tertiary">{t('social.no_members')}</div>
             ) : members.map((m, i) => (
-              <button key={i} className="flex items-center gap-3 p-2 rounded-xl bg-white/[0.03] w-full text-left hover:bg-white/[0.06]"
+              <button key={i} className="flex items-center gap-3 p-2 rounded-xl bg-white/[0.03] w-full text-left hover:bg-c-hover-bg"
                 onClick={()=> { window.location.href = `/profile/${encodeURIComponent(m.username)}` }}
                 aria-label={t('social.view_profile', { username: m.username })}>
                   <Avatar username={m.username} url={m.profile_picture || undefined} size={36} linkToProfile />
@@ -447,7 +447,7 @@ export default function Members(){
       {/* Invite Modal */}
       {showInviteModal && (
         <div
-          className="fixed inset-0 z-[9990] flex items-start justify-center bg-[radial-gradient(circle_at_top,_rgba(77,182,172,0.18),_rgba(0,0,0,0.92)_42%)] px-3 backdrop-blur-md sm:px-4"
+          className="fixed inset-0 z-[9990] flex items-start justify-center bg-[radial-gradient(circle_at_top,_rgba(0,206,200,0.18),_rgba(0,0,0,0.92)_42%)] px-3 backdrop-blur-md sm:px-4"
           style={{
             paddingTop: 'calc(var(--app-header-height, 56px) + env(safe-area-inset-top, 0px) + 14px)',
             paddingBottom: 'max(18px, env(safe-area-inset-bottom, 0px))',
@@ -455,11 +455,11 @@ export default function Members(){
           onClick={(e) => { if (e.target === e.currentTarget && !inviteLoading) handleCloseInviteModal() }}
         >
           <div
-            className="flex max-h-[calc(100dvh-var(--app-header-height,56px)-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-42px)] w-full max-w-md flex-col overflow-hidden rounded-[30px] border border-[#4db6ac]/20 bg-[#070909]/95 shadow-2xl shadow-black/70 ring-1 ring-white/[0.04] sm:max-h-[82dvh]"
+            className="flex max-h-[calc(100dvh-var(--app-header-height,56px)-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-42px)] w-full max-w-md flex-col overflow-hidden rounded-[30px] border border-cpoint-turquoise/20 bg-[#070909]/95 shadow-2xl shadow-black/70 ring-1 ring-white/[0.04] sm:max-h-[82dvh]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="h-1 w-full bg-gradient-to-r from-transparent via-[#4db6ac] to-transparent opacity-80" />
-            <div className="flex items-center gap-3 border-b border-white/10 bg-gradient-to-b from-white/[0.06] to-transparent px-4 py-4">
+            <div className="h-1 w-full bg-gradient-to-r from-transparent via-cpoint-turquoise to-transparent opacity-80" />
+            <div className="flex items-center gap-3 border-b border-c-border bg-gradient-to-b from-white/[0.06] to-transparent px-4 py-4">
               {inviteStep !== 'choose' ? (
                 <button
                   type="button"
@@ -470,7 +470,7 @@ export default function Members(){
                     setInviteSuccessMessage('')
                     setShowQRCode(false)
                   }}
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white/80 transition hover:border-[#4db6ac]/60 hover:bg-[#4db6ac]/10 hover:text-[#4db6ac]"
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-c-border bg-c-hover-bg text-c-text-secondary transition hover:border-cpoint-turquoise/60 hover:bg-cpoint-turquoise/10 hover:text-cpoint-turquoise"
                   disabled={inviteLoading}
                   aria-label={t('social.back_to_invite_options')}
                 >
@@ -478,16 +478,16 @@ export default function Members(){
                 </button>
               ) : null}
               <div className="min-w-0 flex-1">
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#4db6ac]/80">{t('social.invite_members')}</div>
-                <h2 className="truncate text-lg font-semibold text-white">{t('social.invite_to', { community: communityName || t('social.community_fallback') })}</h2>
-                <p className="mt-0.5 text-xs text-white/55">
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-cpoint-turquoise/80">{t('social.invite_members')}</div>
+                <h2 className="truncate text-lg font-semibold text-c-text-primary">{t('social.invite_to', { community: communityName || t('social.community_fallback') })}</h2>
+                <p className="mt-0.5 text-xs text-c-text-secondary">
                   {inviteStep === 'choose' ? t('social.invite_step_choose_hint') : t('social.invite_step_complete_hint')}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={handleCloseInviteModal}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white/80 transition hover:border-[#4db6ac]/60 hover:bg-[#4db6ac]/10 hover:text-[#4db6ac]"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-c-border bg-c-hover-bg text-c-text-secondary transition hover:border-cpoint-turquoise/60 hover:bg-cpoint-turquoise/10 hover:text-cpoint-turquoise"
                 disabled={inviteLoading}
                 aria-label={t('social.close_invite_modal')}
               >
@@ -509,7 +509,7 @@ export default function Members(){
                     <button
                       type="button"
                       onClick={() => navigate(inviteUpgradeUrl)}
-                      className="mt-3 w-full rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:bg-[#45a099]"
+                      className="mt-3 w-full rounded-full bg-cpoint-turquoise px-4 py-2 text-sm font-semibold text-black hover:bg-cpoint-turquoise/90"
                     >
                       {t('social.upgrade_community_tier')}
                     </button>
@@ -519,8 +519,8 @@ export default function Members(){
 
               {inviteStep === 'choose' && (
                 <div className="space-y-3">
-                  <div className="rounded-3xl border border-white/10 bg-black/35 p-4">
-                    <p className="text-sm leading-relaxed text-white/70">
+                  <div className="rounded-3xl border border-c-border bg-c-bg-app p-4">
+                    <p className="text-sm leading-relaxed text-c-text-secondary">
                       {t('social.invite_choose_intro')}
                     </p>
                   </div>
@@ -553,16 +553,16 @@ export default function Members(){
                         setInviteSuccess(false)
                         setInviteSuccessMessage('')
                       }}
-                      className="group flex w-full items-center gap-3 rounded-3xl border border-white/10 bg-white/[0.035] p-4 text-left shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:border-[#4db6ac]/50 hover:bg-[#4db6ac]/10"
+                      className="group flex w-full items-center gap-3 rounded-3xl border border-c-border bg-white/[0.035] p-4 text-left shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:border-cpoint-turquoise/50 hover:bg-cpoint-turquoise/10"
                     >
-                      <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl border border-[#4db6ac]/20 bg-[#4db6ac]/15 text-[#4db6ac] transition group-hover:bg-[#4db6ac]/20">
+                      <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl border border-cpoint-turquoise/20 bg-cpoint-turquoise/15 text-cpoint-turquoise transition group-hover:bg-cpoint-turquoise/20">
                         <i className={`${option.icon} text-base`} />
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-semibold text-white">{t(option.titleKey)}</span>
-                        <span className="mt-1 block text-xs leading-relaxed text-white/55">{t(option.textKey)}</span>
+                        <span className="block text-sm font-semibold text-c-text-primary">{t(option.titleKey)}</span>
+                        <span className="mt-1 block text-xs leading-relaxed text-c-text-secondary">{t(option.textKey)}</span>
                       </span>
-                      <i className="fa-solid fa-chevron-right text-xs text-white/30 transition group-hover:text-[#4db6ac]" />
+                      <i className="fa-solid fa-chevron-right text-xs text-c-text-tertiary transition group-hover:text-cpoint-turquoise" />
                     </button>
                   ))}
                 </div>
@@ -570,8 +570,8 @@ export default function Members(){
 
               {inviteStep === 'username' && (
                 <div className="space-y-4">
-                  <div className="rounded-3xl border border-white/10 bg-black/35 p-4">
-                    <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-white/40">{t('social.username_label')}</label>
+                  <div className="rounded-3xl border border-c-border bg-c-bg-app p-4">
+                    <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-c-text-tertiary">{t('social.username_label')}</label>
                     <input
                       type="text"
                       value={inviteUsername}
@@ -582,7 +582,7 @@ export default function Members(){
                         setInviteSuccessMessage('')
                       }}
                       placeholder={t('social.username_placeholder')}
-                      className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-white/35 outline-none transition focus:border-[#4db6ac] focus:bg-black/40"
+                      className="w-full rounded-2xl border border-c-border bg-c-bg-surface px-4 py-3 text-sm text-c-text-primary placeholder-white/35 outline-none transition focus:border-cpoint-turquoise focus:bg-c-hover-bg"
                       disabled={inviteLoading}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
@@ -591,14 +591,14 @@ export default function Members(){
                         }
                       }}
                     />
-                    <p className="mt-2 text-xs leading-relaxed text-white/45">
+                    <p className="mt-2 text-xs leading-relaxed text-c-text-tertiary">
                       {t('social.username_invite_hint')}
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={handleSendUsernameInvite}
-                    className="flex h-12 w-full items-center justify-center rounded-2xl bg-[#4db6ac] px-4 text-sm font-semibold text-black shadow-lg shadow-[#4db6ac]/20 transition hover:bg-[#45a099] disabled:cursor-not-allowed disabled:opacity-45"
+                    className="flex h-12 w-full items-center justify-center rounded-2xl bg-cpoint-turquoise px-4 text-sm font-semibold text-black shadow-lg shadow-cpoint-turquoise/20 transition hover:bg-cpoint-turquoise/90 disabled:cursor-not-allowed disabled:opacity-45"
                     disabled={inviteLoading || !inviteUsername.trim()}
                   >
                     {inviteLoading ? t('social.sending') : t('social.send_username_invite')}
@@ -608,8 +608,8 @@ export default function Members(){
 
               {inviteStep === 'email' && (
                 <div className="space-y-4">
-                  <div className="rounded-3xl border border-white/10 bg-black/35 p-4">
-                    <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-white/40">{t('social.email_label')}</label>
+                  <div className="rounded-3xl border border-c-border bg-c-bg-app p-4">
+                    <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-c-text-tertiary">{t('social.email_label')}</label>
                     <input
                       type="email"
                       value={inviteEmail}
@@ -619,7 +619,7 @@ export default function Members(){
                         setInviteSuccess(false)
                       }}
                       placeholder={t('social.email_placeholder')}
-                      className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-white/35 outline-none transition focus:border-[#4db6ac] focus:bg-black/40"
+                      className="w-full rounded-2xl border border-c-border bg-c-bg-surface px-4 py-3 text-sm text-c-text-primary placeholder-white/35 outline-none transition focus:border-cpoint-turquoise focus:bg-c-hover-bg"
                       disabled={inviteLoading || inviteSuccess}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
@@ -632,7 +632,7 @@ export default function Members(){
                   <button
                     type="button"
                     onClick={handleSendInvite}
-                    className="flex h-12 w-full items-center justify-center rounded-2xl bg-[#4db6ac] px-4 text-sm font-semibold text-black shadow-lg shadow-[#4db6ac]/20 transition hover:bg-[#45a099] disabled:cursor-not-allowed disabled:opacity-45"
+                    className="flex h-12 w-full items-center justify-center rounded-2xl bg-cpoint-turquoise px-4 text-sm font-semibold text-black shadow-lg shadow-cpoint-turquoise/20 transition hover:bg-cpoint-turquoise/90 disabled:cursor-not-allowed disabled:opacity-45"
                     disabled={inviteLoading || inviteSuccess || !inviteEmail.trim()}
                   >
                     {inviteLoading ? t('social.sending') : t('social.send_email_invite')}
@@ -643,10 +643,10 @@ export default function Members(){
               {inviteStep === 'link' && (
                 <div className="space-y-4">
                   {(currentUserRole === 'admin' || currentUserRole === 'owner' || currentUserRole === 'app_admin') && (
-                    <div className="flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-black/35 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3 rounded-3xl border border-c-border bg-c-bg-app px-4 py-3">
                       <div>
-                        <div className="text-sm font-semibold text-white">{t('social.single_use_link_title')}</div>
-                        <div className="text-xs text-white/45">{t('social.single_use_link_hint')}</div>
+                        <div className="text-sm font-semibold text-c-text-primary">{t('social.single_use_link_title')}</div>
+                        <div className="text-xs text-c-text-tertiary">{t('social.single_use_link_hint')}</div>
                       </div>
                       <button
                         type="button"
@@ -661,7 +661,7 @@ export default function Members(){
                             })
                           } catch {}
                         }}
-                        className={`relative h-7 w-12 flex-shrink-0 rounded-full transition-colors ${inviteSingleUse ? 'bg-[#4db6ac]' : 'bg-white/20'}`}
+                        className={`relative h-7 w-12 flex-shrink-0 rounded-full transition-colors ${inviteSingleUse ? 'bg-cpoint-turquoise' : 'bg-white/20'}`}
                         aria-pressed={inviteSingleUse}
                       >
                         <span className={`absolute left-0.5 top-0.5 h-6 w-6 rounded-full bg-white transition-transform ${inviteSingleUse ? 'translate-x-5' : ''}`} />
@@ -673,7 +673,7 @@ export default function Members(){
                     <button
                       type="button"
                       onClick={handleGenerateQR}
-                      className="flex h-12 w-full items-center justify-center rounded-2xl border border-[#4db6ac]/35 bg-[#4db6ac]/15 px-4 text-sm font-semibold text-[#4db6ac] transition hover:bg-[#4db6ac]/25 disabled:cursor-not-allowed disabled:opacity-45"
+                      className="flex h-12 w-full items-center justify-center rounded-2xl border border-cpoint-turquoise/35 bg-cpoint-turquoise/15 px-4 text-sm font-semibold text-cpoint-turquoise transition hover:bg-cpoint-turquoise/25 disabled:cursor-not-allowed disabled:opacity-45"
                       disabled={inviteLoading}
                     >
                       <i className="fa-solid fa-qrcode mr-2" />
@@ -681,21 +681,21 @@ export default function Members(){
                     </button>
                   ) : (
                     <div className="space-y-4">
-                      <div className="rounded-3xl border border-white/10 bg-white p-5">
+                      <div className="rounded-3xl border border-c-border bg-white p-5">
                         <img
                           src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrCodeUrl)}`}
                           alt={t('social.qr_code_alt')}
                           className="mx-auto aspect-square h-auto w-full max-w-[15rem] max-h-[min(15rem,36dvh)]"
                         />
                       </div>
-                      <div className="break-all rounded-2xl border border-white/10 bg-white/[0.035] p-3 text-center text-xs text-white/50">
+                      <div className="break-all rounded-2xl border border-c-border bg-white/[0.035] p-3 text-center text-xs text-c-text-tertiary">
                         {qrCodeUrl}
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
                           onClick={() => setShowQRCode(false)}
-                          className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white/80 hover:bg-white/[0.08]"
+                          className="rounded-2xl border border-c-border bg-c-bg-surface px-4 py-3 text-sm font-medium text-c-text-secondary hover:bg-c-hover-bg"
                         >
                           {t('social.regenerate')}
                         </button>
@@ -705,7 +705,7 @@ export default function Members(){
                             navigator.clipboard.writeText(qrCodeUrl)
                             alert(t('social.link_copied'))
                           }}
-                          className="rounded-2xl bg-[#4db6ac] px-4 py-3 text-sm font-semibold text-black hover:bg-[#45a099]"
+                          className="rounded-2xl bg-cpoint-turquoise px-4 py-3 text-sm font-semibold text-black hover:bg-cpoint-turquoise/90"
                         >
                           {t('social.copy_link')}
                         </button>
@@ -826,30 +826,30 @@ function MemberActions({
   return (
     <>
       <div className="relative" onClick={(e)=> e.stopPropagation()}>
-        <button className="px-2 py-1 rounded-md border border-white/10 text-xs text-[#cfd8dc] hover:bg-white/5" onClick={()=> setOpen(v=>!v)} aria-expanded={open} aria-haspopup="menu">
+        <button className="px-2 py-1 rounded-md border border-c-border text-xs text-c-text-secondary hover:bg-c-hover-bg" onClick={()=> setOpen(v=>!v)} aria-expanded={open} aria-haspopup="menu">
           {t('social.manage')}
         </button>
         {open && (
-          <div className="absolute right-0 mt-1 w-48 rounded-md border border-white/10 bg-black shadow-lg z-20">
+          <div className="absolute right-0 mt-1 w-48 rounded-md border border-c-border bg-c-bg-app shadow-lg z-20">
             {isMember && (
-              <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onPromote() }}>{t('feed.make_admin')}</button>
+              <button className="w-full text-left px-3 py-2 text-xs hover:bg-c-hover-bg" onClick={()=> { setOpen(false); onPromote() }}>{t('feed.make_admin')}</button>
             )}
             {isAdmin && (
-              <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onDemote() }}>{t('feed.remove_admin')}</button>
+              <button className="w-full text-left px-3 py-2 text-xs hover:bg-c-hover-bg" onClick={()=> { setOpen(false); onDemote() }}>{t('feed.remove_admin')}</button>
             )}
             {onTransfer ? (
-              <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onTransfer() }}>{t('social.transfer_ownership')}</button>
+              <button className="w-full text-left px-3 py-2 text-xs hover:bg-c-hover-bg" onClick={()=> { setOpen(false); onTransfer() }}>{t('social.transfer_ownership')}</button>
             ) : null}
-            <div className="h-px bg-white/10" />
+            <div className="h-px bg-c-active-bg" />
             <button 
-              className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 text-[#4db6ac]" 
+              className="w-full text-left px-3 py-2 text-xs hover:bg-c-hover-bg text-cpoint-turquoise" 
               onClick={handleOpenSubCommunityModal}
             >
               <i className="fa-solid fa-plus mr-2" />
               {t('social.add_to_sub_community')}
             </button>
-            <div className="h-px bg-white/10" />
-            <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 text-red-400" onClick={()=> { setOpen(false); onRemove() }}>{t('social.remove_member')}</button>
+            <div className="h-px bg-c-active-bg" />
+            <button className="w-full text-left px-3 py-2 text-xs hover:bg-c-hover-bg text-red-400" onClick={()=> { setOpen(false); onRemove() }}>{t('social.remove_member')}</button>
           </div>
         )}
       </div>
@@ -857,9 +857,9 @@ function MemberActions({
       {/* Add to Sub-Community Modal */}
       {showSubCommunityModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
-          <div className="bg-[#1a1a1a] rounded-xl p-6 w-full max-w-md border border-white/10 max-h-[80vh] overflow-hidden flex flex-col">
+          <div className="bg-c-bg-surface rounded-xl p-6 w-full max-w-md border border-c-border max-h-[80vh] overflow-hidden flex flex-col">
             <h2 className="text-lg font-semibold mb-2">{t('social.add_to_sub_community_title', { username: memberUsername })}</h2>
-            <p className="text-sm text-white/60 mb-4">{t('social.add_to_sub_community_hint')}</p>
+            <p className="text-sm text-c-text-secondary mb-4">{t('social.add_to_sub_community_hint')}</p>
 
             {subCommunityError && (
               <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
@@ -869,12 +869,12 @@ function MemberActions({
 
             <div className="flex-1 overflow-y-auto">
               {loadingSubCommunities ? (
-                <div className="text-center py-8 text-white/60">
+                <div className="text-center py-8 text-c-text-secondary">
                   <i className="fa-solid fa-spinner fa-spin text-xl mb-2" />
                   <div className="text-sm">{t('social.loading_sub_communities')}</div>
                 </div>
               ) : subCommunities.length === 0 ? (
-                <div className="text-center py-8 text-white/40">
+                <div className="text-center py-8 text-c-text-tertiary">
                   <i className="fa-solid fa-folder-open text-2xl mb-2" />
                   <div className="text-sm">{t('social.no_available_sub_communities')}</div>
                   <div className="text-xs mt-1">{t('social.sub_communities_empty_hint')}</div>
@@ -886,11 +886,11 @@ function MemberActions({
                       key={sc.id}
                       onClick={() => handleAddToSubCommunity(sc.id)}
                       disabled={addingToSubCommunity}
-                      className="w-full text-left px-4 py-3 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 hover:border-[#4db6ac]/50 transition disabled:opacity-50"
+                      className="w-full text-left px-4 py-3 rounded-lg border border-c-border bg-c-hover-bg hover:bg-c-hover-bg hover:border-cpoint-turquoise/50 transition disabled:opacity-50"
                     >
                       <div className="flex items-center justify-between">
                         <span className="font-medium">{sc.name}</span>
-                        <i className="fa-solid fa-plus text-[#4db6ac]" />
+                        <i className="fa-solid fa-plus text-cpoint-turquoise" />
                       </div>
                     </button>
                   ))}
@@ -900,7 +900,7 @@ function MemberActions({
 
             <button
               onClick={() => setShowSubCommunityModal(false)}
-              className="mt-4 w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-medium hover:bg-white/10"
+              className="mt-4 w-full px-4 py-2 bg-c-hover-bg border border-c-border rounded-lg text-sm font-medium hover:bg-c-hover-bg"
             >
               {t('common.close')}
             </button>

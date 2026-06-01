@@ -617,8 +617,8 @@ export default function SubscriptionPlans() {
   const settingsMinHeight = 'calc(100dvh - var(--app-header-offset, 0px))'
 
   return (
-    <div className="overflow-hidden bg-black text-white" style={{ minHeight: settingsMinHeight }}>
-      <div className="relative mx-auto max-w-xl overflow-hidden bg-black" style={{ minHeight: settingsMinHeight }}>
+    <div className="overflow-hidden bg-c-bg-app text-c-text-primary" style={{ minHeight: settingsMinHeight }}>
+      <div className="relative mx-auto max-w-xl overflow-hidden bg-c-bg-app" style={{ minHeight: settingsMinHeight }}>
         <div
           className={`transition-[transform,opacity,filter] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
             isPanelOpen ? '-translate-x-[24%] opacity-45 blur-[1px]' : 'translate-x-0 opacity-100 blur-0'
@@ -809,7 +809,7 @@ export default function SubscriptionPlans() {
         <div
           className={`fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+1rem)] z-[1400] -translate-x-1/2 rounded-full border px-4 py-2 text-sm font-semibold shadow-2xl backdrop-blur-xl ${
             toast.type === 'success'
-              ? 'border-white/10 bg-white/10 text-white'
+              ? 'border-c-border bg-c-active-bg text-white'
               : 'border-red-400/25 bg-red-500/20 text-red-100'
           }`}
         >

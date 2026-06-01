@@ -37,7 +37,7 @@ function PremiumBenefitsList({ err }: { err: EntitlementsError }) {
           fontSize: 11,
           textTransform: 'uppercase',
           letterSpacing: '0.06em',
-          color: 'rgba(255,255,255,0.45)',
+          color: 'var(--c-text-tertiary)',
           marginBottom: 8,
         }}
       >
@@ -48,7 +48,7 @@ function PremiumBenefitsList({ err }: { err: EntitlementsError }) {
           margin: 0,
           paddingLeft: 18,
           fontSize: 13,
-          color: 'rgba(255,255,255,0.82)',
+          color: 'var(--c-text-primary)',
           lineHeight: 1.55,
         }}
       >
@@ -108,6 +108,10 @@ export default function LimitReachedModal({ err, onClose }: Props) {
         return t('entitlements.limit_modal.title_premium_required')
       case 'daily_cap':
         return t('entitlements.limit_modal.title_daily_cap')
+      case 'upload_daily_limit':
+        return 'Daily media limit reached'
+      case 'upload_size_limit':
+        return 'Media is too large'
       case 'monthly_steve_cap':
         return t('entitlements.limit_modal.title_monthly_steve_cap')
       case 'monthly_whisper_cap':
@@ -128,7 +132,10 @@ export default function LimitReachedModal({ err, onClose }: Props) {
       case 'premium_required':
         return 'fa-crown'
       case 'daily_cap':
+      case 'upload_daily_limit':
         return 'fa-clock'
+      case 'upload_size_limit':
+        return 'fa-file-video'
       case 'monthly_steve_cap':
       case 'monthly_whisper_cap':
         return 'fa-hourglass-half'
@@ -175,8 +182,8 @@ export default function LimitReachedModal({ err, onClose }: Props) {
           marginTop: 16,
           padding: 12,
           borderRadius: 10,
-          background: 'rgba(255,255,255,0.03)',
-          border: '1px solid rgba(255,255,255,0.08)',
+          background: 'var(--c-skeleton-subtle)',
+          border: '1px solid var(--c-border-default)',
         }}
       >
         {rows.map((r, i) => {
@@ -188,7 +195,7 @@ export default function LimitReachedModal({ err, onClose }: Props) {
                   display: 'flex',
                   justifyContent: 'space-between',
                   fontSize: 12,
-                  color: 'rgba(255,255,255,0.7)',
+                  color: 'var(--c-text-secondary)',
                   marginBottom: 4,
                 }}
               >
@@ -197,13 +204,13 @@ export default function LimitReachedModal({ err, onClose }: Props) {
                   {r.used ?? 0} / {r.cap == null ? '∞' : r.cap}
                 </span>
               </div>
-              <div style={{ height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.08)' }}>
+              <div style={{ height: 6, borderRadius: 999, background: 'var(--c-skeleton-strong)' }}>
                 <div
                   style={{
                     width: `${pct}%`,
                     height: '100%',
                     borderRadius: 999,
-                    background: pct >= 100 ? '#e57373' : pct >= 80 ? '#ef5350' : '#4db6ac',
+                    background: pct >= 100 ? '#e57373' : pct >= 80 ? '#ef5350' : 'var(--c-accent)',
                   }}
                 />
               </div>
@@ -236,7 +243,7 @@ export default function LimitReachedModal({ err, onClose }: Props) {
         style={{
           position: 'absolute',
           inset: 0,
-          background: 'rgba(0,0,0,0.6)',
+          background: 'var(--c-bg-overlay)',
           backdropFilter: 'blur(4px)',
           WebkitBackdropFilter: 'blur(4px)',
         }}
@@ -249,10 +256,10 @@ export default function LimitReachedModal({ err, onClose }: Props) {
           width: '100%',
           maxWidth: 400,
           borderRadius: 16,
-          border: '1px solid #4db6ac',
-          background: '#000',
+          border: '1px solid var(--c-accent)',
+          background: 'var(--c-bg-app)',
           padding: 24,
-          color: '#fff',
+          color: 'var(--c-text-primary)',
           boxShadow: 'none',
         }}
         onClick={e => e.stopPropagation()}
@@ -264,13 +271,13 @@ export default function LimitReachedModal({ err, onClose }: Props) {
               height: 56,
               margin: '0 auto 12px',
               borderRadius: '50%',
-              background: 'rgba(77,182,172,0.1)',
+              background: 'var(--c-accent-muted)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <i className={`fa-solid ${iconForReason()}`} style={{ color: '#4db6ac', fontSize: 24 }} />
+            <i className={`fa-solid ${iconForReason()}`} style={{ color: 'var(--c-accent)', fontSize: 24 }} />
           </div>
           <h3 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>{titleForReason()}</h3>
         </div>
@@ -280,7 +287,7 @@ export default function LimitReachedModal({ err, onClose }: Props) {
             style={{
               fontSize: 14,
               fontWeight: 600,
-              color: 'rgba(255,255,255,0.92)',
+              color: 'var(--c-text-primary)',
               textAlign: 'center',
               margin: '0 0 12px',
               lineHeight: 1.45,
@@ -294,7 +301,7 @@ export default function LimitReachedModal({ err, onClose }: Props) {
           <p
             style={{
               fontSize: 14,
-              color: 'rgba(255,255,255,0.78)',
+              color: 'var(--c-text-secondary)',
               textAlign: 'center',
               margin: '0 0 8px',
               lineHeight: 1.55,
@@ -317,7 +324,7 @@ export default function LimitReachedModal({ err, onClose }: Props) {
                 width: '100%',
                 padding: '12px 0',
                 borderRadius: 12,
-                background: '#4db6ac',
+                background: 'var(--c-accent)',
                 color: '#000',
                 fontWeight: 600,
                 fontSize: 14,
@@ -335,8 +342,8 @@ export default function LimitReachedModal({ err, onClose }: Props) {
               width: '100%',
               padding: '12px 0',
               borderRadius: 12,
-              background: 'rgba(255,255,255,0.05)',
-              color: 'rgba(255,255,255,0.6)',
+              background: 'var(--c-hover-bg)',
+              color: 'var(--c-text-secondary)',
               fontSize: 14,
               border: 'none',
               cursor: 'pointer',

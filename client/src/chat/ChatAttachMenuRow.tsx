@@ -9,7 +9,7 @@ export function ChatAttachMenuRow({ children, className = '', ...rest }: ChatAtt
   return (
     <NativeListRow
       haptic="selection"
-      className={`gap-2.5 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 hover:bg-white/5 ${className}`}
+      className={`gap-2.5 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 hover:bg-c-hover-bg ${className}`}
       {...rest}
     >
       {children}

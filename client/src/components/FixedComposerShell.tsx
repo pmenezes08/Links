@@ -19,7 +19,7 @@ export function FixedComposerShell({
   className = 'fixed left-0 right-0 z-[1000]',
   style,
   shellRef,
-  spacerBackground = '#000',
+  spacerBackground = 'var(--c-bg-app)',
 }: FixedComposerShellProps) {
   const chrome = (
     <div

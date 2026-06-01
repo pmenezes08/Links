@@ -18,6 +18,47 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="C-Point">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <script>
+      // FOUC prevention: resolve the theme and sync every chrome surface
+      // that must be correct on the very first paint, before React mounts.
+      // Keep these maps in lockstep with META_THEME_COLOR in
+      // client/src/contexts/ThemeContext.tsx and docs/LIGHT_MODE_TOKENS.md.
+      (function() {
+        var theme = 'dark';
+        try {
+          var stored = localStorage.getItem('cpoint:theme');
+          if (stored === 'dark' || stored === 'light') {
+            theme = stored;
+          } else if (stored === 'system') {
+            theme = (window.matchMedia &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches)
+              ? 'dark' : 'light';
+          }
+        } catch (e) { /* localStorage unavailable → keep dark default */ }
+        try {
+          var root = document.documentElement;
+          root.dataset.theme = theme;
+          root.style.colorScheme = theme;
+
+          var themeColor = theme === 'light' ? '#FAFBFC' : '#000000';
+          var setMeta = function (selector, attr, value) {
+            var tag = document.querySelector(selector);
+            if (tag) tag.setAttribute(attr, value);
+          };
+          setMeta('meta[name="theme-color"]', 'content', themeColor);
+          setMeta('meta[name="color-scheme"]', 'content', theme);
+          // iOS PWA status bar style cannot change at runtime; seed it from
+          // the initial theme. `black-translucent` lets content extend under
+          // the bar (dark canvas, light glyphs); `default` gives an opaque
+          // light bar with dark glyphs for the light canvas.
+          setMeta(
+            'meta[name="apple-mobile-web-app-status-bar-style"]',
+            'content',
+            theme === 'light' ? 'default' : 'black-translucent'
+          );
+        } catch (e) { /* best-effort: ThemeProvider re-applies after mount */ }
+      })();
+    </script>
     <style>
       :root {
         color-scheme: dark;
@@ -28,6 +69,10 @@
         --sab-px: env(safe-area-inset-bottom, 0px);
         --sal-px: env(safe-area-inset-left, 0px);
         --sar-px: env(safe-area-inset-right, 0px);
+      }
+      
+      :root[data-theme='light'] {
+        color-scheme: light;
       }
       
       html, body {
@@ -45,6 +90,24 @@
       #root {
         height: 100%;
         background: #000000;
+      }
+
+      /* Light-theme first-paint overrides: the FOUC script sets
+         data-theme before paint, so the pre-React shell (body, #root, and
+         the initial loader) must not flash the dark canvas for light users.
+         !important is required to win over the loader's inline styles. */
+      :root[data-theme='light'] html,
+      :root[data-theme='light'] body {
+        background: #FAFBFC;
+        color: #1a1a1a;
+        color-scheme: light;
+      }
+      :root[data-theme='light'] #root { background: #FAFBFC; }
+      :root[data-theme='light'] #initial-loader { background: #FAFBFC !important; }
+      :root[data-theme='light'] .initial-loader-text { color: rgba(0,0,0,0.6) !important; }
+      :root[data-theme='light'] .initial-loader-spinner {
+        border-color: rgba(0,0,0,0.12) !important;
+        border-top-color: #00CEC8 !important;
       }
       
       /* Hide scrollbars but allow scrolling */
@@ -69,7 +132,7 @@
       z-index: 9999;
     ">
       <img src="/static/cpoint-logo.png" alt="C-Point" style="width: 80px; height: 80px; margin-bottom: 24px; border-radius: 16px; object-fit: contain;" />
-      <div style="
+      <div class="initial-loader-spinner" style="
         width: 32px;
         height: 32px;
         border: 3px solid rgba(255,255,255,0.15);
@@ -77,7 +140,7 @@
         border-radius: 50%;
         animation: spin 0.8s linear infinite;
       "></div>
-      <span style="margin-top: 12px; font-size: 14px; color: rgba(255,255,255,0.7); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Loading your dashboard…</span>
+      <span class="initial-loader-text" style="margin-top: 12px; font-size: 14px; color: rgba(255,255,255,0.7); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Loading your dashboard…</span>
       <style>
         @keyframes spin {
           to { transform: rotate(360deg); }

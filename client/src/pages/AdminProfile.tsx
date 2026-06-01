@@ -57,7 +57,7 @@ export default function AdminProfile(){
 
   if (loading){
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+      <div className="min-h-screen bg-c-bg-app text-c-text-primary flex items-center justify-center">
         <div className="text-xl">Loading admin profile...</div>
       </div>
     )
@@ -65,7 +65,7 @@ export default function AdminProfile(){
 
   if (!admin || !stats){
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+      <div className="min-h-screen bg-c-bg-app text-c-text-primary flex items-center justify-center">
         <div className="text-xl">Unauthorized</div>
       </div>
     )
@@ -74,11 +74,11 @@ export default function AdminProfile(){
   const displayName = [admin.first_name, admin.last_name].filter(Boolean).join(' ') || admin.username
 
   return (
-    <div className="h-screen overflow-hidden bg-black text-white">
+    <div className="h-screen overflow-hidden bg-c-bg-app text-c-text-primary">
       <div className="max-w-3xl mx-auto h-[calc(100vh-56px)] overflow-y-auto no-scrollbar px-4 py-4 space-y-4">
         {/* Header */}
-        <div className="flex items-center gap-4 bg-white/5 border border-white/10 rounded-xl p-4">
-          <div className="w-16 h-16 rounded-full overflow-hidden bg-white/10 flex items-center justify-center">
+        <div className="flex items-center gap-4 bg-c-hover-bg border border-c-border rounded-xl p-4">
+          <div className="w-16 h-16 rounded-full overflow-hidden bg-c-active-bg flex items-center justify-center">
             {admin.profile_picture && !imageError ? (
               <img 
                 src={admin.profile_picture.startsWith('http') ? admin.profile_picture : `/static/${admin.profile_picture}`} 
@@ -87,42 +87,42 @@ export default function AdminProfile(){
                 onError={() => setImageError(true)}
               />
             ) : (
-              <div className="text-2xl font-bold text-[#4db6ac]">{admin.username[0].toUpperCase()}</div>
+              <div className="text-2xl font-bold text-cpoint-turquoise">{admin.username[0].toUpperCase()}</div>
             )}
           </div>
           <div>
             <div className="text-lg font-semibold">{displayName}</div>
-            <div className="text-sm text-white/60">{admin.email || '—'}</div>
-            <div className="text-xs text-white/50">Joined: {admin.created_at ? new Date(admin.created_at).toLocaleDateString() : '—'}</div>
+            <div className="text-sm text-c-text-secondary">{admin.email || '—'}</div>
+            <div className="text-xs text-c-text-tertiary">Joined: {admin.created_at ? new Date(admin.created_at).toLocaleDateString() : '—'}</div>
           </div>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
-            <div className="text-2xl font-bold text-[#4db6ac]">{stats.total_users}</div>
-            <div className="text-xs text-white/60 mt-1">Total Users</div>
+          <div className="bg-c-hover-bg backdrop-blur rounded-xl p-4 border border-c-border">
+            <div className="text-2xl font-bold text-cpoint-turquoise">{stats.total_users}</div>
+            <div className="text-xs text-c-text-secondary mt-1">Total Users</div>
           </div>
-          <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
-            <div className="text-2xl font-bold text-[#4db6ac]">{stats.premium_users}</div>
-            <div className="text-xs text-white/60 mt-1">Premium Users</div>
+          <div className="bg-c-hover-bg backdrop-blur rounded-xl p-4 border border-c-border">
+            <div className="text-2xl font-bold text-cpoint-turquoise">{stats.premium_users}</div>
+            <div className="text-xs text-c-text-secondary mt-1">Premium Users</div>
           </div>
-          <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
-            <div className="text-2xl font-bold text-[#4db6ac]">{stats.total_communities}</div>
-            <div className="text-xs text-white/60 mt-1">Communities</div>
+          <div className="bg-c-hover-bg backdrop-blur rounded-xl p-4 border border-c-border">
+            <div className="text-2xl font-bold text-cpoint-turquoise">{stats.total_communities}</div>
+            <div className="text-xs text-c-text-secondary mt-1">Communities</div>
           </div>
-          <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
-            <div className="text-2xl font-bold text-[#4db6ac]">{stats.total_posts}</div>
-            <div className="text-xs text-white/60 mt-1">Total Posts</div>
+          <div className="bg-c-hover-bg backdrop-blur rounded-xl p-4 border border-c-border">
+            <div className="text-2xl font-bold text-cpoint-turquoise">{stats.total_posts}</div>
+            <div className="text-xs text-c-text-secondary mt-1">Total Posts</div>
           </div>
         </div>
 
         {/* Links */}
-        <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+        <div className="bg-c-hover-bg backdrop-blur rounded-xl p-4 border border-c-border">
           <div className="text-sm font-semibold mb-3">Admin Links</div>
           <div className="grid grid-cols-2 gap-2 text-sm">
-            <a href="/admin_dashboard" className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10">Dashboard</a>
-            <a href="/premium_dashboard" className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10">Manage Communities</a>
+            <a href="/admin_dashboard" className="px-3 py-2 bg-c-hover-bg border border-c-border rounded-lg hover:bg-c-hover-bg">Dashboard</a>
+            <a href="/premium_dashboard" className="px-3 py-2 bg-c-hover-bg border border-c-border rounded-lg hover:bg-c-hover-bg">Manage Communities</a>
           </div>
         </div>
       </div>

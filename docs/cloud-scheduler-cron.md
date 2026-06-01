@@ -159,6 +159,19 @@ gcloud scheduler jobs create http media-purge-retained-stories \
   --headers="X-Cron-Secret=$SECRET" \
   --attempt-deadline=300s
 
+# Chat upload session janitor — aborts expired multipart sessions stuck in
+# `initiated` state. Daily at 03:10 UTC. Dry-run:
+#   curl -X POST "$BASE/api/cron/chat-uploads-janitor?dry_run=1" \
+#     -H "X-Cron-Secret: $CRON_SECRET"
+gcloud scheduler jobs create http chat-uploads-janitor \
+  --location=europe-west1 \
+  --schedule="10 3 * * *" \
+  --time-zone=UTC \
+  --uri="$BASE/api/cron/chat-uploads-janitor" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=300s
+
 # Event reminders — checks upcoming calendar events and sends the configured
 # 1-week, 1-day, and 1-hour reminders. The endpoint dedupes per
 # event/user/reminder type and supports dry-run:

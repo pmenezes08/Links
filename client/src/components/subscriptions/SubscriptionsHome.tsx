@@ -77,7 +77,7 @@ export default function SubscriptionsHome({
           ? benefitsCopy(personal.benefits_end_at || personal.current_period_end)
           : renewalCopy(personal?.current_period_end),
         badge: personal?.subscription_provider ? (
-          <span className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[11px] font-medium text-white/60">
+          <span className="rounded-full border border-c-border bg-c-hover-bg px-2 py-0.5 text-[11px] font-medium text-c-text-secondary">
             {providerBadge(personal.subscription_provider)}
           </span>
         ) : null,
@@ -106,7 +106,7 @@ export default function SubscriptionsHome({
         title: community.name,
         subtitle: communitySubtitleCommunity(community),
         badge: (
-          <span className="rounded-full bg-[#4db6ac]/12 px-3 py-1 text-xs font-bold text-[#4db6ac]">
+          <span className="rounded-full bg-cpoint-turquoise/12 px-3 py-1 text-xs font-bold text-cpoint-turquoise">
             {tierLabel(community.tier || community.subscription_status)}
           </span>
         ),
@@ -150,7 +150,7 @@ export default function SubscriptionsHome({
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-xl flex-col px-5 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)] pt-4">
-      <h1 className="text-center text-xl font-bold tracking-[-0.02em] text-white">
+      <h1 className="text-center text-xl font-bold tracking-[-0.02em] text-c-text-primary">
         {t('subscriptions.hub_title')}
       </h1>
 
@@ -163,11 +163,11 @@ export default function SubscriptionsHome({
       {ownerIntroFeedReturnId != null ? (
         <PanelCard>
           <div className="p-4">
-            <p className="text-sm text-white/75">{t('subscriptions.owner_intro_body')}</p>
+            <p className="text-sm text-c-text-secondary">{t('subscriptions.owner_intro_body')}</p>
             <button
               type="button"
               onClick={onOwnerIntroContinue}
-              className="mt-3 flex w-full items-center justify-center rounded-2xl bg-[#4db6ac] px-4 py-3 font-bold text-black active:opacity-80"
+              className="mt-3 flex w-full items-center justify-center rounded-2xl bg-cpoint-turquoise px-4 py-3 font-bold text-black active:opacity-80"
             >
               {t('subscriptions.owner_intro_cta')}
             </button>
@@ -224,18 +224,18 @@ export default function SubscriptionsHome({
         <SettingsSection title={t('subscriptions.section_help')}>
           <a
             href={`mailto:${SALES_EMAIL}`}
-            className="group flex w-full items-center gap-4 px-4 py-3 text-left transition-colors active:bg-white/[0.08]"
+            className="group flex w-full items-center gap-4 px-4 py-3 text-left transition-colors active:bg-c-active-bg"
           >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-white/[0.05] text-white/75">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-c-border bg-c-hover-bg text-c-text-secondary">
               <i className="fa-solid fa-envelope text-sm" />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[15px] font-semibold text-white">
+              <span className="block truncate text-[15px] font-semibold text-c-text-primary">
                 {t('subscriptions.hub_contact_sales')}
               </span>
-              <span className="mt-0.5 block truncate text-sm text-white/45">{SALES_EMAIL}</span>
+              <span className="mt-0.5 block truncate text-sm text-c-text-tertiary">{SALES_EMAIL}</span>
             </span>
-            <i className="fa-solid fa-chevron-right text-xs text-white/22" />
+            <i className="fa-solid fa-chevron-right text-xs text-c-text-tertiary" />
           </a>
         </SettingsSection>
       </div>

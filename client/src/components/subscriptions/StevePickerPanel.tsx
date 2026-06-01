@@ -83,7 +83,7 @@ export default function StevePickerPanel({
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-white/45">{t('subscriptions.steve_eligibility_hint')}</p>
+      <p className="text-sm text-c-text-tertiary">{t('subscriptions.steve_eligibility_hint')}</p>
 
       {loadErr ? (
         <div className="rounded-2xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -104,12 +104,12 @@ export default function StevePickerPanel({
       ) : null}
 
       {fullRows === null && !loadErr ? (
-        <div className="text-sm text-white/50">{t('subscriptions.steve_loading_subscriptions')}</div>
+        <div className="text-sm text-c-text-tertiary">{t('subscriptions.steve_loading_subscriptions')}</div>
       ) : null}
 
       {fullRows !== null && showList && eligibleList.length === 0 ? (
         <PanelCard>
-          <div className="p-4 text-sm text-white/60">{t('subscriptions.steve_no_eligible')}</div>
+          <div className="p-4 text-sm text-c-text-tertiary">{t('subscriptions.steve_no_eligible')}</div>
         </PanelCard>
       ) : null}
 
@@ -126,20 +126,20 @@ export default function StevePickerPanel({
                   setSelectedId(c.id)
                 }}
                 className={
-                  'flex w-full items-center justify-between px-4 py-4 text-left transition-colors active:bg-white/[0.08] ' +
-                  (index < eligibleList.length - 1 ? 'border-b border-white/[0.055] ' : '') +
-                  (checked ? 'bg-[#4db6ac]/[0.08] ' : '')
+                  'flex w-full items-center justify-between px-4 py-4 text-left transition-colors active:bg-c-active-bg ' +
+                  (index < eligibleList.length - 1 ? 'border-b border-c-border ' : '') +
+                  (checked ? 'bg-cpoint-turquoise/[0.08] ' : '')
                 }
               >
                 <span className="min-w-0 flex-1 pr-3">
-                  <span className="block text-base font-semibold text-white">{c.name}</span>
+                  <span className="block text-base font-semibold text-c-text-primary">{c.name}</span>
                   {c.tier && c.tier !== 'free' ? (
-                    <span className="mt-0.5 block text-sm text-white/40">
+                    <span className="mt-0.5 block text-sm text-c-text-tertiary">
                       {t('subscriptions.current_tier', { tier: tierLabel(c.tier) })}
                     </span>
                   ) : null}
                 </span>
-                {checked ? <i className="fa-solid fa-check text-[#4db6ac]" /> : null}
+                {checked ? <i className="fa-solid fa-check text-cpoint-turquoise" /> : null}
               </button>
             )
           })}
@@ -153,8 +153,8 @@ export default function StevePickerPanel({
         className={
           'flex w-full items-center justify-center rounded-2xl px-4 py-3 font-bold active:opacity-80 ' +
           (selectedId && !loading
-            ? 'bg-[#4db6ac] text-black'
-            : 'cursor-not-allowed border border-white/15 bg-white/5 text-white/40')
+            ? 'bg-cpoint-turquoise text-black'
+            : 'cursor-not-allowed border border-c-border bg-c-hover-bg text-c-text-tertiary')
         }
       >
         {loading ? t('subscriptions.starting_checkout') : t('subscriptions.continue_checkout')}
@@ -164,7 +164,7 @@ export default function StevePickerPanel({
         <button
           type="button"
           onClick={onCreate}
-          className="flex w-full items-center justify-center rounded-2xl border border-white/10 px-4 py-3 font-bold text-white/75 active:bg-white/10"
+          className="flex w-full items-center justify-center rounded-2xl border border-c-border px-4 py-3 font-bold text-c-text-secondary active:bg-c-active-bg"
         >
           {t('subscriptions.create_community')}
         </button>

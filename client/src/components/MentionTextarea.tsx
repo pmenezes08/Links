@@ -166,21 +166,21 @@ export default function MentionTextarea({
         }}
       />
       {enabled && open && items.length > 0 && (
-        <div className="absolute z-50 bg-[#0b0f10] border border-white/10 rounded-xl shadow-xl overflow-hidden"
+        <div className="absolute z-50 bg-c-bg-elevated border border-c-border rounded-xl shadow-xl overflow-hidden"
           style={{ left: anchor.left, top: anchor.top }}
         >
           {items.map((m, idx) => (
             <button key={m.username}
-              className={`w-full px-3 py-2 text-left flex items-center gap-2 ${idx===active? 'bg-white/5' : ''}`}
+              className={`w-full px-3 py-2 text-left flex items-center gap-2 ${idx===active? 'bg-c-hover-bg' : ''}`}
               onMouseEnter={()=> setActive(idx)}
               onMouseDown={(e)=> { e.preventDefault(); insert(m.username) }}
             >
-              <div className="w-7 h-7 rounded-full bg-white/10 overflow-hidden border border-white/10">
+              <div className="w-7 h-7 rounded-full bg-c-active-bg overflow-hidden border border-c-border">
                 {m.avatar ? <img src={m.avatar.startsWith('http')? m.avatar : `/uploads/${m.avatar}`} alt="" className="w-full h-full object-cover" /> : null}
               </div>
-              <div className="text-sm text-white">
+              <div className="text-sm text-c-text-primary">
                 <span className="font-medium">@{m.username}</span>
-                {m.display_name && <span className="ml-1 text-white/60">{m.display_name}</span>}
+                {m.display_name && <span className="ml-1 text-c-text-tertiary">{m.display_name}</span>}
               </div>
             </button>
           ))}
@@ -214,7 +214,7 @@ function MentionHighlightOverlay({ overlayRef, text, enabled, padding }:{ overla
           out += ch === '\n' ? '\n' : ' '
         }
         const esc = (s:string)=> s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-        out += `<span style="background: rgba(77,182,172,0.28); color: transparent; border-radius: 4px;">${esc(mentionText)}</span>`
+        out += `<span style="background: rgba(0, 206, 200, 0.28); color: transparent; border-radius: 4px;">${esc(mentionText)}</span>`
         idx = atStart + mentionText.length
       }
       const tail = text.slice(idx)

@@ -39,6 +39,7 @@ def register_blueprints(app: Flask) -> None:
     from .about_tutorials import about_tutorials_bp
     from .branding_assets import branding_assets_bp
     from .useful_resources import useful_resources_bp
+    from .chat_uploads import chat_uploads_bp
 
     app.register_blueprint(public_bp)
     app.register_blueprint(auth_bp)
@@ -72,6 +73,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(about_tutorials_bp)
     app.register_blueprint(branding_assets_bp)
     app.register_blueprint(useful_resources_bp)
+    app.register_blueprint(chat_uploads_bp)
 
     # Make sure the Stripe/community-billing columns exist before the
     # first webhook fires. Each service's ensure_tables() is already
@@ -90,6 +92,8 @@ def register_blueprints(app: Flask) -> None:
         _community_lifecycle.ensure_tables()
         from backend.services import media_assets as _media_assets
         _media_assets.ensure_tables()
+        from backend.services import chat_uploads as _chat_uploads
+        _chat_uploads.ensure_tables()
         from backend.services import remember_tokens as _remember_tokens
         _remember_tokens.ensure_tables()
         from backend.services.dm_chats_tables import ensure_fulltext_search_indexes as _ensure_ft

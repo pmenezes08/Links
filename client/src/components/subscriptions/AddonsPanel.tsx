@@ -33,11 +33,11 @@ function AddonDetailRow({
     <div className="px-4 py-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-base font-semibold text-white">{name}</div>
-          <p className="mt-0.5 text-sm text-white/45">{tagline}</p>
-          <p className="mt-2 text-sm font-medium text-white/75">{price}</p>
+          <div className="text-base font-semibold text-c-text-primary">{name}</div>
+          <p className="mt-0.5 text-sm text-c-text-tertiary">{tagline}</p>
+          <p className="mt-2 text-sm font-medium text-c-text-secondary">{price}</p>
         </div>
-        <span className="shrink-0 rounded-full border border-white/15 px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/50">
+        <span className="shrink-0 rounded-full border border-c-border px-2 py-0.5 text-[10px] uppercase tracking-wider text-c-text-tertiary">
           {badge}
         </span>
       </div>
@@ -59,7 +59,7 @@ export default function AddonsPanel({
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-white/45">{t('subscriptions.addons_optional')}</p>
+      <p className="text-sm text-c-text-tertiary">{t('subscriptions.addons_optional')}</p>
 
       <PanelCard>
         <AddonDetailRow
@@ -71,7 +71,7 @@ export default function AddonsPanel({
             steveComingSoon ? (
               <a
                 href={`mailto:${SALES_EMAIL}?subject=${encodeURIComponent(t('subscriptions.mailto_notify_steve'))}`}
-                className="flex w-full items-center justify-center rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-white active:bg-white/10"
+                className="flex w-full items-center justify-center rounded-2xl border border-c-border px-4 py-3 text-sm font-bold text-c-text-primary active:bg-c-active-bg"
               >
                 {t('subscriptions.notify_me')}
               </a>
@@ -83,8 +83,8 @@ export default function AddonsPanel({
                 className={
                   'flex w-full items-center justify-center rounded-2xl px-4 py-3 text-sm font-bold active:opacity-80 ' +
                   (steveCheckoutLoading
-                    ? 'cursor-wait bg-[#4db6ac]/60 text-black'
-                    : 'bg-[#4db6ac] text-black')
+                    ? 'cursor-wait bg-cpoint-turquoise/60 text-black'
+                    : 'bg-cpoint-turquoise text-black')
                 }
               >
                 {steveCheckoutLoading
@@ -107,7 +107,7 @@ export default function AddonsPanel({
           action={
             <a
               href={`mailto:${SALES_EMAIL}?subject=${encodeURIComponent(t('subscriptions.mailto_notify_networking'))}`}
-              className="flex w-full items-center justify-center rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-white active:bg-white/10"
+              className="flex w-full items-center justify-center rounded-2xl border border-c-border px-4 py-3 text-sm font-bold text-c-text-primary active:bg-c-active-bg"
             >
               {t('subscriptions.notify_me')}
             </a>

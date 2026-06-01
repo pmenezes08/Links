@@ -2,7 +2,7 @@
 
 Canonical reference for product identity, color, motion, and navigation. Code tokens live in [`client/src/index.css`](../client/src/index.css), [`client/tailwind.config.js`](../client/tailwind.config.js), and [`client/src/design/motion.ts`](../client/src/design/motion.ts).
 
-Light mode is **deferred** — the app ships dark-only (`#000` canvas) until a separate theming epic.
+Light mode is **opt-in** — dark remains the default. The full token spec lives in [`docs/LIGHT_MODE_TOKENS.md`](LIGHT_MODE_TOKENS.md).
 
 ## Brand narrative
 

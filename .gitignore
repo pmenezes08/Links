@@ -16,3 +16,10 @@ templates/choose_workout_type.html
 ci-job-*.log
 gcm-diagnose.log
 staging-smoke-*.log
+
+# Understand Anything — keep graph, exclude scratch
+.understand-anything/intermediate/
+.understand-anything/tmp/
+.understand-anything/diff-overlay.json
+**/.understand-anything/intermediate/
+**/.understand-anything/tmp/

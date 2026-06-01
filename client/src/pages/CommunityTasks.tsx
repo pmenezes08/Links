@@ -146,33 +146,33 @@ export default function CommunityTasks(){
   }
 
   function StatusPill({ s }:{ s?: Task['status'] }){
-    const map:any = { not_started: 'bg-white/10 text-white', ongoing: 'bg-blue-600/20 text-blue-300', completed: 'bg-green-600/20 text-green-300' }
+    const map:any = { not_started: 'bg-c-hover-bg text-c-text-primary', ongoing: 'bg-blue-500/10 text-c-accent-ink', completed: 'bg-cpoint-turquoise/10 text-cpoint-turquoise' }
     const label = s === 'completed' ? t('tasks.status_completed') : s === 'ongoing' ? t('tasks.status_ongoing') : t('tasks.status_not_started')
-    return <span className={`px-2 py-0.5 rounded-full text-[10px] border border-white/10 ${map[s||'not_started']}`}>{label}</span>
+    return <span className={`px-2 py-0.5 rounded-full text-[10px] border border-c-border ${map[s||'not_started']}`}>{label}</span>
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary">
       <div
-        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+        className="fixed left-0 right-0 h-10 bg-c-bg-app/70 backdrop-blur z-40"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))' }}
       >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(groupIdOk ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label={t('common.back')}>
+          <button className="p-2 rounded-full hover:bg-c-hover-bg" onClick={()=> navigate(groupIdOk ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label={t('common.back')}>
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="flex-1 h-full flex">
-            <button type="button" className={`flex-1 text-center text-sm font-medium ${tab==='community' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setTab('community')}>
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${tab==='community' ? 'text-c-text-primary' : 'text-c-text-tertiary hover:text-c-text-primary'}`} onClick={()=> setTab('community')}>
               <div className="pt-2">{sharedTasksLabel}</div>
-              <div className={`h-0.5 rounded-full w-20 mx-auto mt-1 ${tab==='community' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+              <div className={`h-0.5 rounded-full w-20 mx-auto mt-1 ${tab==='community' ? 'bg-cpoint-turquoise' : 'bg-transparent'}`} />
             </button>
-            <button type="button" className={`flex-1 text-center text-sm font-medium ${tab==='mine' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setTab('mine')}>
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${tab==='mine' ? 'text-c-text-primary' : 'text-c-text-tertiary hover:text-c-text-primary'}`} onClick={()=> setTab('mine')}>
               <div className="pt-2">{t('tasks.tab_your_tasks')}</div>
-              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${tab==='mine' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${tab==='mine' ? 'bg-cpoint-turquoise' : 'bg-transparent'}`} />
             </button>
-            <button type="button" className={`flex-1 text-center text-sm font-medium ${tab==='create' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setTab('create')}>
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${tab==='create' ? 'text-c-text-primary' : 'text-c-text-tertiary hover:text-c-text-primary'}`} onClick={()=> setTab('create')}>
               <div className="pt-2">{t('tasks.tab_create')}</div>
-              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${tab==='create' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${tab==='create' ? 'bg-cpoint-turquoise' : 'bg-transparent'}`} />
             </button>
           </div>
         </div>
@@ -186,26 +186,26 @@ export default function CommunityTasks(){
         }}
       >
         {loading ? (
-          <div className="text-[#9fb0b5]">{t('common.loading')}</div>
+          <div className="text-c-text-tertiary">{t('common.loading')}</div>
         ) : (
           <>
             {tab === 'community' && (
               <div className="space-y-3">
                 {communityTasks.length === 0 ? (
-                  <div className="text-[#9fb0b5]">{noSharedTasksMsg}</div>
+                  <div className="text-c-text-tertiary">{noSharedTasksMsg}</div>
                 ) : communityTasks.map(task => (
-                  <div key={task.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                  <div key={task.id} className="rounded-2xl border border-c-border bg-white/[0.035] p-3">
                     <div className="flex items-center gap-2">
-                      <button aria-label={t('tasks.complete_task_aria')} className={`w-5 h-5 rounded grid place-items-center border ${task.completed ? 'border-[#4db6ac] bg-[#4db6ac]/20' : 'border-white/20 bg-transparent'}`} onClick={()=> toggleComplete(task, !task.completed)}>
-                        <i className={`fa-solid ${task.completed ? 'fa-square-check text-[#4db6ac]' : 'fa-square text-white/60'}`} />
+                      <button aria-label={t('tasks.complete_task_aria')} className={`w-5 h-5 rounded grid place-items-center border ${task.completed ? 'border-cpoint-turquoise bg-cpoint-turquoise/20' : 'border-c-border bg-transparent'}`} onClick={()=> toggleComplete(task, !task.completed)}>
+                        <i className={`fa-solid ${task.completed ? 'fa-square-check text-cpoint-turquoise' : 'fa-square text-c-text-tertiary'}`} />
                       </button>
                       <div className="font-medium flex-1">{task.title}</div>
                       <StatusPill s={task.status} />
                     </div>
-                    {task.description ? (<div className="text-sm text-[#cfd8dc] mt-1 whitespace-pre-wrap">{task.description}</div>) : null}
-                    <div className="text-xs text-[#9fb0b5] mt-1">{task.due_date ? t('tasks.due_date', { date: task.due_date }) : ''}</div>
+                    {task.description ? (<div className="text-sm text-c-text-secondary mt-1 whitespace-pre-wrap">{task.description}</div>) : null}
+                    <div className="text-xs text-c-text-tertiary mt-1">{task.due_date ? t('tasks.due_date', { date: task.due_date }) : ''}</div>
                     <div className="text-right mt-2">
-                      <button className="px-2 py-1 rounded-md border border-white/10 hover:bg-white/5 text-xs" onClick={()=> deleteTask(task)}>{t('common.delete')}</button>
+                      <button className="px-2 py-1 rounded-md border border-c-border hover:bg-c-hover-bg text-xs" onClick={()=> deleteTask(task)}>{t('common.delete')}</button>
                     </div>
                   </div>
                 ))}
@@ -215,20 +215,20 @@ export default function CommunityTasks(){
             {tab === 'mine' && (
               <div className="space-y-3">
                 {myTasks.length === 0 ? (
-                  <div className="text-[#9fb0b5]">{t('tasks.empty_my_tasks')}</div>
+                  <div className="text-c-text-tertiary">{t('tasks.empty_my_tasks')}</div>
                 ) : myTasks.map(task => (
-                  <div key={task.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                  <div key={task.id} className="rounded-2xl border border-c-border bg-white/[0.035] p-3">
                     <div className="flex items-center gap-2">
-                      <button aria-label={t('tasks.complete_task_aria')} className={`w-5 h-5 rounded grid place-items-center border ${task.completed ? 'border-[#4db6ac] bg-[#4db6ac]/20' : 'border-white/20 bg-transparent'}`} onClick={()=> toggleComplete(task, !task.completed)}>
-                        <i className={`fa-solid ${task.completed ? 'fa-square-check text-[#4db6ac]' : 'fa-square text-white/60'}`} />
+                      <button aria-label={t('tasks.complete_task_aria')} className={`w-5 h-5 rounded grid place-items-center border ${task.completed ? 'border-cpoint-turquoise bg-cpoint-turquoise/20' : 'border-c-border bg-transparent'}`} onClick={()=> toggleComplete(task, !task.completed)}>
+                        <i className={`fa-solid ${task.completed ? 'fa-square-check text-cpoint-turquoise' : 'fa-square text-c-text-tertiary'}`} />
                       </button>
                       <div className="font-medium flex-1">{task.title}</div>
                       <StatusPill s={task.status} />
                     </div>
-                    {task.description ? (<div className="text-sm text-[#cfd8dc] mt-1 whitespace-pre-wrap">{task.description}</div>) : null}
-                    <div className="text-xs text-[#9fb0b5] mt-1">{task.due_date ? t('tasks.due_date', { date: task.due_date }) : ''}</div>
+                    {task.description ? (<div className="text-sm text-c-text-secondary mt-1 whitespace-pre-wrap">{task.description}</div>) : null}
+                    <div className="text-xs text-c-text-tertiary mt-1">{task.due_date ? t('tasks.due_date', { date: task.due_date }) : ''}</div>
                     <div className="text-right mt-2">
-                      <button className="px-2 py-1 rounded-md border border-white/10 hover:bg-white/5 text-xs" onClick={()=> deleteTask(task)}>{t('common.delete')}</button>
+                      <button className="px-2 py-1 rounded-md border border-c-border hover:bg-c-hover-bg text-xs" onClick={()=> deleteTask(task)}>{t('common.delete')}</button>
                     </div>
                   </div>
                 ))}
@@ -236,20 +236,20 @@ export default function CommunityTasks(){
             )}
 
             {tab === 'create' && (
-              <form className="rounded-2xl border border-white/10 p-3 bg-white/[0.035] space-y-3" onSubmit={(e)=> { e.preventDefault(); createTask(new FormData(e.currentTarget)) }}>
+              <form className="rounded-2xl border border-c-border p-3 bg-white/[0.035] space-y-3" onSubmit={(e)=> { e.preventDefault(); createTask(new FormData(e.currentTarget)) }}>
                 <div className="text-sm font-medium">{t('tasks.create_heading')}</div>
-                <label className="text-xs text-[#9fb0b5]">{t('tasks.title_label')}
-                  <input name="title" placeholder={t('tasks.title_placeholder')} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" required />
+                <label className="text-xs text-c-text-tertiary">{t('tasks.title_label')}
+                  <input name="title" placeholder={t('tasks.title_placeholder')} className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" required />
                 </label>
-                <label className="text-xs text-[#9fb0b5]">{t('tasks.description_label')}
-                  <textarea name="description" placeholder={t('tasks.description_placeholder')} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[80px]" />
+                <label className="text-xs text-c-text-tertiary">{t('tasks.description_label')}
+                  <textarea name="description" placeholder={t('tasks.description_placeholder')} className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[80px]" />
                 </label>
                 <div className="grid grid-cols-2 gap-2">
-                  <label className="text-xs text-[#9fb0b5]">{t('tasks.due_date_label')}
-                    <input name="due_date" type="date" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
+                  <label className="text-xs text-c-text-tertiary">{t('tasks.due_date_label')}
+                    <input name="due_date" type="date" className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
                   </label>
-                  <label className="text-xs text-[#9fb0b5]">{t('tasks.status_label')}
-                    <select name="status" defaultValue="not_started" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none">
+                  <label className="text-xs text-c-text-tertiary">{t('tasks.status_label')}
+                    <select name="status" defaultValue="not_started" className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none">
                       <option value="not_started">{t('tasks.status_not_started')}</option>
                       <option value="ongoing">{t('tasks.status_ongoing')}</option>
                       <option value="completed">{t('tasks.status_completed')}</option>
@@ -259,22 +259,22 @@ export default function CommunityTasks(){
                 {isAdmin ? (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <button type="button" className={`px-2 py-1 rounded-md border text-xs hover:bg-white/5 ${assignAll ? 'border-teal-500 text-teal-300 bg-teal-700/15' : 'border-white/10'}`} onClick={()=> setAssignAll(v=> { const nv=!v; if(nv){ setSelected({}) } return nv })}>{groupIdOk ? t('tasks.assign_entire_group') : t('tasks.assign_entire_community')}</button>
-                      {!assignAll && <span className="text-xs text-[#9fb0b5]">{t('tasks.or_select_members')}</span>}
+                      <button type="button" className={`px-2 py-1 rounded-md border text-xs hover:bg-c-hover-bg ${assignAll ? 'border-teal-500 text-teal-300 bg-teal-700/15' : 'border-c-border'}`} onClick={()=> setAssignAll(v=> { const nv=!v; if(nv){ setSelected({}) } return nv })}>{groupIdOk ? t('tasks.assign_entire_group') : t('tasks.assign_entire_community')}</button>
+                      {!assignAll && <span className="text-xs text-c-text-tertiary">{t('tasks.or_select_members')}</span>}
                     </div>
                     {!assignAll && (
-                      <div className="max-h-40 overflow-y-auto border border-white/10 rounded-md p-2 space-y-1">
+                      <div className="max-h-40 overflow-y-auto border border-c-border rounded-md p-2 space-y-1">
                         {members.length === 0 ? (
-                          <div className="text-sm text-[#9fb0b5]">{t('tasks.no_members')}</div>
+                          <div className="text-sm text-c-text-tertiary">{t('tasks.no_members')}</div>
                         ) : members.map(m => (
-                          <label key={m.username} className="flex items-center justify-between gap-2 py-1 px-2 rounded hover:bg-white/5 cursor-pointer">
+                          <label key={m.username} className="flex items-center justify-between gap-2 py-1 px-2 rounded hover:bg-c-hover-bg cursor-pointer">
                             <span className="text-sm">{m.username}</span>
                             <div 
-                              className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${selected[m.username] ? 'border-[#6c757d] bg-black' : 'border-[#6c757d] bg-black'}`}
+                              className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${selected[m.username] ? 'border-[#6c757d] bg-c-bg-app' : 'border-[#6c757d] bg-c-bg-app'}`}
                               onClick={(e)=> { e.preventDefault(); setSelected(s => ({ ...s, [m.username]: !s[m.username] })) }}
                             >
                               {selected[m.username] && (
-                                <i className="fa-solid fa-check text-[#4db6ac] text-xs" />
+                                <i className="fa-solid fa-check text-cpoint-turquoise text-xs" />
                               )}
                             </div>
                           </label>
@@ -283,10 +283,10 @@ export default function CommunityTasks(){
                     )}
                   </div>
                 ) : (
-                  <div className="text-xs text-[#9fb0b5]">{t('tasks.not_admin_hint')}</div>
+                  <div className="text-xs text-c-text-tertiary">{t('tasks.not_admin_hint')}</div>
                 )}
                 <div className="flex justify-end">
-                  <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110">{t('tasks.create_button')}</button>
+                  <button className="px-3 py-1.5 rounded-md bg-cpoint-turquoise text-black text-sm hover:brightness-110">{t('tasks.create_button')}</button>
                 </div>
               </form>
             )}

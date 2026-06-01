@@ -36,7 +36,7 @@ function ManageGroupButton({ groupId, onClose }:{ groupId: string, onClose: ()=>
   const { t } = useTranslation()
   const navigate = useNavigate()
   return (
-    <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { onClose(); navigate(`/group/${groupId}/edit`) }}>
+    <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg" onClick={()=> { onClose(); navigate(`/group/${groupId}/edit`) }}>
       {t('feed.manage_group')}
     </button>
   )
@@ -205,10 +205,10 @@ export default function GroupFeed(){
 
   const fixedFeedHeader = (
     <div
-      className="fixed left-0 right-0 top-0 z-[1000] border-b border-white/10"
+      className="fixed left-0 right-0 top-0 z-[1000] border-b border-c-border"
       style={{
         paddingTop: 'var(--sat-px, 0px)',
-        background: '#000',
+        background: 'var(--c-bg-app)',
       }}
     >
       <div className="h-14 flex items-center gap-2 px-3 max-w-2xl mx-auto w-full">
@@ -222,30 +222,30 @@ export default function GroupFeed(){
         </button>
         <button
           type="button"
-          className="p-2 rounded-full hover:bg-white/10 transition-colors"
+          className="p-2 rounded-full hover:bg-c-hover-bg transition-colors"
           onClick={goBackFromGroupFeed}
           aria-label={t('navigation.back')}
         >
-          <i className="fa-solid fa-arrow-left text-white" />
+          <i className="fa-solid fa-arrow-left text-c-text-primary" />
         </button>
         <button
           type="button"
-          className="flex-1 min-w-0 rounded-xl px-2 py-1 text-left transition hover:bg-white/[0.04] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]/50"
+          className="flex-1 min-w-0 rounded-xl px-2 py-1 text-left transition hover:bg-c-hover-bg focus:outline-none focus:ring-1 focus:ring-cpoint-turquoise/50"
           onClick={() => setGroupInfoOpen((o) => !o)}
           aria-expanded={groupInfoOpen}
           aria-label={t('feed.group_details')}
         >
-          <div className="font-semibold truncate text-white text-sm">{groupName || t('feed.group_fallback')}</div>
+          <div className="font-semibold truncate text-c-text-primary text-sm">{groupName || t('feed.group_fallback')}</div>
           {communityMeta?.name ? (
-            <div className="text-xs text-[#9fb0b5] truncate">{communityMeta.name}</div>
+            <div className="text-xs text-c-text-tertiary truncate">{communityMeta.name}</div>
           ) : (
-            <div className="text-xs text-[#9fb0b5] truncate">{t('feed.tap_for_details')}</div>
+            <div className="text-xs text-c-text-tertiary truncate">{t('feed.tap_for_details')}</div>
           )}
         </button>
         <div className="flex items-center gap-1 flex-shrink-0">
           <button
             type="button"
-            className="p-2 rounded-full hover:bg-white/10 transition-colors"
+            className="p-2 rounded-full hover:bg-c-hover-bg transition-colors"
             aria-label={t('common.search')}
             onClick={() => {
               setShowSearch(true)
@@ -256,30 +256,30 @@ export default function GroupFeed(){
               }, 50)
             }}
           >
-            <i className="fa-solid fa-magnifying-glass text-white" />
+            <i className="fa-solid fa-magnifying-glass text-c-text-primary" />
           </button>
           <button
             type="button"
-            className="relative p-2 rounded-full hover:bg-white/10 transition-colors"
+            className="relative p-2 rounded-full hover:bg-c-hover-bg transition-colors"
             onClick={() => navigate('/user_chat')}
             aria-label={t('navigation.messages')}
           >
-            <i className="fa-solid fa-comments text-white" />
+            <i className="fa-solid fa-comments text-c-text-primary" />
             {unreadMsgs > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#4db6ac] text-black text-[10px] flex items-center justify-center">
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-cpoint-turquoise text-black text-[10px] flex items-center justify-center">
                 {unreadMsgs > 99 ? '99+' : unreadMsgs}
               </span>
             )}
           </button>
           <button
             type="button"
-            className="relative p-2 rounded-full hover:bg-white/10 transition-colors"
+            className="relative p-2 rounded-full hover:bg-c-hover-bg transition-colors"
             onClick={() => navigate('/notifications')}
             aria-label={t('navigation.notifications')}
           >
-            <i className="fa-regular fa-bell text-white" />
+            <i className="fa-regular fa-bell text-c-text-primary" />
             {unreadNotifs > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#4db6ac] text-black text-[10px] flex items-center justify-center">
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-cpoint-turquoise text-black text-[10px] flex items-center justify-center">
                 {unreadNotifs > 99 ? '99+' : unreadNotifs}
               </span>
             )}
@@ -295,27 +295,27 @@ export default function GroupFeed(){
             onClick={() => setGroupInfoOpen(false)}
           />
           <div
-            className="fixed left-3 right-3 z-[1002] rounded-3xl border border-[#4db6ac]/25 bg-[#070909]/95 p-4 text-white shadow-2xl shadow-black/70 ring-1 ring-white/[0.04] backdrop-blur-md sm:left-1/2 sm:right-auto sm:w-[420px] sm:-translate-x-1/2"
+            className="fixed left-3 right-3 z-[1002] rounded-3xl border border-cpoint-turquoise/25 bg-c-bg-elevated p-4 text-c-text-primary shadow-2xl shadow-black/70 ring-1 ring-white/[0.04] backdrop-blur-md sm:left-1/2 sm:right-auto sm:w-[420px] sm:-translate-x-1/2"
             style={{ top: 'calc(var(--sat-px, 0px) + 64px)' }}
           >
             <div className="mb-2 flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#4db6ac]/80">{t('feed.group_fallback')}</div>
-                <h2 className="mt-1 text-base font-semibold text-white">{groupName || t('feed.group_fallback')}</h2>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cpoint-turquoise/80">{t('feed.group_fallback')}</div>
+                <h2 className="mt-1 text-base font-semibold text-c-text-primary">{groupName || t('feed.group_fallback')}</h2>
                 {communityMeta?.name ? (
-                  <div className="text-xs text-[#9fb0b5] mt-1">{t('feed.in_community', { community: communityMeta.name })}</div>
+                  <div className="text-xs text-c-text-tertiary mt-1">{t('feed.in_community', { community: communityMeta.name })}</div>
                 ) : null}
               </div>
               <button
                 type="button"
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/70 hover:border-[#4db6ac]/50 hover:text-[#4db6ac]"
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-c-border bg-c-bg-surface text-c-text-secondary hover:border-cpoint-turquoise/50 hover:text-cpoint-turquoise"
                 onClick={() => setGroupInfoOpen(false)}
                 aria-label={t('feed.close_group_details')}
               >
                 <i className="fa-solid fa-xmark text-xs" />
               </button>
             </div>
-            <p className="text-sm leading-relaxed text-white/75">
+            <p className="text-sm leading-relaxed text-c-text-secondary">
               {t('feed.group_details_body')}
             </p>
           </div>
@@ -548,11 +548,11 @@ export default function GroupFeed(){
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black text-white flex flex-col">
+      <div className="min-h-screen bg-c-bg-app text-c-text-primary flex flex-col">
         {fixedFeedHeader}
         {burgerMenuOverlay}
         <div
-          className="flex-1 flex items-center justify-center text-[#9fb0b5]"
+          className="flex-1 flex items-center justify-center text-c-text-tertiary"
           style={{ paddingTop: `calc(var(--sat-px, 0px) + ${feedScrollHeaderBodyPx}px)` }}
         >
           {t('common.loading')}
@@ -562,7 +562,7 @@ export default function GroupFeed(){
   }
   if (error) {
     return (
-      <div className="min-h-screen bg-black text-white flex flex-col">
+      <div className="min-h-screen bg-c-bg-app text-c-text-primary flex flex-col">
         {fixedFeedHeader}
         {burgerMenuOverlay}
         <div
@@ -576,7 +576,7 @@ export default function GroupFeed(){
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary">
       {fixedFeedHeader}
       {burgerMenuOverlay}
       {/* Scrollable content area */}
@@ -593,18 +593,18 @@ export default function GroupFeed(){
       >
         <div className="space-y-3">
           {posts.length === 0 ? (
-            <div className="text-sm text-[#9fb0b5]">{t('feed.no_posts_yet')}</div>
+            <div className="text-sm text-c-text-tertiary">{t('feed.no_posts_yet')}</div>
           ) : (
             posts.map(p => (
-              <div key={p.id} id={`group-post-${p.id}`} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer" onClick={()=> navigate(`/post/${p.id}`, { state: { groupId: group_id } })}>
-                <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
+              <div key={p.id} id={`group-post-${p.id}`} className="rounded-2xl border border-c-border bg-c-bg-app shadow-sm shadow-black/20 cursor-pointer" onClick={()=> navigate(`/post/${p.id}`, { state: { groupId: group_id } })}>
+                <div className="px-3 py-2 border-b border-c-border flex items-center gap-2">
                   <Avatar username={p.username} url={p.profile_picture || undefined} size={28} linkToProfile />
                   <div className="font-medium">{p.username}</div>
-                  <div className="text-xs text-[#9fb0b5] ml-auto">{formatSmartTime((p as any).display_timestamp || p.timestamp)}</div>
+                  <div className="text-xs text-c-text-tertiary ml-auto">{formatSmartTime((p as any).display_timestamp || p.timestamp)}</div>
                   <div className="ml-1 flex items-center gap-0.5">
                     <button
                       type="button"
-                      className="p-1.5 rounded-full hover:bg-white/10"
+                      className="p-1.5 rounded-full hover:bg-c-hover-bg"
                       aria-label={p.is_starred ? t('feed.remove_from_key_posts') : t('feed.add_to_key_posts')}
                       onClick={async (e) => {
                         e.stopPropagation()
@@ -621,13 +621,13 @@ export default function GroupFeed(){
                     >
                       <i
                         className={p.is_starred ? 'fa-solid fa-star' : 'fa-regular fa-star'}
-                        style={{ color: p.is_starred ? '#4db6ac' : '#6c757d', fontSize: '0.85rem' }}
+                        style={{ color: p.is_starred ? '#00CEC8' : '#6c757d', fontSize: '0.85rem' }}
                       />
                     </button>
                     {p.can_toggle_community_key ? (
                       <button
                         type="button"
-                        className="p-1.5 rounded-full hover:bg-white/10"
+                        className="p-1.5 rounded-full hover:bg-c-hover-bg"
                         aria-label={p.is_community_starred ? t('feed.remove_group_key_post') : t('feed.mark_group_key_post')}
                         onClick={async (e) => {
                           e.stopPropagation()
@@ -653,7 +653,7 @@ export default function GroupFeed(){
                     <div className="ml-2 flex items-center gap-1">
                       {p.can_edit ? (
                         <button
-                          className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]"
+                          className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-cpoint-turquoise"
                           aria-label={t('feed.edit_post')}
                           onClick={async (e)=> {
                             e.stopPropagation()
@@ -667,7 +667,7 @@ export default function GroupFeed(){
                       ) : null}
                       {p.can_delete ? (
                         <button
-                          className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]"
+                          className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-cpoint-turquoise"
                           aria-label={t('feed.delete_post')}
                           onClick={async (e)=> {
                             e.stopPropagation()
@@ -703,20 +703,20 @@ export default function GroupFeed(){
                     })()
                   ) : (
                     <div className="space-y-2">
-                      <textarea className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[100px]" value={editText} onChange={(e)=> { setEditText(e.target.value); setDetectedLinks(detectLinks(e.target.value)) }} />
+                      <textarea className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[100px]" value={editText} onChange={(e)=> { setEditText(e.target.value); setDetectedLinks(detectLinks(e.target.value)) }} />
                       {detectedLinks.length > 0 && (
                         <div className="space-y-2">
-                          <div className="text-xs text-[#9fb0b5] font-medium">{t('feed.detected_links')}</div>
+                          <div className="text-xs text-c-text-tertiary font-medium">{t('feed.detected_links')}</div>
                           {detectedLinks.map((link, idx) => (
-                            <div key={idx} className="flex items-center gap-2 p-2 rounded-lg border border-white/10 bg-white/5">
+                            <div key={idx} className="flex items-center gap-2 p-2 rounded-lg border border-c-border bg-c-hover-bg">
                               <div className="flex-1 min-w-0">
-                                <div className="text-xs text-[#4db6ac] truncate">{link.displayText}</div>
+                                <div className="text-xs text-cpoint-turquoise truncate">{link.displayText}</div>
                                 {link.displayText !== link.url && (
-                                  <div className="text-xs text-white/50 truncate">{link.url}</div>
+                                  <div className="text-xs text-c-text-tertiary truncate">{link.url}</div>
                                 )}
                               </div>
                               <button
-                                className="px-2 py-1 rounded text-xs border border-[#4db6ac]/30 text-[#4db6ac] hover:bg-[#4db6ac]/10"
+                                className="px-2 py-1 rounded text-xs border border-cpoint-turquoise/30 text-cpoint-turquoise hover:bg-cpoint-turquoise/10"
                                 onClick={()=> {
                                   const newText = prompt(t('feed.rename_link_prompt'), link.displayText)
                                   if (newText == null) return
@@ -732,8 +732,8 @@ export default function GroupFeed(){
                         </div>
                       )}
                       <div className="flex gap-2 justify-end">
-                        <button className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm" onClick={()=> { setEditingId(null); setEditText('') }}>{t('common.cancel')}</button>
-                        <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110" onClick={async()=> {
+                        <button className="px-3 py-1.5 rounded-md border border-c-border hover:bg-c-hover-bg text-sm" onClick={()=> { setEditingId(null); setEditText('') }}>{t('common.cancel')}</button>
+                        <button className="px-3 py-1.5 rounded-md bg-cpoint-turquoise text-black text-sm hover:brightness-110" onClick={async()=> {
                           const fd = new URLSearchParams({ post_id: String(p.id), content: editText })
                           const r = await fetch('/api/group_posts/edit', { method:'POST', credentials:'include', body: fd })
                           const j = await r.json().catch(()=>null)
@@ -753,7 +753,7 @@ export default function GroupFeed(){
                         return ip.startsWith('uploads') || ip.startsWith('static') ? `/${ip}` : `/uploads/${ip}`
                       })()}
                       alt={t('feed.post_image_alt')}
-                      className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
+                      className="block mx-auto max-w-full max-h-[360px] rounded border border-c-border"
                     />
                   ) : null}
                   {p.video_path ? (
@@ -765,17 +765,17 @@ export default function GroupFeed(){
                         return `/uploads/${vp}`
                       })()}
                       controls
-                      className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
+                      className="block mx-auto max-w-full max-h-[360px] rounded border border-c-border"
                     />
                   ) : null}
                   {p.poll ? (
                     <div className="space-y-2 pt-1" onClick={(e)=> e.stopPropagation()}>
                       <div className="flex items-center gap-2 mb-1">
-                        <i className="fa-solid fa-chart-bar text-[#4db6ac]" />
+                        <i className="fa-solid fa-chart-bar text-cpoint-turquoise" />
                         <div className="font-medium text-sm flex-1">
                           {p.poll.question}
                           {p.poll.expires_at ? (
-                            <span className="ml-2 text-[11px] text-[#9fb0b5]">
+                            <span className="ml-2 text-[11px] text-c-text-tertiary">
                               • {t('feed.poll_closes', { date: (() => {
                                 try {
                                   const d = new Date(p.poll.expires_at as string)
@@ -809,7 +809,7 @@ export default function GroupFeed(){
                               key={option.id}
                               type="button"
                               disabled={isExpired}
-                              className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isExpired ? 'opacity-60 cursor-not-allowed' : isUserVote ? 'border-[#4db6ac] bg-[#4db6ac]/10' : 'border-white/10 hover:bg-white/5'}`}
+                              className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isExpired ? 'opacity-60 cursor-not-allowed' : isUserVote ? 'border-cpoint-turquoise bg-cpoint-turquoise/10' : 'border-c-border hover:bg-c-hover-bg'}`}
                               onClick={async (e) => {
                                 if (isExpired) return
                                 e.preventDefault()
@@ -873,10 +873,10 @@ export default function GroupFeed(){
                                 } catch { /* noop */ }
                               }}
                             >
-                              <div className="absolute inset-0 bg-[#4db6ac]/20" style={{ width: `${percentage}%`, transition: 'width 0.3s ease' }} />
+                              <div className="absolute inset-0 bg-cpoint-turquoise/20" style={{ width: `${percentage}%`, transition: 'width 0.3s ease' }} />
                               <div className="relative flex items-center justify-between">
                                 <span className="text-sm">{option.text || option.option_text}</span>
-                                <span className="text-xs text-[#9fb0b5] font-medium">
+                                <span className="text-xs text-c-text-tertiary font-medium">
                                   {option.votes} {percentage > 0 ? `(${percentage}%)` : ''}
                                 </span>
                               </div>
@@ -884,7 +884,7 @@ export default function GroupFeed(){
                           )
                         })}
                       </div>
-                      <div className="flex items-center justify-between text-xs text-[#9fb0b5] pt-1">
+                      <div className="flex items-center justify-between text-xs text-c-text-tertiary pt-1">
                         {(() => {
                           const sv = p.poll?.single_vote
                           const isSingle = !(sv === false || sv === 0 || sv === '0' || sv === 'false')
@@ -913,20 +913,20 @@ export default function GroupFeed(){
                           else alert(j?.error || 'Failed')
                         }catch{}
                       }}>
-                        <i className={`fa-regular ${rname==='heart'?'fa-heart':(rname==='thumbs-up'?'fa-thumbs-up':'fa-thumbs-down')}`} style={{ color: p.user_reaction===rname ? '#4db6ac' : '#6c757d', WebkitTextStroke: p.user_reaction===rname ? '1px #4db6ac' : undefined }} />
+                        <i className={`fa-regular ${rname==='heart'?'fa-heart':(rname==='thumbs-up'?'fa-thumbs-up':'fa-thumbs-down')}`} style={{ color: p.user_reaction===rname ? '#00CEC8' : '#6c757d', WebkitTextStroke: p.user_reaction===rname ? '1px #00CEC8' : undefined }} />
                         <span className="ml-1" style={{ color: p.user_reaction===rname ? '#cfe9e7' : '#9fb0b5' }}>{(p.reactions?.[rname])||0}</span>
                       </button>
                     ))}
                     <div className="ml-auto flex items-center gap-1 tabular-nums">
                       <span
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[#cfd8dc]"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-c-text-secondary"
                         title={t('feed.views')}
                       >
                         <i className="fa-regular fa-eye text-[11px]" aria-hidden />
                         <span>{p.view_count ?? 0}</span>
                       </span>
                       <span
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[#cfd8dc]"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-c-text-secondary"
                         title={t('feed.comments')}
                       >
                         <i className="fa-regular fa-comment text-[11px]" aria-hidden />
@@ -952,22 +952,22 @@ export default function GroupFeed(){
 
       {/* More bottom sheet */}
       {moreOpen && (
-        <div className="fixed inset-0 z-[110] bg-black/30 flex items-end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
-          <div className="w-[75%] max-w-sm mr-2 bg-black/95 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0" style={{ marginBottom: 'var(--app-feed-bottom-nav-height)' }}>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/key_posts?group_id=${group_id}`) }}>
+        <div className="fixed inset-0 z-[110] bg-c-hover-bg flex items-end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
+          <div className="w-[75%] max-w-sm mr-2 bg-c-bg-app/95 backdrop-blur border border-c-border rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0" style={{ marginBottom: 'var(--app-feed-bottom-nav-height)' }}>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/key_posts?group_id=${group_id}`) }}>
               {t('feed.key_posts')}
             </button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/calendar_react?group_id=${group_id}`) }}>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/calendar_react?group_id=${group_id}`) }}>
               {t('feed.calendar')}
-              {hasPendingRsvps && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
+              {hasPendingRsvps && <span className="w-2 h-2 bg-cpoint-turquoise rounded-full" />}
             </button>
             {showTasks && (
-              <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/tasks_react?group_id=${group_id}`) }}>{t('feed.tasks')}</button>
+              <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/tasks_react?group_id=${group_id}`) }}>{t('feed.tasks')}</button>
             )}
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/photos_react?group_id=${group_id}`) }}>{t('feed.media')}</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/useful_links_react?group_id=${group_id}`) }}>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/photos_react?group_id=${group_id}`) }}>{t('feed.media')}</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/useful_links_react?group_id=${group_id}`) }}>
               {t('feed.useful_links_docs')}
-              {hasUnseenDocs && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
+              {hasUnseenDocs && <span className="w-2 h-2 bg-cpoint-turquoise rounded-full" />}
             </button>
             {group_id && <ManageGroupButton groupId={group_id} onClose={()=> setMoreOpen(false)} />}
           </div>
@@ -975,39 +975,39 @@ export default function GroupFeed(){
       )}
 
       {announcementsOpen && (
-        <div className="fixed inset-0 z-[120] bg-black/70 flex items-end sm:items-center justify-center p-3" onClick={(e) => e.currentTarget === e.target && setAnnouncementsOpen(false)}>
-          <div className="w-full max-w-lg max-h-[85vh] rounded-2xl border border-white/10 bg-[#0a0a0a] flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-              <h2 className="text-base font-semibold text-white">{t('feed.announcements')}</h2>
-              <button type="button" className="p-2 rounded-full hover:bg-white/10 text-[#9fb0b5]" aria-label={t('common.close')} onClick={() => setAnnouncementsOpen(false)}>
+        <div className="fixed inset-0 z-[120] bg-c-bg-app/70 flex items-end sm:items-center justify-center p-3" onClick={(e) => e.currentTarget === e.target && setAnnouncementsOpen(false)}>
+          <div className="w-full max-w-lg max-h-[85vh] rounded-2xl border border-c-border bg-[#0a0a0a] flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-c-border">
+              <h2 className="text-base font-semibold text-c-text-primary">{t('feed.announcements')}</h2>
+              <button type="button" className="p-2 rounded-full hover:bg-c-hover-bg text-c-text-tertiary" aria-label={t('common.close')} onClick={() => setAnnouncementsOpen(false)}>
                 <i className="fa-solid fa-xmark" />
               </button>
             </div>
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
               {announcementsLoading ? (
-                <div className="text-sm text-[#9fb0b5]">{t('common.loading')}</div>
+                <div className="text-sm text-c-text-tertiary">{t('common.loading')}</div>
               ) : announcements.length === 0 ? (
-                <div className="text-sm text-[#9fb0b5]">{t('feed.no_announcements_yet')}</div>
+                <div className="text-sm text-c-text-tertiary">{t('feed.no_announcements_yet')}</div>
               ) : (
                 announcements.map((a) => (
-                  <div key={a.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                    <div className="text-xs text-[#9fb0b5] mb-1">@{a.created_by} · {formatSmartTime(a.created_at)}</div>
-                    <div className="text-sm text-white/90 whitespace-pre-wrap">{a.content}</div>
+                  <div key={a.id} className="rounded-xl border border-c-border bg-white/[0.03] p-3">
+                    <div className="text-xs text-c-text-tertiary mb-1">@{a.created_by} · {formatSmartTime(a.created_at)}</div>
+                    <div className="text-sm text-c-text-secondary whitespace-pre-wrap">{a.content}</div>
                   </div>
                 ))
               )}
             </div>
             {capabilities.can_post_announcements ? (
-              <div className="border-t border-white/10 p-3 space-y-2">
+              <div className="border-t border-c-border p-3 space-y-2">
                 <textarea
-                  className="w-full rounded-lg bg-black border border-white/10 px-3 py-2 text-sm text-white placeholder:text-[#6c757d] min-h-[72px] focus:border-teal-400/70 outline-none"
+                  className="w-full rounded-lg bg-c-bg-app border border-c-border px-3 py-2 text-sm text-c-text-primary placeholder:text-[#6c757d] min-h-[72px] focus:border-teal-400/70 outline-none"
                   placeholder={t('feed.post_announcement_placeholder')}
                   value={newAnnouncement}
                   onChange={(e) => setNewAnnouncement(e.target.value)}
                 />
                 <button
                   type="button"
-                  className="w-full py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110"
+                  className="w-full py-2.5 rounded-xl bg-cpoint-turquoise text-black text-sm font-medium hover:brightness-110"
                   onClick={() => void submitAnnouncement()}
                 >
                   {t('feed.publish')}
@@ -1020,34 +1020,34 @@ export default function GroupFeed(){
 
       {/* Hashtag / text search (group posts) */}
       {showSearch && (
-        <div className="fixed inset-0 z-[115] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e) => e.currentTarget === e.target && setShowSearch(false)}>
-          <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
+        <div className="fixed inset-0 z-[115] bg-c-bg-app/70 backdrop-blur flex items-center justify-center" onClick={(e) => e.currentTarget === e.target && setShowSearch(false)}>
+          <div className="w-[92%] max-w-[560px] rounded-2xl border border-c-border bg-c-bg-app p-3">
             <div className="flex items-center gap-2 mb-2">
-              <i className="fa-solid fa-hashtag text-[#4db6ac]" />
+              <i className="fa-solid fa-hashtag text-cpoint-turquoise" />
               <input
                 id="group-feed-hashtag-input"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder={t('feed.hashtag_or_text_placeholder')}
-                className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none"
+                className="flex-1 rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm focus:border-teal-400/70 outline-none"
               />
-              <button type="button" className="px-3 py-2 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110" onClick={() => void runSearch()}>
+              <button type="button" className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black text-sm hover:brightness-110" onClick={() => void runSearch()}>
                 {t('common.search')}
               </button>
             </div>
             <div className="max-h-[320px] overflow-y-auto space-y-2">
               {results.length === 0 ? (
-                <div className="text-[#9fb0b5] text-sm">{t('feed.no_results')}</div>
+                <div className="text-c-text-tertiary text-sm">{t('feed.no_results')}</div>
               ) : (
                 results.map((r) => (
                   <button
                     key={r.id}
                     type="button"
-                    className="w-full text-left rounded-xl border border-white/10 p-2 hover:bg-white/5"
+                    className="w-full text-left rounded-xl border border-c-border p-2 hover:bg-c-hover-bg"
                     onClick={() => scrollToGroupPost(r.id)}
                   >
-                    <div className="text-sm text-white/90 truncate">{r.content}</div>
-                    <div className="text-xs text-[#9fb0b5]">
+                    <div className="text-sm text-c-text-secondary truncate">{r.content}</div>
+                    <div className="text-xs text-c-text-tertiary">
                       {r.username} — {formatSmartTime(r.timestamp)}
                     </div>
                   </button>
@@ -1060,34 +1060,34 @@ export default function GroupFeed(){
 
       {/* Members modal */}
       {showMembers && (
-        <div className="fixed inset-0 z-[120] bg-black/50 flex items-end justify-center" onClick={(e) => e.currentTarget === e.target && setShowMembers(false)}>
-          <div className="w-full max-w-lg bg-black/95 backdrop-blur border border-white/10 rounded-t-2xl p-4 max-h-[75vh] flex flex-col" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}>
+        <div className="fixed inset-0 z-[120] bg-c-bg-app/50 flex items-end justify-center" onClick={(e) => e.currentTarget === e.target && setShowMembers(false)}>
+          <div className="w-full max-w-lg bg-c-bg-app/95 backdrop-blur border border-c-border rounded-t-2xl p-4 max-h-[75vh] flex flex-col" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}>
             <div className="flex items-center justify-between mb-3">
-              <div className="text-white font-semibold text-base">{t('feed.group_members')}</div>
+              <div className="text-c-text-primary font-semibold text-base">{t('feed.group_members')}</div>
               <div className="flex items-center gap-2">
-                <button onClick={() => { setShowMembers(false); openInvite() }} className="px-3 py-1.5 rounded-lg bg-[#4db6ac] text-black text-xs font-medium hover:brightness-110">
+                <button onClick={() => { setShowMembers(false); openInvite() }} className="px-3 py-1.5 rounded-lg bg-cpoint-turquoise text-black text-xs font-medium hover:brightness-110">
                   <i className="fa-solid fa-user-plus mr-1.5" />{t('common.add')}
                 </button>
-                <button onClick={() => setShowMembers(false)} className="px-2 py-1 rounded-full border border-white/10 text-white/60 text-sm hover:bg-white/5">
+                <button onClick={() => setShowMembers(false)} className="px-2 py-1 rounded-full border border-c-border text-c-text-tertiary text-sm hover:bg-c-hover-bg">
                   <i className="fa-solid fa-xmark" />
                 </button>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto space-y-1">
               {membersLoading ? (
-                <div className="text-[#9fb0b5] text-sm py-4 text-center">{t('common.loading')}</div>
+                <div className="text-c-text-tertiary text-sm py-4 text-center">{t('common.loading')}</div>
               ) : groupMembers.length === 0 ? (
-                <div className="text-[#9fb0b5] text-sm py-4 text-center">{t('feed.no_group_members')}</div>
+                <div className="text-c-text-tertiary text-sm py-4 text-center">{t('feed.no_group_members')}</div>
               ) : groupMembers.map(m => (
-                <div key={m.username} className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-white/5">
+                <div key={m.username} className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-c-hover-bg">
                   <div className="cursor-pointer" onClick={() => { setShowMembers(false); navigate(`/profile/${m.username}`) }}>
                     <Avatar username={m.username} url={m.profile_picture || undefined} size={36} />
                   </div>
                   <div className="flex-1 min-w-0 cursor-pointer" onClick={() => { setShowMembers(false); navigate(`/profile/${m.username}`) }}>
-                    <div className="text-sm font-medium text-white truncate flex items-center gap-1.5">
+                    <div className="text-sm font-medium text-c-text-primary truncate flex items-center gap-1.5">
                       {m.display_name || m.username}
-                      {m.role === 'owner' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#4db6ac]/20 text-[#4db6ac] font-semibold">{t('feed.owner')}</span>}
-                      {m.role === 'admin' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/10 text-white/60 font-semibold">{t('feed.admin')}</span>}
+                      {m.role === 'owner' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-cpoint-turquoise/20 text-cpoint-turquoise font-semibold">{t('feed.owner')}</span>}
+                      {m.role === 'admin' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-c-active-bg text-c-text-tertiary font-semibold">{t('feed.admin')}</span>}
                     </div>
                     <div className="text-[11px] text-[#6f7c81]">@{m.username}</div>
                   </div>
@@ -1097,7 +1097,7 @@ export default function GroupFeed(){
                       {currentUserRole === 'owner' && (
                         <button
                           onClick={(e) => { e.stopPropagation(); toggleAdmin(m.username, m.role || 'member') }}
-                          className="w-7 h-7 rounded-full border border-white/10 flex items-center justify-center text-white/40 hover:bg-white/10 hover:text-white/70"
+                          className="w-7 h-7 rounded-full border border-c-border flex items-center justify-center text-c-text-tertiary hover:bg-c-hover-bg hover:text-c-text-secondary"
                           title={m.role === 'admin' ? t('feed.remove_admin') : t('feed.make_admin')}
                         >
                           <i className={`fa-solid ${m.role === 'admin' ? 'fa-user-shield' : 'fa-shield-halved'} text-[10px]`} />
@@ -1105,7 +1105,7 @@ export default function GroupFeed(){
                       )}
                       <button
                         onClick={(e) => { e.stopPropagation(); removeMember(m.username) }}
-                        className="w-7 h-7 rounded-full border border-white/10 flex items-center justify-center text-red-400/50 hover:bg-red-500/10 hover:text-red-400"
+                        className="w-7 h-7 rounded-full border border-c-border flex items-center justify-center text-red-400/50 hover:bg-red-500/10 hover:text-red-400"
                         title={t('feed.remove_from_group')}
                       >
                         <i className="fa-solid fa-user-minus text-[10px]" />
@@ -1134,7 +1134,7 @@ export default function GroupFeed(){
           : availableMembers
         return (
           <div
-            className="fixed inset-0 z-[130] bg-black flex flex-col"
+            className="fixed inset-0 z-[130] bg-c-bg-app flex flex-col"
             style={{
               paddingBottom: kbHeight > 0 ? `${kbHeight}px` : 'env(safe-area-inset-bottom, 0px)',
               transition: 'padding-bottom 0.15s ease-out',
@@ -1143,15 +1143,15 @@ export default function GroupFeed(){
             {/* Safe area top spacer */}
             <div className="flex-shrink-0" style={{ height: 'var(--sat-px, 0px)' }} />
             {/* Header with close button */}
-            <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10 flex-shrink-0">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-c-border flex-shrink-0">
               <button
                 onClick={() => setShowInvite(false)}
-                className="w-9 h-9 rounded-full border border-white/15 flex items-center justify-center text-white/70 hover:bg-white/10 active:bg-white/20 flex-shrink-0"
+                className="w-9 h-9 rounded-full border border-c-border flex items-center justify-center text-c-text-secondary hover:bg-c-hover-bg active:bg-white/20 flex-shrink-0"
                 style={{ touchAction: 'manipulation' }}
               >
                 <i className="fa-solid fa-xmark text-base" />
               </button>
-              <div className="text-white font-semibold text-base flex-1">{t('feed.add_members')}</div>
+              <div className="text-c-text-primary font-semibold text-base flex-1">{t('feed.add_members')}</div>
             </div>
             {/* Search */}
             <div className="relative px-4 py-3 flex-shrink-0">
@@ -1160,15 +1160,15 @@ export default function GroupFeed(){
                 value={inviteSearch}
                 onChange={e => setInviteSearch(e.target.value)}
                 placeholder={t('feed.search_by_name')}
-                className="w-full rounded-lg border border-white/15 bg-transparent pl-9 pr-3 py-2 text-sm text-white placeholder-[#6f7c81] focus:outline-none focus:border-[#4db6ac]"
+                className="w-full rounded-lg border border-c-border bg-transparent pl-9 pr-3 py-2 text-sm text-c-text-primary placeholder-[#6f7c81] focus:outline-none focus:border-cpoint-turquoise"
                 autoFocus
               />
             </div>
             {/* Selected count + add button */}
             {selectedInvites.size > 0 && (
               <div className="flex items-center justify-between px-4 pb-2 flex-shrink-0">
-                <span className="text-xs text-[#9fb0b5]">{t('feed.selected_count', { count: selectedInvites.size })}</span>
-                <button onClick={sendInvites} disabled={inviteSending} className="px-4 py-1.5 rounded-lg bg-[#4db6ac] text-black text-xs font-medium hover:brightness-110 disabled:opacity-50">
+                <span className="text-xs text-c-text-tertiary">{t('feed.selected_count', { count: selectedInvites.size })}</span>
+                <button onClick={sendInvites} disabled={inviteSending} className="px-4 py-1.5 rounded-lg bg-cpoint-turquoise text-black text-xs font-medium hover:brightness-110 disabled:opacity-50">
                   {inviteSending ? <i className="fa-solid fa-spinner fa-spin" /> : t('feed.add_to_group')}
                 </button>
               </div>
@@ -1176,9 +1176,9 @@ export default function GroupFeed(){
             {/* Available members list */}
             <div className="flex-1 overflow-y-auto px-4 pb-4" style={{ minHeight: 0 }}>
               {inviteLoading ? (
-                <div className="text-[#9fb0b5] text-sm py-4 text-center">{t('common.loading')}</div>
+                <div className="text-c-text-tertiary text-sm py-4 text-center">{t('common.loading')}</div>
               ) : filteredAvailable.length === 0 ? (
-                <div className="text-[#9fb0b5] text-sm py-4 text-center">{q ? t('feed.no_matches_found') : t('feed.all_members_already_in_group')}</div>
+                <div className="text-c-text-tertiary text-sm py-4 text-center">{q ? t('feed.no_matches_found') : t('feed.all_members_already_in_group')}</div>
               ) : (
                 <div className="space-y-1">
                   {filteredAvailable.map(m => {
@@ -1186,7 +1186,7 @@ export default function GroupFeed(){
                     return (
                       <button
                         key={m.username}
-                        className={`w-full flex items-center gap-3 py-2 px-2 rounded-lg transition-colors text-left ${isSelected ? 'bg-[#4db6ac]/15 border border-[#4db6ac]/30' : 'hover:bg-white/5 border border-transparent'}`}
+                        className={`w-full flex items-center gap-3 py-2 px-2 rounded-lg transition-colors text-left ${isSelected ? 'bg-cpoint-turquoise/15 border border-cpoint-turquoise/30' : 'hover:bg-c-hover-bg border border-transparent'}`}
                         onClick={() => setSelectedInvites(prev => {
                           const next = new Set(prev)
                           if (next.has(m.username)) next.delete(m.username)
@@ -1197,13 +1197,13 @@ export default function GroupFeed(){
                         <div className="relative">
                           <Avatar username={m.username} url={m.profile_picture || undefined} size={36} />
                           {isSelected && (
-                            <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-[#4db6ac] rounded-full flex items-center justify-center">
+                            <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-cpoint-turquoise rounded-full flex items-center justify-center">
                               <i className="fa-solid fa-check text-[8px] text-black" />
                             </div>
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-white truncate">{m.display_name || m.username}</div>
+                          <div className="text-sm font-medium text-c-text-primary truncate">{m.display_name || m.username}</div>
                           <div className="text-[11px] text-[#6f7c81]">@{m.username}</div>
                         </div>
                       </button>

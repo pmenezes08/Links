@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { useTranslation } from 'react-i18next'
 import ZoomableImage from '../components/ZoomableImage'
 import { useImmersiveStatusBar } from '../hooks/useNativeStatusBar'
 
@@ -27,15 +28,21 @@ export function ChatMediaViewerModal({
   footer,
   thumbStrip = 'border',
 }: ChatMediaViewerModalProps) {
+  const { t } = useTranslation()
+  const [videoError, setVideoError] = useState(false)
   useImmersiveStatusBar(!!viewer)
+  const currentUrl = viewer ? viewer.urls[viewer.index] : ''
+
+  useEffect(() => {
+    setVideoError(false)
+  }, [currentUrl])
 
   if (!viewer) return null
 
   const { urls, index } = viewer
-  const currentUrl = urls[index]
 
   const modal = (
-    <div className="fixed inset-0 bg-black z-[9999] flex flex-col" onClick={onClose}>
+    <div className="theme-always-dark fixed inset-0 bg-black z-[9999] flex flex-col" onClick={onClose}>
       <div
         className="flex items-center justify-between px-4 py-3 bg-black/80"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
@@ -65,13 +72,22 @@ export function ChatMediaViewerModal({
 
         <div className="w-full h-full flex items-center justify-center" style={{ maxHeight: 'calc(100vh - 10rem)' }}>
           {isVideoUrl(currentUrl || '') ? (
-            <video
-              src={currentUrl}
-              controls
-              playsInline
-              autoPlay
-              className="max-w-full max-h-full object-contain"
-            />
+            videoError ? (
+              <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-8 py-10 text-white/65">
+                <i className="fa-solid fa-video-slash text-3xl" />
+                <div className="text-sm font-semibold">{t('chat.video_unavailable')}</div>
+                <div className="text-xs text-white/40">{t('chat.media_deleted')}</div>
+              </div>
+            ) : (
+              <video
+                src={currentUrl}
+                controls
+                playsInline
+                autoPlay
+                className="max-w-full max-h-full object-contain"
+                onError={() => setVideoError(true)}
+              />
+            )
           ) : (
             <ZoomableImage
               src={currentUrl}
@@ -108,7 +124,7 @@ export function ChatMediaViewerModal({
                 onIndexChange(i)
               }}
               className={`w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border-2 transition ${
-                i === index ? 'border-[#4db6ac]' : 'border-transparent opacity-60'
+                i === index ? 'border-cpoint-turquoise' : 'border-transparent opacity-60'
               }`}
             >
               {isVideoUrl(url) ? (
@@ -137,7 +153,7 @@ export function ChatMediaViewerModal({
                 onIndexChange(i)
               }}
               className={`w-2 h-2 rounded-full transition ${
-                i === index ? 'bg-[#4db6ac]' : 'bg-white/30'
+                i === index ? 'bg-cpoint-turquoise' : 'bg-white/30'
               }`}
             />
           ))}

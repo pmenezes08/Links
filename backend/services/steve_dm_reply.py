@@ -602,6 +602,43 @@ def _run_grok_dm_turn(
         except Exception as ts_err:
             logger.warning("Thread summary failed (non-fatal): %s", ts_err)
 
+    # Phase 3 chat memory: semantic retrieval + structured counters for peer DMs
+    chat_memory_section = ""
+    counter_section = ""
+    if is_peer and firestore_context_ok and conv_id:
+        try:
+            from backend.services.steve_chat_memory import (
+                chat_memory_enabled_for_scope,
+                scope_for_peer_dm,
+            )
+            from backend.services.steve_chat_memory_retrieval import (
+                inject_chat_memory_into_context,
+            )
+            from backend.services.steve_chat_memory_events import (
+                inject_counters_into_context,
+            )
+
+            _mem_scope = scope_for_peer_dm(conv_id)
+            if chat_memory_enabled_for_scope(entitlements, _mem_scope):
+                chat_memory_section = inject_chat_memory_into_context(
+                    fs,
+                    _mem_scope,
+                    user_message,
+                    recent_messages,
+                    entitlements=entitlements,
+                    reset_at=reset_dt,
+                    username=sender_username,
+                )
+                counter_section = inject_counters_into_context(
+                    fs,
+                    _mem_scope,
+                    user_message,
+                    entitlements=entitlements,
+                    reset_at=reset_dt,
+                )
+        except Exception as mem_err:
+            logger.warning("Chat memory retrieval/counters failed (non-fatal): %s", mem_err)
+
     context = f"Direct message conversation between {chat_user_a} and {chat_user_b}:\n"
     if thread_summary_text:
         context += "=== THREAD MEMORY (structured summary of earlier conversation) ===\n"
@@ -611,6 +648,10 @@ def _run_grok_dm_turn(
         context += f"=== OLDER CONTEXT ({len(older_messages)} messages — background reference) ===\n"
         context += "\n".join(older_messages)
         context += "\n\n"
+    if chat_memory_section:
+        context += chat_memory_section + "\n\n"
+    if counter_section:
+        context += counter_section + "\n\n"
     scope = (
         f"last {len(current_messages)} messages (including the @Steve tag)"
         if is_peer
@@ -691,8 +732,8 @@ def _run_grok_dm_turn(
         )
     elif is_peer:
         history_rule = (
-            "- You see a recent window of this DM between two members — not necessarily the entire thread.\n"
-            "- Answer naturally from what you can see. If the answer requires history you don't have, say so honestly without over-explaining the limitation."
+            "- You see a recent window of this DM between two members, plus optional RELEVANT OLDER MEMORY (semantic retrieval) and STRUCTURED THREAD COUNTERS sections.\n"
+            "- Use the older memory and counters when they answer the question. If they don't contain the needed info, say so honestly."
         )
     else:
         history_rule = "- You have access to the conversation excerpts provided below (recent window plus optional older summary).\n"

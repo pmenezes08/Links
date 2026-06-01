@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+﻿import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
+import AppearanceSettingsPanel from '../components/settings/AppearanceSettingsPanel'
 import DangerZoneSheet from '../components/settings/DangerZoneSheet'
 import LanguageSettingsPanel from '../components/settings/LanguageSettingsPanel'
 import ManageMembershipModal, { type MembershipTab } from '../components/membership/ManageMembershipModal'
@@ -13,6 +14,7 @@ import SettingsPanel from '../components/settings/SettingsPanel'
 import SettingsSwitch from '../components/settings/SettingsSwitch'
 import { ABOUT_CPOINT_VERSION_LABEL } from '../content/aboutCPoint'
 import { useHeader } from '../contexts/HeaderContext'
+import { useTheme } from '../contexts/ThemeContext'
 import { LOCALE_OPTIONS } from '../i18n/localeOptions'
 import { useLocale } from '../i18n/useLocale'
 import { triggerHaptic } from '../utils/haptics'
@@ -48,16 +50,16 @@ function FieldCard({
   helper?: string
 }) {
   return (
-    <label className="block rounded-3xl border border-white/[0.06] bg-white/[0.055] p-4">
-      <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/28">{label}</span>
+    <label className="block rounded-3xl border border-c-border bg-c-hover-bg p-4">
+      <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-c-text-tertiary">{label}</span>
       <div className="mt-2">{children}</div>
-      {helper ? <span className="mt-2 block text-xs text-white/35">{helper}</span> : null}
+      {helper ? <span className="mt-2 block text-xs text-c-text-tertiary">{helper}</span> : null}
     </label>
   )
 }
 
 function PanelCard({ children }: { children: ReactNode }) {
-  return <div className="overflow-hidden rounded-3xl border border-white/[0.06] bg-white/[0.055]">{children}</div>
+  return <div className="overflow-hidden rounded-3xl border border-c-border bg-c-hover-bg">{children}</div>
 }
 
 export default function AccountSettings() {
@@ -65,6 +67,7 @@ export default function AccountSettings() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { locale } = useLocale()
+  const { theme } = useTheme()
   const [profile, setProfile] = useState<ProfileData | null>(null)
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -256,6 +259,11 @@ export default function AccountSettings() {
     return option ? t(option.labelKey) : String(locale)
   }, [locale, t])
 
+  const appearanceLabel = useMemo(
+    () => t(theme === 'light' ? 'account.appearance_light' : 'account.appearance_dark'),
+    [theme, t],
+  )
+
   const notificationLabel = useMemo(() => {
     if (notifStatus === 'loading') return t('account.notifications.checking')
     return notifStatus === 'granted' ? t('account.notifications.enabled') : t('account.notifications.disabled')
@@ -263,7 +271,7 @@ export default function AccountSettings() {
 
   if (loading) {
     return (
-      <div className="overflow-hidden bg-black text-white" style={{ minHeight: 'calc(100dvh - var(--app-header-offset, 0px))' }}>
+      <div className="overflow-hidden bg-c-bg-app text-c-text-primary" style={{ minHeight: 'calc(100dvh - var(--app-header-offset, 0px))' }}>
         <div className="mx-auto max-w-xl px-4 pt-4">
           <SkeletonSettingsList />
         </div>
@@ -273,12 +281,12 @@ export default function AccountSettings() {
 
   if (!profile) {
     return (
-      <div className="flex h-screen items-center justify-center bg-black text-white">
+      <div className="flex h-screen items-center justify-center bg-c-bg-app text-c-text-primary">
         <div className="text-center">
           <i className="fa-solid fa-exclamation-triangle mb-4 text-2xl text-red-400" />
           <div>{t('account.messages.profile_load_failed')}</div>
           <button
-            className="mt-4 rounded-lg bg-[#4db6ac] px-4 py-2 text-black hover:bg-[#45a99c]"
+            className="mt-4 rounded-lg bg-cpoint-turquoise px-4 py-2 text-black hover:brightness-90"
             onClick={() => loadProfile()}
           >
             {t('account.info.try_again')}
@@ -293,8 +301,8 @@ export default function AccountSettings() {
   const settingsMinHeight = 'calc(100dvh - var(--app-header-offset, 0px))'
 
   return (
-    <div className="overflow-hidden bg-black text-white" style={{ minHeight: settingsMinHeight }}>
-      <div className="relative mx-auto max-w-xl overflow-hidden bg-black" style={{ minHeight: settingsMinHeight }}>
+    <div className="overflow-hidden bg-c-bg-app text-c-text-primary" style={{ minHeight: settingsMinHeight }}>
+      <div className="relative mx-auto max-w-xl overflow-hidden bg-c-bg-app" style={{ minHeight: settingsMinHeight }}>
         <div
           className={`transition-[transform,opacity,filter] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
             isPanelOpen ? '-translate-x-[24%] opacity-45 blur-[1px]' : 'translate-x-0 opacity-100 blur-0'
@@ -308,6 +316,7 @@ export default function AccountSettings() {
             subscription={profile.subscription}
             notificationsLabel={notificationLabel}
             languageLabel={languageLabel}
+            appearanceLabel={appearanceLabel}
             activePanel={activePanel}
             dangerOpen={dangerOpen}
             onOpenPanel={openPanel}
@@ -319,7 +328,7 @@ export default function AccountSettings() {
 
         <SettingsPanel title="Account" open={activePanel === 'account'} onBack={closePanel}>
           {message ? (
-            <div className={`mb-4 rounded-2xl border px-4 py-3 text-sm ${message.type === 'success' ? 'border-white/10 bg-white/[0.055] text-white/75' : 'border-red-400/25 bg-red-500/10 text-red-200'}`}>
+            <div className={`mb-4 rounded-2xl border px-4 py-3 text-sm ${message.type === 'success' ? 'border-c-border bg-c-hover-bg text-c-text-secondary' : 'border-red-400/25 bg-red-500/10 text-red-200'}`}>
               {message.text}
             </div>
           ) : null}
@@ -329,7 +338,7 @@ export default function AccountSettings() {
                 type="text"
                 value={profile.username}
                 disabled
-                className="w-full cursor-not-allowed rounded-2xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-white/45"
+                className="w-full cursor-not-allowed rounded-2xl border border-c-border bg-c-hover-bg px-4 py-3 text-c-text-tertiary"
               />
             </FieldCard>
             <FieldCard label={t('account.info.email')}>
@@ -338,10 +347,10 @@ export default function AccountSettings() {
                 value={profile.email || ''}
                 onChange={e => handleInputChange('email', e.target.value)}
                 placeholder={t('account.info.email_placeholder')}
-                className="w-full rounded-2xl border border-white/[0.08] bg-white/[0.08] px-4 py-3 text-white placeholder:text-white/25 focus:border-[#4db6ac] focus:outline-none"
+                className="w-full rounded-2xl border border-c-border bg-c-hover-bg px-4 py-3 text-c-text-primary placeholder:text-c-text-tertiary focus:border-cpoint-turquoise focus:outline-none"
               />
             </FieldCard>
-            <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#4db6ac] px-4 py-3 font-bold text-black active:opacity-80">
+            <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-2xl bg-cpoint-turquoise px-4 py-3 font-bold text-black active:opacity-80">
               <i className="fa-solid fa-check" />
               {t('account.info.save_changes')}
             </button>
@@ -352,19 +361,19 @@ export default function AccountSettings() {
           <div className="space-y-4">
             <PanelCard>
               <div className="p-4">
-                <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/28">{t('account.subscription.label')}</div>
+                <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-c-text-tertiary">{t('account.subscription.label')}</div>
                 <div className="mt-2 flex items-center justify-between">
-                  <div className="text-xl font-bold text-white">{isPremium ? t('account.subscription.premium') : t('account.subscription.free')}</div>
-                  {isPremium ? <span className="rounded-full bg-[#4db6ac]/12 px-3 py-1 text-xs font-bold text-[#4db6ac]">Premium</span> : null}
+                  <div className="text-xl font-bold text-c-text-primary">{isPremium ? t('account.subscription.premium') : t('account.subscription.free')}</div>
+                  {isPremium ? <span className="rounded-full bg-cpoint-turquoise/12 px-3 py-1 text-xs font-bold text-cpoint-turquoise">Premium</span> : null}
                 </div>
-                <p className="mt-2 text-sm text-white/45">{t('account.subscription.helper')}</p>
+                <p className="mt-2 text-sm text-c-text-tertiary">{t('account.subscription.helper')}</p>
               </div>
             </PanelCard>
-            <button type="button" onClick={() => openMembership('plan')} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#4db6ac] px-4 py-3 font-bold text-black active:opacity-80">
+            <button type="button" onClick={() => openMembership('plan')} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-cpoint-turquoise px-4 py-3 font-bold text-black active:opacity-80">
               <i className="fa-regular fa-credit-card" />
               {t('account.subscription.manage_membership')}
             </button>
-            <button type="button" onClick={() => openMembership('ai')} className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 px-4 py-3 font-bold text-white/75 active:bg-white/10">
+            <button type="button" onClick={() => openMembership('ai')} className="flex w-full items-center justify-center gap-2 rounded-2xl border border-c-border px-4 py-3 font-bold text-c-text-secondary active:bg-c-active-bg">
               <i className="fa-solid fa-robot" />
               {t('account.subscription.view_ai_usage')}
             </button>
@@ -375,16 +384,16 @@ export default function AccountSettings() {
           <div className="space-y-4">
             <PanelCard>
               <div className="p-4">
-                <div className="text-base font-bold text-white">{notificationLabel}</div>
-                <p className="mt-1 text-sm text-white/45">
+                <div className="text-base font-bold text-c-text-primary">{notificationLabel}</div>
+                <p className="mt-1 text-sm text-c-text-tertiary">
                   {notifStatus === 'granted'
                     ? t('account.notifications.enabled_helper')
                     : t('account.notifications.disabled_helper')}
                 </p>
               </div>
               {notifStatus !== 'granted' && notifStatus !== 'loading' ? (
-                <div className="border-t border-white/[0.055] p-4">
-                  <button type="button" onClick={openDeviceSettings} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#4db6ac] px-4 py-3 font-bold text-black active:opacity-80">
+                <div className="border-t border-c-border p-4">
+                  <button type="button" onClick={openDeviceSettings} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-cpoint-turquoise px-4 py-3 font-bold text-black active:opacity-80">
                     <i className="fa-solid fa-gear" />
                     {t('account.notifications.open_settings')}
                   </button>
@@ -411,6 +420,13 @@ export default function AccountSettings() {
           <LanguageSettingsPanel onDone={closePanel} onToast={(text, type = 'success') => setToast({ text, type })} />
         </SettingsPanel>
 
+        <SettingsPanel title={t('account.appearance')} open={activePanel === 'appearance'} onBack={closePanel}>
+          <div className="space-y-3">
+            <AppearanceSettingsPanel />
+            <p className="px-1 text-sm text-c-text-tertiary">{t('account.appearance_helper')}</p>
+          </div>
+        </SettingsPanel>
+
         <SettingsPanel title={t('account.privacy.section_title')} open={activePanel === 'privacy'} onBack={closePanel}>
           <div className="space-y-5">
             <PrivacySecurityPanel />
@@ -421,13 +437,13 @@ export default function AccountSettings() {
                   void triggerHaptic('selection')
                   setShowRequestMyData(true)
                 }}
-                className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left active:bg-white/[0.08]"
+                className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left active:bg-c-active-bg"
               >
                 <span>
-                  <span className="block text-base font-bold text-white">{t('account.privacy.request_data')}</span>
-                  <span className="mt-0.5 block text-sm text-white/45">{t('account.privacy.request_data_helper')}</span>
+                  <span className="block text-base font-bold text-c-text-primary">{t('account.privacy.request_data')}</span>
+                  <span className="mt-0.5 block text-sm text-c-text-tertiary">{t('account.privacy.request_data_helper')}</span>
                 </span>
-                <i className="fa-solid fa-chevron-right text-xs text-white/22" />
+                <i className="fa-solid fa-chevron-right text-xs text-c-text-tertiary" />
               </button>
             </PanelCard>
           </div>
@@ -436,23 +452,23 @@ export default function AccountSettings() {
         <SettingsPanel title={t('account.about.section_title')} open={activePanel === 'about'} onBack={closePanel}>
           <div className="space-y-5">
             <PanelCard>
-              <div className="border-b border-white/[0.055] p-4">
-                <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/28">Version</div>
-                <div className="mt-2 text-xl font-bold text-white">{cpointVersionEnvironment()}</div>
-                <div className="mt-1 text-sm text-white/35">Up to date</div>
+              <div className="border-b border-c-border p-4">
+                <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-c-text-tertiary">Version</div>
+                <div className="mt-2 text-xl font-bold text-c-text-primary">{cpointVersionEnvironment()}</div>
+                <div className="mt-1 text-sm text-c-text-tertiary">Up to date</div>
               </div>
               <div className="p-4">
-                <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/28">Build</div>
-                <div className="mt-2 text-xl font-bold text-white">{ABOUT_CPOINT_VERSION_LABEL}</div>
+                <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-c-text-tertiary">Build</div>
+                <div className="mt-2 text-xl font-bold text-c-text-primary">{ABOUT_CPOINT_VERSION_LABEL}</div>
               </div>
             </PanelCard>
             <PanelCard>
-              <button type="button" onClick={() => { void triggerHaptic('selection'); navigate('/about_cpoint') }} className="flex w-full items-center justify-between px-4 py-4 text-left active:bg-white/[0.08]">
+              <button type="button" onClick={() => { void triggerHaptic('selection'); navigate('/about_cpoint') }} className="flex w-full items-center justify-between px-4 py-4 text-left active:bg-c-active-bg">
                 <span>
-                  <span className="block text-base font-bold text-white">{t('account.about.open')}</span>
-                  <span className="mt-0.5 block text-sm text-white/45">{t('account.about.helper')}</span>
+                  <span className="block text-base font-bold text-c-text-primary">{t('account.about.open')}</span>
+                  <span className="mt-0.5 block text-sm text-c-text-tertiary">{t('account.about.helper')}</span>
                 </span>
-                <i className="fa-solid fa-chevron-right text-xs text-white/22" />
+                <i className="fa-solid fa-chevron-right text-xs text-c-text-tertiary" />
               </button>
             </PanelCard>
           </div>
@@ -460,22 +476,22 @@ export default function AccountSettings() {
       </div>
 
       {toast ? (
-        <div className={`fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+1rem)] z-[1400] -translate-x-1/2 rounded-full border px-4 py-2 text-sm font-semibold shadow-2xl backdrop-blur-xl ${toast.type === 'success' ? 'border-white/10 bg-white/10 text-white' : 'border-red-400/25 bg-red-500/20 text-red-100'}`}>
+        <div className={`fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+1rem)] z-[1400] -translate-x-1/2 rounded-full border px-4 py-2 text-sm font-semibold shadow-2xl backdrop-blur-xl ${toast.type === 'success' ? 'border-c-border bg-c-active-bg text-white' : 'border-red-400/25 bg-red-500/20 text-red-100'}`}>
           {toast.text}
         </div>
       ) : null}
 
       {showVerifyModal && (
-        <div className="fixed inset-0 z-[1350] flex items-center justify-center bg-black/70 p-5">
-          <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0b0b0b] p-5">
+        <div className="fixed inset-0 z-[1350] flex items-center justify-center bg-c-bg-app/70 p-5">
+          <div className="w-full max-w-md rounded-3xl border border-c-border bg-c-bg-elevated p-5">
             <div className="mb-1 text-lg font-bold">{t('account.verify.title')}</div>
-            <div className="text-sm text-white/70">{t('account.verify.body')}</div>
+            <div className="text-sm text-c-text-secondary">{t('account.verify.body')}</div>
             <div className="mt-4 flex items-center gap-2">
-              <button className="rounded-2xl bg-[#4db6ac] px-4 py-2 font-bold text-black" onClick={() => setShowVerifyModal(false)}>
+              <button className="rounded-2xl bg-cpoint-turquoise px-4 py-2 font-bold text-black" onClick={() => setShowVerifyModal(false)}>
                 {t('common.ok')}
               </button>
               <button
-                className="rounded-2xl border border-white/10 px-4 py-2 text-white/75"
+                className="rounded-2xl border border-c-border px-4 py-2 text-c-text-secondary"
                 onClick={async () => {
                   try {
                     const r = await fetch('/resend_verification', { method: 'POST', credentials: 'include' })

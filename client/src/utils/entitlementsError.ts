@@ -30,6 +30,8 @@ export type EntitlementsReason =
   | 'special_technical_cap'
   | 'community_suspended'
   | 'grace_expired'
+  | 'upload_size_limit'
+  | 'upload_daily_limit'
 
 export type EntitlementsCtaType = 'upgrade' | 'wait' | 'manage' | 'open_url'
 

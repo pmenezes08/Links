@@ -791,7 +791,7 @@ export default function PremiumDashboard() {
   // Show skeleton shell while initial data loads (matches final layout to prevent CLS)
   if (initialLoading) {
     return (
-      <div className="app-content min-h-screen chat-thread-bg text-white relative">
+      <div className="app-content min-h-screen chat-thread-bg text-c-text-primary relative">
         <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:ml-52">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <SkeletonCommunityCard />
@@ -804,27 +804,27 @@ export default function PremiumDashboard() {
   }
 
     return (
-      <div className="app-content min-h-screen chat-thread-bg text-white relative">
+      <div className="app-content min-h-screen chat-thread-bg text-c-text-primary relative">
       {/* Web uses shared HeaderBar from App.tsx, native platforms use old sidebar */}
       {!isWeb && (
       /* Desktop sidebar - only for native platforms (iOS/Android) */
-      <div className="fixed left-0 top-14 bottom-0 w-52 hidden md:flex flex-col z-30 liquid-glass-surface border border-white/10 rounded-r-3xl shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
+      <div className="fixed left-0 top-14 bottom-0 w-52 hidden md:flex flex-col z-30 liquid-glass-surface border border-c-border rounded-r-3xl shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
         <nav className="flex-1 overflow-y-auto py-3">
-          <a className="block px-5 py-3 text-sm text-white hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/premium_dashboard">{t('navigation.dashboard')}</a>
-          <a className="block px-5 py-3 text-sm text-white hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/profile">{t('navigation.profile')}</a>
-          <a className="block px-5 py-3 text-sm text-white hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/user_chat">{t('navigation.messages')}</a>
-          <a className="block px-5 py-3 text-sm text-white hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/followers">{t('navigation.followers')}</a>
-          {hasGymAccess && <a className="block px-5 py-3 text-sm text-white hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/your_sports">{t('dashboard.your_sports')}</a>}
-          <button className="block w-full text-left px-5 py-3 text-sm text-white hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" onClick={requestLogout}>{t('navigation.logout')}</button>
-          <a className="block px-5 py-3 text-sm text-white hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/account_settings">
+          <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/premium_dashboard">{t('navigation.dashboard')}</a>
+          <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/profile">{t('navigation.profile')}</a>
+          <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/user_chat">{t('navigation.messages')}</a>
+          <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/followers">{t('navigation.followers')}</a>
+          {hasGymAccess && <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/your_sports">{t('dashboard.your_sports')}</a>}
+          <button className="block w-full text-left px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" onClick={requestLogout}>{t('navigation.logout')}</button>
+          <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/account_settings">
             <i className="fa-solid fa-cog mr-2" />{t('navigation.settings')}
           </a>
         </nav>
         {!isPremium && (
-          <div className="p-4 border-t border-[#333]">
+          <div className="p-4 border-t border-c-border">
             <button
               type="button"
-              className="w-full rounded-lg bg-cpoint-turquoise px-4 py-2.5 text-sm font-semibold text-white hover:brightness-110 transition"
+              className="w-full rounded-lg bg-cpoint-turquoise px-4 py-2.5 text-sm font-semibold text-c-text-primary hover:brightness-110 transition"
               onClick={() => navigate('/subscription_plans')}
             >
               {t('dashboard.upgrade_to_premium')}
@@ -839,19 +839,19 @@ export default function PremiumDashboard() {
       {/* Mobile dropdown menu */}
         {mobileMenuOpen && (
           <div className="fixed top-14 left-0 right-0 bottom-0 z-40 md:hidden flex flex-col px-3">
-            <nav className="flex-1 overflow-y-auto flex flex-col liquid-glass-surface border border-white/10 rounded-3xl mt-3">
-              <a className="px-5 py-3 border-b border-white/10" href="/dashboard" onClick={() => setMobileMenuOpen(false)}>{t('navigation.dashboard')}</a>
-              <a className="px-5 py-3 border-b border-white/10" href="/profile" onClick={() => setMobileMenuOpen(false)}>{t('navigation.profile')}</a>
-                <a className="px-5 py-3 border-b border-white/10" href="/user_chat" onClick={() => setMobileMenuOpen(false)}>{t('navigation.messages')}</a>
-                <a className="px-5 py-3 border-b border-white/10" href="/followers" onClick={() => setMobileMenuOpen(false)}>{t('navigation.followers')}</a>
-              {hasGymAccess && <a className="px-5 py-3 border-b border-white/10" href="/your_sports" onClick={() => setMobileMenuOpen(false)}>{t('dashboard.your_sports')}</a>}
-              <button className="w-full text-left px-5 py-3 border-b border-white/10" onClick={(e) => { setMobileMenuOpen(false); requestLogout(e) }}>{t('navigation.logout')}</button>
+            <nav className="flex-1 overflow-y-auto flex flex-col liquid-glass-surface border border-c-border rounded-3xl mt-3">
+              <a className="px-5 py-3 border-b border-c-border" href="/dashboard" onClick={() => setMobileMenuOpen(false)}>{t('navigation.dashboard')}</a>
+              <a className="px-5 py-3 border-b border-c-border" href="/profile" onClick={() => setMobileMenuOpen(false)}>{t('navigation.profile')}</a>
+                <a className="px-5 py-3 border-b border-c-border" href="/user_chat" onClick={() => setMobileMenuOpen(false)}>{t('navigation.messages')}</a>
+                <a className="px-5 py-3 border-b border-c-border" href="/followers" onClick={() => setMobileMenuOpen(false)}>{t('navigation.followers')}</a>
+              {hasGymAccess && <a className="px-5 py-3 border-b border-c-border" href="/your_sports" onClick={() => setMobileMenuOpen(false)}>{t('dashboard.your_sports')}</a>}
+              <button className="w-full text-left px-5 py-3 border-b border-c-border" onClick={(e) => { setMobileMenuOpen(false); requestLogout(e) }}>{t('navigation.logout')}</button>
               <a className="px-5 py-3" href="/account_settings" onClick={() => setMobileMenuOpen(false)}><i className="fa-solid fa-cog mr-2" />{t('navigation.settings')}</a>
             </nav>
             <div className="px-4 py-4">
               <button
                 type="button"
-                  className="w-full rounded-2xl liquid-glass-chip border border-cpoint-turquoise/30 px-4 py-3 text-sm font-semibold text-white tracking-[0.2em] uppercase shadow-[0_15px_35px_rgba(0,0,0,0.4)] hover:shadow-[0_20px_45px_rgba(0,0,0,0.55)] transition"
+                  className="w-full rounded-2xl liquid-glass-chip border border-cpoint-turquoise/30 px-4 py-3 text-sm font-semibold text-c-text-primary tracking-[0.2em] uppercase shadow-[0_15px_35px_rgba(0,0,0,0.4)] hover:shadow-[0_20px_45px_rgba(0,0,0,0.55)] transition"
                 onClick={() => {
                   setMobileMenuOpen(false)
                   navigate('/subscription_plans')
@@ -872,20 +872,20 @@ export default function PremiumDashboard() {
             <div className="mb-4 rounded-2xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 p-4 shadow-[0_16px_45px_rgba(0,0,0,0.28)]">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <div className="text-base font-semibold text-white">{t('dashboard.complete_onboarding_title')}</div>
-                  <p className="mt-1 text-sm leading-relaxed text-white/70">
+                  <div className="text-base font-semibold text-c-text-primary">{t('dashboard.complete_onboarding_title')}</div>
+                  <p className="mt-1 text-sm leading-relaxed text-c-text-secondary">
                     {onboardingStateSummary?.requiresOnboardingResume
                       ? t('dashboard.complete_onboarding_resume_body')
                       : t('dashboard.complete_onboarding_saved_body')}
                   </p>
                   {onboardingRemaining && (
-                    <div className="mt-2 text-xs font-medium text-[#d5fffb]">{onboardingRemaining}</div>
+                    <div className="mt-2 text-xs font-medium text-c-accent-ink">{onboardingRemaining}</div>
                   )}
                   <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
-                    <span className={`rounded-full border px-2.5 py-1 ${onboardingStateSummary?.onboardingProgress?.personalSectionComplete ? 'border-cpoint-turquoise/35 bg-cpoint-turquoise/10 text-[#d5fffb]' : 'border-white/10 bg-white/5 text-white/55'}`}>
+                    <span className={`rounded-full border px-2.5 py-1 ${onboardingStateSummary?.onboardingProgress?.personalSectionComplete ? 'border-cpoint-turquoise/35 bg-cpoint-turquoise/10 text-c-accent-ink' : 'border-c-border bg-c-hover-bg text-c-text-tertiary'}`}>
                       {onboardingStateSummary?.onboardingProgress?.personalSectionComplete ? t('dashboard.personal_complete') : t('dashboard.personal_pending')}
                     </span>
-                    <span className={`rounded-full border px-2.5 py-1 ${onboardingStateSummary?.onboardingProgress?.professionalSectionComplete ? 'border-cpoint-turquoise/35 bg-cpoint-turquoise/10 text-[#d5fffb]' : 'border-white/10 bg-white/5 text-white/55'}`}>
+                    <span className={`rounded-full border px-2.5 py-1 ${onboardingStateSummary?.onboardingProgress?.professionalSectionComplete ? 'border-cpoint-turquoise/35 bg-cpoint-turquoise/10 text-c-accent-ink' : 'border-c-border bg-c-hover-bg text-c-text-tertiary'}`}>
                       {onboardingStateSummary?.onboardingProgress?.professionalSectionComplete ? t('dashboard.professional_complete') : t('dashboard.professional_pending')}
                     </span>
                   </div>
@@ -905,7 +905,7 @@ export default function PremiumDashboard() {
             style={{ transform: `translateY(${Math.min(pullPx * 0.5, 30)}px)` }}
           >
             <span
-              className={`rounded-full border border-white/10 bg-black/70 px-4 py-1 text-[11px] text-[#9fb0b5] transition-opacity flex items-center gap-2 ${
+              className={`rounded-full border border-c-border bg-c-bg-app/70 px-4 py-1 text-[11px] text-c-text-tertiary transition-opacity flex items-center gap-2 ${
                 pullHint === 'idle' ? 'opacity-60' : 'opacity-100'
               }`}
             >
@@ -939,14 +939,14 @@ export default function PremiumDashboard() {
             ) : communities.length === 0 ? (
               <div className="px-3 py-6">
                 <div className="mx-auto max-w-xl space-y-4">
-                  <div className="liquid-glass-surface overflow-hidden rounded-3xl border border-white/10 p-5 text-center shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+                  <div className="liquid-glass-surface overflow-hidden rounded-3xl border border-c-border p-5 text-center shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cpoint-turquoise">
                       {t('dashboard.welcome_badge')}
                     </div>
-                    <h2 className="mt-2 text-xl font-semibold leading-tight tracking-[-0.025em] text-white sm:text-[22px]">
+                    <h2 className="mt-2 text-xl font-semibold leading-tight tracking-[-0.025em] text-c-text-primary sm:text-[22px]">
                       {t('dashboard.welcome_headline')}
                     </h2>
-                    <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-[#9fb0b5]">
+                    <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-c-text-tertiary">
                       {t('dashboard.welcome_body')}
                     </p>
                     <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
@@ -959,7 +959,7 @@ export default function PremiumDashboard() {
                       </button>
                       <button
                         type="button"
-                        className="rounded-full border border-white/15 px-5 py-2.5 font-medium text-white/80 transition hover:bg-white/5 touch-manipulation"
+                        className="rounded-full border border-c-border px-5 py-2.5 font-medium text-c-text-secondary transition hover:bg-c-hover-bg touch-manipulation"
                         onClick={() => setShowAboutCPointModal(true)}
                       >
                         {t('dashboard.how_it_works')}
@@ -974,20 +974,20 @@ export default function PremiumDashboard() {
                       { icon: 'fa-solid fa-wand-magic-sparkles', titleKey: 'dashboard.tile_steve_title', textKey: 'dashboard.tile_steve_text' },
                       { icon: 'fa-solid fa-user-group', titleKey: 'dashboard.tile_networking_title', textKey: 'dashboard.tile_networking_text' },
                     ].map((tile) => (
-                      <div key={tile.titleKey} className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                      <div key={tile.titleKey} className="rounded-2xl border border-c-border bg-c-bg-surface p-3">
                         <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-cpoint-turquoise/10 text-cpoint-turquoise">
                           <i className={`${tile.icon} text-sm`} />
                         </div>
-                        <div className="text-sm font-semibold text-white">{t(tile.titleKey)}</div>
-                        <div className="mt-1 text-xs text-[#9fb0b5]">{t(tile.textKey)}</div>
+                        <div className="text-sm font-semibold text-c-text-primary">{t(tile.titleKey)}</div>
+                        <div className="mt-1 text-xs text-c-text-tertiary">{t(tile.textKey)}</div>
                       </div>
                     ))}
                   </div>
 
-                  <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-3">
+                  <div className="flex items-center justify-between rounded-2xl border border-c-border bg-c-bg-surface px-4 py-3">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-white">{t('dashboard.meet_steve')}</div>
-                      <div className="text-xs text-[#9fb0b5]">{t('dashboard.ask_try_first')}</div>
+                      <div className="text-sm font-semibold text-c-text-primary">{t('dashboard.meet_steve')}</div>
+                      <div className="text-xs text-c-text-tertiary">{t('dashboard.ask_try_first')}</div>
                     </div>
                     <button
                       className="shrink-0 rounded-full border border-cpoint-turquoise/40 px-4 py-2 text-sm font-medium text-cpoint-turquoise transition hover:bg-cpoint-turquoise/10 active:scale-95 touch-manipulation"
@@ -1004,14 +1004,14 @@ export default function PremiumDashboard() {
               {searchOpen && (
                 <div className="mb-4">
                   <div className="relative w-full max-w-xl">
-                    <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-[#9fb0b5] text-sm pointer-events-none" />
+                    <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-c-text-tertiary text-sm pointer-events-none" />
                     <input
                       ref={searchInputRef}
                       type="text"
                       placeholder={t('navigation.search_communities')}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-[#9fb0b5] focus:outline-none focus:border-cpoint-turquoise/40"
+                      className="w-full pl-9 pr-3 py-2 rounded-xl bg-c-hover-bg border border-c-border text-sm text-c-text-primary placeholder-c-text-tertiary focus:outline-none focus:border-cpoint-turquoise/40"
                     />
                   </div>
                 </div>
@@ -1038,9 +1038,9 @@ export default function PremiumDashboard() {
                       <>
                         {/* Separator - Owner/Admin of */}
                         <div className="flex items-center gap-3 py-1">
-                          <div className="h-px flex-1 bg-white/10" />
-                          <span className="text-[10px] uppercase tracking-wider text-[#9fb0b5]/60 font-medium">{t('dashboard.owner_admin_section')}</span>
-                          <div className="h-px flex-1 bg-white/10" />
+                          <div className="h-px flex-1 bg-c-active-bg" />
+                          <span className="text-[10px] uppercase tracking-wider text-c-text-tertiary/60 font-medium">{t('dashboard.owner_admin_section')}</span>
+                          <div className="h-px flex-1 bg-c-active-bg" />
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1068,9 +1068,9 @@ export default function PremiumDashboard() {
                       <>
                         {/* Separator - Member of */}
                         <div className="flex items-center gap-3 py-1">
-                          <div className="h-px flex-1 bg-white/10" />
-                          <span className="text-[10px] uppercase tracking-wider text-[#9fb0b5]/60 font-medium">{t('dashboard.member_of_section')}</span>
-                          <div className="h-px flex-1 bg-white/10" />
+                          <div className="h-px flex-1 bg-c-active-bg" />
+                          <span className="text-[10px] uppercase tracking-wider text-c-text-tertiary/60 font-medium">{t('dashboard.member_of_section')}</span>
+                          <div className="h-px flex-1 bg-c-active-bg" />
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1095,7 +1095,7 @@ export default function PremiumDashboard() {
 
                     {/* No results message */}
                     {filtered.length === 0 && searchQuery.trim() && (
-                      <div className="text-center py-8 text-[#9fb0b5] text-sm">
+                      <div className="text-center py-8 text-c-text-tertiary text-sm">
                         {t('dashboard.no_search_results', { query: searchQuery })}
                       </div>
                     )}
@@ -1137,11 +1137,11 @@ export default function PremiumDashboard() {
             />
           )}
           {onboardingGateRequired && !showOnboarding && (
-            <div className="fixed inset-0 z-[1200] bg-black/90 backdrop-blur-md flex items-center justify-center px-6">
-              <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0d1214] p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.55)]">
+            <div className="fixed inset-0 z-[1200] bg-c-bg-overlay backdrop-blur-md flex items-center justify-center px-6">
+              <div className="w-full max-w-md rounded-2xl border border-c-border bg-c-bg-elevated p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.55)]">
                 <BrandLogo className="w-14 h-14 rounded-2xl object-contain mx-auto mb-4" />
-                <h2 className="text-lg font-semibold text-white mb-2">{t('dashboard.finish_profile_title')}</h2>
-                <p className="text-sm text-[#9fb0b5] mb-6">
+                <h2 className="text-lg font-semibold text-c-text-primary mb-2">{t('dashboard.finish_profile_title')}</h2>
+                <p className="text-sm text-c-text-tertiary mb-6">
                   {t('dashboard.finish_profile_body')}
                 </p>
                 <button
@@ -1155,11 +1155,11 @@ export default function PremiumDashboard() {
             </div>
           )}
           {onboardingLaunching && !showOnboarding && !onboardingGateRequired && (
-            <div className="fixed inset-0 z-[1200] bg-black/80 backdrop-blur-sm flex items-center justify-center px-6">
+            <div className="fixed inset-0 z-[1200] bg-c-bg-overlay backdrop-blur-sm flex items-center justify-center px-6">
               <div className="flex flex-col items-center gap-4 text-center">
                 <BrandLogo className="w-14 h-14 rounded-2xl object-contain" />
-                <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-cpoint-turquoise animate-spin" />
-                <div className="text-sm text-white/65">{t('dashboard.opening_steve')}</div>
+                <div className="w-8 h-8 rounded-full border-2 border-c-border border-t-cpoint-turquoise animate-spin" />
+                <div className="text-sm text-c-text-tertiary">{t('dashboard.opening_steve')}</div>
               </div>
             </div>
           )}
@@ -1208,8 +1208,8 @@ export default function PremiumDashboard() {
       {/* Success Toast - Subtle notification */}
       {showSuccessModal && (
         <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[60] pointer-events-none">
-          <div className="px-6 py-3 rounded-full border border-cpoint-turquoise/40 bg-black/90 backdrop-blur-sm shadow-lg animate-fade-in">
-            <div className="text-sm font-medium text-white">
+          <div className="px-6 py-3 rounded-full border border-cpoint-turquoise/40 bg-c-bg-elevated backdrop-blur-sm shadow-lg animate-fade-in">
+            <div className="text-sm font-medium text-c-text-primary">
               {t('dashboard.joined_community', { name: joinedCommunityName ?? '' })}
             </div>
           </div>
@@ -1217,10 +1217,10 @@ export default function PremiumDashboard() {
       )}
       {/* Verify email first modal */}
       {showVerifyFirstModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowVerifyFirstModal(false)}>
-          <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-black p-4">
+        <div className="fixed inset-0 z-50 bg-c-bg-app/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowVerifyFirstModal(false)}>
+          <div className="w-[92%] max-w-sm rounded-2xl border border-c-border bg-c-bg-app p-4">
             <div className="font-semibold text-sm mb-2">{t('dashboard.verify_email_title')}</div>
-            <div className="text-sm text-[#9fb0b5]">{t('dashboard.verify_email_body')}</div>
+            <div className="text-sm text-c-text-tertiary">{t('dashboard.verify_email_body')}</div>
             <div className="flex items-center justify-end gap-2 mt-3">
               <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowVerifyFirstModal(false)}>{t('common.close')}</button>
               <button className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black hover:brightness-110" onClick={async()=>{ try{ await fetch('/resend_verification', { method:'POST', credentials:'include' }) }catch{} alert(t('dashboard.verification_sent_rate_limit')); setShowVerifyFirstModal(false) }}>{t('dashboard.resend_email')}</button>
@@ -1233,33 +1233,33 @@ export default function PremiumDashboard() {
 
       {/* Communities modal removed; dashboard links use /communities?parent_id= */}
         {showCreateModal && (
-          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> { if (e.currentTarget===e.target) handleCloseCreateModal() }}>
-          <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-black p-4">
+          <div className="fixed inset-0 z-50 bg-c-bg-app/70 backdrop-blur flex items-center justify-center" onClick={(e)=> { if (e.currentTarget===e.target) handleCloseCreateModal() }}>
+          <div className="w-[92%] max-w-sm rounded-2xl border border-c-border bg-c-bg-app p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="font-semibold text-sm">{t('dashboard.create_community_title')}</div>
                 <button className="p-2 rounded-md hover:bg:white/5" onClick={handleCloseCreateModal} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-[#9fb0b5] mb-1">{t('dashboard.community_name_parent_label')}</label>
-                <input value={newCommName} onChange={e=> setNewCommName(e.target.value)} placeholder={t('dashboard.community_name_parent_placeholder')} className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm" />
+                <label className="block text-xs text-c-text-tertiary mb-1">{t('dashboard.community_name_parent_label')}</label>
+                <input value={newCommName} onChange={e=> setNewCommName(e.target.value)} placeholder={t('dashboard.community_name_parent_placeholder')} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border:white/15 text-sm" />
               </div>
                 <div>
-                  <label className="block text-xs text-[#9fb0b5] mb-1">{t('dashboard.community_type_label')}</label>
+                  <label className="block text-xs text-c-text-tertiary mb-1">{t('dashboard.community_type_label')}</label>
                   {isAppAdmin ? (
-                    <select value={newCommType} onChange={e=> setNewCommType(e.target.value as any)} className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm">
+                    <select value={newCommType} onChange={e=> setNewCommType(e.target.value as any)} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border:white/15 text-sm">
                       <option value="General">{t('dashboard.type_general')}</option>
                       <option value="Gym">{t('dashboard.type_gym')}</option>
                       <option value="University">{t('dashboard.type_university')}</option>
                       <option value="Business">{t('dashboard.type_business')}</option>
                     </select>
                   ) : (
-                    <div className="w-full px-3 py-2 rounded-md bg-black/50 border border-white/10 text-sm text-[#9fb0b5]">
+                    <div className="w-full px-3 py-2 rounded-md bg-c-bg-app/50 border border-c-border text-sm text-c-text-tertiary">
                       {t('dashboard.type_general')}
                     </div>
                   )}
                 </div>
-              <div className="text-xs text-[#9fb0b5]">{t('dashboard.create_parent_hint')}</div>
+              <div className="text-xs text-c-text-tertiary">{t('dashboard.create_parent_hint')}</div>
                 <div className="flex items-center justify-end gap-2">
                   <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={handleCloseCreateModal} disabled={isCreatingCommunity}>{t('common.cancel')}</button>
                     <button 
@@ -1299,14 +1299,14 @@ export default function PremiumDashboard() {
         </div>
       )}
       {showJoinModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowJoinModal(false)}>
-          <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-black p-4">
+        <div className="fixed inset-0 z-50 bg-c-bg-app/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowJoinModal(false)}>
+          <div className="w-[92%] max-w-sm rounded-2xl border border-c-border bg-c-bg-app p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="font-semibold text-sm">{t('dashboard.join_community_title')}</div>
               <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowJoinModal(false)} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
             </div>
             <div className="space-y-3">
-              <input value={joinCode} onChange={e=> setJoinCode(e.target.value)} placeholder={t('dashboard.join_code_placeholder')} className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm" />
+              <input value={joinCode} onChange={e=> setJoinCode(e.target.value)} placeholder={t('dashboard.join_code_placeholder')} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border:white/15 text-sm" />
               <div className="flex items-center justify-end gap-2">
                 <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowJoinModal(false)}>{t('common.cancel')}</button>
                 <button className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black hover:brightness-110" onClick={async()=> {
@@ -1379,7 +1379,7 @@ function CommunityCard({
     <button
       onClick={onClick}
       aria-label={name}
-      className="group relative flex min-h-[8.5rem] w-full rounded-2xl overflow-hidden text-white transition-all duration-300 liquid-glass-surface border border-white/15 hover:border-cpoint-turquoise/40 shadow-[0_24px_56px_rgba(0,0,0,0.48)] hover:shadow-[0_32px_64px_rgba(0,0,0,0.58)] hover:-translate-y-0.5 text-left"
+      className="group relative flex min-h-[8.5rem] w-full rounded-2xl overflow-hidden text-c-text-primary transition-all duration-300 liquid-glass-surface border border-c-border hover:border-cpoint-turquoise/40 shadow-[0_24px_56px_rgba(0,0,0,0.48)] hover:shadow-[0_32px_64px_rgba(0,0,0,0.58)] hover:-translate-y-0.5 text-left"
     >
       <div
         className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
@@ -1392,27 +1392,27 @@ function CommunityCard({
       <div className="relative flex flex-col gap-3 p-6 sm:p-7">
         <div className="w-full min-w-0">
           <div
-            className={`text-[17px] font-semibold tracking-tight text-white/90 leading-tight${badge ? ' pr-16 sm:pr-20' : ''}`}
+            className={`text-[17px] font-semibold tracking-tight text-c-text-secondary leading-tight${badge ? ' pr-16 sm:pr-20' : ''}`}
           >
             {name}
           </div>
         </div>
 
         {descText.length > 0 ? (
-          <p className="text-[11.5px] text-[#9fb0b5]/85 leading-relaxed line-clamp-3">
+          <p className="text-[11.5px] text-c-text-tertiary/85 leading-relaxed line-clamp-3">
             {descText}
           </p>
         ) : isOwner || isAdmin ? (
-          <p className="text-[11.5px] text-[#9fb0b5]/70 leading-relaxed italic">
+          <p className="text-[11.5px] text-c-text-tertiary/70 leading-relaxed italic">
             {t('dashboard.no_description_add_manage')}
           </p>
         ) : (
-          <p className="text-[11.5px] text-[#9fb0b5]/70 leading-relaxed">
+          <p className="text-[11.5px] text-c-text-tertiary/70 leading-relaxed">
             {t('dashboard.no_description_yet')}
           </p>
         )}
 
-        <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[#9fb0b5] pt-1">
+        <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-c-text-tertiary pt-1">
           {typeof memberCount === 'number' && (
             <span className="flex items-center gap-1.5">
               <i className="fa-solid fa-users text-[10px] text-cpoint-turquoise drop-shadow-[0_0_8px_rgba(0,206,200,0.45)]" aria-hidden />

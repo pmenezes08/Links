@@ -91,7 +91,7 @@ export default function LazyVideo({
       {hasError && shouldLoad && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70 text-center text-xs text-white px-3">
           <span>Unable to load this video.</span>
-          <a href={src} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline">
+          <a href={src} target="_blank" rel="noopener noreferrer" className="text-cpoint-turquoise underline">
             Open in new tab
           </a>
         </div>

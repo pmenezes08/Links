@@ -293,6 +293,7 @@ def send_dm_grouped_media(
     media_files: list | None = None,
     media_urls: list | None = None,
     upload_only: bool = False,
+    client_key: str | None = None,
 ) -> Tuple[dict, int]:
     """Upload and send grouped photo/video DM. Returns (payload, http_status)."""
     if not recipient_id:
@@ -340,6 +341,32 @@ def send_dm_grouped_media(
             if upload_only:
                 return {"success": True, "media_paths": uploaded_paths}, 200
 
+            if client_key:
+                try:
+                    c.execute(f"SELECT id, timestamp, image_path, video_path, media_paths FROM messages WHERE client_key = {ph} AND sender = {ph} LIMIT 1", (client_key, username))
+                    existing = c.fetchone()
+                    if existing:
+                        existing_id = existing["id"] if hasattr(existing, "keys") else existing[0]
+                        existing_time = existing["timestamp"] if hasattr(existing, "keys") else existing[1]
+                        existing_image = existing["image_path"] if hasattr(existing, "keys") else existing[2]
+                        existing_video = existing["video_path"] if hasattr(existing, "keys") else existing[3]
+                        existing_media = existing["media_paths"] if hasattr(existing, "keys") else existing[4]
+                        try:
+                            existing_paths = json.loads(existing_media) if existing_media else []
+                        except Exception:
+                            existing_paths = []
+                        return {
+                            "success": True,
+                            "id": existing_id,
+                            "image_path": existing_image,
+                            "video_path": existing_video,
+                            "media_paths": existing_paths,
+                            "time": existing_time,
+                            "client_key": client_key,
+                        }, 200
+                except Exception as ik_err:
+                    logger.warning("send_dm_media client_key check failed: %s", ik_err)
+
             media_paths_json = json.dumps(uploaded_paths)
             first_image = next(
                 (
@@ -361,18 +388,18 @@ def send_dm_grouped_media(
             if USE_MYSQL:
                 c.execute(
                     """
-                    INSERT INTO messages (sender, receiver, message, image_path, video_path, media_paths, timestamp)
-                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                    INSERT INTO messages (sender, receiver, message, image_path, video_path, media_paths, client_key, timestamp)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
                 """,
-                    (username, recipient_username, "", first_image, first_video, media_paths_json),
+                    (username, recipient_username, "", first_image, first_video, media_paths_json, client_key),
                 )
             else:
                 c.execute(
                     """
-                    INSERT INTO messages (sender, receiver, message, image_path, video_path, media_paths, timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                    INSERT INTO messages (sender, receiver, message, image_path, video_path, media_paths, client_key, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 """,
-                    (username, recipient_username, "", first_image, first_video, media_paths_json),
+                    (username, recipient_username, "", first_image, first_video, media_paths_json, client_key),
                 )
 
             conn.commit()
@@ -398,6 +425,7 @@ def send_dm_grouped_media(
                     image_path=first_image,
                     video_path=first_video,
                     media_paths=uploaded_paths,
+                    client_key=client_key,
                 )
             except Exception:
                 pass
@@ -490,6 +518,7 @@ def send_dm_grouped_media(
                 "id": inserted_id,
                 "media_paths": uploaded_paths,
                 "time": inserted_time,
+                "client_key": client_key,
             }
             if steve_started:
                 media_response["steve_is_typing"] = True
@@ -509,6 +538,7 @@ def send_dm_video_message(
     message: str = "",
     video: Any = None,
     video_url: str = "",
+    client_key: str | None = None,
 ) -> dict:
     """Send a video DM. Returns JSON-serializable payload (HTTP 200)."""
     if not recipient_id:
@@ -535,12 +565,25 @@ def send_dm_video_message(
             if not recipient_username:
                 return {"success": False, "error": "Recipient not found"}
 
+            ph = get_sql_placeholder()
+            if client_key:
+                try:
+                    c.execute(f"SELECT id, timestamp, video_path FROM messages WHERE client_key = {ph} AND sender = {ph} LIMIT 1", (client_key, username))
+                    existing = c.fetchone()
+                    if existing:
+                        existing_id = existing["id"] if hasattr(existing, "keys") else existing[0]
+                        existing_time = existing["timestamp"] if hasattr(existing, "keys") else existing[1]
+                        existing_video = existing["video_path"] if hasattr(existing, "keys") else existing[2]
+                        return {"success": True, "video_path": existing_video, "id": existing_id, "time": str(existing_time), "client_key": client_key}
+                except Exception as ik_err:
+                    logger.warning("send_video_message client_key check failed: %s", ik_err)
+
             c.execute(
                 """
-                INSERT INTO messages (sender, receiver, message, video_path, timestamp)
-                VALUES (?, ?, ?, ?, NOW())
+                INSERT INTO messages (sender, receiver, message, video_path, client_key, timestamp)
+                VALUES (?, ?, ?, ?, ?, NOW())
             """,
-                (username, recipient_username, message, relative_path),
+                (username, recipient_username, message, relative_path, client_key),
             )
             conn.commit()
 
@@ -567,6 +610,7 @@ def send_dm_video_message(
                     message_id=inserted_id,
                     text=message,
                     video_path=relative_path,
+                    client_key=client_key,
                 )
             except Exception:
                 pass
@@ -613,6 +657,7 @@ def send_dm_video_message(
                 "video_path": relative_path,
                 "id": inserted_id,
                 "time": time_str,
+                "client_key": client_key,
             }
     except Exception as e:
         logger.error("Error sending video message: %s", e, exc_info=True)

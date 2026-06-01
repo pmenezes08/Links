@@ -202,6 +202,58 @@ def should_include_community_resources_from_thread(
     return False
 
 
+STEVE_EMOJI_RULES = (
+    "EMOJI RULES:\n"
+    "- One emoji maximum per reply, only when it genuinely fits.\n"
+    "- Use positive or neutral emojis only (e.g. a wave or light acknowledgment).\n"
+    "- Never use eye-roll, shrug, skull, or sarcasm/negative-valence emojis.\n"
+    "- In professional, serious, or news/current-events replies: no emojis.\n"
+    "- Default: skip emojis unless the conversation vibe clearly invites one."
+)
+
+STEVE_LANGUAGE_RULES = (
+    "LANGUAGE RULES:\n"
+    "- Reply in the same language the user is using in this conversation.\n"
+    "- If the user writes in Portuguese, use European Portuguese (PT-PT, Portugal style): "
+    "tu (not você), autocarro (not ônibus), telemóvel (not celular).\n"
+    "- If the user writes in English, respond in English.\n"
+    "- If the user writes in Spanish, respond in Spanish.\n"
+    "- Never mix internal English system jargon into user-facing copy."
+)
+
+
+def render_steve_external_knowledge_guidance(
+    *,
+    web_search_attached: bool,
+    x_search_attached: bool = False,
+    external_tools_blocked: bool = False,
+) -> str:
+    """Reasoning guidance for when Steve may use live web/X sources (model decides to invoke)."""
+    if external_tools_blocked or (not web_search_attached and not x_search_attached):
+        return (
+            "- Live web or X lookup is not available — answer from the conversation, "
+            "C-Point Platform Manual, and injected profile/context only.\n"
+            "- Do not invent URLs, job postings, headlines, or product facts as if you had browsed the web.\n"
+            "- Do not mention tools, web search, live lookup, or what you can or cannot access technically."
+        )
+
+    x_line = (
+        "- X/Twitter search is available only when the user clearly wants posts or chatter on X — "
+        "not for general questions.\n"
+        if x_search_attached
+        else ""
+    )
+    return (
+        "- You may use web search when attached. Decide yourself whether you need it — do not ask permission "
+        "and do not announce that you are searching; just use it when warranted and answer naturally.\n"
+        f"{x_line}"
+        "- You have a knowledge cutoff. If the topic may be new, recent, version-specific, or time-sensitive "
+        "(news, releases, sports, markets, weather, hiring, product facts), search before answering.\n"
+        "- Prefer primary sources for verifiable claims (official careers pages, press releases, docs).\n"
+        "- Do not invent URLs, headlines, or listings as if you had browsed the web."
+    )
+
+
 def render_hosted_search_capability_instructions(
     *,
     has_hosted_search_tools: bool,

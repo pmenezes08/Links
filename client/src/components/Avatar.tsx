@@ -67,7 +67,7 @@ function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials
   if (error) {
     return (
       <div className="w-full h-full flex items-center justify-center">
-        <span className="text-white/80 font-medium" style={{ fontSize: fontSize || 16 }}>
+        <span className="text-c-text-on-accent font-medium" style={{ fontSize: fontSize || 16 }}>
           {initials || '?'}
         </span>
       </div>
@@ -79,7 +79,7 @@ function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials
       {/* Loading state - only show if not already cached */}
       {loading && !alreadyLoaded && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-4 h-4 border border-white/20 border-t-white/60 rounded-full animate-spin"></div>
+          <div className="w-4 h-4 border border-c-border border-t-c-text-secondary rounded-full animate-spin"></div>
         </div>
       )}
 
@@ -179,7 +179,7 @@ export default function Avatar({ username, url, size = 40, className = '', linkT
         loadingBehavior={loading}
       />
     ) : (
-      <span style={{ fontSize }} className="text-white/80 font-medium">
+      <span style={{ fontSize }} className="text-c-text-on-accent font-medium">
         {initials}
       </span>
     )
@@ -203,7 +203,7 @@ export default function Avatar({ username, url, size = 40, className = '', linkT
       <a
         href={profileHref}
         onClick={handleAnchorClick}
-        className={`rounded-full overflow-hidden bg-white/10 border border-white/10 flex items-center justify-center cursor-pointer transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4db6ac]/70 ${className}`}
+        className={`rounded-full overflow-hidden bg-c-active-bg border border-c-border flex items-center justify-center cursor-pointer transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/70 ${className}`}
         style={{ width: size, height: size }}
         aria-label={`Avatar for ${username}`}
       >
@@ -233,7 +233,7 @@ export default function Avatar({ username, url, size = 40, className = '', linkT
       onKeyDown={interactive ? handleKeyDown : undefined}
       role={interactive ? 'button' : undefined}
       tabIndex={interactive ? 0 : undefined}
-      className={`rounded-full overflow-hidden bg-white/10 border border-white/10 flex items-center justify-center ${interactive ? 'cursor-pointer transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4db6ac]/70' : ''} ${className}`}
+      className={`rounded-full overflow-hidden bg-c-active-bg border border-c-border flex items-center justify-center ${interactive ? 'cursor-pointer transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/70' : ''} ${className}`}
       style={{ width: size, height: size }}
       aria-label={`Avatar for ${username}`}
     >

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -318,3 +318,132 @@ def generate_presigned_upload_url(
     except Exception as e:
         logger.error(f"Failed to generate presigned URL for {key}: {e}")
         return None
+
+
+# Minimum part size for S3-compatible multipart (5 MiB except last part).
+MULTIPART_PART_SIZE = 5 * 1024 * 1024
+
+
+def create_multipart_upload(key: str, content_type: str) -> Optional[str]:
+    """Start a multipart upload; returns UploadId or None."""
+    if not R2_ENABLED:
+        return None
+    client = get_s3_client()
+    if not client:
+        return None
+    try:
+        resp = client.create_multipart_upload(
+            Bucket=R2_BUCKET,
+            Key=key,
+            ContentType=content_type,
+            CacheControl="public, max-age=31536000",
+        )
+        return resp.get("UploadId")
+    except Exception as e:
+        logger.error("Failed to create multipart upload for %s: %s", key, e)
+        return None
+
+
+def presign_upload_part(
+    key: str,
+    upload_id: str,
+    part_number: int,
+    expires_in: int = 900,
+) -> Optional[str]:
+    """Presigned URL for one multipart part (PUT)."""
+    if not R2_ENABLED or part_number < 1:
+        return None
+    client = get_s3_client()
+    if not client:
+        return None
+    try:
+        return client.generate_presigned_url(
+            "upload_part",
+            Params={
+                "Bucket": R2_BUCKET,
+                "Key": key,
+                "UploadId": upload_id,
+                "PartNumber": int(part_number),
+            },
+            ExpiresIn=expires_in,
+        )
+    except Exception as e:
+        logger.error("Failed to presign part %s for %s: %s", part_number, key, e)
+        return None
+
+
+def list_multipart_upload_parts(key: str, upload_id: str) -> List[Dict[str, Any]]:
+    """List uploaded parts with ETags from R2 (authoritative; browser may not see ETag due to CORS)."""
+    if not R2_ENABLED:
+        return []
+    client = get_s3_client()
+    if not client:
+        return []
+    try:
+        collected: List[Dict[str, Any]] = []
+        marker: Optional[int] = None
+        while True:
+            kwargs: Dict[str, Any] = {
+                "Bucket": R2_BUCKET,
+                "Key": key,
+                "UploadId": upload_id,
+            }
+            if marker is not None:
+                kwargs["PartNumberMarker"] = marker
+            resp = client.list_parts(**kwargs)
+            for part in resp.get("Parts") or []:
+                pn = part.get("PartNumber")
+                etag = part.get("ETag")
+                if pn and etag:
+                    collected.append({"PartNumber": int(pn), "ETag": str(etag)})
+            if not resp.get("IsTruncated"):
+                break
+            marker = resp.get("NextPartNumberMarker")
+            if not marker:
+                break
+        return sorted(collected, key=lambda p: int(p["PartNumber"]))
+    except Exception as e:
+        logger.error("Failed to list multipart parts for %s: %s", key, e)
+        return []
+
+
+def complete_multipart_upload(
+    key: str,
+    upload_id: str,
+    parts: List[Dict[str, Any]],
+) -> bool:
+    """Complete multipart upload. parts: [{PartNumber, ETag}, ...]."""
+    if not R2_ENABLED or not parts:
+        return False
+    client = get_s3_client()
+    if not client:
+        return False
+    try:
+        sorted_parts = sorted(parts, key=lambda p: int(p["PartNumber"]))
+        client.complete_multipart_upload(
+            Bucket=R2_BUCKET,
+            Key=key,
+            UploadId=upload_id,
+            MultipartUpload={"Parts": sorted_parts},
+        )
+        logger.info("Completed multipart upload: %s", key)
+        return True
+    except Exception as e:
+        logger.error("Failed to complete multipart upload %s: %s", key, e)
+        return False
+
+
+def abort_multipart_upload(key: str, upload_id: str) -> bool:
+    """Abort an in-progress multipart upload."""
+    if not R2_ENABLED:
+        return False
+    client = get_s3_client()
+    if not client:
+        return False
+    try:
+        client.abort_multipart_upload(Bucket=R2_BUCKET, Key=key, UploadId=upload_id)
+        logger.info("Aborted multipart upload: %s", key)
+        return True
+    except Exception as e:
+        logger.error("Failed to abort multipart upload %s: %s", key, e)
+        return False

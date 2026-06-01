@@ -42,7 +42,7 @@ function ModalBackdrop({
       <div
         role="dialog"
         aria-modal="true"
-        className={`grid w-full min-h-0 shrink grid-rows-[minmax(0,1fr)] overflow-hidden ${wide ? 'max-w-lg' : 'max-w-md'} max-h-[calc(100dvh-var(--app-dashboard-bottom-nav-height)-2rem)] sm:max-h-[85vh] rounded-t-2xl sm:rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-xl`}
+        className={`grid w-full min-h-0 shrink grid-rows-[minmax(0,1fr)] overflow-hidden ${wide ? 'max-w-lg' : 'max-w-md'} max-h-[calc(100dvh-var(--app-dashboard-bottom-nav-height)-2rem)] sm:max-h-[85vh] rounded-t-2xl sm:rounded-2xl border border-c-border bg-c-bg-elevated shadow-xl`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="min-h-0 overflow-y-auto overscroll-contain touch-pan-y p-4 [-webkit-overflow-scrolling:touch]">
@@ -142,15 +142,15 @@ function TutorialSlotBody({
     return (
       <>
         <div className="flex justify-between items-center mb-3">
-          <h3 className="text-base font-semibold text-white pr-2">{cardTitle}</h3>
-          <button type="button" className="text-xs text-[#9fb0b5] hover:text-white shrink-0" onClick={onClose}>
+          <h3 className="text-base font-semibold text-c-text-primary pr-2">{cardTitle}</h3>
+          <button type="button" className="text-xs text-c-text-tertiary hover:text-white shrink-0" onClick={onClose}>
             {t('common.close')}
           </button>
         </div>
-        <p className="text-sm text-[#9fb0b5] mb-3">{cardDescription}</p>
+        <p className="text-sm text-c-text-tertiary mb-3">{cardDescription}</p>
         <video src={videoUrl} controls className="w-full rounded-lg bg-black max-h-[50vh]" playsInline />
         {isAppAdmin ? (
-          <p className="text-xs text-[#9fb0b5]/80 mt-3">Admin: replace by uploading again from this card on About.</p>
+          <p className="text-xs text-c-text-tertiary/80 mt-3">Admin: replace by uploading again from this card on About.</p>
         ) : null}
       </>
     )
@@ -160,20 +160,20 @@ function TutorialSlotBody({
     return (
       <>
         <div className="flex justify-between items-center mb-3">
-          <h3 className="text-base font-semibold text-white pr-2">{cardTitle}</h3>
-          <button type="button" className="text-xs text-[#9fb0b5] hover:text-white shrink-0" onClick={onClose}>
+          <h3 className="text-base font-semibold text-c-text-primary pr-2">{cardTitle}</h3>
+          <button type="button" className="text-xs text-c-text-tertiary hover:text-white shrink-0" onClick={onClose}>
             {t('common.close')}
           </button>
         </div>
-        <p className="text-sm text-[#9fb0b5] mb-3">{cardDescription}</p>
-        <p className="text-sm text-white/90 mb-2">Upload a tutorial video (admin)</p>
+        <p className="text-sm text-c-text-tertiary mb-3">{cardDescription}</p>
+        <p className="text-sm text-c-text-secondary mb-2">Upload a tutorial video (admin)</p>
         <label className="block mb-3">
           <span className="sr-only">Video file</span>
           <input
             type="file"
             accept="video/*"
             disabled={busyFile || saving}
-            className="block w-full text-sm text-[#9fb0b5] file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-[#4db6ac] file:text-black"
+            className="block w-full text-sm text-c-text-tertiary file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-cpoint-turquoise file:text-black"
             onChange={(e) => {
               const f = e.target.files?.[0] ?? null
               e.target.value = ''
@@ -181,18 +181,18 @@ function TutorialSlotBody({
             }}
           />
         </label>
-        <div className="text-xs text-[#9fb0b5] mb-2">Or paste a public https URL</div>
+        <div className="text-xs text-c-text-tertiary mb-2">Or paste a public https URL</div>
         <input
           type="url"
           value={pasteUrl}
           onChange={(e) => setPasteUrl(e.target.value)}
           placeholder="https://…"
-          className="w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white mb-2"
+          className="w-full rounded-lg border border-white/15 bg-c-hover-bg px-3 py-2 text-sm text-c-text-primary mb-2"
         />
         <button
           type="button"
           disabled={saving || busyFile}
-          className="w-full py-2 rounded-lg bg-[#4db6ac] text-black text-sm font-semibold disabled:opacity-50"
+          className="w-full py-2 rounded-lg bg-cpoint-turquoise text-black text-sm font-semibold disabled:opacity-50"
           onClick={() => void saveUrl(pasteUrl)}
         >
           {saving ? t('account.language.saving') : t('common.save')}
@@ -205,13 +205,13 @@ function TutorialSlotBody({
   return (
     <>
       <div className="flex justify-between items-center mb-3">
-        <h3 className="text-base font-semibold text-white pr-2">{cardTitle}</h3>
-        <button type="button" className="text-xs text-[#9fb0b5] hover:text-white shrink-0" onClick={onClose}>
+        <h3 className="text-base font-semibold text-c-text-primary pr-2">{cardTitle}</h3>
+        <button type="button" className="text-xs text-c-text-tertiary hover:text-white shrink-0" onClick={onClose}>
           {t('common.close')}
         </button>
       </div>
-      <p className="text-sm text-[#9fb0b5] mb-4">{cardDescription}</p>
-      <div className="text-center text-sm text-[#9fb0b5] py-6 border border-white/10 rounded-xl">
+      <p className="text-sm text-c-text-tertiary mb-4">{cardDescription}</p>
+      <div className="text-center text-sm text-c-text-tertiary py-6 border border-c-border rounded-xl">
         {t('about_page.tutorial_soon')}
       </div>
     </>
@@ -269,40 +269,40 @@ export default function AboutCPoint() {
   const pageMinHeight = 'calc(100dvh - var(--app-header-offset, 0px))'
 
   return (
-    <div className={`bg-black text-white ${bottomPad} ${isWeb ? 'lg:ml-64' : ''}`} style={{ minHeight: pageMinHeight }}>
+    <div className={`bg-c-bg-app text-c-text-primary ${bottomPad} ${isWeb ? 'lg:ml-64' : ''}`} style={{ minHeight: pageMinHeight }}>
       <div className="max-w-xl mx-auto px-3 py-4 space-y-4">
-        <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3 sm:p-4">
+        <div className="rounded-xl border border-c-border bg-white/[0.02] p-3 sm:p-4">
           <div className="flex items-center gap-3">
             <BrandLogo alt="" className="w-12 h-12 rounded-xl object-contain shrink-0" />
             <div className="min-w-0">
-              <div className="text-base font-semibold text-white">C-Point</div>
-              <div className="text-sm text-[#4db6ac]">{t('about_page.tagline')}</div>
+              <div className="text-base font-semibold text-c-text-primary">C-Point</div>
+              <div className="text-sm text-cpoint-turquoise">{t('about_page.tagline')}</div>
             </div>
           </div>
-          <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-[#4db6ac]/40 px-2 py-0.5 text-xs text-[#9fb0b5]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#4db6ac]" />
+          <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-cpoint-turquoise/40 px-2 py-0.5 text-xs text-c-text-tertiary">
+            <span className="h-1.5 w-1.5 rounded-full bg-cpoint-turquoise" />
             {t('about_page.version', { version: ABOUT_CPOINT_VERSION_LABEL })}
           </div>
         </div>
 
         <section>
-          <div className="text-[10px] uppercase tracking-wider text-[#9fb0b5]/70 mb-1.5">{t('about_page.manifesto_section')}</div>
-          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3 space-y-2">
+          <div className="text-[10px] uppercase tracking-wider text-c-text-tertiary/70 mb-1.5">{t('about_page.manifesto_section')}</div>
+          <div className="rounded-xl border border-c-border bg-white/[0.02] p-3 space-y-2">
             {Array.isArray(manifestoSummary) && manifestoSummary.map((p, i) => (
-              <p key={i} className="text-sm text-[#9fb0b5] leading-relaxed">
+              <p key={i} className="text-sm text-c-text-tertiary leading-relaxed">
                 {p}
               </p>
             ))}
             <button
               type="button"
-              className="text-sm font-medium text-[#4db6ac] hover:underline"
+              className="text-sm font-medium text-cpoint-turquoise hover:underline"
               onClick={() => setManifestoOpen(true)}
             >
               {t('about_page.read_full_manifesto')}
             </button>
             <button
               type="button"
-              className="block text-sm text-[#9fb0b5] hover:text-[#4db6ac] mt-1"
+              className="block text-sm text-c-text-tertiary hover:text-cpoint-turquoise mt-1"
               onClick={() => navigate(stevePrefillUrl(t('about_page.ask_steve_prefill')))}
             >
               {t('about_page.ask_steve')}
@@ -311,17 +311,17 @@ export default function AboutCPoint() {
         </section>
 
         <section>
-          <div className="text-base font-semibold text-white mb-2">{t('about_page.how_it_works')}</div>
+          <div className="text-base font-semibold text-c-text-primary mb-2">{t('about_page.how_it_works')}</div>
           <div className="space-y-2">
             {ABOUT_HOW_IT_WORKS.map((pillar) => (
               <button
                 key={pillar.id}
                 type="button"
-                className="w-full text-left rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2.5 hover:border-white/20 transition-colors"
+                className="w-full text-left rounded-lg border border-c-border bg-white/[0.02] px-3 py-2.5 hover:border-white/20 transition-colors"
                 onClick={() => setPillarOpen(pillar)}
               >
-                <div className="text-sm font-medium text-white">{t(`about_page.pillars.${pillar.id}.label`)}</div>
-                <div className="text-xs text-[#9fb0b5]">{t(`about_page.pillars.${pillar.id}.subtitle`)}</div>
+                <div className="text-sm font-medium text-c-text-primary">{t(`about_page.pillars.${pillar.id}.label`)}</div>
+                <div className="text-xs text-c-text-tertiary">{t(`about_page.pillars.${pillar.id}.subtitle`)}</div>
               </button>
             ))}
           </div>
@@ -329,7 +329,7 @@ export default function AboutCPoint() {
 
         <button
           type="button"
-          className="w-full py-2 rounded-lg border border-white/15 text-sm text-white hover:bg-white/5"
+          className="w-full py-2 rounded-lg border border-c-border text-sm text-c-text-primary hover:bg-c-hover-bg"
           onClick={() => navigate('/premium_dashboard')}
         >
           {t('about_page.back_dashboard')}
@@ -341,31 +341,31 @@ export default function AboutCPoint() {
       {manifestoOpen ? (
         <ModalBackdrop onClose={() => setManifestoOpen(false)} wide>
           <div className="flex justify-between items-start gap-2 mb-2">
-            <h2 className="text-base font-semibold text-white">{t('about_page.full_manifesto_title')}</h2>
-            <button type="button" className="text-xs text-[#9fb0b5] shrink-0" onClick={() => setManifestoOpen(false)}>
+            <h2 className="text-base font-semibold text-c-text-primary">{t('about_page.full_manifesto_title')}</h2>
+            <button type="button" className="text-xs text-c-text-tertiary shrink-0" onClick={() => setManifestoOpen(false)}>
               {t('common.close')}
             </button>
           </div>
-          <div className="whitespace-pre-wrap break-words text-sm text-[#9fb0b5] font-sans">{manifestoFull}</div>
+          <div className="whitespace-pre-wrap break-words text-sm text-c-text-tertiary font-sans">{manifestoFull}</div>
         </ModalBackdrop>
       ) : null}
 
       {pillarOpen ? (
         <ModalBackdrop onClose={() => setPillarOpen(null)}>
           <div className="flex justify-between items-center mb-3">
-            <h2 className="text-base font-semibold text-white">{t(`about_page.pillars.${pillarOpen.id}.label`)}</h2>
-            <button type="button" className="text-xs text-[#9fb0b5]" onClick={() => setPillarOpen(null)}>
+            <h2 className="text-base font-semibold text-c-text-primary">{t(`about_page.pillars.${pillarOpen.id}.label`)}</h2>
+            <button type="button" className="text-xs text-c-text-tertiary" onClick={() => setPillarOpen(null)}>
               {t('common.close')}
             </button>
           </div>
           <div className="space-y-2">
             {pillarOpen.cards.map((c) => (
-              <div key={c.id} className="rounded-lg border border-white/10 p-3">
-                <div className="text-sm font-medium text-white">{t(`about_page.cards.${c.id}.title`)}</div>
-                <div className="text-xs text-[#9fb0b5] mt-0.5">{t(`about_page.cards.${c.id}.description`)}</div>
+              <div key={c.id} className="rounded-lg border border-c-border p-3">
+                <div className="text-sm font-medium text-c-text-primary">{t(`about_page.cards.${c.id}.title`)}</div>
+                <div className="text-xs text-c-text-tertiary mt-0.5">{t(`about_page.cards.${c.id}.description`)}</div>
                 <button
                   type="button"
-                  className="mt-2 text-sm text-[#4db6ac] font-medium hover:underline"
+                  className="mt-2 text-sm text-cpoint-turquoise font-medium hover:underline"
                   onClick={() => {
                     setPillarOpen(null)
                     setSlotOpen(c)

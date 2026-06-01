@@ -1,5 +1,7 @@
 import { createPortal } from 'react-dom'
+import { useTranslation } from 'react-i18next'
 import ZoomableImage from '../components/ZoomableImage'
+import type { MediaQuality } from './upload'
 
 export type PendingMediaItem = {
   file: File
@@ -14,6 +16,8 @@ export type ChatMediaPreviewModalProps = {
   onCancel: () => void
   onRemove: (index: number) => void
   onSend: () => void
+  quality?: MediaQuality
+  onQualityChange?: (quality: MediaQuality) => void
 }
 
 export function ChatMediaPreviewModal({
@@ -23,13 +27,17 @@ export function ChatMediaPreviewModal({
   onCancel,
   onRemove,
   onSend,
+  quality = 'standard',
+  onQualityChange,
 }: ChatMediaPreviewModalProps) {
+  const { t } = useTranslation()
   if (items.length === 0 || typeof document === 'undefined') return null
 
   const current = items[previewIndex]
+  const hasVideo = items.some(item => item.type === 'video')
 
   return createPortal(
-    <div className="fixed inset-0 bg-black z-[10050] flex flex-col" onClick={onCancel}>
+    <div className="theme-always-dark fixed inset-0 bg-black z-[10050] flex flex-col" onClick={onCancel}>
       <div
         className="flex items-center justify-between px-4 py-3 bg-black/80"
         style={{ paddingTop: 'calc(var(--sat-px, 0px) + 12px)' }}
@@ -38,7 +46,7 @@ export function ChatMediaPreviewModal({
           <i className="fa-solid fa-xmark text-xl" />
         </button>
         <span className="text-white font-medium">
-          {items.length > 1 ? `${previewIndex + 1} of ${items.length}` : 'Preview'}
+          {items.length > 1 ? t('chat.media_preview_count', { current: previewIndex + 1, total: items.length }) : t('chat.media_preview_title')}
         </span>
         <button
           type="button"
@@ -109,7 +117,7 @@ export function ChatMediaPreviewModal({
                 onPreviewIndexChange(i)
               }}
               className={`w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border-2 transition ${
-                i === previewIndex ? 'border-[#4db6ac]' : 'border-transparent opacity-60'
+                i === previewIndex ? 'border-cpoint-turquoise' : 'border-transparent opacity-60'
               }`}
             >
               {item.type === 'video' ? (
@@ -128,6 +136,28 @@ export function ChatMediaPreviewModal({
         </div>
       )}
 
+      {hasVideo && onQualityChange ? (
+        <div className="px-4 py-3 bg-black/80 border-t border-white/10" onClick={e => e.stopPropagation()}>
+          <div className="mx-auto max-w-sm rounded-full bg-white/10 p-1 flex">
+            {(['standard', 'hd'] as MediaQuality[]).map(option => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => onQualityChange(option)}
+                className={`flex-1 rounded-full px-3 py-2 text-sm font-medium transition ${
+                  quality === option ? 'bg-white text-black' : 'text-white/75 hover:text-white'
+                }`}
+              >
+                {option === 'standard' ? t('chat.media_quality_standard') : t('chat.media_quality_hd')}
+              </button>
+            ))}
+          </div>
+          <div className="mt-2 text-center text-xs text-white/55">
+            {quality === 'standard' ? t('chat.media_quality_standard_hint') : t('chat.media_quality_hd_hint')}
+          </div>
+        </div>
+      ) : null}
+
       <div
         className="flex items-center justify-center gap-4 px-4 py-4 bg-black/80 flex-shrink-0"
         style={{ paddingBottom: 'calc(var(--sab-px, 0px) + 16px)' }}
@@ -140,7 +170,7 @@ export function ChatMediaPreviewModal({
           }}
           className="px-6 py-3 bg-white/10 text-white rounded-full font-medium hover:bg-white/20 transition touch-manipulation"
         >
-          Cancel
+          {t('common.cancel', 'Cancel')}
         </button>
         <button
           type="button"
@@ -148,10 +178,10 @@ export function ChatMediaPreviewModal({
             e.stopPropagation()
             onSend()
           }}
-          className="px-8 py-3 bg-[#4db6ac] text-black rounded-full font-medium hover:bg-[#45a89c] transition flex items-center gap-2 touch-manipulation"
+          className="px-8 py-3 bg-cpoint-turquoise text-black rounded-full font-medium hover:brightness-95 transition flex items-center gap-2 touch-manipulation"
         >
           <i className="fa-solid fa-paper-plane" />
-          Send {items.length > 1 ? `(${items.length})` : ''}
+          {t('chat.send_media', { count: items.length })}
         </button>
       </div>
     </div>,

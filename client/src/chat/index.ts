@@ -87,6 +87,7 @@ export {
 
 // Media senders (already existed)
 export { sendImageMessage, sendVideoMessage } from './mediaSenders'
+export { isChatUploadV2Enabled, uploadChatMediaBlob, SENDING_MEDIA_LABEL as CHAT_UPLOAD_SENDING_LABEL } from './upload'
 export { chatHapticSend, chatHapticAttachToggle, chatHapticComposerTap, chatHapticMenuOpen, chatHapticReaction } from './chatHaptics'
 export { ChatAttachMenuRow } from './ChatAttachMenuRow'
 export { ChatMediaPreviewModal } from './ChatMediaPreviewModal'

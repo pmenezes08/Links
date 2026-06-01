@@ -23,14 +23,14 @@ function MenuItem({ icon, label, onClick }: MenuItemProps) {
   return (
     <button
       type="button"
-      className="flex w-full items-center justify-between rounded-xl px-4 py-3 text-left text-white transition-colors hover:bg-white/5"
+      className="flex w-full items-center justify-between rounded-xl px-4 py-3 text-left text-c-text-primary transition-colors hover:bg-c-hover-bg"
       onClick={onClick}
     >
       <span className="flex min-w-0 items-center gap-4">
-        <i className={`${icon} w-5 text-center text-white`} />
+        <i className={`${icon} w-5 text-center text-c-text-primary`} />
         <span className="truncate">{label}</span>
       </span>
-      <i className="fa-solid fa-chevron-right text-xs text-white" />
+      <i className="fa-solid fa-chevron-right text-xs text-c-text-primary" />
     </button>
   )
 }
@@ -70,7 +70,7 @@ export default function BurgerMenuDrawer({
       onClick={(e) => e.currentTarget === e.target && closeDrawer()}
     >
       <div
-        className="burger-menu-sheet h-full w-[90%] max-w-sm overflow-y-auto overscroll-contain border-r border-white/10 bg-black/95 p-4 text-white shadow-[24px_0_70px_rgba(0,0,0,0.72)] backdrop-blur-md"
+        className="burger-menu-sheet h-full w-[90%] max-w-sm overflow-y-auto overscroll-contain border-r border-c-border bg-c-bg-elevated p-4 text-c-text-primary shadow-[24px_0_70px_rgba(0,0,0,0.72)] backdrop-blur-md"
         style={{
           paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)',
           paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)',
@@ -78,13 +78,13 @@ export default function BurgerMenuDrawer({
       >
         <button
           type="button"
-          className="flex w-full items-center gap-3 border-b border-white/10 pb-5 text-left"
+          className="flex w-full items-center gap-3 border-b border-c-border pb-5 text-left"
           onClick={() => goTo(profilePath)}
         >
           <Avatar username={username || ''} url={avatarUrl || null} size={52} />
           <span className="min-w-0">
             <span className="block truncate font-medium">{title}</span>
-            <span className="block truncate text-sm text-[#9fb0b5]">{t('chat.view_profile')}</span>
+            <span className="block truncate text-sm text-c-text-tertiary">{t('chat.view_profile')}</span>
           </span>
         </button>
 
@@ -101,17 +101,17 @@ export default function BurgerMenuDrawer({
           <MenuItem icon="fa-solid fa-cube" label={t('navigation.subscriptions')} onClick={() => goTo('/subscription_plans')} />
           <MenuItem icon="fa-solid fa-gear" label={t('navigation.account_settings')} onClick={() => goTo('/account_settings')} />
 
-          <div className="my-2 border-t border-white/10 pt-2">
+          <div className="my-2 border-t border-c-border pt-2">
             <button
               type="button"
-              className="flex w-full items-center gap-4 rounded-xl px-4 py-3 text-left text-white transition-colors hover:bg-white/5"
+              className="flex w-full items-center gap-4 rounded-xl px-4 py-3 text-left text-c-text-primary transition-colors hover:bg-c-hover-bg"
               onClick={(e) => {
                 void triggerHaptic('medium')
                 onClose()
                 requestLogout(e)
               }}
             >
-              <i className="fa-solid fa-right-from-bracket w-5 text-center text-white" />
+              <i className="fa-solid fa-right-from-bracket w-5 text-center text-c-text-primary" />
               <span className="truncate">{t('navigation.logout')}</span>
             </button>
           </div>

@@ -21,9 +21,9 @@ const SIZE_CLASS: Record<'sm' | 'md' | 'lg', string> = {
 
 const VARIANT_CLASS: Record<'glass' | 'muted', string> = {
   glass:
-    'bg-white/12 hover:bg-white/22 active:bg-white/28 text-white active:scale-95 disabled:opacity-40 disabled:active:scale-100',
+    'bg-c-hover-bg hover:bg-c-active-bg active:bg-c-active-bg text-c-text-primary active:scale-95 disabled:opacity-40 disabled:active:scale-100',
   muted:
-    'bg-white/10 hover:bg-white/15 active:bg-white/20 text-white active:scale-95 disabled:opacity-40 disabled:active:scale-100',
+    'bg-c-active-bg hover:bg-c-hover-bg active:bg-c-active-bg text-c-text-primary active:scale-95 disabled:opacity-40 disabled:active:scale-100',
 }
 
 export function NativeIconButton({

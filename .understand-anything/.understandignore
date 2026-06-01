@@ -1,0 +1,20 @@
+# C-Point — exclude build artifacts, mobile native trees, and test-only paths
+client/dist/
+client/android/
+client/ios/
+landing/
+landing/dist/
+admin-web/
+admin-web/dist/
+static/
+tests/
+scripts/
+android-backup/
+.cursor/
+templates/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+*.min.js
+*.min.css

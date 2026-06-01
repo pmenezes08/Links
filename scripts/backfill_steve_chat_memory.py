@@ -24,9 +24,24 @@ if ROOT not in sys.path:
 
 
 def _get_firestore_client():
-    """Lazy import to avoid import-time side effects in tests."""
-    from firebase_admin import firestore as _fs
-    return _fs.client()
+    """Lazy import and initialize Firebase Admin if needed."""
+    import firebase_admin
+    from firebase_admin import credentials, firestore as _fs
+
+    if not firebase_admin._apps:
+        # Use Application Default Credentials (gcloud auth / service account)
+        try:
+            cred = credentials.ApplicationDefault()
+            firebase_admin.initialize_app(cred, {
+                'projectId': 'cpoint-127c2',
+            })
+            print("Firebase initialized with ApplicationDefault credentials")
+        except Exception as init_err:
+            print("Firebase init warning:", init_err)
+            # Fallback to default
+            firebase_admin.initialize_app()
+
+    return _fs.client(database_id="cpoint")
 
 
 def main() -> int:

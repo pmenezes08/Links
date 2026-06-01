@@ -12,6 +12,7 @@ import { GroupMessageRow } from '../chat/GroupMessageRow'
 import { getDateKey, normalizeMediaPath, useChatThreadChrome, chatHapticSend, ChatAttachMenuRow, useGroupMessagePoll, ChatMediaPreviewModal, ChatMediaViewerModal, ChatSelectionBar, NewMessagesChip, useResumeOutboxDrain, ChatComposerPortal, ChatComposerCard, ChatVirtualMessageList, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION, readStaleDeviceCache, markThreadCachePainted, isCachePaintedForGen, isUnchangedFromCacheSnapshot, hydrateThreadFromIndexedDb } from '../chat'
 import { groupChatInfoDeviceCacheKey, groupChatMessagesDeviceCacheKey } from '../utils/chatThreadsCache'
 import { useAndroidBackButton } from '../hooks/useAndroidBackButton'
+import { getStoredMediaQuality, setStoredMediaQuality, type MediaQuality } from '../chat/upload'
 import { hapticImpactLight } from '../utils/haptics'
 import { NativeIconButton } from '../components/NativeIconButton'
 import {
@@ -27,9 +28,10 @@ import {
   shouldClientBlockSteveIntent,
 } from '../utils/steveClientGate'
 import { sendGroupImageMessage, sendGroupMultiMedia } from '../chat/groupChatMediaSenders'
+import { comparableMediaUrl, consumeDeletedMedia, mediaDeleteScopeForGroup, type DeletedMediaItem } from '../chat/mediaDeletionEvents'
 import ChatThreadSearch from '../chat/ChatThreadSearch'
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
-import { SENDING_MEDIA_LABEL, sendGroupDocumentMessage } from '../chat/mediaSenders'
+import { sendGroupDocumentMessage } from '../chat/mediaSenders'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
 import { openExternalNativeLink } from '../utils/openExternalInApp'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
@@ -59,6 +61,34 @@ type Message = {
   replySender?: string
   is_edited?: boolean
   reaction?: string | null
+}
+
+function removeDeletedMediaFromGroupMessages(messages: Message[], deletedItems: DeletedMediaItem[]): Message[] {
+  if (!deletedItems.length) return messages
+  const deletedByMessage = new Map<number, Set<string>>()
+  for (const item of deletedItems) {
+    const set = deletedByMessage.get(item.message_id) || new Set<string>()
+    set.add(comparableMediaUrl(item.media_url))
+    deletedByMessage.set(item.message_id, set)
+  }
+  return messages
+    .map(message => {
+      const deleted = deletedByMessage.get(Number(message.id))
+      if (!deleted) return message
+      const keep = (url?: string | null) => !!url && !deleted.has(comparableMediaUrl(url))
+      const mediaPaths = (message.media_paths || []).filter(keep)
+      return {
+        ...message,
+        media_paths: mediaPaths.length ? mediaPaths : null,
+        image: keep(message.image) ? message.image : null,
+        video: keep(message.video) ? message.video : null,
+      }
+    })
+    .filter(message => {
+      const hasBody = !!(message.text || '').trim()
+      const hasMedia = !!message.image || !!message.video || !!message.voice || !!message.media_paths?.length
+      return hasBody || hasMedia
+    })
 }
 
 type Member = {
@@ -164,6 +194,20 @@ export default function GroupChatThread() {
     )
     return cached?.length ? cached : []
   })
+  useEffect(() => {
+    if (!group_id) return
+    const scope = mediaDeleteScopeForGroup(group_id)
+    const apply = (items: DeletedMediaItem[]) => {
+      if (items.length) setServerMessages(prev => removeDeletedMediaFromGroupMessages(prev, items))
+    }
+    apply(consumeDeletedMedia(scope))
+    const onDeleted = (event: Event) => {
+      const detail = (event as CustomEvent<{ scope?: string; items?: DeletedMediaItem[] }>).detail
+      if (detail?.scope === scope) apply(detail.items || [])
+    }
+    window.addEventListener('chat-media-deleted', onDeleted)
+    return () => window.removeEventListener('chat-media-deleted', onDeleted)
+  }, [group_id])
   // `loading` only gates the inline spinner inside the chat shell; we no
   // longer return a separate full-screen loading view.
   const [loading, setLoading] = useState(false)
@@ -198,9 +242,11 @@ export default function GroupChatThread() {
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [uploadingMedia, setUploadingMedia] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null)
+  const [cancelActiveUpload, setCancelActiveUpload] = useState<(() => void) | null>(null)
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
   // Multi-media preview state
   const [pendingMedia, setPendingMedia] = useState<Array<{ file: File; previewUrl: string; type: 'image' | 'video' | 'audio' }>>([])
+  const [mediaQuality, setMediaQuality] = useState<MediaQuality>(() => getStoredMediaQuality())
   const [previewIndex, setPreviewIndex] = useState(0)
   const shareAttachDoneRef = useRef(false)
 
@@ -1288,8 +1334,11 @@ export default function GroupChatThread() {
       currentUsername,
       setServerMessages,
       loadMessages,
+      quality: mediaQuality,
       onProgress: setUploadProgress,
       onError: (msg) => alert(msg),
+      onLimitReached: entitlementsHandler.showError,
+      onCancelReady: (cancel) => setCancelActiveUpload(() => cancel),
       onComplete: () => {
         setUploadingMedia(false)
         setUploadProgress(null)
@@ -1409,8 +1458,11 @@ export default function GroupChatThread() {
       currentUsername,
       setServerMessages,
       loadMessages,
+      quality: mediaQuality,
       onProgress: setUploadProgress,
       onError: (msg) => alert(msg),
+      onLimitReached: entitlementsHandler.showError,
+      onCancelReady: (cancel) => setCancelActiveUpload(() => cancel),
       onComplete: () => {
         setUploadProgress(null)
       },
@@ -1426,6 +1478,11 @@ export default function GroupChatThread() {
     })
     setPendingMedia([])
     setPreviewIndex(0)
+  }
+
+  const handleMediaQualityChange = (next: MediaQuality) => {
+    setMediaQuality(next)
+    setStoredMediaQuality(next)
   }
 
   // GIF selection handler - uses modular sender
@@ -1445,6 +1502,7 @@ export default function GroupChatThread() {
         loadMessages,
         onProgress: setUploadProgress,
         onError: (msg) => alert(msg),
+        onLimitReached: entitlementsHandler.showError,
         onComplete: () => {
           setUploadingMedia(false)
           setUploadProgress(null)
@@ -1713,7 +1771,7 @@ export default function GroupChatThread() {
   }
 
   const renderMessageText = useCallback(
-    (text: string) => renderTextWithSourceLinks(text, false, mentionToProfile, openExternalArticle),
+    (text: string, isSent?: boolean) => renderTextWithSourceLinks(text, false, mentionToProfile, openExternalArticle, isSent),
     [mentionToProfile, openExternalArticle],
   )
 
@@ -2044,11 +2102,11 @@ export default function GroupChatThread() {
 
   if (error) {
     return (
-      <div className="min-h-screen chat-thread-bg text-white flex flex-col">
-        <div style={{ paddingTop: 'env(safe-area-inset-top, 0px)', background: '#000' }}>
+      <div className="min-h-screen chat-thread-bg text-c-text-primary flex flex-col">
+        <div className="bg-c-header-bg" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
           <div className="h-12 flex items-center px-3">
-            <button className="p-2 rounded-full hover:bg-white/10" onClick={() => { hapticImpactLight(); navigate('/user_chat') }} aria-label={t('common.back')}>
-              <i className="fa-solid fa-arrow-left text-white" />
+            <button className="p-2 rounded-full hover:bg-c-hover-bg" onClick={() => { hapticImpactLight(); navigate('/user_chat') }} aria-label={t('common.back')}>
+              <i className="fa-solid fa-arrow-left text-c-text-primary" />
             </button>
           </div>
         </div>
@@ -2057,7 +2115,7 @@ export default function GroupChatThread() {
             <div className="text-red-400 mb-4">{error}</div>
             <button
               onClick={() => navigate('/user_chat')}
-              className="px-4 py-2 bg-white/10 rounded-lg hover:bg-white/20"
+              className="px-4 py-2 bg-c-active-bg rounded-lg hover:bg-white/20"
             >
               Back to Messages
             </button>
@@ -2069,7 +2127,7 @@ export default function GroupChatThread() {
 
   return (
     <div 
-      className="text-white chat-thread-bg"
+      className="text-c-text-primary chat-thread-bg"
       style={{
         position: 'fixed',
         left: 0,
@@ -2083,7 +2141,7 @@ export default function GroupChatThread() {
     >
       {/* Header - fixed at top with safe area */}
       <div 
-        className="flex-shrink-0 border-b border-[#262f30]"
+        className="flex-shrink-0 border-b border-c-border bg-c-header-bg"
         style={{
           position: 'fixed',
           top: 0,
@@ -2094,39 +2152,38 @@ export default function GroupChatThread() {
           paddingTop: 'env(safe-area-inset-top, 0px)',
           paddingLeft: 'env(safe-area-inset-left, 0px)',
           paddingRight: 'env(safe-area-inset-right, 0px)',
-          background: '#000',
         }}
       >
         <div className="h-12 flex items-center gap-2 px-3">
           <button 
-            className="p-2 rounded-full hover:bg-white/10 transition-colors" 
+            className="p-2 rounded-full hover:bg-c-hover-bg transition-colors" 
             onClick={() => { hapticImpactLight(); navigate('/user_chat') }} 
             aria-label={t('chat.back_to_messages')}
           >
-            <i className="fa-solid fa-arrow-left text-white" />
+            <i className="fa-solid fa-arrow-left text-c-text-primary" />
           </button>
           <div className="w-9 h-9 rounded-full bg-cpoint-turquoise/20 flex items-center justify-center">
             <i className="fa-solid fa-users text-cpoint-turquoise text-sm" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="font-semibold truncate text-white text-sm">
+            <div className="font-semibold truncate text-c-text-primary text-sm">
               {group?.name || 'Group Chat'}
             </div>
-            <div className="text-xs text-[#9fb0b5]">
+            <div className="text-xs text-c-text-tertiary">
               {group?.members.length} members
             </div>
           </div>
           <button
             type="button"
-            className="p-2 rounded-full hover:bg-white/10 transition-colors"
+            className="p-2 rounded-full hover:bg-c-hover-bg transition-colors"
             aria-label="Search messages"
             onClick={() => setSearchOpen(true)}
           >
-            <i className="fa-solid fa-magnifying-glass text-white/70" />
+            <i className="fa-solid fa-magnifying-glass text-c-text-secondary" />
           </button>
           <button 
             type="button"
-            className="p-2 rounded-full hover:bg-white/10 transition-colors" 
+            className="p-2 rounded-full hover:bg-c-hover-bg transition-colors" 
             aria-label={t('chat.more_options')}
             aria-haspopup="true"
             aria-expanded={headerMenuOpen}
@@ -2136,7 +2193,7 @@ export default function GroupChatThread() {
               setHeaderMenuOpen(prev => !prev)
             }}
           >
-            <i className="fa-solid fa-ellipsis-vertical text-white/70" />
+            <i className="fa-solid fa-ellipsis-vertical text-c-text-secondary" />
           </button>
           {headerMenuOpen && (
             <div
@@ -2145,9 +2202,9 @@ export default function GroupChatThread() {
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="rounded-xl border border-white/10 bg-[#111111] shadow-lg shadow-black/40 py-1">
+              <div className="rounded-xl border border-c-border bg-c-bg-surface shadow-lg shadow-black/40 py-1">
                 <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-c-text-secondary hover:bg-c-hover-bg transition-colors"
                   onClick={() => {
                     setHeaderMenuOpen(false)
                     setShowMembers(true)
@@ -2157,7 +2214,7 @@ export default function GroupChatThread() {
                   <span>{t('chat.view_members')}</span>
                 </button>
                 <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-c-text-secondary hover:bg-c-hover-bg transition-colors"
                   onClick={() => {
                     setHeaderMenuOpen(false)
                     navigate(`/group_chat/${group_id}/media`)
@@ -2167,7 +2224,7 @@ export default function GroupChatThread() {
                   <span>{t('chat.view_media')}</span>
                 </button>
                 <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-c-text-secondary hover:bg-c-hover-bg transition-colors"
                   onClick={() => {
                     setHeaderMenuOpen(false)
                     navigate(`/group_chat/${group_id}/documents`)
@@ -2177,7 +2234,7 @@ export default function GroupChatThread() {
                   <span>{t('chat.view_documents')}</span>
                 </button>
                 <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-c-text-secondary hover:bg-c-hover-bg transition-colors"
                   onClick={() => {
                     setHeaderMenuOpen(false)
                     if (!confirm(t('chat.reset_steve_confirm'))) return
@@ -2200,7 +2257,7 @@ export default function GroupChatThread() {
                   <span>{t('chat.reset_steve')}</span>
                 </button>
                 <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-c-text-secondary hover:bg-c-hover-bg transition-colors"
                   onClick={() => {
                     setHeaderMenuOpen(false)
                     setShowAddMembers(true)
@@ -2212,7 +2269,7 @@ export default function GroupChatThread() {
                 </button>
                 {group?.members.find(m => m.username === currentUsername)?.is_admin && (
                   <button
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-c-text-secondary hover:bg-c-hover-bg transition-colors"
                     onClick={() => {
                       setHeaderMenuOpen(false)
                       setRenameText(group?.name || '')
@@ -2229,7 +2286,7 @@ export default function GroupChatThread() {
                   </button>
                 )}
                 <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/10 transition-colors"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-c-hover-bg transition-colors"
                   onClick={() => {
                     setHeaderMenuOpen(false)
                     handleLeave()
@@ -2259,7 +2316,7 @@ export default function GroupChatThread() {
           <div
             ref={listRef}
             data-preserve-scroll="true"
-            className={`flex-1 overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3 chat-list-inset${insetMotionIdle ? ' chat-list-idle-smooth' : ''}`}
+            className={`flex-1 overflow-y-auto overflow-x-hidden text-c-text-primary px-2.5 sm:px-3 chat-list-inset${insetMotionIdle ? ' chat-list-idle-smooth' : ''}`}
             style={{
               WebkitOverflowScrolling: 'touch',
               overscrollBehaviorY: 'auto',
@@ -2410,12 +2467,12 @@ export default function GroupChatThread() {
               </div>
             )}
             {messages.length === 0 && loading && (
-              <div className="flex flex-col items-center justify-center py-20 text-[#9fb0b5]">
+              <div className="flex flex-col items-center justify-center py-20 text-c-text-tertiary">
                 <i className="fa-solid fa-spinner fa-spin text-2xl mb-3 opacity-70" />
               </div>
             )}
             {messages.length === 0 && !loading && (
-              <div className="flex flex-col items-center justify-center py-20 text-[#9fb0b5]">
+              <div className="flex flex-col items-center justify-center py-20 text-c-text-tertiary">
                 {!navigator.onLine ? (
                   <>
                     <i className="fa-solid fa-wifi-slash text-3xl mb-3 opacity-50" />
@@ -2451,7 +2508,7 @@ export default function GroupChatThread() {
       {viewingHistory && !selectionMode && (
         <button
           type="button"
-          className="fixed z-50 h-10 px-4 rounded-full bg-[#00cec8] text-black text-sm font-medium shadow-lg hover:brightness-110 flex items-center gap-2"
+          className="fixed z-50 h-10 px-4 rounded-full bg-cpoint-turquoise text-black text-sm font-medium shadow-lg hover:brightness-110 flex items-center gap-2"
           style={{
             bottom: scrollButtonBottom,
             left: '50%',
@@ -2515,7 +2572,7 @@ export default function GroupChatThread() {
                 }}
               />
               <div
-                className="absolute z-50 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-xl overflow-hidden min-w-[190px]"
+                className="absolute z-50 bg-c-bg-surface border border-c-border rounded-2xl shadow-xl overflow-hidden min-w-[190px]"
                 style={{
                   touchAction: 'manipulation',
                   bottom: 'calc(100% + 8px)',
@@ -2527,8 +2584,8 @@ export default function GroupChatThread() {
                     <i className="fa-solid fa-image text-cpoint-turquoise text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.photos')}</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.send_from_gallery')}</div>
+                    <div className="text-c-text-primary font-medium text-sm sm:text-base">{t('chat.photos')}</div>
+                    <div className="text-c-text-tertiary text-[10px] sm:text-xs">{t('chat.send_from_gallery')}</div>
                   </div>
                 </ChatAttachMenuRow>
                 <ChatAttachMenuRow onClick={handleCameraOpen}>
@@ -2536,8 +2593,8 @@ export default function GroupChatThread() {
                     <i className="fa-solid fa-camera text-cpoint-turquoise text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.camera')}</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.take_photo')}</div>
+                    <div className="text-c-text-primary font-medium text-sm sm:text-base">{t('chat.camera')}</div>
+                    <div className="text-c-text-tertiary text-[10px] sm:text-xs">{t('chat.take_photo')}</div>
                   </div>
                 </ChatAttachMenuRow>
                 <ChatAttachMenuRow onClick={handleVideoSelect}>
@@ -2545,8 +2602,8 @@ export default function GroupChatThread() {
                     <i className="fa-solid fa-video text-cpoint-turquoise text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.video')}</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.send_from_gallery')}</div>
+                    <div className="text-c-text-primary font-medium text-sm sm:text-base">{t('chat.video')}</div>
+                    <div className="text-c-text-tertiary text-[10px] sm:text-xs">{t('chat.send_from_gallery')}</div>
                   </div>
                 </ChatAttachMenuRow>
                 <ChatAttachMenuRow onClick={handleDocumentSelect}>
@@ -2554,8 +2611,8 @@ export default function GroupChatThread() {
                     <i className="fa-solid fa-file-pdf text-cpoint-turquoise text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.document')}</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.send_pdf')}</div>
+                    <div className="text-c-text-primary font-medium text-sm sm:text-base">{t('chat.document')}</div>
+                    <div className="text-c-text-tertiary text-[10px] sm:text-xs">{t('chat.send_pdf')}</div>
                   </div>
                 </ChatAttachMenuRow>
                 <ChatAttachMenuRow onClick={() => { setShowAttachMenu(false); setGifPickerOpen(true) }}>
@@ -2563,8 +2620,8 @@ export default function GroupChatThread() {
                     <i className="fa-solid fa-images text-cpoint-turquoise text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">GIF</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.powered_by_giphy')}</div>
+                    <div className="text-c-text-primary font-medium text-sm sm:text-base">GIF</div>
+                    <div className="text-c-text-tertiary text-[10px] sm:text-xs">{t('chat.powered_by_giphy')}</div>
                   </div>
                 </ChatAttachMenuRow>
               </div>
@@ -2573,13 +2630,13 @@ export default function GroupChatThread() {
 
           {/* Reply preview */}
           {replyTo && (
-            <div className="mb-2 flex items-stretch gap-0 bg-white/5 rounded-lg overflow-hidden">
+            <div className="mb-2 flex items-stretch gap-0 bg-c-hover-bg rounded-lg overflow-hidden">
               {/* Left accent bar */}
               <div className="w-1 bg-cpoint-turquoise flex-shrink-0" />
               <div className="flex-1 px-3 py-2 min-w-0 flex items-start gap-2">
                 {/* Media thumbnail preview */}
                 {replyTo.image && (
-                  <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-black/30">
+                  <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-c-bg-recessed">
                     <img 
                       src={normalizeMediaPath(replyTo.image)} 
                       alt="Photo" 
@@ -2588,7 +2645,7 @@ export default function GroupChatThread() {
                   </div>
                 )}
                 {replyTo.video && !replyTo.image && (
-                  <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-black/30">
+                  <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-c-bg-recessed">
                     <video 
                       src={normalizeMediaPath(replyTo.video) + '#t=0.1'} 
                       className="w-full h-full object-cover"
@@ -2597,15 +2654,15 @@ export default function GroupChatThread() {
                   </div>
                 )}
                 {replyTo.voice && !replyTo.image && !replyTo.video && (
-                  <div className="w-10 h-10 rounded bg-black/30 flex items-center justify-center flex-shrink-0">
-                    <i className="fa-solid fa-microphone text-white/60 text-sm" />
+                  <div className="w-10 h-10 rounded bg-c-bg-recessed flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-microphone text-c-text-tertiary text-sm" />
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="text-[12px] text-cpoint-turquoise font-medium truncate">
                     {replyTo.sender}
                   </div>
-                  <div className="mt-0.5 text-[13px] text-white/70 whitespace-pre-wrap break-words leading-[1.25]">
+                  <div className="mt-0.5 text-[13px] text-c-text-secondary whitespace-pre-wrap break-words leading-[1.25]">
                     {replyTo.voice ? (
                       <><i className="fa-solid fa-microphone text-xs mr-1" />{replyTo.audio_summary ? replyTo.audio_summary.slice(0, 80) + (replyTo.audio_summary.length > 80 ? '…' : '') : 'Voice message'}</>
                     ) : replyTo.video ? (
@@ -2621,9 +2678,9 @@ export default function GroupChatThread() {
               <button
                 type="button"
                 onClick={() => setReplyTo(null)}
-                className="px-3 flex items-center justify-center hover:bg-white/5"
+                className="px-3 flex items-center justify-center hover:bg-c-hover-bg"
               >
-                <i className="fa-solid fa-xmark text-white/40" />
+                <i className="fa-solid fa-xmark text-c-text-tertiary" />
               </button>
             </div>
           )}
@@ -2632,12 +2689,12 @@ export default function GroupChatThread() {
           {mentionQuery !== null && filteredMentions.length > 0 && (
             <div 
               ref={mentionDropdownRef}
-              className="mb-2 bg-[#1a1a2e] border border-white/20 rounded-lg shadow-xl max-h-48 overflow-y-auto"
+              className="mb-2 bg-c-bg-elevated border border-c-border rounded-lg shadow-xl max-h-48 overflow-y-auto"
             >
               {filteredMentions.map((member) => (
                 <button
                   key={member.username}
-                  className="w-full px-3 py-2.5 flex items-center gap-3 hover:bg-white/10 active:bg-white/20 text-left transition-colors"
+                  className="w-full px-3 py-2.5 flex items-center gap-3 hover:bg-c-hover-bg active:bg-white/20 text-left transition-colors"
                   onPointerDown={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
@@ -2649,7 +2706,7 @@ export default function GroupChatThread() {
                     username={member.username} 
                     size={32} 
                   />
-                  <span className="text-white text-sm font-medium">@{member.username}</span>
+                  <span className="text-c-text-primary text-sm font-medium">@{member.username}</span>
                 </button>
               ))}
             </div>
@@ -2657,7 +2714,7 @@ export default function GroupChatThread() {
 
           {/* Media upload progress (same pattern as DM ChatThread — above composer) */}
           {mediaUploadBanner && (
-            <div className="mb-2 px-3 py-2.5 bg-white/5 rounded-lg">
+            <div className="mb-2 px-3 py-2.5 bg-c-hover-bg rounded-lg">
               <div className="flex items-center gap-3">
                 <div className="flex-shrink-0">
                   {mediaUploadBanner.stage === 'uploading' && (
@@ -2671,14 +2728,16 @@ export default function GroupChatThread() {
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm text-white/80 truncate">
+                  <div className="text-sm text-c-text-secondary truncate">
                     {mediaUploadBanner.stage === 'uploading'
-                      ? SENDING_MEDIA_LABEL
+                      ? t('chat.upload_sending_media')
                       : mediaUploadBanner.stage === 'done'
-                        ? (mediaUploadBanner.message || 'Sent!')
-                        : (mediaUploadBanner.message || 'Could not send')}
+                        ? (mediaUploadBanner.message || t('chat.upload_sent'))
+                        : (mediaUploadBanner.message === 'Upload cancelled'
+                          ? t('chat.upload_cancelled_full')
+                          : (mediaUploadBanner.message || t('chat.upload_failed_short')))}
                   </div>
-                  <div className="mt-1.5 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                  <div className="mt-1.5 h-1.5 bg-c-active-bg rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all duration-300 ${
                         mediaUploadBanner.stage === 'error' ? 'bg-red-400' : 'bg-cpoint-turquoise'
@@ -2687,9 +2746,20 @@ export default function GroupChatThread() {
                     />
                   </div>
                 </div>
-                <div className="flex-shrink-0 text-xs text-white/50">
+                <div className="flex-shrink-0 text-xs text-c-text-tertiary">
                   {Math.round(mediaUploadBanner.progress)}%
                 </div>
+                {mediaUploadBanner.stage === 'uploading' && cancelActiveUpload ? (
+                  <button
+                    type="button"
+                    onClick={cancelActiveUpload}
+                    className="flex-shrink-0 w-8 h-8 rounded-full bg-white/10 text-c-text-primary hover:bg-white/20"
+                    aria-label={t('chat.cancel_upload')}
+                    title={t('chat.cancel_upload')}
+                  >
+                    <i className="fa-solid fa-xmark" />
+                  </button>
+                ) : null}
               </div>
             </div>
           )}
@@ -2706,7 +2776,7 @@ export default function GroupChatThread() {
                 setShowAttachMenu(!showAttachMenu)
               }}
             >
-              <i className={`fa-solid text-white text-base sm:text-lg transition-transform duration-200 pointer-events-none ${
+              <i className={`fa-solid text-c-text-primary text-base sm:text-lg transition-transform duration-200 pointer-events-none ${
                 showAttachMenu ? 'fa-xmark rotate-90' : 'fa-plus'
               }`} />
             </NativeIconButton>
@@ -2757,7 +2827,7 @@ export default function GroupChatThread() {
 
             {/* Message input container */}
             <div
-              className="flex-1 flex items-center rounded-lg bg-white/8 overflow-hidden relative"
+              className="flex-1 flex items-center rounded-lg bg-c-composer-input overflow-hidden relative"
               style={{
                 touchAction: 'manipulation',
                 WebkitTapHighlightColor: 'transparent'
@@ -2766,10 +2836,10 @@ export default function GroupChatThread() {
               {/* Recording sound bar */}
               {MIC_ENABLED && recording && (
                 <div className="flex-1 flex items-center px-3 py-2 gap-2">
-                  <div className="flex-1 h-2 bg-white/10 rounded overflow-hidden">
+                  <div className="flex-1 h-2 bg-c-active-bg rounded overflow-hidden">
                     <div className="h-full bg-[#7fe7df] transition-all" style={{ width: `${Math.max(6, Math.min(96, (level||0)*100))}%` }} />
                   </div>
-                  <div className="text-sm font-mono text-white tabular-nums flex-shrink-0 min-w-[45px] text-right">
+                  <div className="text-sm font-mono text-c-text-primary tabular-nums flex-shrink-0 min-w-[45px] text-right">
                     {formatRecordingTime(recordMs || 0)}
                   </div>
                 </div>
@@ -2812,7 +2882,7 @@ export default function GroupChatThread() {
                     <div className="flex-1 h-1.5 bg-white/20 rounded-full overflow-hidden">
                       <div className="h-full bg-cpoint-turquoise w-full" />
                     </div>
-                    <span className="text-xs text-white/70 tabular-nums flex-shrink-0">
+                    <span className="text-xs text-c-text-secondary tabular-nums flex-shrink-0">
                       {formatRecordingTime((recordingPreview.duration || 0) * 1000)}
                     </span>
                   </div>
@@ -2824,7 +2894,7 @@ export default function GroupChatThread() {
                 <textarea
                   ref={textareaRef}
                   rows={1}
-                  className="flex-1 bg-transparent px-3 sm:px-3.5 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-40 min-h-[38px]"
+                  className="flex-1 bg-transparent px-3 sm:px-3.5 py-2 text-[15px] text-c-text-primary placeholder-c-text-tertiary outline-none resize-none max-h-40 min-h-[38px]"
                   placeholder={t('chat.message_placeholder')}
                   defaultValue=""
                   autoComplete="off"
@@ -2906,7 +2976,7 @@ export default function GroupChatThread() {
                 size="lg"
                 haptic="light"
                 preventBlur
-                className="text-white/80"
+                className="text-c-text-secondary"
                 onClick={(e) => {
                   if (justSentRef.current) return
                   e.preventDefault()
@@ -2986,7 +3056,7 @@ export default function GroupChatThread() {
                     ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
                     : draftDisplay.trim()
                       ? 'bg-cpoint-turquoise text-black'
-                      : 'bg-white/12 text-white/70'
+                      : 'bg-white/12 text-c-text-secondary'
                 } ${!sending ? 'active:scale-95' : ''}`}
                 onPointerDown={(e) => {
                   if (!draftDisplay.trim() || sending) return
@@ -3020,10 +3090,9 @@ export default function GroupChatThread() {
         )}
         {/* Safe area spacer — hidden when keyboard is open to avoid double spacing */}
         <div
-          className={`chat-composer-spacer-smooth${keyboardChromeActive ? ' chat-composer-spacer-keyboard' : ''}`}
+          className={`chat-composer-spacer-smooth bg-c-composer-bg${keyboardChromeActive ? ' chat-composer-spacer-keyboard' : ''}`}
           style={{
             height: keyboardChromeActive ? '0px' : `${safeBottomPx}px`,
-            background: '#000',
             flexShrink: 0,
           }}
         />
@@ -3042,33 +3111,33 @@ export default function GroupChatThread() {
       {/* Members Modal */}
       {showMembers && group && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+          className="fixed inset-0 bg-c-bg-overlay backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
           onClick={() => setShowMembers(false)}
         >
           <div
-            className="w-full max-w-sm bg-[#1a1a1a] rounded-2xl border border-white/10 max-h-[80vh] overflow-hidden"
+            className="w-full max-w-sm bg-c-bg-surface rounded-2xl border border-c-border max-h-[80vh] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-4 border-b border-white/10 flex items-center justify-between">
+            <div className="p-4 border-b border-c-border flex items-center justify-between">
               <div>
                 <div className="font-semibold">{group.name}</div>
-                <div className="text-xs text-[#9fb0b5]">{group.members.length} members</div>
+                <div className="text-xs text-c-text-tertiary">{group.members.length} members</div>
               </div>
               <button
                 onClick={() => setShowMembers(false)}
-                className="p-2 rounded-full hover:bg-white/5"
+                className="p-2 rounded-full hover:bg-c-hover-bg"
               >
                 <i className="fa-solid fa-xmark" />
               </button>
             </div>
 
             <div className="p-4 max-h-[50vh] overflow-y-auto">
-              <div className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-3">{t('chat.members_section')}</div>
+              <div className="text-xs text-c-text-tertiary uppercase tracking-wide mb-3">{t('chat.members_section')}</div>
               <div className="space-y-2">
                 {group.members.map((member) => (
                   <div
                     key={member.username}
-                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5"
+                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-c-hover-bg"
                   >
                     <Avatar
                       username={member.username}
@@ -3114,7 +3183,7 @@ export default function GroupChatThread() {
               </div>
             </div>
 
-            <div className="p-4 border-t border-white/10">
+            <div className="p-4 border-t border-c-border">
               <button
                 onClick={handleLeave}
                 className="w-full px-4 py-3 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition"
@@ -3130,16 +3199,16 @@ export default function GroupChatThread() {
       {/* Manage Group Modal */}
       {showManageGroup && group && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+          className="fixed inset-0 bg-c-bg-overlay backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
           onClick={() => setShowManageGroup(false)}
         >
           <div
-            className="w-full max-w-sm bg-[#1a1a1a] rounded-2xl border border-white/10 max-h-[80vh] overflow-hidden"
+            className="w-full max-w-sm bg-c-bg-surface rounded-2xl border border-c-border max-h-[80vh] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-4 border-b border-white/10 flex items-center justify-between">
+            <div className="p-4 border-b border-c-border flex items-center justify-between">
               <div className="font-semibold">{t('chat.manage_group')}</div>
-              <button onClick={() => setShowManageGroup(false)} className="p-2 rounded-full hover:bg-white/5">
+              <button onClick={() => setShowManageGroup(false)} className="p-2 rounded-full hover:bg-c-hover-bg">
                 <i className="fa-solid fa-xmark" />
               </button>
             </div>
@@ -3147,14 +3216,14 @@ export default function GroupChatThread() {
             <div className="p-4 space-y-5 max-h-[60vh] overflow-y-auto">
               {/* Rename Group */}
               <div>
-                <label className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-2 block">{t('chat.group_name_label')}</label>
+                <label className="text-xs text-c-text-tertiary uppercase tracking-wide mb-2 block">{t('chat.group_name_label')}</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={renameText}
                     onChange={(e) => setRenameText(e.target.value)}
                     maxLength={100}
-                    className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cpoint-turquoise"
+                    className="flex-1 bg-c-hover-bg border border-c-border rounded-lg px-3 py-2 text-sm text-c-text-primary focus:outline-none focus:border-cpoint-turquoise"
                   />
                   <button
                     onClick={async () => {
@@ -3183,12 +3252,12 @@ export default function GroupChatThread() {
 
               {/* Steve Personality */}
               <div>
-                <label className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-2 block">{t('chat.steve_ai_personality')}</label>
+                <label className="text-xs text-c-text-tertiary uppercase tracking-wide mb-2 block">{t('chat.steve_ai_personality')}</label>
                 <div className="flex gap-2">
                   <select
                     value={stevePersonality}
                     onChange={(e) => setStevePersonality(e.target.value)}
-                    className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cpoint-turquoise appearance-none"
+                    className="flex-1 bg-c-hover-bg border border-c-border rounded-lg px-3 py-2 text-sm text-c-text-primary focus:outline-none focus:border-cpoint-turquoise appearance-none"
                   >
                     <option value="default">{t('chat.personality_default')}</option>
                     <option value="professional">{t('chat.personality_professional')}</option>
@@ -3222,7 +3291,7 @@ export default function GroupChatThread() {
               </div>
 
               {/* Delete Group */}
-              <div className="pt-3 border-t border-white/10">
+              <div className="pt-3 border-t border-c-border">
                 <button
                   onClick={async () => {
                     if (!confirm(t('chat.delete_group_confirm_manage'))) return
@@ -3249,7 +3318,7 @@ export default function GroupChatThread() {
       {/* Add Members Modal */}
       {showAddMembers && group && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+          className="fixed inset-0 bg-c-bg-overlay backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
           onClick={() => {
             setShowAddMembers(false)
             setSelectedNewMembers([])
@@ -3259,13 +3328,13 @@ export default function GroupChatThread() {
           }}
         >
           <div
-            className="w-full max-w-md bg-[#1a1a1a] rounded-2xl border border-white/10 max-h-[85vh] overflow-hidden flex flex-col"
+            className="w-full max-w-md bg-c-bg-surface rounded-2xl border border-c-border max-h-[85vh] overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-4 border-b border-white/10 flex items-center justify-between flex-shrink-0">
+            <div className="p-4 border-b border-c-border flex items-center justify-between flex-shrink-0">
               <div>
                 <div className="font-semibold">{t('chat.add_members_action')}</div>
-                <div className="text-xs text-[#9fb0b5]">
+                <div className="text-xs text-c-text-tertiary">
                   {group.members.length}/5 members
                   {group.members.length >= 5 && ' (limit reached)'}
                 </div>
@@ -3278,7 +3347,7 @@ export default function GroupChatThread() {
                   setMemberSearchQuery('')
                   setExpandedCommunities(new Set())
                 }}
-                className="p-2 rounded-full hover:bg-white/5"
+                className="p-2 rounded-full hover:bg-c-hover-bg"
               >
                 <i className="fa-solid fa-xmark" />
               </button>
@@ -3289,8 +3358,8 @@ export default function GroupChatThread() {
                 <div className="w-16 h-16 bg-cpoint-turquoise/20 rounded-full flex items-center justify-center mx-auto mb-4">
                   <i className="fa-solid fa-users text-cpoint-turquoise text-2xl" />
                 </div>
-                <h3 className="text-white font-medium mb-2">{t('chat.group_full_title')}</h3>
-                <p className="text-white/60 text-sm mb-4">
+                <h3 className="text-c-text-primary font-medium mb-2">{t('chat.group_full_title')}</h3>
+                <p className="text-c-text-tertiary text-sm mb-4">
                   Group chats are limited to 5 members. For larger groups, consider creating a community or sub-community.
                 </p>
                 <button
@@ -3306,20 +3375,20 @@ export default function GroupChatThread() {
             ) : (
               <>
                 {/* Search input */}
-                <div className="p-3 border-b border-white/10 flex-shrink-0">
+                <div className="p-3 border-b border-c-border flex-shrink-0">
                   <div className="relative">
-                    <i className="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm" />
+                    <i className="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-c-text-tertiary text-sm" />
                     <input
                       type="text"
                       placeholder={t('chat.search_members')}
                       value={memberSearchQuery}
                       onChange={(e) => setMemberSearchQuery(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:border-cpoint-turquoise/50"
+                      className="w-full bg-c-hover-bg border border-c-border rounded-lg pl-9 pr-3 py-2 text-sm text-c-text-primary placeholder-c-text-tertiary focus:outline-none focus:border-cpoint-turquoise/50"
                     />
                     {memberSearchQuery && (
                       <button
                         onClick={() => setMemberSearchQuery('')}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-c-text-tertiary hover:text-c-text-primary"
                       >
                         <i className="fa-solid fa-xmark text-sm" />
                       </button>
@@ -3329,8 +3398,8 @@ export default function GroupChatThread() {
 
                 {/* Selected members */}
                 {selectedNewMembers.length > 0 && (
-                  <div className="p-3 border-b border-white/10 flex-shrink-0">
-                    <div className="text-xs text-[#9fb0b5] mb-2">Selected ({selectedNewMembers.length})</div>
+                  <div className="p-3 border-b border-c-border flex-shrink-0">
+                    <div className="text-xs text-c-text-tertiary mb-2">Selected ({selectedNewMembers.length})</div>
                     <div className="flex flex-wrap gap-2">
                       {selectedNewMembers.map((username) => (
                         <span
@@ -3340,7 +3409,7 @@ export default function GroupChatThread() {
                           {username}
                           <button
                             onClick={() => setSelectedNewMembers(prev => prev.filter(u => u !== username))}
-                            className="hover:text-white"
+                            className="hover:text-c-text-primary"
                           >
                             <i className="fa-solid fa-xmark text-xs" />
                           </button>
@@ -3355,7 +3424,7 @@ export default function GroupChatThread() {
                   {loadingAvailable ? (
                     <div className="p-8 text-center">
                       <i className="fa-solid fa-spinner fa-spin text-cpoint-turquoise text-2xl" />
-                      <p className="text-white/50 text-sm mt-2">{t('chat.loading_members')}</p>
+                      <p className="text-c-text-tertiary text-sm mt-2">{t('chat.loading_members')}</p>
                     </div>
                   ) : availableMembers.length > 0 ? (
                     <div className="p-2">
@@ -3386,7 +3455,7 @@ export default function GroupChatThread() {
                         if (sortedCommunities.length === 0) {
                           return (
                             <div className="p-6 text-center">
-                              <p className="text-white/50 text-sm">{t('chat.no_members_match_search')}</p>
+                              <p className="text-c-text-tertiary text-sm">{t('chat.no_members_match_search')}</p>
                             </div>
                           )
                         }
@@ -3409,14 +3478,14 @@ export default function GroupChatThread() {
                                     return next
                                   })
                                 }}
-                                className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition"
+                                className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-c-hover-bg transition"
                               >
                                 <div className="flex items-center gap-2">
                                   <i className="fa-solid fa-users text-cpoint-turquoise text-sm" />
                                   <span className="font-medium text-sm">{communityName}</span>
-                                  <span className="text-xs text-white/40">({members.length})</span>
+                                  <span className="text-xs text-c-text-tertiary">({members.length})</span>
                                 </div>
-                                <i className={`fa-solid fa-chevron-${isExpanded ? 'up' : 'down'} text-xs text-white/40`} />
+                                <i className={`fa-solid fa-chevron-${isExpanded ? 'up' : 'down'} text-xs text-c-text-tertiary`} />
                               </button>
                               
                               {/* Members list */}
@@ -3428,7 +3497,7 @@ export default function GroupChatThread() {
                                       className={`w-full flex items-center gap-3 p-2 rounded-lg transition ${
                                         selectedNewMembers.includes(user.username)
                                           ? 'bg-cpoint-turquoise/20'
-                                          : 'hover:bg-white/5'
+                                          : 'hover:bg-c-hover-bg'
                                       }`}
                                       onClick={() => {
                                         if (selectedNewMembers.includes(user.username)) {
@@ -3449,7 +3518,7 @@ export default function GroupChatThread() {
                                       />
                                       <div className="flex-1 min-w-0 text-left">
                                         <div className="font-medium text-sm truncate">{user.display_name || user.username}</div>
-                                        <div className="text-xs text-white/50">@{user.username}</div>
+                                        <div className="text-xs text-c-text-tertiary">@{user.username}</div>
                                       </div>
                                       {selectedNewMembers.includes(user.username) && (
                                         <i className="fa-solid fa-check text-cpoint-turquoise" />
@@ -3465,10 +3534,10 @@ export default function GroupChatThread() {
                     </div>
                   ) : (
                     <div className="p-6 text-center">
-                      <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <i className="fa-solid fa-user-check text-white/40" />
+                      <div className="w-12 h-12 bg-c-active-bg rounded-full flex items-center justify-center mx-auto mb-3">
+                        <i className="fa-solid fa-user-check text-c-text-tertiary" />
                       </div>
-                      <p className="text-white/50 text-sm">
+                      <p className="text-c-text-tertiary text-sm">
                         No available members to add
                       </p>
                     </div>
@@ -3477,7 +3546,7 @@ export default function GroupChatThread() {
 
                 {/* Add button */}
                 {selectedNewMembers.length > 0 && (
-                  <div className="p-4 border-t border-white/10 flex-shrink-0">
+                  <div className="p-4 border-t border-c-border flex-shrink-0">
                     <button
                       onClick={handleAddMembers}
                       disabled={addingMembers}
@@ -3503,13 +3572,15 @@ export default function GroupChatThread() {
         onPreviewIndexChange={setPreviewIndex}
         onCancel={cancelMediaPreview}
         onRemove={removeMediaFromPreview}
+        quality={mediaQuality}
+        onQualityChange={handleMediaQualityChange}
         onSend={confirmSendMedia}
       />
 
       {/* Pasted image preview modal */}
       {pastedImagePreview && (
         <div 
-          className="fixed inset-0 bg-black z-[9999] flex flex-col"
+          className="theme-always-dark fixed inset-0 bg-black z-[9999] flex flex-col"
           onClick={discardPastedImage}
         >
           {/* Header */}
@@ -3549,7 +3620,7 @@ export default function GroupChatThread() {
                 e.stopPropagation()
                 discardPastedImage()
               }}
-              className="flex-1 max-w-[140px] px-4 py-3 rounded-xl border border-white/20 text-white hover:bg-white/10 text-sm font-medium flex items-center justify-center gap-2"
+              className="flex-1 max-w-[140px] px-4 py-3 rounded-xl border border-white/20 text-white hover:bg-c-hover-bg text-sm font-medium flex items-center justify-center gap-2"
             >
               <i className="fa-regular fa-trash-can" />
               Discard
@@ -3571,18 +3642,18 @@ export default function GroupChatThread() {
       {/* Translate language picker modal */}
       {showLangPicker !== null && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => setShowLangPicker(null)}>
-          <div className="absolute inset-0 bg-black/60" />
-          <div className="relative bg-[#1a1a2e] rounded-2xl border border-white/15 w-[80%] max-w-xs p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="absolute inset-0 bg-c-bg-overlay" />
+          <div className="relative bg-c-bg-elevated rounded-2xl border border-c-border w-[80%] max-w-xs p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-3">
               <i className="fa-solid fa-globe text-cpoint-turquoise" />
-              <span className="text-white font-semibold text-sm">{t('chat.translate_to')}</span>
+              <span className="text-c-text-primary font-semibold text-sm">{t('chat.translate_to')}</span>
             </div>
             <div className="space-y-1">
               {translateLanguages.map(lang => (
                 <button
                   key={lang.code}
                   onClick={() => handleTranslateSummary(showLangPicker, langPickerSummary, lang.code)}
-                  className="w-full px-3 py-2 text-left text-sm text-white hover:bg-white/10 rounded-lg flex items-center gap-3"
+                  className="w-full px-3 py-2 text-left text-sm text-c-text-primary hover:bg-c-hover-bg rounded-lg flex items-center gap-3"
                 >
                   <span className="text-lg">{lang.flag}</span>
                   <span>{lang.name}</span>
@@ -3596,19 +3667,19 @@ export default function GroupChatThread() {
       {/* Edit Steve summary modal */}
       {editingSummaryId !== null && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => { setEditingSummaryId(null); setEditSummaryText('') }}>
-          <div className="absolute inset-0 bg-black/70" />
+          <div className="absolute inset-0 bg-c-bg-overlay" />
           <div 
-            className="relative bg-[#1a1a2e] rounded-2xl border border-white/15 w-[90%] max-w-md p-5 shadow-2xl"
+            className="relative bg-c-bg-elevated rounded-2xl border border-c-border w-[90%] max-w-md p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-2 mb-3">
               <i className="fa-solid fa-wand-magic-sparkles text-cpoint-turquoise" />
-            <span className="text-white font-semibold text-sm">{t('chat.edit_summary')}</span>
+            <span className="text-c-text-primary font-semibold text-sm">{t('chat.edit_summary')}</span>
             </div>
             <textarea
               value={editSummaryText}
               onChange={(e) => setEditSummaryText(e.target.value)}
-              className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-3 text-sm text-white resize-none focus:outline-none focus:border-cpoint-turquoise leading-relaxed"
+              className="w-full bg-c-active-bg border border-c-border rounded-xl px-3 py-3 text-sm text-c-text-primary resize-none focus:outline-none focus:border-cpoint-turquoise leading-relaxed"
               rows={4}
               autoFocus
               placeholder={t('chat.edit_summary_placeholder')}
@@ -3616,7 +3687,7 @@ export default function GroupChatThread() {
             <div className="flex gap-2 mt-3 justify-end">
               <button
                 onClick={() => { setEditingSummaryId(null); setEditSummaryText('') }}
-                className="px-4 py-2 text-sm rounded-lg bg-white/10 text-white/70 hover:bg-white/15"
+                className="px-4 py-2 text-sm rounded-lg bg-c-active-bg text-c-text-secondary hover:bg-white/15"
               >{t('chat.cancel')}</button>
               <button
                 onClick={() => handleSaveSummaryEdit(editingSummaryId)}
@@ -3672,7 +3743,7 @@ export default function GroupChatThread() {
             ) : null}
             <button
               onClick={() => setViewingMedia(null)}
-              className="px-6 py-3 bg-white/10 text-white rounded-full font-medium hover:bg-white/20 transition"
+              className="px-6 py-3 bg-c-active-bg text-white rounded-full font-medium hover:bg-white/20 transition"
             >
               Close
             </button>

@@ -181,22 +181,22 @@ export default function ChatThreadSearch({
 
   return (
     <div
-      className="fixed inset-0 z-[10050] flex flex-col bg-black/80"
+      className="fixed inset-0 z-[10050] flex flex-col bg-c-bg-overlay"
       onClick={e => {
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="flex flex-col w-full max-w-lg mx-auto mt-[env(safe-area-inset-top,0px)] h-full max-h-[80vh] my-auto rounded-xl overflow-hidden bg-[#111] border border-white/10">
+      <div className="flex flex-col w-full max-w-lg mx-auto mt-[env(safe-area-inset-top,0px)] h-full max-h-[80vh] my-auto rounded-xl overflow-hidden bg-c-bg-surface border border-c-border">
         {/* Search header */}
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-white/10">
-          <i className="fa-solid fa-magnifying-glass text-white/50 text-sm" />
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-c-border">
+          <i className="fa-solid fa-magnifying-glass text-c-text-tertiary text-sm" />
           <input
             ref={inputRef}
             type="text"
             value={query}
             onChange={e => handleInputChange(e.target.value)}
             placeholder={t('chat.search_messages', 'Search messages...')}
-            className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-white/40"
+            className="flex-1 bg-transparent text-c-text-primary text-sm outline-none placeholder:text-c-text-tertiary"
             aria-label={t('chat.search_messages', 'Search messages')}
             autoComplete="off"
             autoCorrect="off"
@@ -205,7 +205,7 @@ export default function ChatThreadSearch({
           {query && (
             <button
               type="button"
-              className="p-1 text-white/50 hover:text-white/80"
+              className="p-1 text-c-text-tertiary hover:text-c-text-secondary"
               onClick={() => {
                 setQuery('')
                 setResults([])
@@ -219,7 +219,7 @@ export default function ChatThreadSearch({
           )}
           <button
             type="button"
-            className="p-1 text-white/50 hover:text-white/80"
+            className="p-1 text-c-text-tertiary hover:text-c-text-secondary"
             onClick={onClose}
             aria-label={t('common.close', 'Close')}
           >
@@ -229,7 +229,7 @@ export default function ChatThreadSearch({
 
         {/* Count badge */}
         {searched && total > 0 && (
-          <div className="px-3 py-1.5 text-xs text-[#00cec8] border-b border-white/5">
+          <div className="px-3 py-1.5 text-xs text-[#00cec8] border-b border-c-border">
             {total}{' '}
             {total === 1
               ? t('chat.match', 'match')
@@ -246,18 +246,18 @@ export default function ChatThreadSearch({
         >
           {loading && results.length === 0 && (
             <div className="flex items-center justify-center py-8">
-              <i className="fa-solid fa-spinner fa-spin text-white/40" />
+              <i className="fa-solid fa-spinner fa-spin text-c-text-tertiary" />
             </div>
           )}
 
           {searched && !loading && results.length === 0 && query.trim() && (
-            <div className="text-center py-8 text-white/40 text-sm">
+            <div className="text-center py-8 text-c-text-tertiary text-sm">
               {t('chat.no_search_results', 'No messages found')}
             </div>
           )}
 
           {!searched && !loading && (
-            <div className="text-center py-8 text-white/40 text-sm">
+            <div className="text-center py-8 text-c-text-tertiary text-sm">
               {t('chat.search_hint', 'Type to search this conversation')}
             </div>
           )}
@@ -271,7 +271,7 @@ export default function ChatThreadSearch({
                 type="button"
                 role="option"
                 aria-selected={false}
-                className={`w-full text-left px-3 py-2.5 hover:bg-white/5 transition-colors border-b border-white/5 last:border-0 ${
+                className={`w-full text-left px-3 py-2.5 hover:bg-c-hover-bg transition-colors border-b border-c-border last:border-0 ${
                   isDisabled ? 'opacity-40 pointer-events-none' : ''
                 } ${isJumping ? 'opacity-70' : ''}`}
                 onClick={() => handleResultClick(result.id)}
@@ -284,17 +284,17 @@ export default function ChatThreadSearch({
                         {getSenderLabel(result)}
                       </div>
                     )}
-                    <div className="text-sm text-white/90 line-clamp-2">
+                    <div className="text-sm text-c-text-secondary line-clamp-2">
                       {getMessagePreview(result)}
                     </div>
-                    <div className="text-xs text-white/40 mt-0.5">
+                    <div className="text-xs text-c-text-tertiary mt-0.5">
                       {formatTime(result.time || result.created_at || '')}
                     </div>
                   </div>
                   {isJumping ? (
                     <i className="fa-solid fa-spinner fa-spin text-[#00cec8] text-xs mt-1.5 flex-shrink-0" aria-label={t('chat.loading_message', 'Loading message')} />
                   ) : (
-                    <i className="fa-solid fa-chevron-right text-white/20 text-xs mt-1.5 flex-shrink-0" />
+                    <i className="fa-solid fa-chevron-right text-c-text-disabled text-xs mt-1.5 flex-shrink-0" />
                   )}
                 </div>
               </button>
@@ -304,7 +304,7 @@ export default function ChatThreadSearch({
           {hasMore && (
             <button
               type="button"
-              className="w-full py-3 text-sm text-[#00cec8] hover:bg-white/5 transition-colors"
+              className="w-full py-3 text-sm text-[#00cec8] hover:bg-c-hover-bg transition-colors"
               onClick={handleLoadMore}
               disabled={loading}
             >

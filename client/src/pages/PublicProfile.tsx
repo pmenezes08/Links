@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
@@ -12,6 +12,7 @@ import TranslateGlobeButton from '../components/TranslateGlobeButton'
 import { useEntitlements } from '../hooks/useEntitlements'
 import { SkeletonProfileShell } from '../components/SkeletonRow'
 import { hapticImpactLight } from '../utils/haptics'
+import { SEP_EM_DASH, formatDateRange } from '../utils/typography'
 
 type PersonalHighlight = {
   id?: string | null
@@ -50,7 +51,7 @@ function formatYmRange(start: string, end: string, presentLabel: string): string
   const left = start ? formatYmLabel(start) : ''
   const right = end ? formatYmLabel(end) : presentLabel
   if (!left) return end ? right : ''
-  return `${left} — ${right}`
+  return formatDateRange(left, right)
 }
 
 type PersonalInfo = {
@@ -313,10 +314,10 @@ export default function PublicProfile() {
   const presentLabel = t('profile.public.present')
 
   if (loading) return (
-    <div className="glass-page min-h-screen text-white pb-10">
+    <div className="glass-page min-h-screen bg-c-bg-app text-c-text-primary pb-10">
       <div className="max-w-3xl mx-auto px-4 pt-2 pb-2">
         <button
-          className="flex items-center gap-2 text-[#9fb0b5] hover:text-white transition-colors"
+          className="flex items-center gap-2 text-c-text-tertiary hover:text-c-text-primary transition-colors"
           onClick={() => { hapticImpactLight(); navigate(-1) }}
           aria-label={t('profile.aria.go_back')}
         >
@@ -344,10 +345,10 @@ export default function PublicProfile() {
     : (isFollowing ? t('profile.public.following') : isPending ? t('profile.public.requested') : t('profile.public.follow'))
   const followButtonClasses =
     followStatus === 'accepted'
-      ? 'px-3 py-1.5 rounded-md text-sm font-medium transition border border-white/15 bg-white/15 text-white hover:bg-white/20'
+      ? 'px-3 py-1.5 rounded-md text-sm font-medium transition border border-c-border bg-c-hover-bg text-c-text-primary hover:bg-c-hover-bg'
       : isPending
-        ? 'px-3 py-1.5 rounded-md text-sm font-medium transition border border-white/20 bg-white/5 text-[#9fb0b5]'
-        : 'px-3 py-1.5 rounded-md text-sm font-medium transition bg-[#4db6ac] text-black hover:brightness-110'
+        ? 'px-3 py-1.5 rounded-md text-sm font-medium transition border border-c-border bg-c-hover-bg text-c-text-tertiary'
+        : 'px-3 py-1.5 rounded-md text-sm font-medium transition bg-cpoint-turquoise text-black hover:brightness-110'
 
   let formattedDob = ''
   if (personal.date_of_birth) {
@@ -421,11 +422,11 @@ export default function PublicProfile() {
   const profilePictureUrl = resolveMediaUrl(profile.profile_picture)
 
   return (
-    <div className="glass-page min-h-screen text-white pb-10">
+    <div className="glass-page min-h-screen bg-c-bg-app text-c-text-primary pb-10">
       {/* Back button header */}
       <div className="max-w-3xl mx-auto px-4 pt-2 pb-2">
         <button 
-          className="flex items-center gap-2 text-[#9fb0b5] hover:text-white transition-colors"
+          className="flex items-center gap-2 text-c-text-tertiary hover:text-c-text-primary transition-colors"
           onClick={() => { hapticImpactLight(); navigate(-1) }}
           aria-label={t('profile.aria.go_back')}
         >
@@ -439,7 +440,7 @@ export default function PublicProfile() {
           <div className="flex flex-wrap items-center gap-4">
             <button
               type="button"
-              className="rounded-full focus:outline-none focus:ring-2 focus:ring-[#4db6ac]"
+              className="rounded-full focus:outline-none focus:ring-2 focus:ring-cpoint-turquoise"
               onClick={() => {
                 if (profilePictureUrl) setPreviewImage(profilePictureUrl)
               }}
@@ -449,29 +450,29 @@ export default function PublicProfile() {
             </button>
             <div className="min-w-0 flex-1 space-y-1">
               <div className="font-semibold text-lg leading-tight break-words">{profile.display_name || profile.username}</div>
-              <div className="flex flex-wrap items-center gap-2 text-sm text-[#cfd8dc]">
+              <div className="flex flex-wrap items-center gap-2 text-sm text-c-text-secondary">
                 <span className="truncate">@{profile.username}</span>
                 {profile.subscription ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-xs uppercase tracking-wide text-white/80">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-c-active-bg px-2 py-0.5 text-xs uppercase tracking-wide text-c-text-secondary">
                     <i className="fa-solid fa-gem text-[10px]" />
                     {profile.subscription}
                   </span>
                 ) : null}
               </div>
               {(personal.first_name || personal.last_name) ? (
-                <div className="text-sm text-white/80 font-medium">
+                <div className="text-sm text-c-text-secondary font-medium">
                   {[personal.first_name, personal.last_name].filter(Boolean).join(' ')}
                 </div>
               ) : null}
               {location ? (
-                <div className="flex flex-wrap items-center gap-1 text-xs text-[#9fb0b5]">
+                <div className="flex flex-wrap items-center gap-1 text-xs text-c-text-tertiary">
                   <i className="fa-solid fa-location-dot" />
                   <span className="truncate">{location}</span>
                 </div>
               ) : null}
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#9fb0b5]">
-                <span><span className="text-white font-semibold">{followersCount}</span> {t('profile.public.followers')}</span>
-                <span><span className="text-white font-semibold">{followingCount}</span> {t('profile.public.following_count')}</span>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-c-text-tertiary">
+                <span><span className="text-c-text-primary font-semibold">{followersCount}</span> {t('profile.public.followers')}</span>
+                <span><span className="text-c-text-primary font-semibold">{followingCount}</span> {t('profile.public.following_count')}</span>
               </div>
             </div>
               {!isSelf && currentUsername && (
@@ -484,7 +485,7 @@ export default function PublicProfile() {
                     {followButtonLabel}
                   </button>
                   <button
-                    className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/10 text-sm"
+                    className="px-3 py-1.5 rounded-md border border-c-border hover:bg-c-hover-bg text-sm"
                     onClick={() => navigate(`/user_chat/chat/${encodeURIComponent(profile.username)}`)}
                   >
                     <i className="fa-regular fa-paper-plane mr-2" />
@@ -492,7 +493,7 @@ export default function PublicProfile() {
                   </button>
                   {inviteableCommunities.length > 0 ? (
                     <button
-                      className="px-3 py-1.5 rounded-md bg-[#4db6ac]/15 border border-[#4db6ac]/35 text-[#4db6ac] hover:bg-[#4db6ac]/25 text-sm"
+                      className="px-3 py-1.5 rounded-md bg-cpoint-turquoise/15 border border-cpoint-turquoise/35 text-cpoint-turquoise hover:bg-cpoint-turquoise/25 text-sm"
                       onClick={handleOpenInviteModal}
                     >
                       <i className="fa-solid fa-user-plus mr-2" />
@@ -506,7 +507,7 @@ export default function PublicProfile() {
 
         {isSelf ? (
           <button
-            className="w-full flex items-center justify-center gap-2 py-2 text-sm font-medium bg-black border border-white/10 rounded hover:bg-white/5 transition"
+            className="w-full flex items-center justify-center gap-2 py-2 text-sm font-medium bg-c-bg-app border border-c-border rounded hover:bg-c-hover-bg transition"
             onClick={() => navigate('/profile')}
           >
             <i className="fa-solid fa-pen-to-square" />
@@ -523,7 +524,7 @@ export default function PublicProfile() {
                   {personalTranslated ? (
                     <button
                       type="button"
-                      className="text-[#4db6ac] hover:text-[#4db6ac]/80 text-xs px-1"
+                      className="text-cpoint-turquoise hover:text-cpoint-turquoise/80 text-xs px-1"
                       title={t('feed.show_original')}
                       onClick={() => setPersonalTranslated(null)}
                     >
@@ -539,38 +540,38 @@ export default function PublicProfile() {
               ) : null}
             </div>
             {personalTranslated ? (
-              <p className="text-sm text-white/90 whitespace-pre-wrap leading-relaxed">{personalTranslated}</p>
+              <p className="text-sm text-c-text-primary whitespace-pre-wrap leading-relaxed">{personalTranslated}</p>
             ) : (
-            <div className="space-y-2 text-sm text-white/90">
+            <div className="space-y-2 text-sm text-c-text-primary">
               {bioText ? (
                 <div>
-                  <span className="text-[#9fb0b5] mr-2">{t('profile.public.bio')}</span>
-                  <p className="mt-1 whitespace-pre-wrap leading-relaxed text-white/90">{renderTextWithSourceLinks(bioText)}</p>
+                  <span className="text-c-text-tertiary mr-2">{t('profile.public.bio')}</span>
+                  <p className="mt-1 whitespace-pre-wrap leading-relaxed text-c-text-primary">{renderTextWithSourceLinks(bioText)}</p>
                 </div>
               ) : null}
               {formattedDob ? (
                 <div>
-                  <span className="text-[#9fb0b5] mr-2">{t('profile.public.date_of_birth')}</span>
+                  <span className="text-c-text-tertiary mr-2">{t('profile.public.date_of_birth')}</span>
                   {formattedDob}
                 </div>
               ) : null}
               {location ? (
                 <div>
-                  <span className="text-[#9fb0b5] mr-2">{t('profile.public.location')}</span>
+                  <span className="text-c-text-tertiary mr-2">{t('profile.public.location')}</span>
                   {location}
                 </div>
               ) : null}
               {hasPersonalHighlights ? (
-                <details className="group mt-2 rounded-lg border border-white/10 bg-black/25 open:bg-black/30">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium text-white select-none [&::-webkit-details-marker]:hidden">
-                    <span className="text-white/90">{t('profile.public.spotlight_answers')}</span>
-                    <i className="fa-solid fa-chevron-down text-xs text-[#9fb0b5] transition-transform group-open:rotate-180" aria-hidden={true} />
+                <details className="group mt-2 rounded-lg border border-c-border bg-c-hover-bg open:bg-c-bg-surface">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium text-c-text-primary select-none [&::-webkit-details-marker]:hidden">
+                    <span className="text-c-text-primary">{t('profile.public.spotlight_answers')}</span>
+                    <i className="fa-solid fa-chevron-down text-xs text-c-text-tertiary transition-transform group-open:rotate-180" aria-hidden={true} />
                   </summary>
-                  <div className="space-y-4 border-t border-white/10 px-3 py-3 text-sm">
+                  <div className="space-y-4 border-t border-c-border px-3 py-3 text-sm">
                     {highlightItems.map(h => (
                       <div key={h.id || `${h.question}-${h.answer}`}>
-                        <div className="text-[#9fb0b5] text-xs mb-1">{h.question || ''}</div>
-                        <p className="whitespace-pre-wrap leading-relaxed text-white/90">
+                        <div className="text-c-text-tertiary text-xs mb-1">{h.question || ''}</div>
+                        <p className="whitespace-pre-wrap leading-relaxed text-c-text-primary">
                           {renderTextWithSourceLinks(String(h.answer || '').trim())}
                         </p>
                       </div>
@@ -592,7 +593,7 @@ export default function PublicProfile() {
                   {professionalTranslated ? (
                     <button
                       type="button"
-                      className="text-[#4db6ac] hover:text-[#4db6ac]/80 text-xs px-1"
+                      className="text-cpoint-turquoise hover:text-cpoint-turquoise/80 text-xs px-1"
                       title={t('feed.show_original')}
                       onClick={() => setProfessionalTranslated(null)}
                     >
@@ -608,54 +609,54 @@ export default function PublicProfile() {
               ) : null}
             </div>
             {professionalTranslated ? (
-              <p className="text-sm text-white/90 whitespace-pre-wrap leading-relaxed">{professionalTranslated}</p>
+              <p className="text-sm text-c-text-primary whitespace-pre-wrap leading-relaxed">{professionalTranslated}</p>
             ) : (
-            <div className="space-y-2 text-sm text-white/90">
+            <div className="space-y-2 text-sm text-c-text-primary">
               {professional.about ? (
-                <div className="text-white/90 leading-relaxed whitespace-pre-wrap">
+                <div className="text-c-text-primary leading-relaxed whitespace-pre-wrap">
                   {professional.about}
                 </div>
               ) : null}
               {professional.role ? (
                 <div>
-                  <span className="text-[#9fb0b5] mr-2">{t('profile.public.current_position')}</span>
+                  <span className="text-c-text-tertiary mr-2">{t('profile.public.current_position')}</span>
                   {professional.role}
                 </div>
               ) : null}
               {professional.company ? (
                 <div>
-                  <span className="text-[#9fb0b5] mr-2">{t('profile.public.company')}</span>
+                  <span className="text-c-text-tertiary mr-2">{t('profile.public.company')}</span>
                   {professional.company}
                 </div>
               ) : null}
               {professional.company_intel?.trim() ? (
                 <div>
-                  <span className="text-[#9fb0b5] mr-2">{t('profile.public.company_intel')}</span>
+                  <span className="text-c-text-tertiary mr-2">{t('profile.public.company_intel')}</span>
                   <span className="whitespace-pre-wrap leading-relaxed">{renderTextWithSourceLinks(professional.company_intel.trim())}</span>
                 </div>
               ) : null}
               {professional.industry ? (
                 <div>
-                  <span className="text-[#9fb0b5] mr-2">{t('profile.public.industry')}</span>
+                  <span className="text-c-text-tertiary mr-2">{t('profile.public.industry')}</span>
                   {profileIndustryLabel(professional.industry, t)}
                 </div>
               ) : null}
               {(currentRoleStartYm && (professional.role || professional.company)) || hasStructuredWork || hasStructuredEdu ? (
-                <details className="group mt-2 rounded-lg border border-white/10 bg-black/25 open:bg-black/30">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium text-white select-none [&::-webkit-details-marker]:hidden">
-                    <span className="text-white/90">{t('profile.public.career_timeline')}</span>
-                    <i className="fa-solid fa-chevron-down text-xs text-[#9fb0b5] transition-transform group-open:rotate-180" aria-hidden={true} />
+                <details className="group mt-2 rounded-lg border border-c-border bg-c-hover-bg open:bg-c-bg-surface">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium text-c-text-primary select-none [&::-webkit-details-marker]:hidden">
+                    <span className="text-c-text-primary">{t('profile.public.career_timeline')}</span>
+                    <i className="fa-solid fa-chevron-down text-xs text-c-text-tertiary transition-transform group-open:rotate-180" aria-hidden={true} />
                   </summary>
-                  <div className="space-y-3 border-t border-white/10 px-3 py-3 text-sm text-white/90">
+                  <div className="space-y-3 border-t border-c-border px-3 py-3 text-sm text-c-text-primary">
                     {currentRoleStartYm && (professional.role || professional.company) ? (
                       <div>
-                        <span className="text-[#9fb0b5] mr-2">{t('profile.public.in_role_since')}</span>
+                        <span className="text-c-text-tertiary mr-2">{t('profile.public.in_role_since')}</span>
                         {formatYmRange(currentRoleStartYm, '', presentLabel)}
                       </div>
                     ) : null}
                     {hasStructuredWork ? (
                       <div className="space-y-3">
-                        <div className="text-xs font-medium uppercase tracking-wide text-[#9fb0b5]">{t('profile.public.experience')}</div>
+                        <div className="text-xs font-medium uppercase tracking-wide text-c-text-tertiary">{t('profile.public.experience')}</div>
                         {workTimeline.map((w, idx) => {
                           if (!w) return null
                           const title = String(w.title || '').trim()
@@ -666,16 +667,16 @@ export default function PublicProfile() {
                           const end = String(w.end || '').trim()
                           if (!title && !company && !desc) return null
                           return (
-                            <div key={idx} className="border-l-2 border-[#4db6ac]/35 pl-3 space-y-1">
-                              <div className="font-medium text-white/95">
+                            <div key={idx} className="border-l-2 border-cpoint-turquoise/35 pl-3 space-y-1">
+                              <div className="font-medium text-c-text-primary">
                                 {[title, company].filter(Boolean).join(' · ') || company || title || t('profile.public.role_fallback')}
                               </div>
-                              {loc ? <div className="text-xs text-[#9fb0b5]">{loc}</div> : null}
+                              {loc ? <div className="text-xs text-c-text-tertiary">{loc}</div> : null}
                               {start || end ? (
-                                <div className="text-xs text-[#9fb0b5]">{formatYmRange(start, end, presentLabel)}</div>
+                                <div className="text-xs text-c-text-tertiary">{formatYmRange(start, end, presentLabel)}</div>
                               ) : null}
                               {desc ? (
-                                <p className="whitespace-pre-wrap leading-relaxed text-white/90">{desc}</p>
+                                <p className="whitespace-pre-wrap leading-relaxed text-c-text-primary">{desc}</p>
                               ) : null}
                             </div>
                           )
@@ -684,7 +685,7 @@ export default function PublicProfile() {
                     ) : null}
                     {hasStructuredEdu ? (
                       <div className="space-y-3">
-                        <div className="text-xs font-medium uppercase tracking-wide text-[#9fb0b5]">{t('profile.public.education')}</div>
+                        <div className="text-xs font-medium uppercase tracking-wide text-c-text-tertiary">{t('profile.public.education')}</div>
                         {eduTimeline.map((e, idx) => {
                           if (!e) return null
                           const school = String(e.school || '').trim()
@@ -694,13 +695,13 @@ export default function PublicProfile() {
                           const end = String(e.end || '').trim()
                           if (!school && !degree && !desc) return null
                           return (
-                            <div key={idx} className="border-l-2 border-white/20 pl-3 space-y-1">
-                              <div className="font-medium text-white/95">{[school, degree].filter(Boolean).join(' · ')}</div>
+                            <div key={idx} className="border-l-2 border-c-border pl-3 space-y-1">
+                              <div className="font-medium text-c-text-primary">{[school, degree].filter(Boolean).join(' · ')}</div>
                               {start || end ? (
-                                <div className="text-xs text-[#9fb0b5]">{formatYmRange(start, end, presentLabel)}</div>
+                                <div className="text-xs text-c-text-tertiary">{formatYmRange(start, end, presentLabel)}</div>
                               ) : null}
                               {desc ? (
-                                <p className="whitespace-pre-wrap leading-relaxed text-white/90">{desc}</p>
+                                <p className="whitespace-pre-wrap leading-relaxed text-c-text-primary">{desc}</p>
                               ) : null}
                             </div>
                           )
@@ -712,31 +713,31 @@ export default function PublicProfile() {
               ) : null}
               {professional.degree ? (
                 <div>
-                  <span className="text-[#9fb0b5] mr-2">{t('profile.public.degree')}</span>
+                  <span className="text-c-text-tertiary mr-2">{t('profile.public.degree')}</span>
                   {professional.degree}
                 </div>
               ) : null}
               {professional.school ? (
                 <div>
-                  <span className="text-[#9fb0b5] mr-2">{t('profile.public.school')}</span>
+                  <span className="text-c-text-tertiary mr-2">{t('profile.public.school')}</span>
                   {professional.school}
                 </div>
               ) : null}
               {professional.skills ? (
                 <div>
-                  <span className="text-[#9fb0b5] mr-2">{t('profile.public.skills')}</span>
+                  <span className="text-c-text-tertiary mr-2">{t('profile.public.skills')}</span>
                   {professional.skills}
                 </div>
               ) : null}
               {professional.experience ? (
                 <div>
-                  <span className="text-[#9fb0b5] mr-2">{t('profile.public.experience_legacy')}</span>
+                  <span className="text-c-text-tertiary mr-2">{t('profile.public.experience_legacy')}</span>
                   {professional.experience}
                 </div>
               ) : null}
               {professional.linkedin ? (
                 <a
-                  className="text-[#4db6ac] underline break-all"
+                  className="text-cpoint-turquoise underline break-all"
                   href={professional.linkedin.startsWith('http') ? professional.linkedin : `https://${professional.linkedin}`}
                   target="_blank"
                   rel="noreferrer"
@@ -754,7 +755,7 @@ export default function PublicProfile() {
             <div className="font-semibold">{t('profile.interests.title')}</div>
             <div className="flex flex-wrap gap-2">
               {interestTags.map(tag => (
-                <span key={tag} className="inline-flex items-center rounded-full bg-white/15 px-3 py-1 text-xs text-white">
+                <span key={tag} className="inline-flex items-center rounded-full bg-c-hover-bg px-3 py-1 text-xs text-c-text-primary">
                   #{tag}
                 </span>
               ))}
@@ -768,7 +769,7 @@ export default function PublicProfile() {
             <div className="flex flex-wrap gap-3 text-sm">
               {profile.website ? (
                 <a
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/15 bg-white/10 text-[#4db6ac]"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-c-border bg-c-active-bg text-cpoint-turquoise"
                   href={profile.website.startsWith('http') ? profile.website : `http://${profile.website}`}
                   target="_blank"
                   rel="noreferrer"
@@ -779,7 +780,7 @@ export default function PublicProfile() {
               ) : null}
               {profile.instagram ? (
                 <a
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/15 bg-white/10 text-[#f58529]"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-c-border bg-c-active-bg text-[#f58529]"
                   href={`https://instagram.com/${profile.instagram.replace(/^@/, '')}`}
                   target="_blank"
                   rel="noreferrer"
@@ -790,7 +791,7 @@ export default function PublicProfile() {
               ) : null}
               {profile.twitter ? (
                 <a
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/15 bg-white/10 text-[#1d9bf0]"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-c-border bg-c-active-bg text-[#1d9bf0]"
                   href={`https://twitter.com/${profile.twitter.replace(/^@/, '')}`}
                   target="_blank"
                   rel="noreferrer"
@@ -806,7 +807,7 @@ export default function PublicProfile() {
         {profile.ai_enhanced && Object.keys(profile.ai_enhanced).length > 0 ? (
           <section className="glass-section space-y-2">
             <div className="flex items-center gap-2 font-semibold">
-              <i className="fa-solid fa-wand-magic-sparkles text-[#4db6ac] text-sm" />
+              <i className="fa-solid fa-wand-magic-sparkles text-cpoint-turquoise text-sm" />
               {t('profile.public.ai_about')}
             </div>
             <div className="space-y-2">
@@ -824,11 +825,11 @@ export default function PublicProfile() {
                 let text = ''
                 if (typeof val === 'string') text = val
                 else if (key === 'identity' && typeof val === 'object')
-                  text = [val.bridgeInsight, val.drivingForces].filter(Boolean).join(' — ')
+                  text = [val.bridgeInsight, val.drivingForces].filter(Boolean).join(SEP_EM_DASH)
                 else if (key === 'professional' && typeof val === 'object') {
                   const parts: string[] = []
                   if (val.company?.description) parts.push(`${val.company.name}: ${val.company.description}`)
-                  if (val.role?.title) parts.push(val.role.title + (val.role.implication ? ` — ${val.role.implication}` : ''))
+                  if (val.role?.title) parts.push(val.role.title + (val.role.implication ? `${SEP_EM_DASH}${val.role.implication}` : ''))
                   if (val.education) parts.push(val.education)
                   if (val.location?.context) parts.push(val.location.context)
                   text = parts.join('. ')
@@ -846,8 +847,8 @@ export default function PublicProfile() {
                 else text = typeof val === 'object' ? '' : String(val)
                 if (!text) return null
                 return (
-                  <div key={key} className="text-sm text-[#a7b8be]">
-                    <span className="text-white/60 text-xs font-medium">{labelKey[key] ? t(labelKey[key]) : key}</span>
+                  <div key={key} className="text-sm text-c-text-primary">
+                    <span className="text-c-text-secondary text-xs font-medium">{labelKey[key] ? t(labelKey[key]) : key}</span>
                     <p className="mt-0.5 leading-relaxed">{renderTextWithSourceLinks(text)}</p>
                   </div>
                 )
@@ -865,7 +866,7 @@ export default function PublicProfile() {
         >
           <button
             type="button"
-            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center"
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-c-active-bg hover:bg-c-hover-bg border border-c-border text-c-text-primary flex items-center justify-center"
             onClick={() => setPreviewImage(null)}
             aria-label={t('profile.aria.close_preview')}
           >
@@ -875,23 +876,23 @@ export default function PublicProfile() {
             <ImageLoader
               src={previewImage}
               alt={t('profile.alt.profile')}
-              className="w-full h-full object-contain rounded-lg border border-white/10"
+              className="w-full h-full object-contain rounded-lg border border-c-border"
             />
           </div>
         </div>
       ) : null}
       {inviteModalOpen ? (
         <div
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-c-bg-overlay backdrop-blur-sm flex items-center justify-center p-4"
           onClick={(e) => e.currentTarget === e.target && setInviteModalOpen(false)}
         >
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#111] p-5 shadow-xl">
+          <div className="w-full max-w-md rounded-2xl border border-c-border bg-c-bg-surface p-5 shadow-xl">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-lg font-semibold">{t('profile.invite.title', { username: profile.username })}</h2>
-                <p className="text-xs text-white/50">{t('profile.invite.subtitle')}</p>
+                <p className="text-xs text-c-text-tertiary">{t('profile.invite.subtitle')}</p>
               </div>
-              <button className="p-2 rounded-lg hover:bg-white/10" onClick={() => setInviteModalOpen(false)} aria-label={t('profile.aria.close_invite_modal')}>
+              <button className="p-2 rounded-lg hover:bg-c-hover-bg" onClick={() => setInviteModalOpen(false)} aria-label={t('profile.aria.close_invite_modal')}>
                 <i className="fa-solid fa-xmark" />
               </button>
             </div>
@@ -927,15 +928,15 @@ export default function PublicProfile() {
                     }}
                     className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition disabled:opacity-45 disabled:cursor-not-allowed ${
                       selected
-                        ? 'border-[#4db6ac]/60 bg-[#4db6ac]/15 text-white'
-                        : 'border-white/10 bg-white/[0.03] text-white/80 hover:bg-white/[0.06]'
+                        ? 'border-cpoint-turquoise/60 bg-cpoint-turquoise/15 text-c-text-primary'
+                        : 'border-c-border bg-c-bg-surface text-c-text-secondary hover:bg-c-hover-bg'
                     }`}
                   >
-                    <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-white/20 bg-black/40 text-[10px] text-white/70">
-                      {selected ? <i className="fa-solid fa-check text-[#4db6ac]" /> : null}
+                    <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-c-border bg-c-bg-elevated text-[10px] text-c-text-secondary">
+                      {selected ? <i className="fa-solid fa-check text-cpoint-turquoise" /> : null}
                     </span>
                     <span className="ml-2">{community.name}</span>
-                    {disabled ? <span className="ml-2 text-xs text-white/40">{t('profile.invite.already_member')}</span> : null}
+                    {disabled ? <span className="ml-2 text-xs text-c-text-tertiary">{t('profile.invite.already_member')}</span> : null}
                   </button>
                 )
               })}
@@ -943,14 +944,14 @@ export default function PublicProfile() {
 
             <div className="mt-4 flex gap-2">
               <button
-                className="flex-1 rounded-lg bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110 disabled:opacity-50"
+                className="flex-1 rounded-lg bg-cpoint-turquoise px-4 py-2 text-sm font-semibold text-black hover:brightness-110 disabled:opacity-50"
                 disabled={inviteSubmitting || selectedInviteCommunityIds.length === 0}
                 onClick={handleSendProfileInvite}
               >
                 {inviteSubmitting ? t('profile.invite.sending') : t('profile.invite.send')}
               </button>
               <button
-                className="px-4 py-2 rounded-lg border border-white/10 bg-white/5 text-sm hover:bg-white/10"
+                className="px-4 py-2 rounded-lg border border-c-border bg-c-hover-bg text-sm hover:bg-c-hover-bg"
                 disabled={inviteSubmitting}
                 onClick={() => setInviteModalOpen(false)}
               >

@@ -363,7 +363,7 @@ export default function EditCommunity(){
 
     if (billing.is_inherited) {
       return (
-        <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+        <div className="rounded-xl border border-c-border bg-c-hover-bg p-5">
           <div className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">
             {t('communities.billing_label')}
           </div>
@@ -371,17 +371,17 @@ export default function EditCommunity(){
             <span className="inline-flex items-center rounded-full border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1 text-[11px] font-medium text-cpoint-turquoise">
               {billing.tier_label || TIER_LABEL[billing.tier] || billing.tier}
             </span>
-            <span className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[11px] font-medium text-white/60">
+            <span className="inline-flex items-center rounded-full border border-c-border bg-c-hover-bg px-3 py-1 text-[11px] font-medium text-c-text-primary/60">
               {providerBadge(billing.billing_provider || 'stripe')}
             </span>
-            <span className="text-xs text-white/60">
+            <span className="text-xs text-c-text-primary/60">
               {billing.inherited_from_root_name
                 ? t('communities.inherited_from_named', { name: billing.inherited_from_root_name })
                 : t('communities.inherited_from_parent')}
             </span>
           </div>
           {billing.inherited_from_root_id != null && billing.inherited_from_root_id > 0 && (
-            <div className="mt-3 space-y-2 text-xs text-white/60">
+            <div className="mt-3 space-y-2 text-xs text-c-text-primary/60">
               <p>
                 {t('communities.inherited_billing_on_root', {
                   name: billing.inherited_from_root_name || t('communities.inherited_from_parent'),
@@ -398,11 +398,11 @@ export default function EditCommunity(){
             </div>
           )}
           {billing.steve_package_subscription_active && billing.steve_pool_cap !== null && billing.steve_pool_cap > 0 && (
-            <div className="mt-4 rounded-lg border border-[#00CEC8]/25 bg-[#00CEC8]/5 p-3 text-xs text-white/70">
-              <div className="font-medium text-[#00CEC8]">{t('communities.steve_community_calls')}</div>
+            <div className="mt-4 rounded-lg border border-cpoint-turquoise/25 bg-cpoint-turquoise/5 p-3 text-xs text-c-text-primary/70">
+              <div className="font-medium text-cpoint-turquoise">{t('communities.steve_community_calls')}</div>
               <div className="mt-1">
                 {t('communities.steve_pool_available', { remaining: billing.steve_pool_remaining ?? 0, cap: billing.steve_pool_cap })}
-                <span className="text-white/35"> ({t('communities.steve_pool_used', { used: billing.steve_pool_used })})</span>
+                <span className="text-c-text-tertiary"> ({t('communities.steve_pool_used', { used: billing.steve_pool_used })})</span>
               </div>
             </div>
           )}
@@ -426,13 +426,13 @@ export default function EditCommunity(){
         : t('communities.media_over_limit')
 
     return (
-      <div className="rounded-xl border border-white/10 bg-white/5 p-5 space-y-4">
+      <div className="rounded-xl border border-c-border bg-c-hover-bg p-5 space-y-4">
         <div className="flex items-start justify-between">
           <div>
             <div className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">
               {t('communities.billing_label')}
             </div>
-            <div className="mt-2 text-sm font-medium text-white">
+            <div className="mt-2 text-sm font-medium text-c-text-primary">
               {t('communities.community_plan')}
             </div>
             {billing.is_canceling && billing.days_remaining !== null && (
@@ -441,7 +441,7 @@ export default function EditCommunity(){
               </div>
             )}
             {billing.current_period_end && (
-              <div className="mt-1 text-xs text-white/40">
+              <div className="mt-1 text-xs text-c-text-primary/40">
                 {billing.is_canceling ? t('communities.benefits_active_until') : t('communities.next_renewal')}: {formatBillingDate(billing.current_period_end)}
               </div>
             )}
@@ -454,20 +454,20 @@ export default function EditCommunity(){
           <span className="inline-flex items-center rounded-full border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1 text-[11px] font-medium text-cpoint-turquoise">
             {billing.tier_label || TIER_LABEL[billing.tier] || billing.tier}
           </span>
-          <span className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[11px] font-medium text-white/60">
+          <span className="inline-flex items-center rounded-full border border-c-border bg-c-hover-bg px-3 py-1 text-[11px] font-medium text-c-text-primary/60">
             {providerBadge(billing.billing_provider || 'stripe')}
           </span>
         </div>
 
         {billing.member_cap !== null && billing.member_cap > 0 && (
           <div className="space-y-1.5">
-            <div className="flex items-baseline justify-between text-xs text-white/60">
+            <div className="flex items-baseline justify-between text-xs text-c-text-primary/60">
               <span>{t('communities.members_label')}</span>
               <span>
                 {billing.member_count} / {billing.member_cap}
               </span>
             </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-c-active-bg">
               <div
                 className="h-full bg-cpoint-turquoise"
                 style={{
@@ -482,39 +482,39 @@ export default function EditCommunity(){
         )}
 
         <div className="space-y-1.5">
-          <div className="flex items-baseline justify-between text-xs text-white/60">
+          <div className="flex items-baseline justify-between text-xs text-c-text-primary/60">
             <span>{t('communities.media_storage')}</span>
             <span>
               {formatBytes(activeMediaBytes)}
               {mediaLimitBytes ? ` / ${formatBytes(mediaLimitBytes)}` : ''}
             </span>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-c-active-bg">
             <div
               className={`h-full ${mediaPercent >= 100 ? 'bg-amber-300' : 'bg-cpoint-turquoise'}`}
               style={{ width: `${mediaLimitBytes ? mediaPercent : 0}%` }}
             />
           </div>
-          <div className="flex items-center justify-between gap-2 text-[11px] text-white/40">
+          <div className="flex items-center justify-between gap-2 text-[11px] text-c-text-primary/40">
             <span>{mediaTone}</span>
             <span>{t('communities.tracked_media_items', { count: billing.media_usage.asset_count })}</span>
           </div>
-          <div className="text-[11px] leading-relaxed text-white/35">
+          <div className="text-[11px] leading-relaxed text-c-text-primary/35">
             {t('communities.storage_tracking_note')}
           </div>
         </div>
 
         {billing.steve_package_subscription_active && billing.steve_pool_cap !== null && billing.steve_pool_cap > 0 && (
-          <div className="rounded-lg border border-[#00CEC8]/25 bg-[#00CEC8]/5 p-3">
+          <div className="rounded-lg border border-cpoint-turquoise/25 bg-cpoint-turquoise/5 p-3">
             <div className="flex items-baseline justify-between gap-3 text-xs">
-              <span className="font-medium text-[#00CEC8]">{t('communities.steve_community_calls')}</span>
-              <span className="text-white/70">
+              <span className="font-medium text-cpoint-turquoise">{t('communities.steve_community_calls')}</span>
+              <span className="text-c-text-secondary">
                 {t('communities.steve_pool_available_short', { remaining: billing.steve_pool_remaining ?? 0, cap: billing.steve_pool_cap })}
               </span>
             </div>
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-c-active-bg">
               <div
-                className="h-full bg-[#00CEC8]"
+                className="h-full bg-cpoint-turquoise"
                 style={{
                   width: `${Math.min(
                     100,
@@ -523,7 +523,7 @@ export default function EditCommunity(){
                 }}
               />
             </div>
-            <div className="mt-1 text-[11px] text-white/40">
+            <div className="mt-1 text-[11px] text-c-text-primary/40">
               {t('communities.steve_used_this_month', { used: billing.steve_pool_used })}
               {billing.steve_package_current_period_end
                 ? ` · ${t('communities.steve_renews', { date: formatBillingDate(billing.steve_package_current_period_end) })}`
@@ -547,13 +547,13 @@ export default function EditCommunity(){
         </button>
 
         {hasPaidTier && isStoreBilled && (
-          <div className="text-xs text-white/40">
+          <div className="text-xs text-c-text-primary/40">
             {t('communities.store_billed_note', { provider: providerLabel(billingProvider) })}
           </div>
         )}
 
         {hasPaidTier && !billing.has_stripe_customer && !isStoreBilled && (
-          <div className="text-xs text-white/40">
+          <div className="text-xs text-c-text-primary/40">
             {t('communities.no_stripe_customer_note')}
           </div>
         )}
@@ -561,22 +561,22 @@ export default function EditCommunity(){
     )
   }
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">{t('communities.loading')}</div>
+  if (loading) return <div className="p-4 text-c-text-tertiary">{t('communities.loading')}</div>
   if (error) return <div className="p-4 text-red-400">{error}</div>
-  if (!allowed) return <div className="p-4 text-[#9fb0b5]">{t('communities.no_access')}</div>
+  if (!allowed) return <div className="p-4 text-c-text-tertiary">{t('communities.no_access')}</div>
   const modalBillingProvider = String(billing?.billing_provider || 'stripe').toLowerCase()
   const modalStoreBilled = modalBillingProvider === 'apple' || modalBillingProvider === 'google'
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary">
       <div
-        className="fixed left-0 right-0 h-12 border-b border-white/10 bg-black/70 backdrop-blur flex items-center px-3 z-40"
+        className="fixed left-0 right-0 h-12 border-b border-c-border bg-c-bg-app/70 backdrop-blur flex items-center px-3 z-40"
         style={{
           top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))',
           '--app-subnav-height': '48px',
         } as CSSProperties}
       >
-        <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(-1)}>
+        <button className="px-3 py-2 rounded-full text-c-text-secondary hover:text-cpoint-turquoise" onClick={()=> navigate(-1)}>
           <i className="fa-solid fa-arrow-left" />
         </button>
         <div className="ml-2 font-semibold">{t('communities.manage_community')}</div>
@@ -585,25 +585,25 @@ export default function EditCommunity(){
       <div className="app-subnav-offset max-w-2xl mx-auto px-3 pb-24" style={{ '--app-subnav-height': '48px' } as CSSProperties}>
         <form ref={formRef} onSubmit={onSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-[#9fb0b5] mb-1">{t('communities.community_name')}</label>
-            <input className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none" value={name} onChange={e=> setName(e.target.value)} required />
+            <label className="block text-sm text-c-text-tertiary mb-1">{t('communities.community_name')}</label>
+            <input className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-cpoint-turquoise outline-none" value={name} onChange={e=> setName(e.target.value)} required />
           </div>
           <div>
-            <label className="block text-sm text-[#9fb0b5] mb-1">{t('communities.description')}</label>
+            <label className="block text-sm text-c-text-tertiary mb-1">{t('communities.description')}</label>
             <textarea
-              className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none min-h-[96px]"
+              className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-cpoint-turquoise outline-none min-h-[96px]"
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder={t('communities.description_placeholder')}
               rows={3}
             />
-            <div className="text-xs text-[#9fb0b5] mt-1">{t('communities.description_feed_hint')}</div>
+            <div className="text-xs text-c-text-tertiary mt-1">{t('communities.description_feed_hint')}</div>
           </div>
           {renderBillingCard()}
           <div>
-            <label className="block text-sm text-[#9fb0b5] mb-1">{t('communities.network_type_label')} <span className="text-[#4db6ac] text-xs">{t('communities.network_type_admin_only')}</span></label>
+            <label className="block text-sm text-c-text-tertiary mb-1">{t('communities.network_type_label')} <span className="text-cpoint-turquoise text-xs">{t('communities.network_type_admin_only')}</span></label>
             <select 
-              className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none" 
+              className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-cpoint-turquoise outline-none" 
               value={networkType} 
               onChange={e => setNetworkType(e.target.value)}
             >
@@ -617,19 +617,19 @@ export default function EditCommunity(){
               <option value="cause">{t('communities.network_cause')}</option>
               <option value="hybrid">{t('communities.network_hybrid')}</option>
             </select>
-            <div className="text-xs text-[#9fb0b5] mt-1">{t('communities.network_type_hint')}</div>
+            <div className="text-xs text-c-text-tertiary mt-1">{t('communities.network_type_hint')}</div>
           </div>
           <div>
-            <label className="block text-sm text-[#9fb0b5] mb-2">{t('communities.notifications_label')}</label>
-            <label className="flex items-center justify-between px-4 py-3 rounded-lg border border-white/15 bg-black hover:bg-white/5 cursor-pointer">
+            <label className="block text-sm text-c-text-tertiary mb-2">{t('communities.notifications_label')}</label>
+            <label className="flex items-center justify-between px-4 py-3 rounded-lg border border-c-border bg-c-bg-app hover:bg-c-hover-bg cursor-pointer">
               <div className="flex-1">
-                <div className="text-sm font-medium text-white">{t('communities.notify_new_members')}</div>
-                <div className="text-xs text-[#9fb0b5] mt-0.5">{t('communities.notify_new_members_hint')}</div>
+                <div className="text-sm font-medium text-c-text-primary">{t('communities.notify_new_members')}</div>
+                <div className="text-xs text-c-text-tertiary mt-0.5">{t('communities.notify_new_members_hint')}</div>
               </div>
               <div className="ml-3">
                 <button
                   type="button"
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${notifyOnNewMember ? 'bg-[#4db6ac]' : 'bg-white/20'}`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${notifyOnNewMember ? 'bg-cpoint-turquoise' : 'bg-white/20'}`}
                   onClick={() => setNotifyOnNewMember(!notifyOnNewMember)}
                 >
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${notifyOnNewMember ? 'translate-x-6' : 'translate-x-1'}`} />
@@ -638,7 +638,7 @@ export default function EditCommunity(){
             </label>
           </div>
           <div>
-            <label className="block text-sm text-[#9fb0b5] mb-1">{t('communities.member_limit_optional')}</label>
+            <label className="block text-sm text-c-text-tertiary mb-1">{t('communities.member_limit_optional')}</label>
             <input
               type="number"
               min={1}
@@ -648,11 +648,11 @@ export default function EditCommunity(){
                   ? t('communities.member_limit_example', { count: billing.member_cap })
                   : t('communities.member_limit_example', { count: 25 })
               }
-              className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none"
+              className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-cpoint-turquoise outline-none"
               value={maxMembers}
               onChange={e=> setMaxMembers(e.target.value.replace(/[^0-9]/g,''))}
             />
-            <div className="text-xs text-[#9fb0b5] mt-1">
+            <div className="text-xs text-c-text-tertiary mt-1">
               {billing?.member_cap != null && billing.member_cap > 0 ? (
                 <>
                   {t('communities.member_limit_plan_cap', { cap: billing.member_cap })}
@@ -663,11 +663,11 @@ export default function EditCommunity(){
             </div>
           </div>
           <div>
-            <label className="block text-sm text-[#9fb0b5] mb-1">{t('communities.hierarchy_label')}</label>
-            <div className="inline-flex rounded-full border border-white/15 overflow-hidden bg-black">
+            <label className="block text-sm text-c-text-tertiary mb-1">{t('communities.hierarchy_label')}</label>
+            <div className="inline-flex rounded-full border border-c-border overflow-hidden bg-c-bg-app">
               <button
                 type="button"
-                className={`px-4 py-2 text-sm whitespace-nowrap ${!isChild ? 'bg-[#4db6ac] text-black' : 'text-[#cfd8dc] hover:bg-white/5'}`}
+                className={`px-4 py-2 text-sm whitespace-nowrap ${!isChild ? 'bg-cpoint-turquoise text-black' : 'text-c-text-secondary hover:bg-c-hover-bg'}`}
                 onClick={()=> setIsChild(false)}
                 aria-pressed={!isChild}
               >
@@ -675,7 +675,7 @@ export default function EditCommunity(){
               </button>
               <button
                 type="button"
-                className={`px-4 py-2 text-sm whitespace-nowrap ${isChild ? 'bg-[#4db6ac] text-black' : 'text-[#cfd8dc] hover:bg-white/5'}`}
+                className={`px-4 py-2 text-sm whitespace-nowrap ${isChild ? 'bg-cpoint-turquoise text-black' : 'text-c-text-secondary hover:bg-c-hover-bg'}`}
                 onClick={()=> setIsChild(true)}
                 aria-pressed={isChild}
               >
@@ -684,8 +684,8 @@ export default function EditCommunity(){
             </div>
             {isChild && (
               <div className="mt-2">
-                <label className="block text-xs text-[#9fb0b5] mb-1">{t('communities.select_parent_community')}</label>
-                <select className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none" value={selectedParentId} onChange={e=> setSelectedParentId(e.target.value)}>
+                <label className="block text-xs text-c-text-tertiary mb-1">{t('communities.select_parent_community')}</label>
+                <select className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-cpoint-turquoise outline-none" value={selectedParentId} onChange={e=> setSelectedParentId(e.target.value)}>
                   <option value="none">{t('communities.none_option')}</option>
                   {parentOptions.map(p => (
                     <option key={p.id} value={String(p.id)}>{p.name}{p.type?` (${p.type})`:''}</option>
@@ -696,11 +696,11 @@ export default function EditCommunity(){
           </div>
 
           <div>
-            <label className="block text-sm text-[#9fb0b5] mb-1">{t('communities.community_image')}</label>
+            <label className="block text-sm text-c-text-tertiary mb-1">{t('communities.community_image')}</label>
             
             {/* Current image preview */}
             {currentBackgroundPath && !removeBackground && !imageFile && (
-              <div style={{ position: 'relative' }} className="mb-3 rounded-lg border border-white/10 overflow-hidden">
+              <div style={{ position: 'relative' }} className="mb-3 rounded-lg border border-c-border overflow-hidden">
                 <ImageLoader 
                   src={currentBackgroundPath} 
                   alt={t('communities.current_community_image_alt')} 
@@ -734,7 +734,7 @@ export default function EditCommunity(){
             
             {/* New image preview */}
             {imageFile && (
-              <div style={{ position: 'relative' }} className="mb-3 rounded-lg border border-white/10 overflow-hidden">
+              <div style={{ position: 'relative' }} className="mb-3 rounded-lg border border-c-border overflow-hidden">
                 <img 
                   src={URL.createObjectURL(imageFile)} 
                   alt={t('communities.new_community_image_alt')} 
@@ -770,7 +770,7 @@ export default function EditCommunity(){
                 <span className="text-sm text-red-400">{t('communities.image_will_be_removed')}</span>
                 <button
                   type="button"
-                  className="text-xs text-[#9fb0b5] hover:text-white"
+                  className="text-xs text-c-text-tertiary hover:text-c-text-primary"
                   onClick={() => setRemoveBackground(false)}
                 >
                   {t('communities.undo')}
@@ -790,13 +790,13 @@ export default function EditCommunity(){
           </div>
           
           <div>
-            <label className="block text-sm text-[#9fb0b5] mb-2">{t('communities.steve_personality_label')}</label>
-            <div className="rounded-lg border border-white/15 bg-black p-4">
-              <p className="text-xs text-[#9fb0b5] mb-3">
+            <label className="block text-sm text-c-text-tertiary mb-2">{t('communities.steve_personality_label')}</label>
+            <div className="rounded-lg border border-c-border bg-c-bg-app p-4">
+              <p className="text-xs text-c-text-tertiary mb-3">
                 {t('communities.steve_personality_hint')}
               </p>
               <select 
-                className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none"
+                className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-cpoint-turquoise outline-none"
                 value={aiPersonality}
                 onChange={e => saveAiPersonality(e.target.value)}
                 disabled={savingAiPersonality}
@@ -806,7 +806,7 @@ export default function EditCommunity(){
                 ))}
               </select>
               {savingAiPersonality && (
-                <div className="mt-2 text-xs text-[#4db6ac]">
+                <div className="mt-2 text-xs text-cpoint-turquoise">
                   <i className="fa-solid fa-spinner fa-spin mr-1" /> {t('communities.saving')}
                 </div>
               )}
@@ -814,17 +814,17 @@ export default function EditCommunity(){
           </div>
 
           <div>
-            <label className="block text-sm text-[#9fb0b5] mb-2">{t('communities.content_generation_label')}</label>
-            <div className="rounded-lg border border-white/15 bg-black p-4 flex items-center justify-between gap-4">
+            <label className="block text-sm text-c-text-tertiary mb-2">{t('communities.content_generation_label')}</label>
+            <div className="rounded-lg border border-c-border bg-c-bg-app p-4 flex items-center justify-between gap-4">
               <div>
-                <div className="text-sm font-medium text-white">{t('communities.steve_automations')}</div>
-                <div className="text-xs text-[#9fb0b5] mt-1">
+                <div className="text-sm font-medium text-c-text-primary">{t('communities.steve_automations')}</div>
+                <div className="text-xs text-c-text-tertiary mt-1">
                   {t('communities.steve_automations_hint')}
                 </div>
               </div>
               <button
                 type="button"
-                className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110 whitespace-nowrap"
+                className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black hover:brightness-110 whitespace-nowrap"
                 onClick={() => setShowContentGeneration(true)}
               >
                 {t('communities.open_action')}
@@ -833,17 +833,17 @@ export default function EditCommunity(){
           </div>
           
           <div className="flex justify-end gap-2">
-            <button type="button" className="px-3 py-2 rounded-md border border-white/10 hover:bg-white/5" onClick={()=> navigate(-1)}>{t('common.cancel')}</button>
-            <button type="submit" className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110">{t('communities.save_changes')}</button>
+            <button type="button" className="px-3 py-2 rounded-md border border-c-border hover:bg-c-hover-bg" onClick={()=> navigate(-1)}>{t('common.cancel')}</button>
+            <button type="submit" className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black hover:brightness-110">{t('communities.save_changes')}</button>
           </div>
         </form>
 
         {/* Steve welcome post — Only for owners */}
         {isOwner && (
-          <div className="mt-8 pt-6 border-t border-white/10">
-            <div className="bg-[#4db6ac]/10 border border-[#4db6ac]/30 rounded-lg p-4">
-              <h3 className="text-lg font-semibold text-[#4db6ac] mb-2">{t('communities.welcome_post_title')}</h3>
-              <p className="text-sm text-[#9fb0b5] mb-4">
+          <div className="mt-8 pt-6 border-t border-c-border">
+            <div className="bg-cpoint-turquoise/10 border border-cpoint-turquoise/30 rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-cpoint-turquoise mb-2">{t('communities.welcome_post_title')}</h3>
+              <p className="text-sm text-c-text-tertiary mb-4">
                 {t('communities.welcome_post_body')}
               </p>
               <button
@@ -862,7 +862,7 @@ export default function EditCommunity(){
                     alert(t('communities.welcome_post_failed'))
                   }
                 }}
-                className="px-4 py-2 bg-[#4db6ac] hover:brightness-110 text-black rounded-md font-medium transition-colors"
+                className="px-4 py-2 bg-cpoint-turquoise hover:brightness-110 text-black rounded-md font-medium transition-colors"
               >
                 {t('communities.republish_welcome_post')}
               </button>
@@ -872,10 +872,10 @@ export default function EditCommunity(){
 
         {/* Delete Community Section - Only for owners */}
         {isOwner && (
-          <div className="mt-8 pt-6 border-t border-white/10">
+          <div className="mt-8 pt-6 border-t border-c-border">
             <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
               <h3 className="text-lg font-semibold text-red-400 mb-2">{t('communities.danger_zone_title')}</h3>
-              <p className="text-sm text-[#9fb0b5] mb-4">
+              <p className="text-sm text-c-text-tertiary mb-4">
                 {t('communities.danger_zone_body')}
               </p>
               <div className="flex flex-col gap-3 sm:flex-row">
@@ -890,12 +890,12 @@ export default function EditCommunity(){
                 <button 
                   type="button"
                   onClick={onDelete}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md font-medium transition-colors"
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-c-text-primary rounded-md font-medium transition-colors"
                 >
                   {t('communities.delete_community')}
                 </button>
               </div>
-              <p className="mt-3 text-xs text-[#9fb0b5]">
+              <p className="mt-3 text-xs text-c-text-tertiary">
                 {isFrozen
                   ? t('communities.frozen_member_note')
                   : t('communities.freeze_member_note')}
@@ -906,21 +906,21 @@ export default function EditCommunity(){
       </div>
       {billing && showManageSubscriptionModal && !billing.is_inherited && (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-4"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-c-bg-overlay px-4"
           role="dialog"
           aria-modal="true"
           aria-label={t('communities.manage_subscription_modal_label')}
           onClick={() => setShowManageSubscriptionModal(false)}
         >
           <div
-            className="w-full max-w-md rounded-xl border-2 border-[#00CEC8] bg-black p-6 text-white"
+            className="w-full max-w-md rounded-xl border-2 border-cpoint-turquoise bg-c-bg-app p-6 text-c-text-primary"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-[#00CEC8]">{t('communities.billing_label')}</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">{t('communities.billing_label')}</p>
                 <h3 className="mt-2 text-lg font-semibold">{t('communities.manage_subscription')}</h3>
-                <p className="mt-1 text-sm text-white/55">
+                <p className="mt-1 text-sm text-c-text-primary/55">
                   {modalStoreBilled
                     ? t('communities.manage_subscription_modal_body_store', { provider: providerLabel(modalBillingProvider) })
                     : t('communities.manage_subscription_modal_body_stripe')}
@@ -929,7 +929,7 @@ export default function EditCommunity(){
               <button
                 type="button"
                 aria-label={t('common.close')}
-                className="rounded-full p-1 text-white/50 hover:bg-white/10 hover:text-white"
+                className="rounded-full p-1 text-c-text-primary/50 hover:bg-c-hover-bg hover:text-c-text-primary"
                 onClick={() => setShowManageSubscriptionModal(false)}
               >
                 <i className="fa-solid fa-xmark" />
@@ -940,7 +940,7 @@ export default function EditCommunity(){
               <button
                 type="button"
                 disabled={modalStoreBilled}
-                className="rounded-full bg-[#00CEC8] px-4 py-2.5 text-xs font-semibold text-black hover:bg-[#00CEC8]/90"
+                className="rounded-full bg-cpoint-turquoise px-4 py-2.5 text-xs font-semibold text-black hover:bg-cpoint-turquoise/90"
                 onClick={() => {
                   setShowManageSubscriptionModal(false)
                   navigate(`/subscription_plans?mode=choose&open=community_plans&community_id=${community_id}`)
@@ -951,7 +951,7 @@ export default function EditCommunity(){
               {['paid_l1', 'paid_l2', 'paid_l3'].includes(String(billing.tier || '').toLowerCase()) && (
                 <button
                   type="button"
-                  className="rounded-full border border-[#00CEC8]/50 px-4 py-2.5 text-xs font-semibold text-[#00CEC8] hover:bg-[#00CEC8]/10"
+                  className="rounded-full border border-cpoint-turquoise/50 px-4 py-2.5 text-xs font-semibold text-cpoint-turquoise hover:bg-cpoint-turquoise/10"
                   onClick={() => {
                     setShowManageSubscriptionModal(false)
                     navigate(`/subscription_plans?mode=choose&open=community_addons&community_id=${community_id}`)
@@ -963,7 +963,7 @@ export default function EditCommunity(){
               <button
                 type="button"
                 disabled={!billing.has_stripe_customer && !modalStoreBilled}
-                className="rounded-full border border-white/20 px-4 py-2.5 text-xs font-semibold text-white hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-full border border-c-border px-4 py-2.5 text-xs font-semibold text-c-text-primary hover:bg-c-hover-bg disabled:cursor-not-allowed disabled:opacity-40"
                 onClick={() => {
                   if (modalStoreBilled) {
                     openExternalBillingUrl(
@@ -980,7 +980,7 @@ export default function EditCommunity(){
               </button>
               <button
                 type="button"
-                className="mt-1 text-xs text-white/40 hover:text-white/70"
+                className="mt-1 text-xs text-c-text-primary/40 hover:text-c-text-secondary"
                 onClick={() => setShowManageSubscriptionModal(false)}
               >
                 {t('common.close')}

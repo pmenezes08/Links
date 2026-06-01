@@ -38,6 +38,7 @@ const LEGACY_ACCOUNT_INDEXED_DBS = [
   'chat-encryption',
   'signal-protocol',
   'signal-store',
+  'cpoint-media-outbox',
 ] as const
 
 type CacheResetMode = 'account' | 'all' | false

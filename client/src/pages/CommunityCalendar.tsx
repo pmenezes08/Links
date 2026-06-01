@@ -68,8 +68,8 @@ const TIMEZONE_OPTIONS = [
   ['UTC', 'UTC (Coordinated Universal Time)'],
 ] as const
 
-const INPUT_CLASS = 'mt-1 w-full rounded-xl border border-white/10 bg-black/70 px-3 py-2 text-[16px] text-white outline-none transition focus:border-[#4db6ac]/80 focus:ring-2 focus:ring-[#4db6ac]/20'
-const LABEL_CLASS = 'text-xs font-medium text-[#9fb0b5]'
+const INPUT_CLASS = 'mt-1 w-full rounded-xl border border-c-border bg-c-bg-app/70 px-3 py-2 text-[16px] text-c-text-primary outline-none transition focus:border-cpoint-turquoise/80 focus:ring-2 focus:ring-cpoint-turquoise/20'
+const LABEL_CLASS = 'text-xs font-medium text-c-text-tertiary'
 
 function isBlankTime(value?: string | null) {
   return !value || value === 'None' || value === '00:00' || value === '00:00:00' || value === '0000-00-00 00:00:00'
@@ -230,7 +230,7 @@ function EventFormFields({ event }: { event?: EventItem }) {
             <option value="1_hour">{t('calendar.reminder_1_hour')}</option>
             <option value="all">{t('calendar.reminder_all')}</option>
           </select>
-          <span className="mt-2 block text-[11px] font-normal normal-case tracking-normal text-[#8fa3a8]">{t('calendar.reminders_hint')}</span>
+          <span className="mt-2 block text-[11px] font-normal normal-case tracking-normal text-c-text-tertiary">{t('calendar.reminders_hint')}</span>
         </label>
       ) : null}
     </div>
@@ -251,43 +251,43 @@ type EventCardProps = {
 function EventCard({ event, archived = false, onOpen, onRsvp, onShowDetails, onEdit, onDelete, onNativeCalendarSaved }: EventCardProps) {
   const { t } = useTranslation()
   return (
-    <article className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] p-3 shadow-[0_12px_34px_rgba(0,0,0,0.32)] backdrop-blur-xl transition hover:border-[#4db6ac]/45 hover:bg-white/[0.065]">
-      <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[#4db6ac]/70 to-transparent" />
+    <article className="group relative overflow-hidden rounded-2xl border border-c-border bg-c-bg-surface p-3 shadow-c-card backdrop-blur-xl transition hover:border-cpoint-turquoise/45 hover:bg-c-hover-bg">
+      <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-cpoint-turquoise/70 to-transparent" />
       <button type="button" className="w-full text-left" onClick={() => onOpen(event)}>
         <div className="flex items-start gap-2.5">
-          <div className="grid h-12 w-11 shrink-0 place-items-center rounded-xl border border-[#4db6ac]/35 bg-[#4db6ac]/10 text-center">
+          <div className="grid h-12 w-11 shrink-0 place-items-center rounded-xl border border-cpoint-turquoise/35 bg-cpoint-turquoise/10 text-center">
             <div>
-              <div className="text-[9px] font-bold tracking-[0.16em] text-[#4db6ac]">{formatMonth(event.date)}</div>
-              <div className="text-lg font-semibold leading-tight text-white">{formatDay(event.date)}</div>
+              <div className="text-[9px] font-bold tracking-[0.16em] text-cpoint-turquoise">{formatMonth(event.date)}</div>
+              <div className="text-lg font-semibold leading-tight text-c-text-primary">{formatDay(event.date)}</div>
             </div>
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-[#8fa3a8]">
+            <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-c-text-tertiary">
               <span>{formatTimeRange(event)}</span>
-              {archived ? <span className="rounded-full border border-white/10 px-2 py-0.5 normal-case tracking-normal">{t('calendar.archived')}</span> : null}
+              {archived ? <span className="rounded-full border border-c-border px-2 py-0.5 normal-case tracking-normal">{t('calendar.archived')}</span> : null}
             </div>
-            <h3 className="mt-0.5 line-clamp-2 text-base font-semibold text-white">{event.title}</h3>
-            <p className="mt-0.5 text-xs text-[#b7c7ca]">{formatDateRange(event)}</p>
-            {event.description ? <p className="mt-2 line-clamp-2 text-xs leading-5 text-[#d7e1e3]/85">{event.description}</p> : null}
+            <h3 className="mt-0.5 line-clamp-2 text-base font-semibold text-c-text-primary">{event.title}</h3>
+            <p className="mt-0.5 text-xs text-c-text-secondary">{formatDateRange(event)}</p>
+            {event.description ? <p className="mt-2 line-clamp-2 text-xs leading-5 text-c-text-secondary">{event.description}</p> : null}
           </div>
         </div>
       </button>
-      <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-[#b7c7ca]" onClick={clickEvent => clickEvent.stopPropagation()}>
-        <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'going' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => onRsvp(event.id, 'going')}>
+      <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-c-text-secondary" onClick={clickEvent => clickEvent.stopPropagation()}>
+        <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'going' ? 'border-cpoint-turquoise bg-cpoint-turquoise/15 text-c-accent-ink' : 'border-c-border hover:border-cpoint-turquoise/45 hover:text-c-text-primary'}`} onClick={() => onRsvp(event.id, 'going')}>
           {t('calendar.going')} {event.rsvp_counts?.going || 0}
         </button>
-        <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'maybe' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => onRsvp(event.id, 'maybe')}>
+        <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'maybe' ? 'border-cpoint-turquoise bg-cpoint-turquoise/15 text-c-accent-ink' : 'border-c-border hover:border-cpoint-turquoise/45 hover:text-c-text-primary'}`} onClick={() => onRsvp(event.id, 'maybe')}>
           {t('calendar.maybe')} {event.rsvp_counts?.maybe || 0}
         </button>
-        <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'not_going' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => onRsvp(event.id, 'not_going')}>
+        <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'not_going' ? 'border-cpoint-turquoise bg-cpoint-turquoise/15 text-c-accent-ink' : 'border-c-border hover:border-cpoint-turquoise/45 hover:text-c-text-primary'}`} onClick={() => onRsvp(event.id, 'not_going')}>
           {t('calendar.not_going')} {event.rsvp_counts?.not_going || 0}
         </button>
-        <button type="button" className="ml-auto rounded-full border border-white/10 px-2.5 py-1 hover:border-[#4db6ac]/45 hover:text-white" onClick={() => onShowDetails(event)}>
+        <button type="button" className="ml-auto rounded-full border border-c-border px-2.5 py-1 hover:border-cpoint-turquoise/45 hover:text-c-text-primary" onClick={() => onShowDetails(event)}>
           {t('calendar.details')}
         </button>
         <button
           type="button"
-          className="rounded-full border border-white/10 px-2.5 py-1 hover:border-[#4db6ac]/45 hover:text-white"
+          className="rounded-full border border-c-border px-2.5 py-1 hover:border-cpoint-turquoise/45 hover:text-c-text-primary"
           onClick={(e) => {
             e.stopPropagation()
             void (async () => {
@@ -307,7 +307,7 @@ function EventCard({ event, archived = false, onOpen, onRsvp, onShowDetails, onE
         </button>
         {!archived ? (
           <>
-            <button type="button" className="rounded-full border border-white/10 px-2.5 py-1 hover:border-[#4db6ac]/45 hover:text-white" onClick={() => onEdit(event)} aria-label={t('calendar.edit_event_aria')}>
+            <button type="button" className="rounded-full border border-c-border px-2.5 py-1 hover:border-cpoint-turquoise/45 hover:text-c-text-primary" onClick={() => onEdit(event)} aria-label={t('calendar.edit_event_aria')}>
               <i className="fa-regular fa-pen-to-square" />
             </button>
             <button type="button" className="rounded-full border border-red-400/45 px-2.5 py-1 text-red-200 hover:bg-red-500/10" onClick={() => onDelete(event)} aria-label={t('calendar.delete_event_card_aria')}>
@@ -612,37 +612,37 @@ export default function CommunityCalendar() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(77,182,172,0.22),transparent_34%),radial-gradient(circle_at_15%_20%,rgba(77,182,172,0.10),transparent_28%)]" />
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary">
+      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(0,206,200,0.22),transparent_34%),radial-gradient(circle_at_15%_20%,rgba(0,206,200,0.10),transparent_28%)]" />
       <div
         className="relative mx-auto max-w-3xl px-3 pt-2 pb-28"
         style={{ WebkitOverflowScrolling: 'touch' as any } as CSSProperties}
       >
         <header className="mb-0 flex items-center">
-          <button className="rounded-full p-2 text-[#cfe7e4] hover:bg-white/5" onClick={() => navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label={t('common.back')}>
+          <button className="rounded-full p-2 text-c-text-secondary hover:bg-c-hover-bg" onClick={() => navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label={t('common.back')}>
             <i className="fa-solid fa-arrow-left" />
           </button>
         </header>
 
-        {successMsg ? <div className="mb-2 rounded-xl border border-[#4db6ac]/25 bg-[#4db6ac]/10 px-3 py-2 text-xs text-[#9ff8ef]">{successMsg}</div> : null}
+        {successMsg ? <div className="mb-2 rounded-xl border border-cpoint-turquoise/25 bg-cpoint-turquoise/10 px-3 py-2 text-xs text-c-accent-ink">{successMsg}</div> : null}
 
-        <section className="mb-2.5 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] p-3 shadow-[0_14px_46px_rgba(0,0,0,0.36)] backdrop-blur-xl">
+        <section className="mb-2.5 overflow-hidden rounded-2xl border border-c-border bg-c-bg-surface p-3 shadow-c-card backdrop-blur-xl">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-[10px] uppercase tracking-[0.18em] text-[#8fa3a8]">{t('calendar.next_up')}</p>
-              <h2 className="mt-1 truncate text-lg font-semibold text-white">{nextEvent?.title || t('calendar.no_upcoming_yet')}</h2>
-              <p className="mt-1 line-clamp-2 text-xs text-[#b7c7ca]">{nextEvent ? `${formatDateRange(nextEvent)} • ${formatTimeRange(nextEvent)}` : t('calendar.create_first_hint')}</p>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-c-text-tertiary">{t('calendar.next_up')}</p>
+              <h2 className="mt-1 truncate text-lg font-semibold text-c-text-primary">{nextEvent?.title || t('calendar.no_upcoming_yet')}</h2>
+              <p className="mt-1 line-clamp-2 text-xs text-c-text-secondary">{nextEvent ? `${formatDateRange(nextEvent)} • ${formatTimeRange(nextEvent)}` : t('calendar.create_first_hint')}</p>
             </div>
-            <div className="shrink-0 rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 px-2.5 py-1.5 text-right">
-              <div className="text-[11px] text-[#8ff4e9]">{nextEvent ? getCountdownLabel(nextEvent) : t('calendar.ready')}</div>
+            <div className="shrink-0 rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-2.5 py-1.5 text-right">
+              <div className="text-[11px] text-c-accent-ink">{nextEvent ? getCountdownLabel(nextEvent) : t('calendar.ready')}</div>
             </div>
           </div>
           {nextEvent ? (
             <div className="mt-3 flex flex-wrap gap-2">
-              <button className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-black hover:bg-[#e9fffd]" onClick={() => setRsvpEvent(nextEvent)}>{t('calendar.rsvp_now')}</button>
-              <button className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-[#d7e1e3] hover:border-[#4db6ac]/45" onClick={() => navigate(`/event/${nextEvent.id}`)}>{t('calendar.open_details')}</button>
+              <button className="rounded-full bg-cpoint-turquoise px-3 py-1.5 text-xs font-semibold text-c-text-on-accent" onClick={() => setRsvpEvent(nextEvent)}>{t('calendar.rsvp_now')}</button>
+              <button className="rounded-full border border-c-border px-3 py-1.5 text-xs text-c-text-secondary hover:border-cpoint-turquoise/45" onClick={() => navigate(`/event/${nextEvent.id}`)}>{t('calendar.open_details')}</button>
               <button
-                className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-[#d7e1e3] hover:border-[#4db6ac]/45"
+                className="rounded-full border border-c-border px-3 py-1.5 text-xs text-c-text-secondary hover:border-cpoint-turquoise/45"
                 onClick={() =>
                   void (async () => {
                     try {
@@ -661,16 +661,16 @@ export default function CommunityCalendar() {
           ) : null}
         </section>
 
-        <div className="mb-3 flex rounded-full border border-white/10 bg-white/[0.04] p-1">
-          <button className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${activeTab === 'upcoming' ? 'bg-[#4db6ac] text-black' : 'text-[#9fb0b5] hover:text-white'}`} onClick={() => setActiveTab('upcoming')}>{t('calendar.upcoming')}</button>
-          <button className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${activeTab === 'archive' ? 'bg-[#4db6ac] text-black' : 'text-[#9fb0b5] hover:text-white'}`} onClick={() => setActiveTab('archive')}>{t('calendar.archive')}</button>
+        <div className="mb-3 flex rounded-full border border-c-border bg-c-bg-surface p-1">
+          <button className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${activeTab === 'upcoming' ? 'bg-cpoint-turquoise text-black' : 'text-c-text-tertiary hover:text-c-text-primary'}`} onClick={() => setActiveTab('upcoming')}>{t('calendar.upcoming')}</button>
+          <button className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${activeTab === 'archive' ? 'bg-cpoint-turquoise text-black' : 'text-c-text-tertiary hover:text-c-text-primary'}`} onClick={() => setActiveTab('archive')}>{t('calendar.archive')}</button>
         </div>
 
         {activeTab === 'upcoming' && dateStrip.length > 0 ? (
           <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
             {dateStrip.map(event => (
-              <button key={event.date} className={`min-w-[58px] rounded-xl border px-2 py-2 text-center transition ${selectedDate === event.date ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-white' : 'border-white/10 bg-white/[0.035] text-[#9fb0b5]'}`} onClick={() => setSelectedDate(event.date)}>
-                <div className="text-[9px] font-bold tracking-[0.16em] text-[#4db6ac]">{formatMonth(event.date)}</div>
+              <button key={event.date} className={`min-w-[58px] rounded-xl border px-2 py-2 text-center transition ${selectedDate === event.date ? 'border-cpoint-turquoise bg-cpoint-turquoise/15 text-c-text-primary' : 'border-c-border bg-c-bg-recessed text-c-text-tertiary'}`} onClick={() => setSelectedDate(event.date)}>
+                <div className="text-[9px] font-bold tracking-[0.16em] text-cpoint-turquoise">{formatMonth(event.date)}</div>
                 <div className="text-lg font-semibold leading-tight">{formatDay(event.date)}</div>
                 <div className="text-[10px]">{t('calendar.events_on_date', { count: events.filter(item => item.date === event.date).length })}</div>
               </button>
@@ -680,13 +680,13 @@ export default function CommunityCalendar() {
 
         <main className="space-y-2.5">
           {loading ? (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-[#9fb0b5]">{t('calendar.loading_events')}</div>
+            <div className="rounded-2xl border border-c-border bg-c-bg-surface p-4 text-sm text-c-text-tertiary">{t('calendar.loading_events')}</div>
           ) : visibleEvents.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.035] p-5 text-center">
-              <div className="mx-auto grid h-11 w-11 place-items-center rounded-xl bg-[#4db6ac]/10 text-[#4db6ac]"><i className="fa-regular fa-calendar" /></div>
+            <div className="rounded-2xl border border-dashed border-c-border bg-c-bg-recessed p-5 text-center">
+              <div className="mx-auto grid h-11 w-11 place-items-center rounded-xl bg-cpoint-turquoise/10 text-cpoint-turquoise"><i className="fa-regular fa-calendar" /></div>
               <h3 className="mt-3 text-base font-semibold">{activeTab === 'archive' ? t('calendar.no_archived_events') : t('calendar.nothing_scheduled')}</h3>
-              <p className="mt-1.5 text-xs text-[#9fb0b5]">{activeTab === 'archive' ? t('calendar.archive_empty_hint') : t('calendar.upcoming_empty_hint')}</p>
-              {activeTab !== 'archive' ? <button className="mt-4 rounded-full bg-[#4db6ac] px-4 py-1.5 text-xs font-semibold text-black" onClick={() => setCreateOpen(true)}>{t('calendar.create_event')}</button> : null}
+              <p className="mt-1.5 text-xs text-c-text-tertiary">{activeTab === 'archive' ? t('calendar.archive_empty_hint') : t('calendar.upcoming_empty_hint')}</p>
+              {activeTab !== 'archive' ? <button className="mt-4 rounded-full bg-cpoint-turquoise px-4 py-1.5 text-xs font-semibold text-black" onClick={() => setCreateOpen(true)}>{t('calendar.create_event')}</button> : null}
             </div>
           ) : (
             visibleEvents.map(event => (
@@ -709,7 +709,7 @@ export default function CommunityCalendar() {
       {activeTab !== 'archive' ? (
         <button
           type="button"
-          className="fixed bottom-[5.25rem] left-1/2 z-40 inline-flex w-[88%] max-w-sm -translate-x-1/2 items-center justify-center gap-2 rounded-full bg-[#4db6ac] px-5 py-3 text-sm font-semibold text-black shadow-[0_0_28px_rgba(77,182,172,0.45)] hover:brightness-110"
+          className="fixed bottom-[5.25rem] left-1/2 z-40 inline-flex w-[88%] max-w-sm -translate-x-1/2 items-center justify-center gap-2 rounded-full bg-cpoint-turquoise px-5 py-3 text-sm font-semibold text-c-text-on-accent shadow-[0_0_28px_rgba(0,206,200,0.45)] hover:brightness-110"
           onClick={() => setCreateOpen(true)}
         >
           <i className="fa-solid fa-plus text-xs" />
@@ -719,7 +719,7 @@ export default function CommunityCalendar() {
 
       {createOpen ? (
         <div
-          className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/70 px-3 backdrop-blur"
+          className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-c-bg-app/70 px-3 backdrop-blur"
           style={{
             paddingTop: keyboardOffset > 0
               ? '8px'
@@ -730,41 +730,41 @@ export default function CommunityCalendar() {
           onClick={event => event.currentTarget === event.target && setCreateOpen(false)}
           onFocusCapture={trackFocusedField}
         >
-          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#050606] p-3.5 shadow-2xl">
+          <div className="w-full max-w-2xl rounded-2xl border border-c-border bg-c-bg-elevated p-3.5 shadow-2xl">
             <div className="mb-2.5 flex items-center justify-between">
               <div>
                 <h2 className="text-base font-semibold">{t('calendar.create_event_title')}</h2>
-                <p className="mt-0.5 text-xs text-[#8fa3a8]">{t('calendar.step_of', { current: createStep === 'details' ? 1 : 2, total: 2 })}</p>
+                <p className="mt-0.5 text-xs text-c-text-tertiary">{t('calendar.step_of', { current: createStep === 'details' ? 1 : 2, total: 2 })}</p>
               </div>
-              <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setCreateOpen(false)} aria-label={t('common.close')}><i className="fa-solid fa-xmark" /></button>
+              <button className="grid h-8 w-8 place-items-center rounded-full border border-c-border hover:bg-c-hover-bg" onClick={() => setCreateOpen(false)} aria-label={t('common.close')}><i className="fa-solid fa-xmark" /></button>
             </div>
             <form ref={createFormRef} onSubmit={event => { event.preventDefault(); createEvent(new FormData(event.currentTarget)) }}>
               <div className={createStep === 'details' ? 'block' : 'hidden'}>
                 <EventFormFields />
                 <div className="mt-3 flex justify-end">
-                  <button type="button" className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110" onClick={() => setCreateStep('invite')}>{t('calendar.continue')}</button>
+                  <button type="button" className="rounded-full bg-cpoint-turquoise px-4 py-2 text-sm font-semibold text-black hover:brightness-110" onClick={() => setCreateStep('invite')}>{t('calendar.continue')}</button>
                 </div>
               </div>
               <div className={createStep === 'invite' ? 'block' : 'hidden'}>
-                <div className="rounded-xl border border-white/10 bg-white/[0.035] p-2.5">
+                <div className="rounded-xl border border-c-border bg-c-bg-recessed p-2.5">
                   <div className="flex gap-1.5">
-                    <button type="button" className={`flex-1 rounded-lg border px-3 py-2 text-sm ${inviteAll ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca]'}`} onClick={() => setInviteAll(true)}>{t('calendar.invite_all')}</button>
-                    <button type="button" className={`flex-1 rounded-lg border px-3 py-2 text-sm ${!inviteAll ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca]'}`} onClick={() => setInviteAll(false)}>{t('calendar.choose_members')}</button>
+                    <button type="button" className={`flex-1 rounded-lg border px-3 py-2 text-sm ${inviteAll ? 'border-cpoint-turquoise bg-cpoint-turquoise/15 text-c-accent-ink' : 'border-c-border text-c-text-secondary'}`} onClick={() => setInviteAll(true)}>{t('calendar.invite_all')}</button>
+                    <button type="button" className={`flex-1 rounded-lg border px-3 py-2 text-sm ${!inviteAll ? 'border-cpoint-turquoise bg-cpoint-turquoise/15 text-c-accent-ink' : 'border-c-border text-c-text-secondary'}`} onClick={() => setInviteAll(false)}>{t('calendar.choose_members')}</button>
                   </div>
                   {!inviteAll ? (
                     <div className="mt-2.5 max-h-52 space-y-1 overflow-y-auto pr-1">
-                      {members.length === 0 ? <div className="text-sm text-[#9fb0b5]">{t('calendar.no_members_found')}</div> : members.map(member => (
-                        <label key={member.username} className="flex cursor-pointer items-center justify-between rounded-lg px-3 py-2 hover:bg-white/5">
+                      {members.length === 0 ? <div className="text-sm text-c-text-tertiary">{t('calendar.no_members_found')}</div> : members.map(member => (
+                        <label key={member.username} className="flex cursor-pointer items-center justify-between rounded-lg px-3 py-2 hover:bg-c-hover-bg">
                           <span className="text-sm">{member.username}</span>
-                          <input type="checkbox" checked={!!selectedMembers[member.username]} onChange={() => setSelectedMembers(current => ({ ...current, [member.username]: !current[member.username] }))} className="h-5 w-5 accent-[#4db6ac]" />
+                          <input type="checkbox" checked={!!selectedMembers[member.username]} onChange={() => setSelectedMembers(current => ({ ...current, [member.username]: !current[member.username] }))} className="h-5 w-5 accent-cpoint-turquoise" />
                         </label>
                       ))}
                     </div>
-                  ) : <p className="mt-2.5 text-sm text-[#9fb0b5]">{t('calendar.invite_all_hint')}</p>}
+                  ) : <p className="mt-2.5 text-sm text-c-text-tertiary">{t('calendar.invite_all_hint')}</p>}
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3">
-                  <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm hover:bg-white/5" onClick={() => setCreateStep('details')}>{t('common.back')}</button>
-                  <button type="submit" className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110">
+                  <button type="button" className="rounded-full border border-c-border px-4 py-2 text-sm hover:bg-c-hover-bg" onClick={() => setCreateStep('details')}>{t('common.back')}</button>
+                  <button type="submit" className="rounded-full bg-cpoint-turquoise px-4 py-2 text-sm font-semibold text-black hover:brightness-110">
                     {inviteAll ? t('calendar.create_for_everyone') : selectedCount ? t('calendar.create_for_count', { count: selectedCount }) : t('calendar.create_event_submit')}
                   </button>
                 </div>
@@ -775,15 +775,15 @@ export default function CommunityCalendar() {
       ) : null}
 
       {rsvpEvent ? (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 backdrop-blur" onClick={event => event.currentTarget === event.target && setRsvpEvent(null)}>
-          <div className="w-full max-w-xl rounded-t-2xl border border-white/10 bg-[#050606] p-3.5 sm:mb-4 sm:rounded-2xl">
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-c-bg-app/70 backdrop-blur" onClick={event => event.currentTarget === event.target && setRsvpEvent(null)}>
+          <div className="w-full max-w-xl rounded-t-2xl border border-c-border bg-c-bg-elevated p-3.5 sm:mb-4 sm:rounded-2xl">
             <div className="mb-3 flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-medium text-[#4db6ac]">{t('calendar.rsvp_label')}</p>
+                <p className="text-xs font-medium text-cpoint-turquoise">{t('calendar.rsvp_label')}</p>
                 <h2 className="text-base font-semibold">{rsvpEvent.title}</h2>
-                <p className="mt-1 text-xs text-[#9fb0b5]">{formatDateRange(rsvpEvent)} • {formatTimeRange(rsvpEvent)}</p>
+                <p className="mt-1 text-xs text-c-text-tertiary">{formatDateRange(rsvpEvent)} • {formatTimeRange(rsvpEvent)}</p>
               </div>
-              <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setRsvpEvent(null)} aria-label={t('common.close')}><i className="fa-solid fa-xmark" /></button>
+              <button className="grid h-8 w-8 place-items-center rounded-full border border-c-border hover:bg-c-hover-bg" onClick={() => setRsvpEvent(null)} aria-label={t('common.close')}><i className="fa-solid fa-xmark" /></button>
             </div>
             <div className="grid grid-cols-3 gap-2">
               {([
@@ -791,20 +791,20 @@ export default function CommunityCalendar() {
                 ['maybe', t('calendar.maybe'), rsvpEvent.rsvp_counts?.maybe || 0],
                 ['not_going', t('calendar.not_going'), rsvpEvent.rsvp_counts?.not_going || 0],
               ] as const).map(([value, label, count]) => (
-                <button key={value} className={`rounded-xl border px-2 py-3 text-xs transition ${rsvpEvent.user_rsvp === value ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca] hover:border-[#4db6ac]/45'}`} onClick={() => rsvp(rsvpEvent.id, value)}>
+                <button key={value} className={`rounded-xl border px-2 py-3 text-xs transition ${rsvpEvent.user_rsvp === value ? 'border-cpoint-turquoise bg-cpoint-turquoise/15 text-c-accent-ink' : 'border-c-border text-c-text-secondary hover:border-cpoint-turquoise/45'}`} onClick={() => rsvp(rsvpEvent.id, value)}>
                   <span className="block font-semibold">{label}</span>
-                  <span className="text-xs text-[#8fa3a8]">{count}</span>
+                  <span className="text-xs text-c-text-tertiary">{count}</span>
                 </button>
               ))}
             </div>
-            {typeof rsvpEvent.rsvp_counts?.no_response === 'number' ? <p className="mt-4 text-center text-xs text-[#8fa3a8]">{t('calendar.no_response_yet', { count: rsvpEvent.rsvp_counts.no_response })}</p> : null}
+            {typeof rsvpEvent.rsvp_counts?.no_response === 'number' ? <p className="mt-4 text-center text-xs text-c-text-tertiary">{t('calendar.no_response_yet', { count: rsvpEvent.rsvp_counts.no_response })}</p> : null}
           </div>
         </div>
       ) : null}
 
       {editingEvent ? (
         <div
-          className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/70 px-3 backdrop-blur"
+          className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-c-bg-app/70 px-3 backdrop-blur"
           style={{
             paddingTop: keyboardOffset > 0
               ? '8px'
@@ -815,16 +815,16 @@ export default function CommunityCalendar() {
           onClick={event => event.currentTarget === event.target && setEditingEvent(null)}
           onFocusCapture={trackFocusedField}
         >
-          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#050606] p-3.5">
+          <div className="w-full max-w-2xl rounded-2xl border border-c-border bg-c-bg-elevated p-3.5">
             <div className="mb-2.5 flex items-center justify-between">
               <h2 className="text-base font-semibold">{t('calendar.edit_event')}</h2>
-              <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setEditingEvent(null)} aria-label={t('common.close')}><i className="fa-solid fa-xmark" /></button>
+              <button className="grid h-8 w-8 place-items-center rounded-full border border-c-border hover:bg-c-hover-bg" onClick={() => setEditingEvent(null)} aria-label={t('common.close')}><i className="fa-solid fa-xmark" /></button>
             </div>
             <form onSubmit={event => { event.preventDefault(); saveEditedEvent(new FormData(event.currentTarget)) }}>
               <EventFormFields event={editingEvent} />
               <div className="mt-3 flex justify-end gap-2">
-                <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm hover:bg-white/5" onClick={() => setEditingEvent(null)}>{t('common.cancel')}</button>
-                <button type="submit" className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110">{t('calendar.save_changes')}</button>
+                <button type="button" className="rounded-full border border-c-border px-4 py-2 text-sm hover:bg-c-hover-bg" onClick={() => setEditingEvent(null)}>{t('common.cancel')}</button>
+                <button type="submit" className="rounded-full bg-cpoint-turquoise px-4 py-2 text-sm font-semibold text-black hover:brightness-110">{t('calendar.save_changes')}</button>
               </div>
             </form>
           </div>

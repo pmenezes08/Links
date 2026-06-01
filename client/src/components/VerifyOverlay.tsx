@@ -19,13 +19,13 @@ export default function VerifyOverlay({ onRecheck }:{ onRecheck: ()=>void }){
 
   return (
     <div className="fixed inset-0 z-[1000] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0b0f10] p-5 text-white">
+      <div className="w-full max-w-md rounded-2xl border border-c-border bg-c-bg-elevated p-5 text-c-text-primary">
         <div className="text-lg font-semibold">Verify your email</div>
-        <div className="text-sm text-[#9fb0b5] mt-2">Please verify your email before continuing. Click the link in your inbox, then press “I’ve verified”.</div>
-        {msg && <div className="mt-2 text-xs text-[#9fb0b5]">{msg}</div>}
+        <div className="text-sm text-c-text-tertiary mt-2">Please verify your email before continuing. Click the link in your inbox, then press “I’ve verified”.</div>
+        {msg && <div className="mt-2 text-xs text-c-text-tertiary">{msg}</div>}
         <div className="mt-4 flex items-center justify-end gap-2">
-          <button className="px-3 py-2 rounded-md border border-white/10 bg-white/5 disabled:opacity-50" onClick={resend} disabled={sending}>{sending ? 'Sending…' : 'Resend verification'}</button>
-          <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black font-semibold" onClick={onRecheck}>I’ve verified</button>
+          <button className="px-3 py-2 rounded-md border border-c-border bg-c-hover-bg disabled:opacity-50" onClick={resend} disabled={sending}>{sending ? 'Sending…' : 'Resend verification'}</button>
+          <button className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black font-semibold" onClick={onRecheck}>I’ve verified</button>
         </div>
       </div>
     </div>

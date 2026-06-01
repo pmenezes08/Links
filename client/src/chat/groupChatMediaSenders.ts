@@ -5,7 +5,15 @@
 
 import type { Dispatch, SetStateAction } from 'react'
 import { SENDING_MEDIA_LABEL } from './mediaSenders'
-import { compressImageForUpload } from '../utils/compressImageForUpload'
+import {
+  createUploadController,
+  removeUploadController,
+  uploadChatMediaBatch,
+  UploadRequestError,
+  type MediaQuality,
+} from './upload'
+import { removeMediaOutboxRecordsByPrefix } from './upload/mediaOutbox'
+import type { EntitlementsError } from '../utils/entitlementsError'
 
 export interface GroupMessage {
   id: number
@@ -35,16 +43,15 @@ interface BaseMediaOptions {
   loadMessages: (force?: boolean) => void
   onProgress?: (progress: UploadProgress) => void
   onError?: (message: string) => void
+  onLimitReached?: (err: EntitlementsError) => void
+  onCancelReady?: (cancel: (() => void) | null) => void
   onComplete?: () => void
+  quality?: MediaQuality
 }
 
 interface ImageMediaOptions extends BaseMediaOptions {
   file: File
   kind?: 'photo' | 'gif'
-}
-
-interface VideoMediaOptions extends BaseMediaOptions {
-  file: File
 }
 
 interface MultiMediaOptions extends BaseMediaOptions {
@@ -57,6 +64,22 @@ const defaultErrorHandler = (msg: string) => {
   }
 }
 
+function uploadLimitError(err: unknown): EntitlementsError | null {
+  if (!(err instanceof UploadRequestError)) return null
+  if (err.code !== 'upload_size_limit' && err.code !== 'upload_daily_limit') return null
+  return {
+    success: false,
+    error: 'entitlements_error',
+    reason: err.code,
+    message:
+      err.code === 'upload_size_limit'
+        ? 'This file is larger than your current chat media limit.'
+        : 'You have reached today\'s chat media upload limit.',
+    cta: { type: 'manage', label: 'View plans', url: '/subscription-plans' },
+    usage: {},
+  }
+}
+
 /**
  * Send image/video message to group chat - single request like ChatThread
  * Uses the same pattern as /send_photo_message for DMs
@@ -65,11 +88,13 @@ async function sendGroupMedia(
   file: File,
   groupId: number | string,
   mediaType: 'photo' | 'video',
-  onProgress?: (progress: UploadProgress) => void
+  onProgress?: (progress: UploadProgress) => void,
+  clientKey?: string,
 ): Promise<{ success: boolean; message?: GroupMessage; error?: string }> {
   const formData = new FormData()
   formData.append(mediaType, file)
   formData.append('group_id', String(groupId))
+  if (clientKey) formData.append('client_key', clientKey)
 
   onProgress?.({ stage: 'uploading', progress: 10, message: SENDING_MEDIA_LABEL })
 
@@ -91,7 +116,7 @@ async function sendGroupMedia(
       return { success: false, error: payload?.error || 'Failed to send' }
     }
     
-    onProgress?.({ stage: 'done', progress: 100, message: 'Sent!' })
+      onProgress?.({ stage: 'done', progress: 100, message: 'Sent' })
     return { success: true, message: payload.message }
     
   } catch (error) {
@@ -114,6 +139,7 @@ export async function sendGroupImageMessage(options: ImageMediaOptions): Promise
     loadMessages,
     onProgress,
     onError = defaultErrorHandler,
+    onLimitReached,
     onComplete,
   } = options
 
@@ -136,7 +162,7 @@ export async function sendGroupImageMessage(options: ImageMediaOptions): Promise
   setServerMessages(prev => [...prev, optimisticMessage as any])
 
   try {
-    const result = await sendGroupMedia(file, groupId, 'photo', onProgress)
+    const result = await sendGroupMedia(file, groupId, 'photo', onProgress, tempId)
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to send image')
@@ -156,9 +182,9 @@ export async function sendGroupImageMessage(options: ImageMediaOptions): Promise
   } catch (error) {
     console.error('[GroupMedia] Image send failed:', error)
     setServerMessages(prev => prev.filter(m => (m as any).clientKey !== tempId))
-    
-    const errorMsg = error instanceof Error ? error.message : 'Unknown error'
-    onError(kind === 'gif' ? `Failed to send GIF: ${errorMsg}` : `Failed to send photo: ${errorMsg}`)
+    const limitErr = uploadLimitError(error)
+    if (limitErr && onLimitReached) onLimitReached(limitErr)
+    else onError(kind === 'gif' ? "Couldn't send GIF. Try again." : "Couldn't send photo. Try again.")
     return false
   } finally {
     try {
@@ -168,133 +194,6 @@ export async function sendGroupImageMessage(options: ImageMediaOptions): Promise
     }
     onComplete?.()
   }
-}
-
-/**
- * Send a video message to a group chat with optimistic UI
- */
-export async function sendGroupVideoMessage(options: VideoMediaOptions): Promise<boolean> {
-  const {
-    file,
-    groupId,
-    currentUsername,
-    setServerMessages,
-    loadMessages,
-    onProgress,
-    onError = defaultErrorHandler,
-    onComplete,
-  } = options
-
-  const tempId = `temp_video_${Date.now()}_${Math.random()}`
-  const now = new Date().toISOString()
-  const previewUrl = URL.createObjectURL(file)
-
-  const optimisticMessage: GroupMessage & { clientKey: string; isOptimistic: boolean } = {
-    id: -Date.now(),
-    sender: currentUsername,
-    text: '🎬 Video',
-    image: null,
-    video: previewUrl,
-    voice: null,
-    created_at: now,
-    profile_picture: null,
-    clientKey: tempId,
-    isOptimistic: true,
-  }
-
-  setServerMessages(prev => [...prev, optimisticMessage as any])
-
-  try {
-    const result = await sendGroupMedia(file, groupId, 'video', onProgress)
-    
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to send video')
-    }
-
-    setServerMessages(prev => prev.map(m =>
-      (m as any).clientKey === tempId
-        ? { ...result.message!, clientKey: tempId, isOptimistic: false }
-        : m
-    ))
-    
-    loadMessages(true)
-    setTimeout(() => loadMessages(true), 2000)
-    
-    return true
-  } catch (error) {
-    console.error('[GroupMedia] Video send failed:', error)
-    setServerMessages(prev => prev.filter(m => (m as any).clientKey !== tempId))
-    
-    const errorMsg = error instanceof Error ? error.message : 'Unknown error'
-    onError(`Failed to send video: ${errorMsg}`)
-    return false
-  } finally {
-    try {
-      URL.revokeObjectURL(previewUrl)
-    } catch {
-      // ignore
-    }
-    onComplete?.()
-  }
-}
-
-async function putBlobToPresignedGroup(uploadUrl: string, blob: Blob, contentType: string): Promise<void> {
-  const res = await fetch(uploadUrl, { method: 'PUT', body: blob, headers: { 'Content-Type': contentType } })
-  if (!res.ok) throw new Error(`Upload failed (${res.status})`)
-}
-
-async function uploadGroupImageDirect(file: File, groupId: number | string): Promise<string> {
-  const prepared = await compressImageForUpload(file)
-  const contentType = prepared.type || 'image/jpeg'
-  const urlRes = await fetch(`/api/group_chat/${groupId}/image_upload_url`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      filename: prepared.name || 'photo.jpg',
-      content_type: contentType,
-    }),
-  })
-  const urlData = await urlRes.json().catch(() => null)
-  if (!urlRes.ok || !urlData?.success || !urlData.upload_url || !urlData.public_url) {
-    throw new Error(urlData?.error || 'Failed to get image upload URL')
-  }
-  await putBlobToPresignedGroup(urlData.upload_url, prepared, contentType)
-  return urlData.public_url as string
-}
-
-function uploadGroupVideoDirect(
-  file: File,
-  groupId: number | string,
-  onSliceProgress?: (loaded: number, total: number) => void,
-): Promise<string> {
-  return (async () => {
-    const urlRes = await fetch(`/api/group_chat/${groupId}/video_upload_url`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename: file.name, content_type: file.type || 'video/mp4' }),
-    })
-    const urlData = await urlRes.json().catch(() => null)
-    if (!urlRes.ok || !urlData?.success || !urlData.upload_url || !urlData.public_url) {
-      throw new Error(urlData?.error || 'Failed to get video upload URL')
-    }
-    const ok = await new Promise<boolean>((resolve, reject) => {
-      const xhr = new XMLHttpRequest()
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) onSliceProgress?.(e.loaded, e.total)
-      }
-      xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300)
-      xhr.onerror = () => reject(new Error('Video upload failed'))
-      xhr.ontimeout = () => reject(new Error('Video upload timeout'))
-      xhr.open('PUT', urlData.upload_url)
-      xhr.setRequestHeader('Content-Type', file.type || 'video/mp4')
-      xhr.timeout = 600000
-      xhr.send(file)
-    })
-    if (!ok) throw new Error('Video upload failed')
-    return urlData.public_url as string
-  })()
 }
 
 /**
@@ -309,6 +208,8 @@ export async function sendGroupMultiMedia(options: MultiMediaOptions): Promise<b
     loadMessages,
     onProgress,
     onError = defaultErrorHandler,
+    onLimitReached,
+    onCancelReady,
     onComplete,
   } = options
 
@@ -334,40 +235,29 @@ export async function sendGroupMultiMedia(options: MultiMediaOptions): Promise<b
   }
 
   setServerMessages(prev => [...prev, optimisticMessage as any])
+  const controller = createUploadController(tempId)
+  onCancelReady?.(() => controller.abort())
 
   try {
-    onProgress?.({ stage: 'uploading', progress: 5, message: `Uploading ${files.length} items...` })
+    onProgress?.({ stage: 'uploading', progress: 5, message: SENDING_MEDIA_LABEL })
 
-    const n = files.length
-    const sliceFrac = new Array<number>(n).fill(0)
-    const report = () => {
-      const avg = sliceFrac.reduce((a, b) => a + b, 0) / n
-      onProgress?.({ stage: 'uploading', progress: 5 + avg * 90, message: SENDING_MEDIA_LABEL })
-    }
-
-    const gid = groupId
-    const tasks = files.map((item, i) =>
-      item.type === 'image'
-        ? uploadGroupImageDirect(item.file, gid).then((url) => {
-            sliceFrac[i] = 1
-            report()
-            return url
-          })
-        : uploadGroupVideoDirect(item.file, gid, (loaded, total) => {
-            sliceFrac[i] = total ? loaded / total : 0
-            report()
-          }).then((url) => {
-            sliceFrac[i] = 1
-            report()
-            return url
-          }),
+    let orderedUrls = await uploadChatMediaBatch(
+      files.map(f => ({ file: f.file, mediaKind: f.type })),
+      { type: 'group', groupId },
+      (index, total, p) => {
+        const slice = (index + p.progress / 100) / total
+        const stage = p.stage === 'failed' || p.stage === 'cancelled' ? 'error' : p.stage === 'done' ? 'done' : 'uploading'
+        onProgress?.({ stage, progress: 5 + slice * 90, message: p.message || SENDING_MEDIA_LABEL })
+      },
+      controller.signal,
+      options.quality,
+      tempId,
     )
-
-    const orderedUrls = await Promise.all(tasks)
 
     onProgress?.({ stage: 'uploading', progress: 96, message: SENDING_MEDIA_LABEL })
     const fd = new FormData()
     fd.append('media_urls', JSON.stringify(orderedUrls))
+    fd.append('client_key', tempId)
 
     const res = await fetch(`/api/group_chat/${groupId}/send_media`, {
       method: 'POST',
@@ -379,7 +269,8 @@ export async function sendGroupMultiMedia(options: MultiMediaOptions): Promise<b
       throw new Error(payload?.error || 'Failed to send media')
     }
 
-    onProgress?.({ stage: 'done', progress: 100, message: 'Sent!' })
+    await removeMediaOutboxRecordsByPrefix(tempId)
+    onProgress?.({ stage: 'done', progress: 100, message: 'Sent' })
 
     setServerMessages(prev => prev.filter(m => (m as any).clientKey !== tempId))
 
@@ -391,15 +282,21 @@ export async function sendGroupMultiMedia(options: MultiMediaOptions): Promise<b
     console.error('[GroupMedia] Multi-media send failed:', error)
     setServerMessages(prev => prev.filter(m => (m as any).clientKey !== tempId))
     
-    const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+    const errorMsg = controller.signal.aborted ? 'Upload cancelled' : "Couldn't send media. Try again."
     onProgress?.({ stage: 'error', progress: 0, message: errorMsg })
-    onError(`Failed to send media: ${errorMsg}`)
+    const limitErr = uploadLimitError(error)
+    if (controller.signal.aborted) {
+      // Cancelled by the user.
+    } else if (limitErr && onLimitReached) onLimitReached(limitErr)
+    else onError(errorMsg)
     return false
   } finally {
     // Cleanup preview URLs
     previewUrls.forEach(url => {
       try { URL.revokeObjectURL(url) } catch {}
     })
+    removeUploadController(tempId)
+    onCancelReady?.(null)
     onComplete?.()
   }
 }

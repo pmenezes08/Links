@@ -1524,12 +1524,12 @@ export default function PostDetail(){
 
   if (loading) return <SkeletonPostDetail />
   if (error || !post) return (
-    <div className="p-4 text-center text-[#9fb0b5]">
+    <div className="p-4 text-center text-c-text-tertiary">
       <div className="text-red-400 mb-3">{error || t('errors.generic')}</div>
       <button
         type="button"
         onClick={() => { setError(null); setLoading(true); setRetryNonce(n => n + 1) }}
-        className="px-3 py-1.5 rounded-md border border-[#2a3942] text-sm hover:bg-[#1f2c33]"
+        className="px-3 py-1.5 rounded-md border border-c-border text-sm hover:bg-c-hover-bg"
       >
         {t('common.retry')}
       </button>
@@ -1546,7 +1546,7 @@ export default function PostDetail(){
 
   return (
     <div
-      className="min-h-screen bg-black text-white flex flex-col overflow-hidden"
+      className="min-h-screen bg-c-bg-app text-c-text-primary flex flex-col overflow-hidden"
       style={{
         position: 'fixed',
         top: 0,
@@ -1557,15 +1557,14 @@ export default function PostDetail(){
     >
       {/* Fixed Header */}
       <div
-        className="flex-shrink-0 border-b border-white/10"
+        className="flex-shrink-0 border-b border-c-border bg-c-header-bg"
         style={{
           paddingTop: 'env(safe-area-inset-top, 0px)',
-          background: '#000',
         }}
       >
         <div className="h-14 flex items-center gap-2 px-3">
           <button
-            className="p-2 rounded-full hover:bg-white/10 transition-colors"
+            className="p-2 rounded-full hover:bg-c-hover-bg transition-colors"
             onClick={() => {
               hapticImpactLight()
               const state = (location.state || {}) as { communityId?: string | number; groupId?: string | number }
@@ -1590,7 +1589,7 @@ export default function PostDetail(){
             }}
             aria-label={t('navigation.back')}
           >
-            <i className="fa-solid fa-arrow-left text-white" />
+            <i className="fa-solid fa-arrow-left text-c-text-primary" />
           </button>
           <div className="flex-1 min-w-0">
             <div className="font-semibold tracking-[-0.01em] text-sm">{t('feed.post')}</div>
@@ -1598,26 +1597,26 @@ export default function PostDetail(){
           <div className="flex items-center gap-1">
             {/* Messages icon */}
             <button 
-              className="relative p-2 rounded-full hover:bg-white/10 transition-colors" 
+              className="relative p-2 rounded-full hover:bg-c-hover-bg transition-colors" 
               onClick={() => navigate('/user_chat')} 
               aria-label={t('navigation.messages')}
             >
-              <i className="fa-solid fa-comments text-white" />
+              <i className="fa-solid fa-comments text-c-text-primary" />
               {unreadMsgs > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#4db6ac] text-black text-[10px] flex items-center justify-center">
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-cpoint-turquoise text-black text-[10px] flex items-center justify-center">
                   {unreadMsgs > 99 ? '99+' : unreadMsgs}
                 </span>
               )}
             </button>
             {/* Notifications icon */}
             <button 
-              className="relative p-2 rounded-full hover:bg-white/10 transition-colors" 
+              className="relative p-2 rounded-full hover:bg-c-hover-bg transition-colors" 
               onClick={() => navigate('/notifications')} 
               aria-label={t('navigation.notifications')}
             >
-              <i className="fa-regular fa-bell text-white" />
+              <i className="fa-regular fa-bell text-c-text-primary" />
               {unreadNotifs > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#4db6ac] text-black text-[10px] flex items-center justify-center">
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-cpoint-turquoise text-black text-[10px] flex items-center justify-center">
                   {unreadNotifs > 99 ? '99+' : unreadNotifs}
                 </span>
               )}
@@ -1628,7 +1627,7 @@ export default function PostDetail(){
 
       {(refreshHint || refreshing) ? (
         <div className="fixed top-[72px] left-0 right-0 z-50 flex items-center justify-center pointer-events-none">
-          <div className="px-2 py-1 text-xs rounded-full bg-white/10 border border-white/15 text-white/80 flex items-center gap-2">
+          <div className="px-2 py-1 text-xs rounded-full bg-c-active-bg border border-c-border text-c-text-secondary flex items-center gap-2">
             <i className="fa-solid fa-rotate fa-spin" />
           </div>
         </div>
@@ -1644,14 +1643,14 @@ export default function PostDetail(){
         }}
       >
         <div className="max-w-2xl mx-auto px-3" style={{ paddingBottom: contentPaddingBottom }}>
-        <div className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20">
+        <div className="rounded-2xl border border-c-border bg-c-bg-app shadow-sm shadow-black/20">
           {/* Post Header with avatar, username, date, and action buttons */}
-          <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
+          <div className="px-3 py-2 border-b border-c-border flex items-center gap-2">
             <Avatar username={post.username} url={(post as any).profile_picture || undefined} size={32} linkToProfile />
             <div className="font-medium tracking-[-0.01em]">{post.username}</div>
             <div className="ml-auto flex items-center gap-1">
               {/* Date */}
-              <span className="text-xs text-[#9fb0b5] tabular-nums mr-1">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</span>
+              <span className="text-xs text-c-text-tertiary tabular-nums mr-1">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</span>
               {/* Personal star (turquoise when selected) */}
               <button 
                 className="px-2 py-1 rounded-full" 
@@ -1659,7 +1658,7 @@ export default function PostDetail(){
                 onClick={toggleStar} 
                 aria-label={t('feed.star_yours')}
               >
-                <i className={`${(post as any).is_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: (post as any).is_starred ? '#4db6ac' : '#6c757d' }} />
+                <i className={`${(post as any).is_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: (post as any).is_starred ? '#00CEC8' : '#6c757d' }} />
               </button>
               {/* Community pin (yellow) for owner/admins */}
               {(currentUser?.username === 'admin' ||
@@ -1677,7 +1676,7 @@ export default function PostDetail(){
               {/* Delete button for owner/admin/community admin */}
               {(currentUser?.username === post.username || currentUser?.username === 'admin' || (post as any).is_community_admin) && (
                 <button 
-                  className="px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400" 
+                  className="px-2 py-1 rounded-full text-c-text-tertiary hover:text-red-400" 
                   title={t('common.delete')}
                   onClick={deletePost}
                 >
@@ -1687,7 +1686,7 @@ export default function PostDetail(){
               {/* Edit button for owner/admin */}
               {(currentUser?.username === post.username || currentUser?.username === 'admin') && (
                 <button 
-                  className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" 
+                  className="px-2 py-1 rounded-full text-c-text-tertiary hover:text-cpoint-turquoise" 
                   title={t('common.edit')}
                   onClick={startEditPost}
                 >
@@ -1698,16 +1697,16 @@ export default function PostDetail(){
               {currentUser?.username && currentUser.username !== post.username && (
                 <div className="relative">
                   <button 
-                    className="px-2 py-1 rounded-full text-[#6c757d] hover:text-white"
+                    className="px-2 py-1 rounded-full text-c-text-tertiary hover:text-c-text-primary"
                     title={t('chat.more_options')}
                     onClick={() => setShowMoreMenu(!showMoreMenu)}
                   >
                     <i className="fa-solid fa-ellipsis-vertical" />
                   </button>
                   {showMoreMenu && (
-                    <div className="absolute right-0 top-8 z-50 w-44 bg-[#1a1f25] border border-white/10 rounded-xl shadow-xl overflow-hidden">
+                    <div className="absolute right-0 top-8 z-50 w-44 bg-c-bg-surface border border-c-border rounded-xl shadow-xl overflow-hidden">
                       <button
-                        className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
+                        className="w-full px-4 py-3 text-left text-sm text-c-text-primary hover:bg-c-hover-bg flex items-center gap-3"
                         onClick={() => {
                           setShowMoreMenu(false)
                           fetchSummary()
@@ -1719,7 +1718,7 @@ export default function PostDetail(){
                       {!isGroupPost && (
                       <>
                       <button
-                        className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
+                        className="w-full px-4 py-3 text-left text-sm text-c-text-primary hover:bg-c-hover-bg flex items-center gap-3"
                         onClick={() => {
                           setShowMoreMenu(false)
                           setShowHideModal(true)
@@ -1729,7 +1728,7 @@ export default function PostDetail(){
                         {t('feed.hide_post')}
                       </button>
                       <button
-                        className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
+                        className="w-full px-4 py-3 text-left text-sm text-c-text-primary hover:bg-c-hover-bg flex items-center gap-3"
                         onClick={() => {
                           setShowMoreMenu(false)
                           setShowReportModal(true)
@@ -1741,7 +1740,7 @@ export default function PostDetail(){
                       </>
                       )}
                       <button
-                        className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3 border-t border-white/10"
+                        className="w-full px-4 py-3 text-left text-sm text-c-text-primary hover:bg-c-hover-bg flex items-center gap-3 border-t border-c-border"
                         onClick={() => {
                           setShowMoreMenu(false)
                           setShowBlockModal(true)
@@ -1804,7 +1803,7 @@ export default function PostDetail(){
                     {parsedMediaPaths[mediaCarouselIndex]?.type === 'video' ? (
                       <div className="px-3">
                         <video
-                          className="w-full max-h-[420px] rounded border border-white/10 bg-black"
+                          className="w-full max-h-[420px] rounded border border-c-border bg-c-bg-app"
                           src={normalizePath(parsedMediaPaths[mediaCarouselIndex].path) + '#t=0.1'}
                           controls
                           playsInline
@@ -1816,7 +1815,7 @@ export default function PostDetail(){
                         <ImageLoader
                           src={normalizePath(parsedMediaPaths[mediaCarouselIndex]?.path || '')}
                           alt={t('feed.post_media_alt', { number: mediaCarouselIndex + 1 })}
-                          className="block mx-auto max-w-full max-h-[520px] rounded border border-white/10 cursor-zoom-in"
+                          className="block mx-auto max-w-full max-h-[520px] rounded border border-c-border cursor-zoom-in"
                           onClick={() => setPreviewSrc(normalizePath(parsedMediaPaths[mediaCarouselIndex]?.path || ''))}
                         />
                       </div>
@@ -1856,14 +1855,14 @@ export default function PostDetail(){
                     <ImageLoader
                       src={normalizePath(post.image_path as string)}
                       alt={t('feed.post_image_alt')}
-                      className="block mx-auto max-w-full max-h-[520px] rounded border border-white/10 cursor-zoom-in"
+                      className="block mx-auto max-w-full max-h-[520px] rounded border border-c-border cursor-zoom-in"
                       onClick={()=> setPreviewSrc(normalizePath(post.image_path as string))}
                     />
                   </div>
                 ) : post.video_path ? (
                   <div className="px-3">
                     <video
-                      className="w-full max-h-[420px] rounded border border-white/10 bg-black"
+                      className="w-full max-h-[420px] rounded border border-c-border bg-c-bg-app"
                       src={normalizePath(post.video_path) + '#t=0.1'}
                       controls
                       playsInline
@@ -1887,12 +1886,12 @@ export default function PostDetail(){
                       if (timestampMs != null && !Number.isNaN(timestampMs) && Date.now() - timestampMs < 120000) {
                         return (
                           <div className="flex items-center gap-1 py-1">
-                            <i className="fa-solid fa-wand-magic-sparkles text-[10px] text-white/40" />
-                            <span className="text-[12px] text-white/40">{t('feed.steve_summary_generating')}</span>
+                            <i className="fa-solid fa-wand-magic-sparkles text-[10px] text-c-text-tertiary" />
+                            <span className="text-[12px] text-c-text-tertiary">{t('feed.steve_summary_generating')}</span>
                             <span className="flex gap-0.5 ml-0.5">
-                              <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                              <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                              <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                              <span className="w-1 h-1 bg-cpoint-turquoise rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                              <span className="w-1 h-1 bg-cpoint-turquoise rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                              <span className="w-1 h-1 bg-cpoint-turquoise rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                             </span>
                           </div>
                         )
@@ -1910,23 +1909,23 @@ export default function PostDetail(){
             ) : (
               <div className="px-3 space-y-2">
                 <textarea 
-                  className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[100px]" 
+                  className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[100px]" 
                   value={editPostText} 
                   onChange={(e) => setEditPostText(e.target.value)} 
                 />
                 
                 {/* Current/New Media Preview */}
                 {!removeMedia && (editMediaPreview || post.image_path || post.video_path) && (
-                  <div style={{ position: 'relative' }} className="rounded-lg border border-white/10 overflow-hidden">
+                  <div style={{ position: 'relative' }} className="rounded-lg border border-c-border overflow-hidden">
                     {editMediaPreview ? (
                       // New media preview
                       editMediaFile?.type.startsWith('video/') ? (
-                        <video src={editMediaPreview} className="w-full max-h-48 object-contain bg-black block" controls />
+                        <video src={editMediaPreview} className="w-full max-h-48 object-contain bg-c-bg-app block" controls />
                       ) : (
                         <img src={editMediaPreview} alt={t('feed.new_media_alt')} className="w-full max-h-48 object-contain block" />
                       )
                     ) : post.video_path ? (
-                      <video src={normalizePath(post.video_path)} className="w-full max-h-48 object-contain bg-black block" controls />
+                      <video src={normalizePath(post.video_path)} className="w-full max-h-48 object-contain bg-c-bg-app block" controls />
                     ) : post.image_path ? (
                       <img src={normalizePath(post.image_path as string)} alt={t('feed.current_media_alt')} className="w-full max-h-48 object-contain block" />
                     ) : null}
@@ -1948,7 +1947,7 @@ export default function PostDetail(){
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    className="px-3 py-1.5 rounded-md border border-white/10 text-sm hover:bg-white/10"
+                    className="px-3 py-1.5 rounded-md border border-c-border text-sm hover:bg-c-hover-bg"
                     onClick={() => editMediaInputRef.current?.click()}
                   >
                     <i className="fa-solid fa-image mr-1" /> {editMediaFile ? t('feed.change_media') : t('feed.add_media')}
@@ -1965,13 +1964,13 @@ export default function PostDetail(){
                 {/* Save/Cancel buttons */}
                 <div className="flex gap-2">
                   <button 
-                    className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black" 
+                    className="px-3 py-1.5 rounded-md bg-cpoint-turquoise text-black" 
                     onClick={saveEditPost}
                   >
                     {t('common.save')}
                   </button>
                   <button 
-                    className="px-3 py-1.5 rounded-md border border-white/10" 
+                    className="px-3 py-1.5 rounded-md border border-c-border" 
                     onClick={cancelEditPost}
                   >
                     {t('common.cancel')}
@@ -1986,7 +1985,7 @@ export default function PostDetail(){
               <Reaction icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> toggleReaction('thumbs-down')} />
               {/* View count - opens viewers/reactors modal */}
               <button 
-                className="ml-auto flex items-center gap-1 px-2 py-1 rounded text-[#9fb0b5] hover:text-white hover:bg-white/10 transition-colors"
+                className="ml-auto flex items-center gap-1 px-2 py-1 rounded text-c-text-tertiary hover:text-c-text-primary hover:bg-c-hover-bg transition-colors"
                 onClick={openReactorsModal}
                 title={t('feed.view_reactions_viewers')}
               >
@@ -1997,7 +1996,7 @@ export default function PostDetail(){
           </div>
         </div>
 
-        <div className="mt-3 rounded-2xl border border-white/10">
+        <div className="mt-3 rounded-2xl border border-c-border">
           {post.replies.map(r => (
             <ReplyNodeMemo
               key={r.id}
@@ -2020,13 +2019,13 @@ export default function PostDetail(){
           ))}
           {/* Steve is typing indicator */}
           {steveIsTyping && (
-            <div className="px-4 py-3 border-t border-white/10 flex items-center gap-2 text-xs text-white/60">
-              <span className="font-medium text-[#4db6ac]">Steve</span>
+            <div className="px-4 py-3 border-t border-c-border flex items-center gap-2 text-xs text-c-text-tertiary">
+              <span className="font-medium text-cpoint-turquoise">Steve</span>
               <span>{t('feed.is_typing')}</span>
               <span className="inline-flex gap-0.5">
-                <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                <span className="w-1 h-1 bg-c-text-tertiary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1 h-1 bg-c-text-tertiary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1 h-1 bg-c-text-tertiary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
               </span>
             </div>
           )}
@@ -2039,7 +2038,7 @@ export default function PostDetail(){
           className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-sm flex items-center justify-center" 
           onClick={() => setPreviewSrc(null)}
         >
-          <button className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center z-10" onClick={()=> setPreviewSrc(null)} aria-label={t('feed.close_preview')}>
+          <button className="absolute top-3 right-3 w-10 h-10 rounded-full bg-c-active-bg hover:bg-white/20 border border-white/20 text-c-text-primary flex items-center justify-center z-10" onClick={()=> setPreviewSrc(null)} aria-label={t('feed.close_preview')}>
             <i className="fa-solid fa-xmark" />
           </button>
           <div className="w-[94vw] h-[86vh] max-w-4xl" onClick={(e) => e.stopPropagation()}>
@@ -2060,15 +2059,14 @@ export default function PostDetail(){
         {/* Composer card */}
         <div
           ref={composerCardRef}
-          className="relative max-w-2xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-2.5 py-2"
-          style={{ background: '#0a0a0c' }}
+          className="relative max-w-2xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-2.5 py-2 bg-c-bg-elevated"
         >
           {/* Attachment previews - show above input row when files attached */}
           {(file || replyGif || replyPreview) && (
             <div className="mb-2 flex items-center gap-2 flex-wrap">
               {file && (
                 <div className="flex items-center gap-2">
-                  <div className="w-12 h-12 rounded-md overflow-hidden border border-white/10">
+                  <div className="w-12 h-12 rounded-md overflow-hidden border border-c-border">
                     {filePreviewUrl ? (
                       <img src={filePreviewUrl} alt={t('feed.preview_alt', { number: '' })} className="w-full h-full object-cover" />
                     ) : null}
@@ -2085,7 +2083,7 @@ export default function PostDetail(){
               )}
               {replyGif && (
                 <div className="flex items-center gap-2">
-                  <div className="w-12 h-12 rounded-md overflow-hidden border border-white/10">
+                  <div className="w-12 h-12 rounded-md overflow-hidden border border-c-border">
                     <img src={replyGif.previewUrl} alt={t('feed.selected_gif_alt')} className="w-full h-full object-cover" loading="lazy" />
                   </div>
                   <button
@@ -2104,7 +2102,7 @@ export default function PostDetail(){
                   <button 
                     onPointerDown={preventComposerBlur}
                     onClick={() => { clearReplyPreview(); }}
-                    className="text-[#9fb0b5] hover:text-white"
+                    className="text-c-text-tertiary hover:text-c-text-primary"
                     aria-label={t('feed.remove_audio')}
                   >
                     <i className="fa-regular fa-trash-can" />
@@ -2117,11 +2115,11 @@ export default function PostDetail(){
           {/* Recording indicator */}
           {recording && (
             <div className="mb-2 flex items-center gap-3 px-1">
-              <span className="inline-block w-2 h-2 bg-[#4db6ac] rounded-full animate-pulse" />
-              <div className="flex-1 h-2 bg-white/10 rounded overflow-hidden">
+              <span className="inline-block w-2 h-2 bg-cpoint-turquoise rounded-full animate-pulse" />
+              <div className="flex-1 h-2 bg-c-active-bg rounded overflow-hidden">
                 <div className="h-full bg-[#7fe7df] transition-all" style={{ width: `${Math.max(6, Math.min(96, level*100))}%` }} />
               </div>
-              <div className="text-xs text-white/70">{Math.min(60, Math.round((recordMs||0)/1000))}s</div>
+              <div className="text-xs text-c-text-secondary">{Math.min(60, Math.round((recordMs||0)/1000))}s</div>
             </div>
           )}
 
@@ -2139,10 +2137,10 @@ export default function PostDetail(){
               
               {/* Attachment dropdown menu */}
               {showAttachMenu && (
-                <div className="absolute bottom-full left-0 mb-2 w-40 rounded-xl bg-[#1a1a1c] border border-white/10 shadow-xl overflow-hidden z-10">
+                <div className="absolute bottom-full left-0 mb-2 w-40 rounded-xl bg-c-bg-surface border border-c-border shadow-xl overflow-hidden z-10">
                   <button
                     type="button"
-                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-left"
+                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-c-hover-bg transition-colors text-left"
                     onPointerDown={preventComposerBlur}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
@@ -2150,12 +2148,12 @@ export default function PostDetail(){
                       setShowAttachMenu(false)
                     }}
                   >
-                    <i className="fa-solid fa-image text-[#4db6ac]" />
-                    <span className="text-sm text-white">{t('feed.photo_video')}</span>
+                    <i className="fa-solid fa-image text-cpoint-turquoise" />
+                    <span className="text-sm text-c-text-primary">{t('feed.photo_video')}</span>
                   </button>
                   <button
                     type="button"
-                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-left border-t border-white/5"
+                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-c-hover-bg transition-colors text-left border-t border-c-border"
                     onPointerDown={preventComposerBlur}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
@@ -2163,8 +2161,8 @@ export default function PostDetail(){
                       setShowAttachMenu(false)
                     }}
                   >
-                    <i className="fa-solid fa-images text-[#4db6ac]" />
-                    <span className="text-sm text-white">GIF</span>
+                    <i className="fa-solid fa-images text-cpoint-turquoise" />
+                    <span className="text-sm text-c-text-primary">GIF</span>
                   </button>
                 </div>
               )}
@@ -2185,14 +2183,14 @@ export default function PostDetail(){
             />
 
             {/* Message input container with turquoise border */}
-            <div className="flex-1 min-w-0 flex min-h-9 items-center rounded-lg border border-[#4db6ac] bg-white/8">
+            <div className="flex-1 min-w-0 flex min-h-9 items-center rounded-lg border border-cpoint-turquoise bg-c-hover-bg">
               <MentionTextarea
                 value={content}
                 onChange={setContent}
                 communityId={(post as any)?.community_id}
                 postId={post?.id}
                 placeholder={t('feed.write_reply_placeholder')}
-                className="w-full bg-transparent px-3 py-1 text-[15px] leading-5 text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-0"
+                className="w-full bg-transparent px-3 py-1 text-[15px] leading-5 text-c-text-primary placeholder-c-text-tertiary outline-none resize-none max-h-24 min-h-0"
                 rows={1}
                 autoExpand
                 perfDegraded={!!uploadFile}
@@ -2205,7 +2203,7 @@ export default function PostDetail(){
               title={t('feed.expand_reply_composer')}
               onClick={openExpandedReplyComposer}
             >
-              <i className="fa-solid fa-up-right-and-down-left-from-center text-xs text-white" />
+              <i className="fa-solid fa-up-right-and-down-left-from-center text-xs text-c-text-primary" />
             </NativeIconButton>
 
             {/* Mic button - when not recording and no text */}
@@ -2215,7 +2213,7 @@ export default function PostDetail(){
                 aria-label={t('feed.record_audio')}
                 onClick={() => startRec()}
               >
-                <i className="fa-solid fa-microphone text-sm text-white" />
+                <i className="fa-solid fa-microphone text-sm text-c-text-primary" />
               </NativeIconButton>
             )}
 
@@ -2223,7 +2221,7 @@ export default function PostDetail(){
             {recording && (
               <NativeIconButton
                 preventBlur
-                className="bg-[#4db6ac] text-white"
+                className="bg-cpoint-turquoise text-c-text-primary"
                 aria-label={t('feed.stop_recording')}
                 onClick={async () => {
                   const p = await stopRec()
@@ -2268,7 +2266,7 @@ export default function PostDetail(){
         >
           <div
             ref={expandedComposerRef}
-            className="absolute left-0 right-0 mx-auto flex max-w-2xl flex-col overflow-hidden bg-black text-white sm:rounded-3xl sm:bg-[#050607]/95"
+            className="absolute left-0 right-0 mx-auto flex max-w-2xl flex-col overflow-hidden bg-c-bg-app text-c-text-primary sm:rounded-3xl sm:bg-c-bg-elevated/95"
             style={{
               top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
               bottom: expandedComposerKeyboardOpen
@@ -2282,13 +2280,13 @@ export default function PostDetail(){
                 <h2 id="expanded-reply-composer-title" className="text-base font-semibold">
                   {t('feed.write_reply_modal_title')}
                 </h2>
-                <p className="mt-1 text-xs leading-relaxed text-[#9fb0b5]">
+                <p className="mt-1 text-xs leading-relaxed text-c-text-tertiary">
                   {t('feed.write_reply_modal_hint')}
                 </p>
               </div>
               <button
                 type="button"
-                className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-c-active-bg text-c-text-primary transition hover:bg-c-hover-bg"
                 onClick={() => setReplyComposerExpanded(false)}
                 aria-label={t('feed.close_reply_composer')}
               >
@@ -2300,11 +2298,11 @@ export default function PostDetail(){
               <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
                 {file && (
                   <div className="flex items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-2">
-                    <div className="h-12 w-12 overflow-hidden rounded-md border border-white/10">
+                    <div className="h-12 w-12 overflow-hidden rounded-md border border-c-border">
                       {filePreviewUrl ? (
                         <img src={filePreviewUrl} alt={t('feed.preview_alt', { number: '' })} className="h-full w-full object-cover" />
                       ) : (
-                        <div className="flex h-full w-full items-center justify-center text-white/50">
+                        <div className="flex h-full w-full items-center justify-center text-c-text-tertiary">
                           <i className="fa-solid fa-file" />
                         </div>
                       )}
@@ -2326,7 +2324,7 @@ export default function PostDetail(){
                 )}
                 {replyGif && (
                   <div className="flex items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-2">
-                    <div className="h-12 w-12 overflow-hidden rounded-md border border-white/10">
+                    <div className="h-12 w-12 overflow-hidden rounded-md border border-c-border">
                       <img src={replyGif.previewUrl} alt={t('feed.selected_gif_alt')} className="h-full w-full object-cover" loading="lazy" />
                     </div>
                     <button
@@ -2344,7 +2342,7 @@ export default function PostDetail(){
                     <audio controls className="h-8 flex-1" playsInline webkit-playsinline="true" src={replyPreview.url} />
                     <button
                       type="button"
-                      className="text-[#9fb0b5] hover:text-white"
+                      className="text-c-text-tertiary hover:text-c-text-primary"
                       onClick={() => clearReplyPreview()}
                       aria-label={t('feed.remove_audio')}
                     >
@@ -2356,14 +2354,14 @@ export default function PostDetail(){
             )}
 
             <div className="flex min-h-0 flex-1 px-5 pb-3">
-              <div className="flex min-h-0 flex-1 rounded-2xl border border-white/10 bg-white/[0.035] transition-colors focus-within:border-[#4db6ac]/60">
+              <div className="flex min-h-0 flex-1 rounded-2xl border border-c-border bg-white/[0.035] transition-colors focus-within:border-cpoint-turquoise/60">
                 <MentionTextarea
                   value={content}
                   onChange={setContent}
                   communityId={(post as any)?.community_id}
                   postId={post?.id}
                   placeholder={t('feed.write_reply_placeholder')}
-                  className="h-full min-h-0 resize-none overflow-y-auto bg-transparent px-4 py-4 text-[16px] leading-relaxed text-white outline-none placeholder-white/45"
+                  className="h-full min-h-0 resize-none overflow-y-auto bg-transparent px-4 py-4 text-[16px] leading-relaxed text-c-text-primary outline-none placeholder-c-text-tertiary"
                   rows={10}
                   perfDegraded={!!uploadFile}
                 />
@@ -2373,14 +2371,14 @@ export default function PostDetail(){
             <footer className="flex items-center justify-between gap-3 px-5 pb-2 pt-1">
               <button
                 type="button"
-                className="rounded-full px-2 py-2 text-sm font-medium text-[#9fb0b5] transition hover:text-white"
+                className="rounded-full px-2 py-2 text-sm font-medium text-c-text-tertiary transition hover:text-c-text-primary"
                 onClick={() => setReplyComposerExpanded(false)}
               >
                 {t('common.cancel')}
               </button>
               <NativeActionButton
                 variant="composer"
-                className="h-10 w-10 rounded-full shadow-[0_10px_28px_rgba(77,182,172,0.22)]"
+                className="h-10 w-10 rounded-full shadow-[0_10px_28px_rgba(0,206,200,0.22)]"
                 onClick={() => submitReply()}
                 aria-label={t('feed.send_reply')}
                 disabled={submittingReply || (!content.trim() && !file && !replyPreview && !replyGif)}
@@ -2414,14 +2412,14 @@ export default function PostDetail(){
           className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
           onClick={(e) => e.currentTarget === e.target && setShowHideModal(false)}
         >
-          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-5">
+          <div className="w-full max-w-sm rounded-2xl border border-c-border bg-c-bg-elevated p-5">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center">
                 <i className="fa-solid fa-eye-slash text-orange-400" />
               </div>
-              <div className="font-semibold text-lg text-white">{t('feed.hide_post')}</div>
+              <div className="font-semibold text-lg text-c-text-primary">{t('feed.hide_post')}</div>
             </div>
-            <p className="text-sm text-[#9fb0b5] mb-5">
+            <p className="text-sm text-c-text-tertiary mb-5">
               {t('feed.hide_post_body')}
             </p>
             <div className="flex flex-col gap-2">
@@ -2442,13 +2440,13 @@ export default function PostDetail(){
                 {t('feed.block_user', { username: post.username })}
               </button>
               <button
-                className="w-full py-2.5 rounded-lg bg-white/10 text-white border border-white/10 font-medium hover:bg-white/15 transition-colors"
+                className="w-full py-2.5 rounded-lg bg-c-active-bg text-c-text-primary border border-c-border font-medium hover:bg-c-hover-bg transition-colors"
                 onClick={() => hidePost(false)}
               >
                 {t('feed.just_hide_post')}
               </button>
               <button
-                className="w-full py-2.5 rounded-lg text-[#9fb0b5] hover:text-white transition-colors"
+                className="w-full py-2.5 rounded-lg text-c-text-tertiary hover:text-c-text-primary transition-colors"
                 onClick={() => setShowHideModal(false)}
               >
                 {t('common.cancel')}
@@ -2464,17 +2462,17 @@ export default function PostDetail(){
           className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
           onClick={(e) => e.currentTarget === e.target && !blockSubmitting && setShowBlockModal(false)}
         >
-          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-5">
+          <div className="w-full max-w-sm rounded-2xl border border-c-border bg-c-bg-elevated p-5">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
                 <i className="fa-solid fa-ban text-red-400" />
               </div>
-              <div className="font-semibold text-lg text-white">{t('feed.block_user', { username: post.username })}</div>
+              <div className="font-semibold text-lg text-c-text-primary">{t('feed.block_user', { username: post.username })}</div>
             </div>
-            <p className="text-sm text-[#9fb0b5] mb-4">
+            <p className="text-sm text-c-text-tertiary mb-4">
               {t('feed.block_user_body')}
             </p>
-            <ul className="text-sm text-[#9fb0b5] mb-4 space-y-1 pl-4">
+            <ul className="text-sm text-c-text-tertiary mb-4 space-y-1 pl-4">
               <li>• {t('feed.block_user_effect_hide_posts')}</li>
               <li>• {t('feed.block_user_effect_messages')}</li>
               <li>• {t('feed.block_user_effect_moderation')}</li>
@@ -2482,11 +2480,11 @@ export default function PostDetail(){
             </ul>
             
             <div className="mb-4">
-              <label className="block text-sm text-[#9fb0b5] mb-2">{t('feed.block_reason_label')}</label>
+              <label className="block text-sm text-c-text-tertiary mb-2">{t('feed.block_reason_label')}</label>
               <select
                 value={blockReason}
                 onChange={(e) => setBlockReason(e.target.value)}
-                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-red-500/50"
+                className="w-full px-3 py-2 bg-c-hover-bg border border-c-border rounded-lg text-sm text-c-text-primary focus:outline-none focus:border-red-500/50"
                 disabled={blockSubmitting}
               >
                 <option value="">{t('feed.select_reason')}</option>
@@ -2500,7 +2498,7 @@ export default function PostDetail(){
 
             <div className="flex gap-3">
               <button
-                className="flex-1 py-2.5 rounded-lg border border-white/10 text-white hover:bg-white/5 transition-colors"
+                className="flex-1 py-2.5 rounded-lg border border-c-border text-c-text-primary hover:bg-c-hover-bg transition-colors"
                 onClick={() => {
                   setShowBlockModal(false)
                   setBlockReason('')
@@ -2510,7 +2508,7 @@ export default function PostDetail(){
                 {t('common.cancel')}
               </button>
               <button
-                className="flex-1 py-2.5 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 py-2.5 rounded-lg bg-red-500 text-c-text-primary font-medium hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={() => blockUser(!!blockReason)}
                 disabled={blockSubmitting}
               >
@@ -2527,14 +2525,14 @@ export default function PostDetail(){
           className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
           onClick={(e) => e.currentTarget === e.target && !reportSubmitting && setShowReportModal(false)}
         >
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0b0f10] p-5 max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-md rounded-2xl border border-c-border bg-c-bg-elevated p-5 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
                 <i className="fa-solid fa-flag text-red-400" />
               </div>
-              <div className="font-semibold text-lg text-white">{t('feed.report_post')}</div>
+              <div className="font-semibold text-lg text-c-text-primary">{t('feed.report_post')}</div>
             </div>
-            <p className="text-sm text-[#9fb0b5] mb-4">
+            <p className="text-sm text-c-text-tertiary mb-4">
               {t('feed.report_post_body')}
             </p>
             
@@ -2551,8 +2549,8 @@ export default function PostDetail(){
                   key={reason}
                   className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
                     reportReason === reason 
-                      ? 'border-red-500/50 bg-red-500/10 text-white' 
-                      : 'border-white/10 bg-white/5 text-[#9fb0b5] hover:bg-white/10'
+                      ? 'border-red-500/50 bg-red-500/10 text-c-text-primary' 
+                      : 'border-c-border bg-c-hover-bg text-c-text-tertiary hover:bg-c-hover-bg'
                   }`}
                   onClick={() => setReportReason(reason)}
                   disabled={reportSubmitting}
@@ -2564,12 +2562,12 @@ export default function PostDetail(){
 
             {reportReason && (
               <div className="mb-4">
-                <label className="block text-sm text-[#9fb0b5] mb-2">{t('feed.additional_details_optional')}</label>
+                <label className="block text-sm text-c-text-tertiary mb-2">{t('feed.additional_details_optional')}</label>
                 <textarea
                   value={reportDetails}
                   onChange={(e) => setReportDetails(e.target.value)}
                   placeholder={t('feed.report_details_placeholder')}
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-white/40 focus:outline-none focus:border-red-500/50 resize-none"
+                  className="w-full px-3 py-2 bg-c-hover-bg border border-c-border rounded-lg text-sm text-c-text-primary placeholder-c-text-tertiary focus:outline-none focus:border-red-500/50 resize-none"
                   rows={3}
                   disabled={reportSubmitting}
                 />
@@ -2578,7 +2576,7 @@ export default function PostDetail(){
 
             <div className="flex gap-3">
               <button
-                className="flex-1 py-2.5 rounded-lg border border-white/10 text-white hover:bg-white/5 transition-colors"
+                className="flex-1 py-2.5 rounded-lg border border-c-border text-c-text-primary hover:bg-c-hover-bg transition-colors"
                 onClick={() => {
                   setShowReportModal(false)
                   setReportReason('')
@@ -2589,7 +2587,7 @@ export default function PostDetail(){
                 {t('common.cancel')}
               </button>
               <button
-                className="flex-1 py-2.5 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 py-2.5 rounded-lg bg-red-500 text-c-text-primary font-medium hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={reportPost}
                 disabled={!reportReason || reportSubmitting}
               >
@@ -2606,11 +2604,11 @@ export default function PostDetail(){
           className="fixed inset-0 z-[95] bg-black/70 backdrop-blur flex items-center justify-center"
           onClick={(e) => e.currentTarget === e.target && closeReactorsModal()}
         >
-          <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
+          <div className="w-[92%] max-w-[560px] rounded-2xl border border-c-border bg-c-bg-app p-3">
             <div className="flex items-center justify-between mb-2">
               <div className="font-semibold">{t('feed.views_reactions')}</div>
               <button
-                className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center text-sm text-white/80 hover:bg-white/10"
+                className="w-8 h-8 rounded-full border border-c-border flex items-center justify-center text-sm text-c-text-secondary hover:bg-c-hover-bg"
                 onClick={closeReactorsModal}
                 aria-label={t('common.close')}
               >
@@ -2618,17 +2616,17 @@ export default function PostDetail(){
               </button>
             </div>
             {reactorsLoading ? (
-              <div className="text-[#9fb0b5] text-sm py-4 text-center">{t('common.loading')}</div>
+              <div className="text-c-text-tertiary text-sm py-4 text-center">{t('common.loading')}</div>
             ) : (
               <div className="space-y-3 max-h-[420px] overflow-y-auto">
                 {/* Views section */}
-                <div className="rounded-lg border border-white/10 p-2">
-                  <div className="flex items-center justify-between text-xs text-white/80 uppercase tracking-wide">
+                <div className="rounded-lg border border-c-border p-2">
+                  <div className="flex items-center justify-between text-xs text-c-text-secondary uppercase tracking-wide">
                     <span>{t('feed.views')}</span>
-                    <span className="text-sm font-semibold text-white">{reactorViewCount ?? 0}</span>
+                    <span className="text-sm font-semibold text-c-text-primary">{reactorViewCount ?? 0}</span>
                   </div>
                   {reactorViewers.length === 0 ? (
-                    <div className="mt-2 text-xs text-[#9fb0b5]">{t('feed.no_views_yet')}</div>
+                    <div className="mt-2 text-xs text-c-text-tertiary">{t('feed.no_views_yet')}</div>
                   ) : (
                     <div className="mt-2 flex flex-col gap-1">
                       {reactorViewers.map((viewer) => {
@@ -2636,7 +2634,7 @@ export default function PostDetail(){
                         return (
                           <div
                             key={`viewer-${viewer.username}-${viewer.viewed_at ?? ''}`}
-                            className="flex items-center gap-2 text-xs text-[#9fb0b5]"
+                            className="flex items-center gap-2 text-xs text-c-text-tertiary"
                           >
                             <Avatar
                               username={viewer.username}
@@ -2645,7 +2643,7 @@ export default function PostDetail(){
                               linkToProfile
                             />
                             <div className="flex-1 truncate">@{viewer.username}</div>
-                            {viewedLabel && <div className="text-[10px] text-white/40">{viewedLabel}</div>}
+                            {viewedLabel && <div className="text-[10px] text-c-text-tertiary">{viewedLabel}</div>}
                           </div>
                         )
                       })}
@@ -2654,13 +2652,13 @@ export default function PostDetail(){
                 </div>
                 {/* Reactions section */}
                 {reactorGroups.length === 0 ? (
-                  <div className="text-sm text-[#9fb0b5]">{t('feed.no_reactions_yet')}</div>
+                  <div className="text-sm text-c-text-tertiary">{t('feed.no_reactions_yet')}</div>
                 ) : reactorGroups.map((group) => (
-                  <div key={group.reaction_type} className="rounded-lg border border-white/10 p-2">
-                    <div className="text-xs text-white/80 mb-1 capitalize">{group.reaction_type.replace('-', ' ')}</div>
+                  <div key={group.reaction_type} className="rounded-lg border border-c-border p-2">
+                    <div className="text-xs text-c-text-secondary mb-1 capitalize">{group.reaction_type.replace('-', ' ')}</div>
                     <div className="flex flex-col gap-1">
                       {(group.users || []).map((u) => (
-                        <div key={`${group.reaction_type}-${u.username}`} className="flex items-center gap-2 text-xs text-[#9fb0b5]">
+                        <div key={`${group.reaction_type}-${u.username}`} className="flex items-center gap-2 text-xs text-c-text-tertiary">
                           <Avatar username={u.username} url={u.profile_picture || undefined} size={18} linkToProfile />
                           <div className="flex-1 truncate">@{u.username}</div>
                         </div>
@@ -2680,11 +2678,11 @@ export default function PostDetail(){
           className="fixed inset-0 z-[95] bg-black/70 backdrop-blur flex items-center justify-center"
           onClick={(e) => e.currentTarget === e.target && setShowReplyReactorsModal(false)}
         >
-          <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
+          <div className="w-[92%] max-w-[560px] rounded-2xl border border-c-border bg-c-bg-app p-3">
             <div className="flex items-center justify-between mb-2">
               <div className="font-semibold">{t('feed.views_reactions')}</div>
               <button
-                className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center text-sm text-white/80 hover:bg-white/10"
+                className="w-8 h-8 rounded-full border border-c-border flex items-center justify-center text-sm text-c-text-secondary hover:bg-c-hover-bg"
                 onClick={() => setShowReplyReactorsModal(false)}
                 aria-label={t('common.close')}
               >
@@ -2692,25 +2690,25 @@ export default function PostDetail(){
               </button>
             </div>
             {replyReactorsLoading ? (
-              <div className="text-[#9fb0b5] text-sm py-4 text-center">{t('common.loading')}</div>
+              <div className="text-c-text-tertiary text-sm py-4 text-center">{t('common.loading')}</div>
             ) : (
               <div className="space-y-3 max-h-[420px] overflow-y-auto">
-                <div className="rounded-lg border border-white/10 p-2">
-                  <div className="flex items-center justify-between text-xs text-white/80 uppercase tracking-wide">
+                <div className="rounded-lg border border-c-border p-2">
+                  <div className="flex items-center justify-between text-xs text-c-text-secondary uppercase tracking-wide">
                     <span>{t('feed.views')}</span>
-                    <span className="text-sm font-semibold text-white">{replyReactorViewCount ?? 0}</span>
+                    <span className="text-sm font-semibold text-c-text-primary">{replyReactorViewCount ?? 0}</span>
                   </div>
                   {replyReactorViewers.length === 0 ? (
-                    <div className="mt-2 text-xs text-[#9fb0b5]">{t('feed.no_views_yet')}</div>
+                    <div className="mt-2 text-xs text-c-text-tertiary">{t('feed.no_views_yet')}</div>
                   ) : (
                     <div className="mt-2 flex flex-col gap-1">
                       {replyReactorViewers.map((viewer) => {
                         const viewedLabel = formatViewerRelative(viewer.viewed_at)
                         return (
-                          <div key={`rv-${viewer.username}-${viewer.viewed_at ?? ''}`} className="flex items-center gap-2 text-xs text-[#9fb0b5]">
+                          <div key={`rv-${viewer.username}-${viewer.viewed_at ?? ''}`} className="flex items-center gap-2 text-xs text-c-text-tertiary">
                             <Avatar username={viewer.username} url={viewer.profile_picture || undefined} size={18} linkToProfile />
                             <div className="flex-1 truncate">@{viewer.username}</div>
-                            {viewedLabel && <div className="text-[10px] text-white/40">{viewedLabel}</div>}
+                            {viewedLabel && <div className="text-[10px] text-c-text-tertiary">{viewedLabel}</div>}
                           </div>
                         )
                       })}
@@ -2718,13 +2716,13 @@ export default function PostDetail(){
                   )}
                 </div>
                 {replyReactorGroups.length === 0 ? (
-                  <div className="text-sm text-[#9fb0b5]">{t('feed.no_reactions_yet')}</div>
+                  <div className="text-sm text-c-text-tertiary">{t('feed.no_reactions_yet')}</div>
                 ) : replyReactorGroups.map((group) => (
-                  <div key={group.reaction_type} className="rounded-lg border border-white/10 p-2">
-                    <div className="text-xs text-white/80 mb-1 capitalize">{group.reaction_type.replace('-', ' ')}</div>
+                  <div key={group.reaction_type} className="rounded-lg border border-c-border p-2">
+                    <div className="text-xs text-c-text-secondary mb-1 capitalize">{group.reaction_type.replace('-', ' ')}</div>
                     <div className="flex flex-col gap-1">
                       {(group.users || []).map((u) => (
-                        <div key={`${group.reaction_type}-${u.username}`} className="flex items-center gap-2 text-xs text-[#9fb0b5]">
+                        <div key={`${group.reaction_type}-${u.username}`} className="flex items-center gap-2 text-xs text-c-text-tertiary">
                           <Avatar username={u.username} url={u.profile_picture || undefined} size={18} linkToProfile />
                           <div className="flex-1 truncate">@{u.username}</div>
                         </div>
@@ -2745,17 +2743,17 @@ export default function PostDetail(){
           onClick={() => setShowSummaryModal(false)}
         >
           <div 
-            className="bg-[#1a1f25] rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden border border-white/10 shadow-2xl"
+            className="bg-c-bg-surface rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden border border-c-border shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-c-border">
               <div className="flex items-center gap-2">
                 <i className="fa-solid fa-wand-magic-sparkles text-teal-400" />
-                <span className="font-semibold text-white">{t('feed.steve_summary')}</span>
+                <span className="font-semibold text-c-text-primary">{t('feed.steve_summary')}</span>
               </div>
               <button 
-                className="text-white/60 hover:text-white p-1"
+                className="text-c-text-tertiary hover:text-c-text-primary p-1"
                 onClick={() => setShowSummaryModal(false)}
               >
                 <i className="fa-solid fa-xmark text-lg" />
@@ -2767,7 +2765,7 @@ export default function PostDetail(){
               {summaryLoading && (
                 <div className="flex flex-col items-center justify-center py-8 gap-3">
                   <div className="w-8 h-8 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-white/60 text-sm">{t('feed.steve_summary_loading')}</span>
+                  <span className="text-c-text-tertiary text-sm">{t('feed.steve_summary_loading')}</span>
                 </div>
               )}
               
@@ -2779,16 +2777,16 @@ export default function PostDetail(){
               )}
               
               {summaryText && !summaryLoading && (
-                <div className="text-white text-[15px] leading-relaxed whitespace-pre-wrap">
+                <div className="text-c-text-primary text-[15px] leading-relaxed whitespace-pre-wrap">
                   {summaryText}
                 </div>
               )}
             </div>
             
             {/* Footer */}
-            <div className="px-4 py-3 border-t border-white/10">
+            <div className="px-4 py-3 border-t border-c-border">
               <button
-                className="w-full py-2.5 rounded-xl bg-[#4db6ac] text-black font-medium hover:brightness-110"
+                className="w-full py-2.5 rounded-xl bg-cpoint-turquoise text-black font-medium hover:brightness-110"
                 onClick={() => setShowSummaryModal(false)}
               >
                 {t('common.close')}
@@ -2806,7 +2804,7 @@ function Reaction({ icon, count, active, onClick }:{ icon: string, count: number
   // Border-only turquoise for active icon
   const [popping, setPopping] = useState(false)
   const iconStyle: React.CSSProperties = active
-    ? { color: '#4db6ac', WebkitTextStroke: '1px #4db6ac' }
+    ? { color: '#00CEC8', WebkitTextStroke: '1px #00CEC8' }
     : { color: '#6c757d' }
   const handleClick = () => {
     setPopping(true)
@@ -2884,14 +2882,14 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
     }
   }, [showInlineAttachMenu])
   return (
-    <div data-reply-node className={`relative py-2 ${depth === 0 ? 'border-b border-white/10' : ''} cursor-pointer hover:bg-white/[0.02]`} onClick={() => onNavigateToReply?.(reply.id)}>
+    <div data-reply-node className={`relative py-2 ${depth === 0 ? 'border-b border-c-border' : ''} cursor-pointer hover:bg-c-hover-bg`} onClick={() => onNavigateToReply?.(reply.id)}>
       <div className="relative flex items-start gap-2 px-3">
         <div className="relative w-10 flex-shrink-0 self-stretch" style={{ zIndex: 1 }} onClick={(e) => e.stopPropagation()}>
           <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} linkToProfile />
           {/* Vertical connector line from avatar to children */}
           {hasChildren && (
             <div 
-              className="absolute left-[13px] top-[28px] bottom-0 w-[2px] bg-gradient-to-b from-[#4db6ac]/70 to-[#4db6ac]/20" 
+              className="absolute left-[13px] top-[28px] bottom-0 w-[2px] bg-gradient-to-b from-cpoint-turquoise/70 to-cpoint-turquoise/20" 
               style={{ height: 'calc(100% - 28px)' }}
             />
           )}
@@ -2899,18 +2897,18 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
         <div className="flex-1 min-w-0 pr-2">
           <div className="flex items-center gap-2">
             <div className="font-medium">{reply.username}</div>
-            <div className="text-[11px] text-[#9fb0b5] ml-auto">{formatSmartTime(reply.timestamp)}</div>
+            <div className="text-[11px] text-c-text-tertiary ml-auto">{formatSmartTime(reply.timestamp)}</div>
             {(currentUser && (currentUser === reply.username || currentUser === 'admin')) ? (
               <div onClick={(e) => e.stopPropagation()}>
                 <button
-                  className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]"
+                  className="ml-2 px-2 py-1 rounded-full text-c-text-tertiary hover:text-cpoint-turquoise"
                   title={t('feed.edit_reply')}
                   onClick={()=> setIsEditing(v=>!v)}
                 >
                   <i className="fa-regular fa-pen-to-square" />
                 </button>
                 <button
-                  className="ml-1 px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400"
+                  className="ml-1 px-2 py-1 rounded-full text-c-text-tertiary hover:text-red-400"
                   title={t('feed.delete_reply')}
                   onClick={()=> onDelete(reply.id)}
                 >
@@ -2920,16 +2918,16 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             ) : null}
           </div>
           {!isEditing ? (
-            <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words">{renderRichText(reply.content, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`), onArticleOpen)}</div>
+            <div className="text-c-text-primary whitespace-pre-wrap mt-0.5 break-words">{renderRichText(reply.content, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`), onArticleOpen)}</div>
           ) : (
             <div className="mt-1" onClick={(e) => e.stopPropagation()}>
               <textarea
-                className="w-full resize-none max-h-60 min-h-[100px] px-3 py-2 rounded-md bg-black border border-[#4db6ac] text-[14px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+                className="w-full resize-none max-h-60 min-h-[100px] px-3 py-2 rounded-md bg-c-bg-app border border-cpoint-turquoise text-[14px] focus:outline-none focus:ring-1 focus:ring-cpoint-turquoise"
                 value={editText}
                 onChange={(e)=> setEditText(e.target.value)}
               />
               <div className="mt-1 flex gap-2">
-                <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black" onClick={async ()=>{
+                <button className="px-3 py-1.5 rounded-md bg-cpoint-turquoise text-black" onClick={async ()=>{
                   const fd = new FormData()
                   fd.append('reply_id', String(reply.id))
                   fd.append('content', editText)
@@ -2942,7 +2940,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                     alert(j?.error || t('feed.edit_failed'))
                   }
                 }}>{t('common.save')}</button>
-                <button className="px-3 py-1.5 rounded-md border border-white/10" onClick={()=> { setIsEditing(false); setEditText(reply.content) }}>{t('common.cancel')}</button>
+                <button className="px-3 py-1.5 rounded-md border border-c-border" onClick={()=> { setIsEditing(false); setEditText(reply.content) }}>{t('common.cancel')}</button>
               </div>
             </div>
           )}
@@ -2952,7 +2950,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                 <ImageLoader
                   src={normalizePath(reply.image_path as string)}
                   alt={t('feed.reply_image_alt')}
-                  className="block mx-auto max-w-full max-h-[300px] rounded border border-white/10 cursor-zoom-in"
+                  className="block mx-auto max-w-full max-h-[300px] rounded border border-c-border cursor-zoom-in"
                 />
               </div>
             </div>
@@ -2960,7 +2958,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
           {(reply.video_path || (reply.image_path && isVideoAttachmentPath(reply.image_path))) ? (
             <div className="mt-2" onClick={(e) => e.stopPropagation()}>
               <video
-                className="w-full max-h-[320px] rounded border border-white/10 bg-black"
+                className="w-full max-h-[320px] rounded border border-c-border bg-c-bg-app"
                 src={normalizePath((reply.video_path || reply.image_path) as string) + '#t=0.1'}
                 controls
                 playsInline
@@ -2982,12 +2980,12 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                 if (timestampMs != null && !Number.isNaN(timestampMs) && Date.now() - timestampMs < 120000) {
                   return (
                     <div className="flex items-center gap-1">
-                      <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-white/40" />
-                      <span className="text-[11px] text-white/40">{t('feed.steve_summary_generating')}</span>
+                      <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-c-text-tertiary" />
+                      <span className="text-[11px] text-c-text-tertiary">{t('feed.steve_summary_generating')}</span>
                       <span className="flex gap-0.5 ml-0.5">
-                        <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        <span className="w-1 h-1 bg-cpoint-turquoise rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1 h-1 bg-cpoint-turquoise rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1 h-1 bg-cpoint-turquoise rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                       </span>
                     </div>
                   )
@@ -3008,7 +3006,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             <div className="ml-auto flex items-center gap-1">
               {onOpenReactors && (
                 <button
-                  className="flex items-center gap-1 px-2 py-1 rounded text-[#9fb0b5] hover:text-white hover:bg-white/10 transition-colors"
+                  className="flex items-center gap-1 px-2 py-1 rounded text-c-text-tertiary hover:text-c-text-primary hover:bg-c-hover-bg transition-colors"
                   onClick={(e) => { e.stopPropagation(); onOpenReactors(reply.id) }}
                   title={t('feed.view_reactions_viewers')}
                 >
@@ -3016,7 +3014,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                   <span>{typeof reply.view_count === 'number' ? reply.view_count : 0}</span>
                 </button>
               )}
-              <button className="px-2 py-1 rounded-full text-[#9fb0b5] hover:text-[#4db6ac]" onClick={(e)=> {
+              <button className="px-2 py-1 rounded-full text-c-text-tertiary hover:text-cpoint-turquoise" onClick={(e)=> {
                 e.stopPropagation()
                 setShowComposer(v => !v)
                 setTimeout(() => {
@@ -3030,13 +3028,13 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
       </div>
       {/* Inline reply composer - full width outside the avatar+content flex */}
       {showComposer ? (
-        <div className="mt-2 mx-3 space-y-2 rounded-xl bg-[#0a0a0c] p-3" data-inline-reply-id={reply.id} onClick={(e) => e.stopPropagation()}>
+        <div className="mt-2 mx-3 space-y-2 rounded-xl bg-c-bg-elevated p-3" data-inline-reply-id={reply.id} onClick={(e) => e.stopPropagation()}>
           {/* Attachment previews */}
           {(img || inlineGif || inlinePreview) && (
             <div className="flex items-center gap-2 flex-wrap mb-1">
               {img && (
                 <div className="flex items-center gap-1">
-                  <div className="w-10 h-10 rounded overflow-hidden border border-white/10">
+                  <div className="w-10 h-10 rounded overflow-hidden border border-c-border">
                     <img src={URL.createObjectURL(img)} alt={t('feed.preview_alt', { number: '' })} className="w-full h-full object-cover" />
                   </div>
                   <button onClick={() => { setImg(null); setInlineGif(null); setGifFile(null); if (inlineFileRef.current) inlineFileRef.current.value = '' }} className="text-red-400 hover:text-red-300 text-xs"><i className="fa-solid fa-times" /></button>
@@ -3044,7 +3042,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
               )}
               {inlineGif && (
                 <div className="flex items-center gap-1">
-                  <div className="w-10 h-10 rounded overflow-hidden border border-white/10">
+                  <div className="w-10 h-10 rounded overflow-hidden border border-c-border">
                     <img src={inlineGif.previewUrl} alt={t('feed.selected_gif_alt')} className="w-full h-full object-cover" loading="lazy" />
                   </div>
                   <button onClick={() => { setInlineGif(null); setGifFile(null) }} className="text-red-400 hover:text-red-300 text-xs"><i className="fa-solid fa-times" /></button>
@@ -3053,7 +3051,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
               {inlinePreview && (
                 <div className="flex items-center gap-1 flex-1 min-w-0">
                   <audio controls className="flex-1 h-7" playsInline src={inlinePreview.url} />
-                  <button onClick={() => clearInlinePreview()} className="text-[#9fb0b5] hover:text-white text-xs"><i className="fa-regular fa-trash-can" /></button>
+                  <button onClick={() => clearInlinePreview()} className="text-c-text-tertiary hover:text-c-text-primary text-xs"><i className="fa-regular fa-trash-can" /></button>
                 </div>
               )}
             </div>
@@ -3061,11 +3059,11 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
           {/* Recording indicator */}
           {rec && (
             <div className="flex items-center gap-2 mb-1">
-              <span className="w-2 h-2 bg-[#4db6ac] rounded-full animate-pulse" />
-              <div className="flex-1 h-1.5 bg-white/10 rounded overflow-hidden">
+              <span className="w-2 h-2 bg-cpoint-turquoise rounded-full animate-pulse" />
+              <div className="flex-1 h-1.5 bg-c-active-bg rounded overflow-hidden">
                 <div className="h-full bg-[#7fe7df] transition-all" style={{ width: `${Math.max(6, Math.min(96, recLevel*100))}%` }} />
               </div>
-              <span className="text-[10px] text-white/70">{Math.min(60, Math.round((recMs||0)/1000))}s</span>
+              <span className="text-[10px] text-c-text-secondary">{Math.min(60, Math.round((recMs||0)/1000))}s</span>
             </div>
           )}
           {/* Input row */}
@@ -3074,35 +3072,35 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             <div className="relative">
               <button 
                 type="button" 
-                className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20"
+                className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-c-active-bg hover:bg-c-hover-bg"
                 onClick={() => setShowInlineAttachMenu(!showInlineAttachMenu)}
               >
                 <i className={`fa-solid ${showInlineAttachMenu ? 'fa-times' : 'fa-plus'} text-xs`} style={{ color: (img || inlineGif) ? '#7fe7df' : '#fff' }} />
               </button>
               
               {showInlineAttachMenu && (
-                <div className="absolute bottom-full left-0 mb-2 w-36 rounded-xl bg-[#1a1a1c] border border-white/10 shadow-xl overflow-hidden z-10">
+                <div className="absolute bottom-full left-0 mb-2 w-36 rounded-xl bg-c-bg-surface border border-c-border shadow-xl overflow-hidden z-10">
                   <button
                     type="button"
-                    className="w-full px-3 py-2.5 flex items-center gap-2 hover:bg-white/10 transition-colors text-left"
+                    className="w-full px-3 py-2.5 flex items-center gap-2 hover:bg-c-hover-bg transition-colors text-left"
                     onClick={() => {
                       inlineFileRef.current?.click()
                       setShowInlineAttachMenu(false)
                     }}
                   >
-                    <i className="fa-solid fa-image text-[#4db6ac] text-xs" />
-                    <span className="text-xs text-white">{t('feed.photo_video')}</span>
+                    <i className="fa-solid fa-image text-cpoint-turquoise text-xs" />
+                    <span className="text-xs text-c-text-primary">{t('feed.photo_video')}</span>
                   </button>
                   <button
                     type="button"
-                    className="w-full px-3 py-2.5 flex items-center gap-2 hover:bg-white/10 transition-colors text-left border-t border-white/5"
+                    className="w-full px-3 py-2.5 flex items-center gap-2 hover:bg-c-hover-bg transition-colors text-left border-t border-c-border"
                     onClick={() => {
                       setShowGifPicker(true)
                       setShowInlineAttachMenu(false)
                     }}
                   >
-                    <i className="fa-solid fa-images text-[#4db6ac] text-xs" />
-                    <span className="text-xs text-white">GIF</span>
+                    <i className="fa-solid fa-images text-cpoint-turquoise text-xs" />
+                    <span className="text-xs text-c-text-primary">GIF</span>
                   </button>
                 </div>
               )}
@@ -3110,14 +3108,14 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             
             <input ref={inlineFileRef} type="file" accept="image/*,video/*" onChange={(e) => { const next = (e.target as HTMLInputElement).files?.[0] || null; setImg(next); setInlineGif(null); setGifFile(null) }} className="hidden" />
             
-            <div className="flex-1 min-w-0 flex min-h-8 items-center rounded-lg border border-[#4db6ac] bg-white/5">
+            <div className="flex-1 min-w-0 flex min-h-8 items-center rounded-lg border border-cpoint-turquoise bg-c-hover-bg">
               <MentionTextarea
                 value={text}
                 onChange={setText}
                 communityId={communityId}
                 postId={postId}
                 placeholder={t('feed.reply_to_user', { username: reply.username })}
-                className="w-full bg-transparent px-3 py-1 text-[14px] leading-5 text-white placeholder-white/50 outline-none resize-none max-h-20 min-h-0"
+                className="w-full bg-transparent px-3 py-1 text-[14px] leading-5 text-c-text-primary placeholder-c-text-tertiary outline-none resize-none max-h-20 min-h-0"
                 rows={1}
                 autoExpand
               />
@@ -3127,7 +3125,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             {rec && (
               <button
                 type="button"
-                className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#4db6ac]"
+                className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-cpoint-turquoise"
                 onClick={async () => {
                   const p = await stopInlineRec()
                   if (!p?.blob?.size) {
@@ -3135,7 +3133,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                   }
                 }}
               >
-                <i className="fa-solid fa-stop text-xs text-white" />
+                <i className="fa-solid fa-stop text-xs text-c-text-primary" />
               </button>
             )}
             
@@ -3176,8 +3174,8 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                   </NativeActionButton>
                 ) : (
                   /* No content - show mic button */
-                  <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20" onClick={() => startInlineRec()}>
-                    <i className="fa-solid fa-microphone text-xs text-white" />
+                  <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-c-active-bg hover:bg-c-hover-bg" onClick={() => startInlineRec()}>
+                    <i className="fa-solid fa-microphone text-xs text-c-text-primary" />
                   </button>
                 )}
               </>
@@ -3207,7 +3205,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
       {((reply as any).reply_count > 0 || (reply.children && reply.children.length > 0)) ? (
         <div className="px-3 pb-2">
           <button
-            className="text-[12px] text-[#4db6ac] hover:underline flex items-center gap-1"
+            className="text-[12px] text-cpoint-turquoise hover:underline flex items-center gap-1"
             onClick={(e) => {
               e.stopPropagation()
               if (onNavigateToReply) onNavigateToReply(reply.id)

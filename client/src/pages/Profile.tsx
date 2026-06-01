@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+﻿import { useEffect, useRef, useState, useCallback } from 'react'
 import type { ChangeEvent, CSSProperties, FormEvent, KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import Avatar, { clearImageCache } from '../components/Avatar'
@@ -269,7 +269,7 @@ export default function Profile() {
         if (cancelled || !j?.success || !j.profile) return
         applyProfileFromServer(j.profile as Record<string, unknown>)
       } catch {
-        /* non-fatal — keep context profile */
+        /* non-fatal \u2014 keep context profile */
       }
     })()
     return () => {
@@ -1124,7 +1124,7 @@ export default function Profile() {
   }
 
   if (loading) return (
-    <div className="glass-page min-h-screen text-white">
+    <div className="glass-page min-h-screen bg-c-bg-app text-c-text-primary">
       <div className="glass-card glass-card--plain max-w-3xl mx-auto px-4 py-4">
         <SkeletonProfileShell />
       </div>
@@ -1133,10 +1133,10 @@ export default function Profile() {
   if (error || !summary) return <div className="p-4 text-red-400">{error || t('profile.error.generic')}</div>
 
   return (
-    <div className="glass-page min-h-screen text-white">
+    <div className="glass-page min-h-screen bg-c-bg-app text-c-text-primary">
       <div className="glass-card glass-card--plain max-w-3xl mx-auto px-4 py-4 space-y-4">
         {summary.cover_photo ? (
-          <div className="rounded-xl border border-white/10 overflow-hidden">
+          <div className="rounded-xl border border-c-border overflow-hidden">
             <img
               src={summary.cover_photo.startsWith('http') ? summary.cover_photo : `/static/${summary.cover_photo}`}
               alt={t('profile.alt.cover')}
@@ -1145,13 +1145,13 @@ export default function Profile() {
           </div>
         ) : null}
         {showOnboardingReturn ? (
-            <div className="rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-white">
+            <div className="rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-c-text-primary">
                 {t('profile.onboarding_return.message')}
               </div>
               <button
                 type="button"
-                className="rounded-full border border-[#4db6ac]/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white hover:bg-[#4db6ac]/20"
+                className="rounded-full border border-cpoint-turquoise/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-c-text-primary hover:bg-cpoint-turquoise/20"
                 onClick={handleReturnToOnboarding}
               >
                 {t('profile.onboarding_return.button')}
@@ -1164,13 +1164,13 @@ export default function Profile() {
             {/* Show local preview immediately, then server URL after upload */}
             {localPhotoPreview ? (
               <div 
-                className="rounded-full overflow-hidden bg-white/10 border border-white/10 flex items-center justify-center"
+                className="rounded-full overflow-hidden bg-c-active-bg border border-c-border flex items-center justify-center"
                 style={{ width: 64, height: 64 }}
               >
                 <img src={localPhotoPreview} alt={t('profile.alt.preview')} className="w-full h-full object-cover" />
                 {uploadingPhoto && (
-                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-full">
-                    <i className="fa-solid fa-spinner fa-spin text-white" />
+                  <div className="absolute inset-0 bg-c-bg-overlay flex items-center justify-center rounded-full">
+                    <i className="fa-solid fa-spinner fa-spin text-c-text-primary" />
                   </div>
                 )}
               </div>
@@ -1178,7 +1178,7 @@ export default function Profile() {
               <Avatar username={summary.username} url={summary.profile_picture || undefined} size={64} />
             )}
             <button
-              className="absolute -right-1 -bottom-1 w-7 h-7 rounded-full bg-[#4db6ac] text-black text-xs flex items-center justify-center border border-black"
+              className="absolute -right-1 -bottom-1 w-7 h-7 rounded-full bg-cpoint-turquoise text-black text-xs flex items-center justify-center border border-black"
               onClick={() => fileInputRef.current?.click()}
               aria-label={t('profile.aria.change_profile_picture')}
               type="button"
@@ -1195,40 +1195,40 @@ export default function Profile() {
           </div>
           <div className="min-w-0 flex-1 space-y-1">
             <div className="font-semibold text-lg leading-tight break-words">{summary.display_name || summary.username}</div>
-            <div className="flex flex-wrap items-center gap-2 text-sm text-[#cfd8dc]">
+            <div className="flex flex-wrap items-center gap-2 text-sm text-c-text-secondary">
               <span className="truncate">@{summary.username}</span>
               {summary.subscription ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-xs uppercase tracking-wide text-white/80">
+                <span className="inline-flex items-center gap-1 rounded-full bg-c-active-bg px-2 py-0.5 text-xs uppercase tracking-wide text-c-text-secondary">
                   <i className="fa-solid fa-gem text-[10px]" />
                   {summary.subscription}
                 </span>
               ) : null}
             </div>
             {locationPreview ? (
-              <div className="flex flex-wrap items-center gap-1 text-xs text-[#9fb0b5]">
+              <div className="flex flex-wrap items-center gap-1 text-xs text-c-text-tertiary">
                 <i className="fa-solid fa-location-dot" />
                 <span className="truncate">{locationPreview}</span>
               </div>
             ) : null}
           </div>
           <a
-            className="ml-auto px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm"
+            className="ml-auto px-3 py-1.5 rounded-md border border-c-border hover:bg-c-hover-bg text-sm"
             href={`/profile/${encodeURIComponent(summary.username)}`}
           >
             {t('profile.preview_profile')}
           </a>
         </div>
 
-        <section className="rounded-xl border border-white/10 p-4 space-y-3">
+        <section className="rounded-xl border border-c-border p-4 space-y-3">
           <form className="space-y-3" onSubmit={handlePersonalSubmit}>
             <header>
               <div className="font-semibold">{t('profile.personal.title')}</div>
-              <p className="text-xs text-[#9fb0b5]">{t('profile.personal.subtitle')}</p>
+              <p className="text-xs text-c-text-tertiary">{t('profile.personal.subtitle')}</p>
             </header>
             <label className="text-sm block">
               {t('profile.personal.bio_label')}
               <textarea
-                className="mt-1 w-full min-h-[100px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                className="mt-1 w-full min-h-[100px] rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
                 style={{ userSelect: 'text', WebkitUserSelect: 'text' } as CSSProperties}
                 value={personal.bio}
                 onChange={event => setPersonal(prev => ({ ...prev, bio: event.target.value }))}
@@ -1236,8 +1236,8 @@ export default function Profile() {
               />
             </label>
             {personal.bio.trim() ? null : (
-              <div className="rounded-lg border border-dashed border-white/15 bg-white/[0.03] px-3 py-2 text-xs leading-relaxed text-[#9fb0b5]">
-                <p className="text-white/80 font-medium">
+              <div className="rounded-lg border border-dashed border-c-border bg-c-hover-bg px-3 py-2 text-xs leading-relaxed text-c-text-tertiary">
+                <p className="text-c-text-secondary font-medium">
                   {t('profile.personal.bio_empty_title')}
                 </p>
                 <p>{t('profile.personal.bio_empty_subtitle')}</p>
@@ -1245,14 +1245,14 @@ export default function Profile() {
                   {t('profile.personal.bio_empty_example_label')}
                   {"\n"}{t('profile.personal.bio_empty_example_text')}
                 </p>
-                <p className="mt-2 text-white/70">{t('profile.personal.bio_empty_cta')}</p>
+                <p className="mt-2 text-c-text-secondary">{t('profile.personal.bio_empty_cta')}</p>
               </div>
             )}
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-sm min-w-0">
                 {t('profile.personal.first_name')}
                 <input
-                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm leading-tight outline-none focus:border-[#4db6ac]"
+                  className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm leading-tight outline-none focus:border-cpoint-turquoise"
                   value={personal.first_name}
                   onChange={event => setPersonal(prev => ({ ...prev, first_name: event.target.value }))}
                 />
@@ -1260,7 +1260,7 @@ export default function Profile() {
               <label className="text-sm min-w-0">
                 {t('profile.personal.last_name')}
                 <input
-                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm leading-tight outline-none focus:border-[#4db6ac]"
+                  className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm leading-tight outline-none focus:border-cpoint-turquoise"
                   value={personal.last_name}
                   onChange={event => setPersonal(prev => ({ ...prev, last_name: event.target.value }))}
                 />
@@ -1268,7 +1268,7 @@ export default function Profile() {
               <label className="text-sm min-w-0">
                 {t('profile.personal.display_name')}
                 <input
-                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm leading-tight outline-none focus:border-[#4db6ac]"
+                  className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm leading-tight outline-none focus:border-cpoint-turquoise"
                   value={personal.display_name}
                   onChange={event => setPersonal(prev => ({ ...prev, display_name: event.target.value }))}
                 />
@@ -1277,7 +1277,7 @@ export default function Profile() {
                 {t('profile.personal.date_of_birth')}
                 <input
                   type="date"
-                  className="mt-1 w-full min-w-0 rounded-md bg-black border border-white/10 px-3 py-2 text-sm leading-tight outline-none focus:border-[#4db6ac]"
+                  className="mt-1 w-full min-w-0 rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm leading-tight outline-none focus:border-cpoint-turquoise"
                   value={personal.date_of_birth}
                   onChange={event => setPersonal(prev => ({ ...prev, date_of_birth: event.target.value }))}
                 />
@@ -1326,7 +1326,7 @@ export default function Profile() {
             </div>
             <button
               type="submit"
-              className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
+              className="px-4 py-2 rounded-md bg-cpoint-turquoise text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
               disabled={savingPersonal}
             >
               {savingPersonal ? t('profile.saving') : t('profile.personal.save')}
@@ -1334,11 +1334,11 @@ export default function Profile() {
           </form>
         </section>
 
-        <section className="rounded-xl border border-white/10 p-4">
+        <section className="rounded-xl border border-c-border p-4">
           <form className="space-y-4" onSubmit={handleProfessionalSubmit}>
             <header>
               <div className="font-semibold">{t('profile.professional.title')}</div>
-              <p className="text-xs text-[#9fb0b5]">{t('profile.professional.subtitle')}</p>
+              <p className="text-xs text-c-text-tertiary">{t('profile.professional.subtitle')}</p>
             </header>
             <input
               ref={cvFileInputRef}
@@ -1353,7 +1353,7 @@ export default function Profile() {
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                className="rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/10 disabled:opacity-50"
+                className="rounded-md border border-c-border bg-c-hover-bg px-3 py-1.5 text-xs font-medium text-c-text-primary hover:bg-c-hover-bg disabled:opacity-50"
                 disabled={cvParsing}
                 onClick={() => cvFileInputRef.current?.click()}
               >
@@ -1362,7 +1362,7 @@ export default function Profile() {
               {professional.has_stored_cv ? (
                 <button
                   type="button"
-                  className="rounded-md border border-[#4db6ac]/50 bg-[#4db6ac]/10 px-3 py-1.5 text-xs font-medium text-[#4db6ac] hover:bg-[#4db6ac]/20"
+                  className="rounded-md border border-cpoint-turquoise/50 bg-cpoint-turquoise/10 px-3 py-1.5 text-xs font-medium text-cpoint-turquoise hover:bg-cpoint-turquoise/20"
                   onClick={() => void downloadStoredCv()}
                 >
                   {t('profile.professional.download_last_cv')}
@@ -1370,7 +1370,7 @@ export default function Profile() {
               ) : null}
             </div>
             {professional.cv_uploaded_at ? (
-              <p className="text-[11px] text-[#9fb0b5]">
+              <p className="text-[11px] text-c-text-tertiary">
                 {t('profile.professional.last_cv_on_file')}{' '}
                 {(() => {
                   try {
@@ -1383,13 +1383,13 @@ export default function Profile() {
                 {professional.cv_original_filename ? ` · ${professional.cv_original_filename}` : ''}
               </p>
             ) : null}
-            <p className="text-[11px] text-[#9fb0b5]">
+            <p className="text-[11px] text-c-text-tertiary">
               {t('profile.professional.cv_storage_hint')}
             </p>
             <label className="text-sm block">
               {t('profile.professional.about_label')}
               <textarea
-                className="mt-1 w-full min-h-[96px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                className="mt-1 w-full min-h-[96px] rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
                 value={professional.about}
                 onChange={event => setProfessional(prev => ({ ...prev, about: event.target.value }))}
                 placeholder={t('profile.professional.about_placeholder')}
@@ -1399,7 +1399,7 @@ export default function Profile() {
               <label className="text-sm">
                 {t('profile.professional.current_position')}
                 <input
-                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                  className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
                   value={professional.role}
                   onChange={event => setProfessional(prev => ({ ...prev, role: event.target.value }))}
                   placeholder={t('profile.professional.current_position_placeholder')}
@@ -1408,7 +1408,7 @@ export default function Profile() {
               <label className="text-sm">
                 {t('profile.professional.company')}
                 <input
-                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                  className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
                   value={professional.company}
                   onChange={event => setProfessional(prev => ({ ...prev, company: event.target.value }))}
                   placeholder={t('profile.professional.company_placeholder')}
@@ -1416,11 +1416,11 @@ export default function Profile() {
               </label>
               <label className="text-sm sm:col-span-2">
                 {t('profile.professional.company_description')}
-                <span className="block text-[11px] text-[#9fb0b5] font-normal mt-0.5 mb-1">
+                <span className="block text-[11px] text-c-text-tertiary font-normal mt-0.5 mb-1">
                   {t('profile.professional.company_description_hint')}
                 </span>
                 <textarea
-                  className="mt-1 w-full min-h-[72px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                  className="mt-1 w-full min-h-[72px] rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
                   value={professional.company_intel}
                   onChange={event => setProfessional(prev => ({ ...prev, company_intel: event.target.value }))}
                   placeholder={t('profile.professional.company_description_placeholder')}
@@ -1443,7 +1443,7 @@ export default function Profile() {
               <label className="text-sm">
                 {t('profile.professional.linkedin')}
                 <input
-                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                  className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
                   value={professional.linkedin}
                   onChange={event => setProfessional(prev => ({ ...prev, linkedin: event.target.value }))}
                   placeholder={t('profile.professional.linkedin_placeholder')}
@@ -1452,7 +1452,7 @@ export default function Profile() {
             </div>
             <button
               type="submit"
-              className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
+              className="px-4 py-2 rounded-md bg-cpoint-turquoise text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
               disabled={savingProfessional}
             >
               {savingProfessional ? t('profile.saving') : t('profile.professional.save')}
@@ -1461,16 +1461,16 @@ export default function Profile() {
 
           {cvModalOpen && cvPending ? (
             <div
-              className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+              className="fixed inset-0 z-[100] flex items-center justify-center bg-c-bg-overlay p-4"
               role="dialog"
               aria-modal="true"
               aria-labelledby="cv-modal-title"
             >
-              <div className="max-w-lg w-full rounded-xl border border-white/15 bg-[#0d1619] p-4 shadow-xl space-y-3">
-                <div id="cv-modal-title" className="font-semibold text-white">
+              <div className="max-w-lg w-full rounded-xl border border-c-border bg-c-bg-elevated p-4 shadow-xl space-y-3">
+                <div id="cv-modal-title" className="font-semibold text-c-text-primary">
                   {t('profile.cv_modal.title')}
                 </div>
-                <p className="text-xs text-[#9fb0b5]">
+                <p className="text-xs text-c-text-tertiary">
                   {t('profile.cv_modal.description')}
                 </p>
                 {cvPending.cv_stored === false ? (
@@ -1478,21 +1478,21 @@ export default function Profile() {
                     {t('profile.cv_modal.not_stored_warning')}
                   </p>
                 ) : null}
-                <ul className="text-xs text-[#c8d8dc] list-disc pl-4 space-y-1 max-h-40 overflow-y-auto">
+                <ul className="text-xs text-c-text-secondary list-disc pl-4 space-y-1 max-h-40 overflow-y-auto">
                   <li>{t('profile.cv_modal.current_role')} {cvPending.role.trim() || t('profile.cv_modal.empty_value')}</li>
                   <li>{t('profile.cv_modal.company')} {cvPending.company.trim() || t('profile.cv_modal.empty_value')}</li>
                   <li>{t('profile.cv_modal.start_ym')} {cvPending.current_role_start_ym.trim() || t('profile.cv_modal.empty_value')}</li>
                   <li>{t('profile.cv_modal.past_roles_count')} {cvPending.work_history.length}</li>
                   {cvPending.professional_about ? (
-                    <li className="list-none -ml-4 mt-2 text-[#9fb0b5]">
-                      {t('profile.cv_modal.bio')} {cvPending.professional_about.length > 220 ? `${cvPending.professional_about.slice(0, 220)}…` : cvPending.professional_about}
+                    <li className="list-none -ml-4 mt-2 text-c-text-tertiary">
+                      {t('profile.cv_modal.bio')} {cvPending.professional_about.length > 220 ? `${cvPending.professional_about.slice(0, 220)}\u2026` : cvPending.professional_about}
                     </li>
                   ) : null}
                 </ul>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                   <button
                     type="button"
-                    className="rounded-md bg-[#4db6ac] text-black text-sm font-medium py-2.5 hover:brightness-110 disabled:opacity-50"
+                    className="rounded-md bg-cpoint-turquoise text-black text-sm font-medium py-2.5 hover:brightness-110 disabled:opacity-50"
                     disabled={cvApplying}
                     onClick={() => void applyCvStructured('replace')}
                   >
@@ -1500,20 +1500,20 @@ export default function Profile() {
                   </button>
                   <button
                     type="button"
-                    className="rounded-md border border-white/20 bg-white/5 text-white text-sm font-medium py-2.5 hover:bg-white/10 disabled:opacity-50"
+                    className="rounded-md border border-c-border bg-c-hover-bg text-c-text-primary text-sm font-medium py-2.5 hover:bg-c-hover-bg disabled:opacity-50"
                     disabled={cvApplying}
                     onClick={() => void applyCvStructured('merge')}
                   >
                     {cvApplying ? t('profile.cv_modal.applying') : t('profile.cv_modal.merge')}
                   </button>
                 </div>
-                <p className="text-[11px] text-[#7a8f94]">
+                <p className="text-[11px] text-c-text-tertiary">
                   {t('profile.cv_modal.merge_hint')}
                 </p>
                 <div className="flex justify-end pt-1">
                   <button
                     type="button"
-                    className="rounded-md border border-white/15 px-3 py-2 text-sm text-[#9fb0b5] hover:bg-white/5 disabled:opacity-50"
+                    className="rounded-md border border-c-border px-3 py-2 text-sm text-c-text-tertiary hover:bg-c-hover-bg disabled:opacity-50"
                     disabled={cvApplying}
                     onClick={() => {
                       setCvModalOpen(false)
@@ -1528,27 +1528,27 @@ export default function Profile() {
           ) : null}
         </section>
 
-        <section className="rounded-xl border border-white/10 p-4 space-y-3">
+        <section className="rounded-xl border border-c-border p-4 space-y-3">
           <div className="font-semibold">{t('profile.spotlight.title')}</div>
-          <p className="text-xs text-[#9fb0b5]">
+          <p className="text-xs text-c-text-tertiary">
             {t('profile.spotlight.subtitle')}
           </p>
           <button
             type="button"
-            className="rounded-md border border-[#4db6ac]/50 bg-[#4db6ac]/10 px-4 py-2 text-sm font-medium text-[#4db6ac] hover:bg-[#4db6ac]/20"
+            className="rounded-md border border-cpoint-turquoise/50 bg-cpoint-turquoise/10 px-4 py-2 text-sm font-medium text-cpoint-turquoise hover:bg-cpoint-turquoise/20"
             onClick={() => setDetailsModalOpen(true)}
           >
             {t('profile.spotlight.open')}
           </button>
         </section>
 
-        <section className="rounded-xl border border-white/10 p-4">
+        <section className="rounded-xl border border-c-border p-4">
           <form className="space-y-3" onSubmit={handleInterestsSubmit}>
             <div>
-              <div className="text-sm font-semibold text-white">{t('profile.interests.title')}</div>
-              <p className="text-xs text-[#9fb0b5]">{t('profile.interests.subtitle')}</p>
+              <div className="text-sm font-semibold text-c-text-primary">{t('profile.interests.title')}</div>
+              <p className="text-xs text-c-text-tertiary">{t('profile.interests.subtitle')}</p>
               <div className="mt-2 space-y-1">
-                <div className="text-[11px] uppercase tracking-wide text-white/40">{t('profile.interests.popular_suggestions')}</div>
+                <div className="text-[11px] uppercase tracking-wide text-c-text-tertiary">{t('profile.interests.popular_suggestions')}</div>
                 <div className="flex flex-wrap gap-2">
                   {INTEREST_SUGGESTIONS.map(suggestion => {
                     const alreadySelected = professional.interests.some(
@@ -1561,8 +1561,8 @@ export default function Profile() {
                         onClick={() => !alreadySelected && addInterest(suggestion)}
                         className={`rounded-full border px-3 py-1 text-[11px] transition ${
                           alreadySelected
-                            ? 'border-[#4db6ac]/60 bg-[#4db6ac]/20 text-[#4db6ac] cursor-default'
-                            : 'border-white/15 bg-white/[0.08] text-white/80 hover:border-[#4db6ac] hover:text-[#4db6ac]'
+                            ? 'border-cpoint-turquoise/60 bg-cpoint-turquoise/20 text-cpoint-turquoise cursor-default'
+                            : 'border-c-border bg-c-hover-bg text-c-text-secondary hover:border-cpoint-turquoise hover:text-cpoint-turquoise'
                         }`}
                         disabled={alreadySelected}
                       >
@@ -1573,12 +1573,12 @@ export default function Profile() {
                 </div>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2 rounded-md border border-white/10 bg-black px-2 py-2">
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-c-border bg-c-bg-app px-2 py-2">
               {professional.interests.map((interest, index) => (
                 <button
                   key={`${interest}-${index}`}
                   type="button"
-                  className="flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs text-white hover:bg-white/25 transition"
+                  className="flex items-center gap-2 rounded-full bg-c-active-bg px-3 py-1 text-xs text-c-text-primary hover:bg-c-hover-bg transition"
                   onClick={() => removeInterest(index)}
                   aria-label={t('profile.interests.remove_aria', { interest })}
                 >
@@ -1593,13 +1593,13 @@ export default function Profile() {
                   onKeyDown={handleInterestKeyDown}
                   onBlur={handleInterestBlur}
                   placeholder={professional.interests.length ? t('profile.interests.add_another') : t('profile.interests.add_first')}
-                  className="flex-1 min-w-[140px] bg-transparent text-xs text-white placeholder:text-[#9fb0b5] outline-none"
+                  className="flex-1 min-w-[140px] bg-transparent text-xs text-c-text-primary placeholder:text-c-text-tertiary outline-none"
                 />
               ) : null}
             </div>
             <button
               type="submit"
-              className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
+              className="px-4 py-2 rounded-md bg-cpoint-turquoise text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
               disabled={savingInterests}
             >
               {savingInterests ? t('profile.saving') : t('profile.interests.save')}
@@ -1621,35 +1621,35 @@ export default function Profile() {
         />
 
         {feedback ? (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full border border-white/10 bg-white/10 text-sm text-white">
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full border border-c-border bg-c-active-bg text-sm text-c-text-primary">
             {feedback}
           </div>
         ) : null}
 
         {showLeaveModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-            <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#111] p-5 space-y-4">
-              <h3 className="text-base font-semibold text-white">{t('profile.leave_modal.title')}</h3>
-              <p className="text-sm text-[#a7b8be]">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-c-bg-overlay backdrop-blur-sm px-4">
+            <div className="w-full max-w-sm rounded-2xl border border-c-border bg-c-bg-surface p-5 space-y-4">
+              <h3 className="text-base font-semibold text-c-text-primary">{t('profile.leave_modal.title')}</h3>
+              <p className="text-sm text-c-text-secondary">
                 {t('profile.leave_modal.message')}
               </p>
               <div className="flex flex-col gap-2">
                 <button
                   onClick={handleSaveAndLeave}
                   disabled={savingPersonal}
-                  className="w-full py-2.5 rounded-lg bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
+                  className="w-full py-2.5 rounded-lg bg-cpoint-turquoise text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
                 >
                   {savingPersonal ? t('profile.saving') : t('profile.leave_modal.save_and_leave')}
                 </button>
                 <button
                   onClick={handleDiscardAndLeave}
-                  className="w-full py-2.5 rounded-lg border border-white/15 text-sm text-white hover:bg-white/5"
+                  className="w-full py-2.5 rounded-lg border border-c-border text-sm text-c-text-primary hover:bg-c-hover-bg"
                 >
                   {t('profile.leave_modal.discard')}
                 </button>
                 <button
                   onClick={handleCancelLeave}
-                  className="w-full py-2 text-sm text-[#9fb0b5] hover:text-white"
+                  className="w-full py-2 text-sm text-c-text-tertiary hover:text-c-text-primary"
                 >
                   {t('profile.cancel')}
                 </button>

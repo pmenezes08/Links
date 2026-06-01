@@ -103,7 +103,7 @@ export type CommunityOwnerSetupIntroProps = {
   onCommunityUpdated: () => void | Promise<void>
 }
 
-const PANEL_CLASS = 'rounded-2xl border border-white/10 bg-black'
+const PANEL_CLASS = 'rounded-2xl border border-c-border bg-c-bg-app'
 
 function ManageCommunityHint({
   onOpenManageCommunity,
@@ -125,14 +125,14 @@ function ManageCommunityHint({
         <button
           type="button"
           onClick={onOpenManageCommunity}
-          className="w-full rounded-xl bg-[#4db6ac] px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 sm:w-auto"
+          className="w-full rounded-xl bg-cpoint-turquoise px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 sm:w-auto"
         >
           {t('communities.owner_setup_open_manage')}
         </button>
         <button
           type="button"
           onClick={onStay}
-          className="w-full rounded-xl border border-white/15 bg-white/[0.04] px-5 py-3 text-sm font-medium text-white/90 transition hover:bg-white/[0.08] sm:w-auto"
+          className="w-full rounded-xl border border-c-border bg-c-bg-surface px-5 py-3 text-sm font-medium text-c-text-secondary transition hover:bg-c-hover-bg sm:w-auto"
         >
           {t('communities.owner_setup_stay_on_feed')}
         </button>
@@ -470,11 +470,11 @@ export default function CommunityOwnerSetupIntro({
         type="button"
         disabled={saving}
         onClick={() => void saveCommunityFieldsOnly()}
-        className="rounded-xl bg-[#4db6ac] px-4 py-2.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
+        className="rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
       >
         {saving ? t('communities.saving') : t('common.save')}
       </button>
-      {saveHint ? <span className="text-xs text-[#4db6ac]">{saveHint}</span> : null}
+      {saveHint ? <span className="text-xs text-cpoint-turquoise">{saveHint}</span> : null}
     </div>
   )
 
@@ -484,11 +484,11 @@ export default function CommunityOwnerSetupIntro({
         type="button"
         disabled={saving}
         onClick={() => void saveWithImage()}
-        className="rounded-xl bg-[#4db6ac] px-4 py-2.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
+        className="rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
       >
         {saving ? t('communities.saving') : t('common.save')}
       </button>
-      {saveHint ? <span className="text-xs text-[#4db6ac]">{saveHint}</span> : null}
+      {saveHint ? <span className="text-xs text-cpoint-turquoise">{saveHint}</span> : null}
     </div>
   )
 
@@ -497,32 +497,32 @@ export default function CommunityOwnerSetupIntro({
     case 'welcome':
       stepContent = (
         <>
-          <h3 className="text-base font-semibold text-white">{t('communities.owner_setup_welcome_greeting', { name: heyName })}</h3>
-          <p className="mt-2 text-base font-semibold text-white">{t('communities.owner_setup_headline')}</p>
-          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{t('communities.owner_setup_intro_body')}</p>
+          <h3 className="text-base font-semibold text-c-text-primary">{t('communities.owner_setup_welcome_greeting', { name: heyName })}</h3>
+          <p className="mt-2 text-base font-semibold text-c-text-primary">{t('communities.owner_setup_headline')}</p>
+          <p className="mt-2 text-sm leading-relaxed text-c-text-tertiary">{t('communities.owner_setup_intro_body')}</p>
         </>
       )
       break
     case 'structure':
       stepContent = (
         <>
-          <h3 className="text-base font-semibold text-white">{t('communities.owner_setup_structure_title')}</h3>
-          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{t('communities.owner_setup_structure_body')}</p>
-          <p className="mt-3 text-sm leading-relaxed text-[#9fb0b5]">
+          <h3 className="text-base font-semibold text-c-text-primary">{t('communities.owner_setup_structure_title')}</h3>
+          <p className="mt-2 text-sm leading-relaxed text-c-text-tertiary">{t('communities.owner_setup_structure_body')}</p>
+          <p className="mt-3 text-sm leading-relaxed text-c-text-tertiary">
             {t('communities.owner_setup_structure_plan_intro')}
           </p>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-relaxed text-[#9fb0b5]">
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-relaxed text-c-text-tertiary">
             <li>{t('communities.owner_setup_structure_q_count')}</li>
             <li>{t('communities.owner_setup_structure_q_names')}</li>
             <li>{t('communities.owner_setup_structure_q_nested')}</li>
           </ul>
-          <p className="mt-3 text-sm leading-relaxed text-[#9fb0b5]">
+          <p className="mt-3 text-sm leading-relaxed text-c-text-tertiary">
             {t('communities.owner_setup_structure_manage_hint')}
           </p>
           <button
             type="button"
             onClick={goCommunitiesStructure}
-            className="mt-3 w-full rounded-xl border border-[#4db6ac]/50 bg-[#4db6ac]/10 px-5 py-3 text-sm font-semibold text-[#4db6ac] transition hover:bg-[#4db6ac]/20"
+            className="mt-3 w-full rounded-xl border border-cpoint-turquoise/50 bg-cpoint-turquoise/10 px-5 py-3 text-sm font-semibold text-cpoint-turquoise transition hover:bg-cpoint-turquoise/20"
           >
             {t('communities.owner_setup_see_structure')}
           </button>
@@ -532,12 +532,12 @@ export default function CommunityOwnerSetupIntro({
     case 'description':
       stepContent = (
         <>
-          <h3 className="text-base font-semibold text-white">{t('communities.description')}</h3>
-          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">
+          <h3 className="text-base font-semibold text-c-text-primary">{t('communities.description')}</h3>
+          <p className="mt-2 text-sm leading-relaxed text-c-text-tertiary">
             {t('communities.owner_setup_description_hint')}
           </p>
           <textarea
-            className="mt-3 w-full rounded-md border border-white/15 bg-black px-3 py-2 text-[16px] text-white outline-none focus:border-[#4db6ac] min-h-[100px]"
+            className="mt-3 w-full rounded-md border border-c-border bg-c-bg-app px-3 py-2 text-[16px] text-c-text-primary outline-none focus:border-cpoint-turquoise min-h-[100px]"
             value={draft.description}
             onChange={e => setDraft(d => ({ ...d, description: e.target.value }))}
             placeholder={t('communities.description_placeholder')}
@@ -550,8 +550,8 @@ export default function CommunityOwnerSetupIntro({
     case 'subscription':
       stepContent = (
         <>
-          <h3 className="text-base font-semibold text-white">{t('communities.owner_setup_subscription_title')}</h3>
-          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">
+          <h3 className="text-base font-semibold text-c-text-primary">{t('communities.owner_setup_subscription_title')}</h3>
+          <p className="mt-2 text-sm leading-relaxed text-c-text-tertiary">
             {billingInherited
               ? t('communities.owner_setup_subscription_inherited')
               : t('communities.owner_setup_subscription_local')}
@@ -564,7 +564,7 @@ export default function CommunityOwnerSetupIntro({
                   `/subscription_plans?mode=choose&open=community_plans&community_id=${encodeURIComponent(communityId)}&from_owner_intro=1`,
                 )
               }
-              className="mt-4 w-full rounded-xl bg-[#4db6ac] px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110"
+              className="mt-4 w-full rounded-xl bg-cpoint-turquoise px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110"
             >
               {t('communities.owner_setup_plans_billing')}
             </button>
@@ -575,13 +575,13 @@ export default function CommunityOwnerSetupIntro({
     case 'member_limit':
       stepContent = (
         <>
-          <h3 className="text-base font-semibold text-white">{t('communities.owner_setup_member_limit_title')}</h3>
-          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{memberLimitHelp}</p>
+          <h3 className="text-base font-semibold text-c-text-primary">{t('communities.owner_setup_member_limit_title')}</h3>
+          <p className="mt-2 text-sm leading-relaxed text-c-text-tertiary">{memberLimitHelp}</p>
           <input
             type="number"
             min={1}
             inputMode="numeric"
-            className="mt-3 w-full rounded-md border border-white/15 bg-black px-3 py-2 text-[16px] text-white outline-none focus:border-[#4db6ac]"
+            className="mt-3 w-full rounded-md border border-c-border bg-c-bg-app px-3 py-2 text-[16px] text-c-text-primary outline-none focus:border-cpoint-turquoise"
             placeholder={memberCap != null && memberCap > 0 ? t('communities.member_limit_example', { count: memberCap }) : t('communities.member_limit_example', { count: 25 })}
             value={draft.maxMembers}
             onChange={e => setDraft(d => ({ ...d, maxMembers: e.target.value.replace(/[^0-9]/g, '') }))}
@@ -591,11 +591,11 @@ export default function CommunityOwnerSetupIntro({
               type="button"
               disabled={saving}
               onClick={() => void saveMemberLimitOnly()}
-              className="rounded-xl bg-[#4db6ac] px-4 py-2.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
+              className="rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
             >
               {saving ? t('communities.saving') : t('communities.owner_setup_save_limit')}
             </button>
-            {saveHint ? <span className="text-xs text-[#4db6ac]">{saveHint}</span> : null}
+            {saveHint ? <span className="text-xs text-cpoint-turquoise">{saveHint}</span> : null}
           </div>
         </>
       )
@@ -603,12 +603,12 @@ export default function CommunityOwnerSetupIntro({
     case 'image':
       stepContent = (
         <>
-          <h3 className="text-base font-semibold text-white">{t('communities.community_image')}</h3>
-          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">
+          <h3 className="text-base font-semibold text-c-text-primary">{t('communities.community_image')}</h3>
+          <p className="mt-2 text-sm leading-relaxed text-c-text-tertiary">
             {t('communities.owner_setup_image_hint')}
           </p>
           {draft.backgroundPath && !removeBackground && !imageFile && (
-            <div className="mt-3 overflow-hidden rounded-lg border border-white/10">
+            <div className="mt-3 overflow-hidden rounded-lg border border-c-border">
               <img
                 src={resolveCommunityBackgroundUrl(draft.backgroundPath)}
                 alt=""
@@ -617,7 +617,7 @@ export default function CommunityOwnerSetupIntro({
             </div>
           )}
           {imageFile && (
-            <div className="mt-3 overflow-hidden rounded-lg border border-white/10">
+            <div className="mt-3 overflow-hidden rounded-lg border border-c-border">
               <img src={URL.createObjectURL(imageFile)} alt="" className="max-h-40 w-full object-cover" />
             </div>
           )}
@@ -627,7 +627,7 @@ export default function CommunityOwnerSetupIntro({
           <input
             type="file"
             accept="image/*"
-            className="mt-3 block w-full text-sm text-[#9fb0b5]"
+            className="mt-3 block w-full text-sm text-c-text-tertiary"
             onChange={e => {
               const f = e.target.files?.[0] || null
               setImageFile(f)
@@ -637,7 +637,7 @@ export default function CommunityOwnerSetupIntro({
           {draft.backgroundPath && (
             <button
               type="button"
-              className="mt-2 text-xs text-[#9fb0b5] underline hover:text-white"
+              className="mt-2 text-xs text-c-text-tertiary underline hover:text-white"
               onClick={() => {
                 setRemoveBackground(true)
                 setImageFile(null)
@@ -653,12 +653,12 @@ export default function CommunityOwnerSetupIntro({
     case 'personality':
       stepContent = (
         <>
-          <h3 className="text-base font-semibold text-white">{t('communities.steve_personality_label')}</h3>
-          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">
+          <h3 className="text-base font-semibold text-c-text-primary">{t('communities.steve_personality_label')}</h3>
+          <p className="mt-2 text-sm leading-relaxed text-c-text-tertiary">
             {t('communities.owner_setup_personality_hint')}
           </p>
           <select
-            className="mt-3 w-full rounded-md border border-white/15 bg-black px-3 py-2 text-[16px] text-white outline-none focus:border-[#4db6ac]"
+            className="mt-3 w-full rounded-md border border-c-border bg-c-bg-app px-3 py-2 text-[16px] text-c-text-primary outline-none focus:border-cpoint-turquoise"
             value={aiPersonality}
             onChange={e => setAiPersonality(e.target.value)}
             disabled={savingPersonality}
@@ -678,11 +678,11 @@ export default function CommunityOwnerSetupIntro({
               type="button"
               disabled={savingPersonality}
               onClick={() => void savePersonality()}
-              className="rounded-xl bg-[#4db6ac] px-4 py-2.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
+              className="rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
             >
               {savingPersonality ? t('communities.saving') : t('communities.owner_setup_save_personality')}
             </button>
-            {saveHint ? <span className="text-xs text-[#4db6ac]">{saveHint}</span> : null}
+            {saveHint ? <span className="text-xs text-cpoint-turquoise">{saveHint}</span> : null}
           </div>
         </>
       )
@@ -690,8 +690,8 @@ export default function CommunityOwnerSetupIntro({
     case 'invite':
       stepContent = (
         <>
-          <h3 className="text-base font-semibold text-white">{t('communities.owner_setup_ready_title')}</h3>
-          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{t('communities.owner_setup_invite_body')}</p>
+          <h3 className="text-base font-semibold text-c-text-primary">{t('communities.owner_setup_ready_title')}</h3>
+          <p className="mt-2 text-sm leading-relaxed text-c-text-tertiary">{t('communities.owner_setup_invite_body')}</p>
         </>
       )
       break
@@ -730,11 +730,11 @@ export default function CommunityOwnerSetupIntro({
       aria-labelledby={titleId}
     >
       <div className={`w-full max-w-md ${PANEL_CLASS} max-h-[90vh] overflow-y-auto`}>
-        <div className="border-b border-white/10 px-5 py-4 sm:px-7">
+        <div className="border-b border-c-border px-5 py-4 sm:px-7">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-xs uppercase tracking-[0.2em] text-[#4db6ac]">{t('communities.owner_setup_steve_label')}</div>
-              <h2 id={titleId} className="mt-1 text-lg font-semibold text-white">
+              <div className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">{t('communities.owner_setup_steve_label')}</div>
+              <h2 id={titleId} className="mt-1 text-lg font-semibold text-c-text-primary">
                 {draft.name || t('communities.owner_setup_your_community')}
               </h2>
             </div>
@@ -744,7 +744,7 @@ export default function CommunityOwnerSetupIntro({
                 setExitContext('skipped')
                 setPhase('exit_hint')
               }}
-              className="shrink-0 rounded-full border border-white/15 px-3 py-1.5 text-xs font-medium text-[#9fb0b5] transition hover:border-[#4db6ac]/40 hover:text-white"
+              className="shrink-0 rounded-full border border-c-border px-3 py-1.5 text-xs font-medium text-c-text-tertiary transition hover:border-cpoint-turquoise/40 hover:text-white"
             >
               {t('feed.skip')}
             </button>
@@ -753,7 +753,7 @@ export default function CommunityOwnerSetupIntro({
             {Array.from({ length: stepCount }, (_, i) => (
               <span
                 key={i}
-                className={`h-1 flex-1 rounded-full ${i <= stepIndex ? 'bg-[#4db6ac]' : 'bg-white/15'}`}
+                className={`h-1 flex-1 rounded-full ${i <= stepIndex ? 'bg-cpoint-turquoise' : 'bg-white/15'}`}
               />
             ))}
           </div>
@@ -761,12 +761,12 @@ export default function CommunityOwnerSetupIntro({
 
         <div className="space-y-5 px-5 py-6 sm:px-7">{stepContent}</div>
 
-        <div className="flex flex-col gap-3 border-t border-white/10 px-5 py-4 sm:px-7 sm:flex-row sm:justify-end">
+        <div className="flex flex-col gap-3 border-t border-c-border px-5 py-4 sm:px-7 sm:flex-row sm:justify-end">
           {stepIndex > 0 && (
             <button
               type="button"
               onClick={() => setStepIndex(i => Math.max(0, i - 1))}
-              className="order-2 w-full rounded-xl border border-white/15 bg-white/[0.04] px-5 py-3 text-sm font-medium text-white/90 transition hover:bg-white/[0.08] sm:order-1 sm:w-auto"
+              className="order-2 w-full rounded-xl border border-c-border bg-c-bg-surface px-5 py-3 text-sm font-medium text-c-text-secondary transition hover:bg-c-hover-bg sm:order-1 sm:w-auto"
             >
               {t('communities.owner_setup_step_back')}
             </button>
@@ -775,7 +775,7 @@ export default function CommunityOwnerSetupIntro({
             <button
               type="button"
               onClick={() => setStepIndex(i => Math.min(stepCount - 1, i + 1))}
-              className="order-1 w-full rounded-xl bg-[#4db6ac] px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 sm:order-2 sm:w-auto"
+              className="order-1 w-full rounded-xl bg-cpoint-turquoise px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 sm:order-2 sm:w-auto"
             >
               {t('communities.owner_setup_step_next')}
             </button>
@@ -784,14 +784,14 @@ export default function CommunityOwnerSetupIntro({
               <button
                 type="button"
                 onClick={finishFromSteps}
-                className="order-1 w-full rounded-xl border border-white/15 bg-white/[0.04] px-5 py-3 text-sm font-medium text-white/90 transition hover:bg-white/[0.08] sm:order-2 sm:w-auto"
+                className="order-1 w-full rounded-xl border border-c-border bg-c-bg-surface px-5 py-3 text-sm font-medium text-c-text-secondary transition hover:bg-c-hover-bg sm:order-2 sm:w-auto"
               >
                 {t('communities.owner_setup_not_yet')}
               </button>
               <button
                 type="button"
                 onClick={openInviteAndComplete}
-                className="order-2 w-full rounded-xl bg-[#4db6ac] px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 sm:order-3 sm:w-auto"
+                className="order-2 w-full rounded-xl bg-cpoint-turquoise px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 sm:order-3 sm:w-auto"
               >
                 {t('communities.owner_setup_invite_people')}
               </button>
@@ -800,7 +800,7 @@ export default function CommunityOwnerSetupIntro({
             <button
               type="button"
               onClick={finishFromSteps}
-              className="order-1 w-full rounded-xl bg-[#4db6ac] px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 sm:order-2 sm:w-auto"
+              className="order-1 w-full rounded-xl bg-cpoint-turquoise px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 sm:order-2 sm:w-auto"
             >
               {t('communities.owner_setup_step_finish')}
             </button>
