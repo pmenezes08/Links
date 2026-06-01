@@ -47,7 +47,12 @@ _AMBIGUOUS_HINT = re.compile(
     r"\bcompanies\b|\bcompany\b|\bemploy(er|ers)\b|\bopenings?\b|\broles?\b|"
     r"\bresearch\b|\bexplore\b|\bcheck\s+out\b|\bfind(ing)?\b|\bcompare\b|\bdiscover\b|\blook\s+up\b|"
     r"\bwhat is this\b|\bwhat's this\b|\bwhats this\b|"
-    r"\bheadlines?\b|\bnews\b|\bcurrent\b"
+    r"\bheadlines?\b|\bnews\b|\bcurrent\b|"
+    # PT / ES public-web / careers / research hints (text is diacritic-folded before matching)
+    r"\bnoticias\b|\bmanchetes\b|\btitulares\b|\batualidade\b|\bactualidad\b|\bnovidades\b|\bultima hora\b|"
+    r"\bcarreiras?\b|\bemprego\b|\bempleo\b|\bvagas?\b|\bvacantes?\b|\brecrutamento\b|\bcontratar\b|\bcontratando\b|"
+    r"\bempresas?\b|"
+    r"\bpesquis(a|ar)\b|\bprocur(a|ar)\b|\bbusc(a|ar)\b|\binvestig(a|ar)\b|\bexplor(a|ar)\b|\bcompar(a|ar)\b|\bdescobr(e|ir)\b"
     r")",
     re.I,
 )
@@ -88,10 +93,13 @@ def _router_tools_from_flags(
 
 _ROUTER_SYSTEM = """You classify a single user message to Steve (C-Point) for TOOL attachment only.
 
+The user message may be written in ANY language (e.g. English, European Portuguese, Spanish).
+Classify the underlying intent regardless of language — do not require English keywords.
+
 Return ONLY valid JSON: {"web_search": true|false, "x_search": true|false}
 
 Rules:
-- web_search true if they need/current public web facts: employers, careers pages, companies, products, docs, news, or general browsing beyond the app.
+- web_search true if they need current/public web facts: employers, careers pages, companies, products, docs, news, or general browsing beyond the app.
 - x_search true only if they explicitly want X/Twitter/social posts, tweets, or what people say on X about a topic.
 
 Both may be true if they clearly want both (e.g. "web and X").

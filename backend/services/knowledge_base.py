@@ -805,11 +805,11 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "paid_steve_package_multi_agent_enabled", "label": "Allow multi-agent in community feed", "type": "boolean", "value": False,
                  "help": "Keep false unless pricing is reworked; Grok 4.3 is the default community-feed model.", "group": "paid_steve_package"},
                 {"name": "paid_steve_package_web_search_default_enabled", "label": "Web search on by default", "type": "boolean", "value": False,
-                 "help": "Only when External search explicit only is OFF: treat every community-feed @Steve message as needing live web context (high token use). Phrase-based triggers still work when explicit only is ON.", "group": "paid_steve_package"},
+                 "help": "Only when External search explicit only is OFF: treat every community-feed @Steve message as needing live web context (high token use). Phrase-based triggers still work when explicit only is ON, in English, European Portuguese, and Spanish (accents optional).", "group": "paid_steve_package"},
                 {"name": "paid_steve_package_x_search_default_enabled", "label": "X search on by default", "type": "boolean", "value": False,
                  "help": "Only when External search explicit only is OFF: treat every feed @Steve message as needing X/Twitter search (high token use).", "group": "paid_steve_package"},
                 {"name": "paid_steve_package_external_search_explicit_only", "label": "External search explicit only", "type": "boolean", "value": True,
-                 "help": "When ON (recommended): only phrase-based live-news/current-events wording triggers external tools. When OFF: also triggers when Web or X search on by default is ON.", "group": "paid_steve_package"},
+                 "help": "When ON (recommended): only phrase-based live-news/current-events wording triggers external tools (English, European Portuguese, and Spanish phrasing recognised; accents optional). When OFF: also triggers when Web or X search on by default is ON.", "group": "paid_steve_package"},
                 {"name": "paid_steve_package_feed_attach_web_search_tool", "label": "Hosted Steves (feed/DM/group): allow web_search", "type": "boolean", "value": True,
                  "help": "When server-side intent says live lookup is warranted, pass Grok hosted web_search. Turn OFF for emergency disable without redeploy. DM and group reuse this flag with the same seeded community-tiers KB row.", "group": "paid_steve_package"},
                 {"name": "paid_steve_package_feed_attach_x_search_tool", "label": "Hosted Steves (feed/DM/group): allow x_search", "type": "boolean", "value": True,
@@ -2198,6 +2198,51 @@ def _seed_pages() -> List[Dict[str, Any]]:
                             "target": "QA_CHECKLIST.md §11a",
                             "status": "not_run",
                             "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                        {
+                            "id": "steve:web-search-pt",
+                            "feature": "Steve hosted web/X tool routing — multilingual",
+                            "behaviour": (
+                                "European Portuguese & Spanish live-search intent is detected "
+                                "after diacritic folding: news/headlines, careers/job-postings, "
+                                "X/Twitter, and web-search confirmation phrases match accented "
+                                "input (not\u00edcias, p\u00e1gina de carreiras, s\u00ed busca) while "
+                                "collision cases (bare 'x', introspective 'carreira', 'si' inside "
+                                "ordinary words, greetings) stay tool-neutral. X attaches only on "
+                                "explicit X/Twitter intent; news/jobs default to web only."
+                            ),
+                            "runner": "pytest",
+                            "target": "tests/test_steve_tool_policy.py",
+                            "status": "successful",
+                            "last_run_at": "2026-06-01T21:30:00Z",
+                            "last_run_by": "ai-engineer (Phase 4)",
+                            "last_run_notes": (
+                                "Green — PT/ES positive + collision-negative (accent-fold) cases "
+                                "pass alongside the EN suite (49 passed)."
+                            ),
+                        },
+                        {
+                            "id": "steve:proactive-offer",
+                            "feature": "Steve hosted web/X tool routing — default-attach & offer",
+                            "behaviour": (
+                                "Default-attach (STEVE_LEGACY_TOOL_GATING unset): web_search rides "
+                                "along on every turn surviving the hard exclusions (platform-manual, "
+                                "professional-advice, profile-intent suppression); optional-web facts "
+                                "(podcast/episode) get web_search and Steve still offers a same-"
+                                "language search via render_hosted_search_capability_instructions. "
+                                "Legacy gating (STEVE_LEGACY_TOOL_GATING=1) restores intent-gated "
+                                "attach and the router/web kill-switches; both modes are pinned by "
+                                "the policy + router suite."
+                            ),
+                            "runner": "pytest",
+                            "target": "tests/test_steve_tool_router.py",
+                            "status": "successful",
+                            "last_run_at": "2026-06-01T21:30:00Z",
+                            "last_run_by": "ai-engineer (Phase 4)",
+                            "last_run_notes": (
+                                "Green — default-attach fast path + STEVE_LEGACY_TOOL_GATING / "
+                                "STEVE_TOOL_ROUTER_DISABLED regressions verified (49 passed)."
+                            ),
                         },
                         {
                             "id": "staging:webhooks_not_401",

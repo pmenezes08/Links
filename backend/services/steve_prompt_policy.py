@@ -19,7 +19,11 @@ MODE_NEWS_CURRENT_EVENTS = "news_current_events"
 
 _NEWS_TOPIC_HINT = re.compile(
     r"\b(news|headlines|briefing|weather|forecast|markets?|stocks?|nasdaq|election|politics|"
-    r"sports?|football|scores?|breaking)\b",
+    r"sports?|football|scores?|breaking|"
+    # PT / ES news + current-events nouns (matched against diacritic-folded text)
+    r"noticias|manchetes|titulares|atualidade|actualidad|"
+    r"eleicoes|eleicao|elecciones|politica|meteorologia|"
+    r"desporto|futebol|futbol|ultima hora)\b",
     re.IGNORECASE,
 )
 

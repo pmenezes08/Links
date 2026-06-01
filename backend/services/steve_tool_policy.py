@@ -1,18 +1,42 @@
-"""Intent-based attachment of Grok hosted web_search / x_search tools for Steve."""
+"""Attachment policy for Grok hosted web_search / x_search tools for Steve.
+
+Default behaviour (``STEVE_LEGACY_TOOL_GATING`` unset): ``web_search`` attaches for
+every turn that survives the hard exclusions (platform-manual-only,
+professional-advice-only, profile-intent suppression). ``x_search`` stays
+explicit-only (attached only on clear X/Twitter intent) and the KB
+``feed_attach_web_search_tool`` / ``feed_attach_x_search_tool`` kill-switches still
+let operators disable either channel without a redeploy.
+
+Legacy behaviour (``STEVE_LEGACY_TOOL_GATING`` set to any non-empty value): the older
+intent-gated path — ``web_search`` attaches only when explicit browse, live-news, or
+employer/job-research intent is detected, or (when KB ``external_search_explicit_only``
+is OFF) the web/X default-enabled flags allow it. This env var is the single, reversible
+switch back to the pre-default-attach model.
+"""
 
 from __future__ import annotations
 
+import os
 import re
+import unicodedata
 from typing import Any, Iterable, Optional
 
 
 def normalize_message_for_live_search_signals(message: str) -> str:
-    """Lowercase plus normalize Unicode apostrophes for substring matching."""
+    """Lowercase, normalize Unicode apostrophes, and fold diacritics for substring matching.
+
+    Diacritic folding lets the Portuguese / Spanish intent tokens below be stored in plain
+    ASCII (e.g. ``noticias``, ``ultima hora``, ``pagina de carreiras``) while still matching
+    accented user input (``notícias``, ``última hora``, ``página de carreiras``). Folding only
+    strips combining marks, so ASCII (English) text is unchanged.
+    """
     if not message:
         return ""
     t = message.lower().strip()
     for ch in ("\u2019", "\u2018"):
         t = t.replace(ch, "'")
+    t = unicodedata.normalize("NFKD", t)
+    t = "".join(ch for ch in t if not unicodedata.combining(ch))
     return t
 
 
@@ -28,6 +52,30 @@ _X_SEARCH_PHRASES: tuple[str, ...] = (
     "search x",
     "search on x",
     "on x.com",
+    # PT — "twitter" / "x.com" / "sobre" keep these distinctive (bare "x" stays English-only).
+    "no twitter",
+    "no x.com",
+    "no x sobre",
+    "procura no twitter",
+    "procura no x",
+    "pesquisa no twitter",
+    "pesquisa no x",
+    "ve no twitter",
+    "ve no x",
+    "tweets sobre",
+    "tweet sobre",
+    "o que dizem no twitter",
+    "o que dizem no x",
+    # ES
+    "en twitter",
+    "en x.com",
+    "en x sobre",
+    "busca en twitter",
+    "busca en x",
+    "buscar en twitter",
+    "mira en twitter",
+    "que dicen en twitter",
+    "que dicen en x",
 )
 
 _WEB_CONFIRM_PHRASES: tuple[str, ...] = (
@@ -46,6 +94,20 @@ _WEB_CONFIRM_PHRASES: tuple[str, ...] = (
     "sim, pesquisa na web",
     "procura na internet",
     "sim procura na internet",
+    "sim procura na web",
+    "sim, procura na web",
+    "podes pesquisar na internet",
+    "podes procurar na internet",
+    "faz a pesquisa",
+    # ES confirmation ("si" is the diacritic-folded "sí" = yes)
+    "si busca en internet",
+    "si, busca en internet",
+    "si busca en la web",
+    "si, busca en la web",
+    "busca en la web por favor",
+    "por favor busca en internet",
+    "adelante busca en la web",
+    "si haz la busqueda",
 )
 
 _OPTIONAL_LIVE_WEB_RE = re.compile(
@@ -159,6 +221,72 @@ def steve_external_search_requested(message: str) -> bool:
         "happening right now",
         "what's happening now",
         "what is happening now",
+        # --- Portuguese (PT-PT) — matched against diacritic-folded text ---
+        # Explicit browse
+        "pesquisa na web",
+        "pesquisar na web",
+        "pesquisa na internet",
+        "pesquisar na internet",
+        "procura na web",
+        "procura na internet",
+        "procurar na internet",
+        "busca na internet",
+        "pesquisa online",
+        "procura online",
+        "pesquisa isto online",
+        "consulta a internet",
+        "consulta na internet",
+        "ve na internet",
+        # News / current events
+        "noticias",
+        "noticias de hoje",
+        "noticias hoje",
+        "as noticias",
+        "ultimas noticias",
+        "as ultimas noticias",
+        "noticias de ultima hora",
+        "ultima hora",
+        "manchetes",
+        "manchetes de hoje",
+        "ultimas manchetes",
+        "atualidade",
+        "atualidades",
+        "resumo de noticias",
+        "resumo das noticias",
+        # Recency intent
+        "o que aconteceu hoje",
+        "o que se passa",
+        "o que se passa hoje",
+        "o que esta a acontecer",
+        "o que ha de novo hoje",
+        "novidades de hoje",
+        # --- Spanish (ES) — matched against diacritic-folded text ---
+        # Explicit browse
+        "busca en la web",
+        "buscar en la web",
+        "busca en internet",
+        "buscar en internet",
+        "busca en la red",
+        "busca online",
+        "buscar online",
+        "buscalo en internet",
+        "consulta internet",
+        "mira en internet",
+        # News / current events
+        "noticias de hoy",
+        "las noticias",
+        "ultimas noticias de hoy",
+        "titulares",
+        "titulares de hoy",
+        "ultimos titulares",
+        "actualidad",
+        "resumen de noticias",
+        # Recency intent
+        "que paso hoy",
+        "que esta pasando",
+        "que esta pasando hoy",
+        "que hay de nuevo hoy",
+        "novedades de hoy",
     )
 
     return any(phrase in text for phrase in phrases)
@@ -270,6 +398,44 @@ def steve_job_listing_or_employer_research_requested(message: str) -> bool:
         "listed on greenhouse",
         "workday job",
         "ashby job",
+        # --- Portuguese (PT-PT) — matched against diacritic-folded text ---
+        "pagina de carreiras",
+        "site de carreiras",
+        "carreiras da empresa",
+        "vagas",
+        "vaga de emprego",
+        "vagas de emprego",
+        "oferta de emprego",
+        "ofertas de emprego",
+        "vaga aberta",
+        "vagas abertas",
+        "vagas em aberto",
+        "esta a contratar",
+        "estao a contratar",
+        "esta a recrutar",
+        "estao a recrutar",
+        "anuncio de emprego",
+        "anuncios de emprego",
+        "descricao da vaga",
+        "esta vaga existe",
+        "esta vaga e real",
+        "vagas na",
+        "vagas em",
+        # --- Spanish (ES) — matched against diacritic-folded text ---
+        "pagina de empleo",
+        "pagina de carreras",
+        "ofertas de empleo",
+        "oferta de empleo",
+        "vacante",
+        "vacantes",
+        "puesto vacante",
+        "esta contratando",
+        "estan contratando",
+        "anuncio de empleo",
+        "descripcion del puesto",
+        "esta vacante existe",
+        "empleo en",
+        "vacantes en",
     )
     return any(phrase in text for phrase in phrases)
 
@@ -292,23 +458,30 @@ def steve_tools_for_message(
     professional_advice_question: bool = False,
     config: Any = None,
 ) -> list[dict[str, str]]:
-    """Return hosted web_search/x_search tools only when intent + KB flags allow.
+    """Return hosted web_search/x_search tools per the default-attach (or legacy) policy.
 
     Order of checks:
 
-    1. No external tools for platform-manual-only or professional-advice-only paths.
-    2. Prefer on-platform KB: profile-style wording (mentions / introductions / \"about me\")
-       suppresses external tools unless the same message also requests live-news, explicit browse, or
-       employer/public-job style lookup (see ``steve_job_listing_or_employer_research_requested``).
-    3. Eligible live intent: ``steve_external_search_requested``, ``news_current_events_requested``,
-       ``steve_job_listing_or_employer_research_requested``, or (when KB ``external_search_explicit_only``
-       is OFF) the web/X default-enabled flags.
+    1. Hard exclusions (always first, in both modes): no external tools for
+       platform-manual-only or professional-advice-only paths, nor for profile-style
+       wording (mentions / introductions / \"about me\") unless the same message also
+       requests live-news, explicit browse, or employer/public-job lookup
+       (see ``steve_job_listing_or_employer_research_requested``).
+    2. Eligibility:
+       - Default (``STEVE_LEGACY_TOOL_GATING`` unset): every turn surviving step 1 is
+         eligible — ``web_search`` attaches by default.
+       - Legacy (``STEVE_LEGACY_TOOL_GATING`` set): eligible only on
+         ``steve_external_search_requested``, ``news_current_events_requested``,
+         ``steve_job_listing_or_employer_research_requested``, or (when KB
+         ``external_search_explicit_only`` is OFF) the web/X default-enabled flags.
+    3. ``x_search`` is always explicit-only (attached only on clear X/Twitter intent).
 
     KB channel kill-switches: ``feed_attach_web_search_tool`` / ``feed_attach_x_search_tool``
-    apply only after eligibility resolves (operators can disable web or X without redeploy).
+    apply after eligibility resolves (operators can disable web or X without redeploy).
 
-    When ``config`` is None, behaviour matches explicit-only ON and defaults OFF (only explicit
-    phrase + news heuristics attach tools; kill-switches default to allowing each channel).
+    When ``config`` is None, the legacy path matches explicit-only ON and defaults OFF
+    (only explicit phrase + news heuristics attach tools; kill-switches default to
+    allowing each channel).
     """
     if platform_question or professional_advice_question:
         return []
@@ -331,14 +504,19 @@ def steve_tools_for_message(
         web_default = bool(getattr(config, "web_search_default_enabled", False))
         x_default = bool(getattr(config, "x_search_default_enabled", False))
 
-    eligible = False
-    if explicit or news_live or job_research:
-        eligible = True
-    elif not explicit_only:
-        eligible = bool(web_default or x_default)
+    # Reversible switch: setting STEVE_LEGACY_TOOL_GATING restores the pre-default-attach
+    # intent-gated behaviour. Unset (default) → web_search attaches for every turn that
+    # survived the hard exclusions above.
+    legacy_tool_gating = bool(os.environ.get("STEVE_LEGACY_TOOL_GATING"))
+    if legacy_tool_gating:
+        eligible = False
+        if explicit or news_live or job_research:
+            eligible = True
+        elif not explicit_only:
+            eligible = bool(web_default or x_default)
 
-    if not eligible:
-        return []
+        if not eligible:
+            return []
 
     tools: list[dict[str, str]] = []
     attach_w = config is None or bool(getattr(config, "feed_attach_web_search_tool", True))

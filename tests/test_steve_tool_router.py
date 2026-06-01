@@ -122,7 +122,10 @@ def test_ambiguous_heuristic_false_short_message():
 
 
 def test_kill_switch_env(monkeypatch):
+    """STEVE_TOOL_ROUTER_DISABLED regression — exercised under legacy gating so the
+    static fast path returns empty and the (disabled) router path is the one under test."""
     monkeypatch.setenv("STEVE_TOOL_ROUTER_DISABLED", "1")
+    monkeypatch.setenv("STEVE_LEGACY_TOOL_GATING", "1")
 
     def _boom(_text):
         raise AssertionError("router LLM must not run when disabled")
@@ -139,3 +142,25 @@ def test_kill_switch_env(monkeypatch):
         config=_cfg_explicit_only(),
     )
     assert out == []
+
+
+def test_default_attach_fast_path_skips_router_when_disabled(monkeypatch):
+    """Under default-attach, the static web_search fast path returns before the router,
+    so even with the router disabled the LLM is never invoked."""
+    monkeypatch.setenv("STEVE_TOOL_ROUTER_DISABLED", "1")
+
+    def _boom(_text):
+        raise AssertionError("router LLM must not run on the static fast path")
+
+    monkeypatch.setattr("backend.services.steve_tool_router._call_router_llm", _boom)
+    msg = (
+        "Compare employer messaging for EU fintech scaleups using both the web and X; "
+        "stay on public sources only please."
+    )
+    out = resolve_steve_hosted_tools(
+        msg,
+        username="alice",
+        surface="feed",
+        config=_cfg_explicit_only(),
+    )
+    assert out == [{"type": "web_search"}]
