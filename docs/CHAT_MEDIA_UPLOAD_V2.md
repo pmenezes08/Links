@@ -57,6 +57,7 @@ Living reference for the resumable multipart upload pipeline (DM + group chat).
 - Gallery deletes update MySQL and Firestore mirrors through the same media update/delete helpers as single attachment removal, and now physically purge the authorized object from R2/local upload storage. If a media-only message loses its final attachment, the existing soft/hard delete behavior is used; stale clients render a "Media deleted" placeholder instead of a broken image/video.
 - Active v2 uploads register an `AbortController` by optimistic `clientKey`. The visible upload banner exposes a cancel action; cancel aborts fetches, calls multipart abort through `uploadChatMediaBlob`, removes the outbox row/blob, and removes the optimistic bubble.
 - App-level resume is the primary runner and runs on mount/focus/native foreground. Upload rows heartbeat `lockedAt` while active, stale lock recovery is about 60 seconds, ghost `uploading`/`committing` rows become failed, and automatic resume stops after five attempts.
+- Group chat single and multi media now fully use the v2 kernel (`uploadChatMediaBlob` / `uploadChatMediaBatch`) with outbox + resume. Legacy direct R2 and direct file POST paths have been replaced.
 - Missing IndexedDB blobs (unrecoverable) are silently cleaned from the outbox with no user-facing toast; only resume-progress and retry-limit messages are surfaced during active recovery attempts. The UI still avoids promising true app-closed background upload; native URLSession/WorkManager remains a future phase.
 
 ## Metrics

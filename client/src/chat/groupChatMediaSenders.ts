@@ -1,5 +1,6 @@
 /**
  * Group Chat Media Senders - modular media upload handling for group chats.
+ * V2 migration complete: now uses upload kernel (multipart R2, outbox, resume) instead of legacy direct uploads.
  * Mirrors the pattern from mediaSenders.ts but adapted for group chat API.
  */
 
@@ -8,11 +9,13 @@ import { SENDING_MEDIA_LABEL } from './mediaSenders'
 import {
   createUploadController,
   removeUploadController,
+  uploadChatMediaBlob,
   uploadChatMediaBatch,
   UploadRequestError,
   type MediaQuality,
 } from './upload'
 import { removeMediaOutboxRecordsByPrefix } from './upload/mediaOutbox'
+import type { UploadContext, MediaKind } from './upload/types'
 import type { EntitlementsError } from '../utils/entitlementsError'
 
 export interface GroupMessage {
@@ -84,6 +87,11 @@ function uploadLimitError(err: unknown): EntitlementsError | null {
  * Send image/video message to group chat - single request like ChatThread
  * Uses the same pattern as /send_photo_message for DMs
  */
+/**
+ * V2 single-file send for group media.
+ * Uses uploadChatMediaBlob (multipart R2 + outbox) then commits via media_urls.
+ * Replaces the legacy direct file POST path.
+ */
 async function sendGroupMedia(
   file: File,
   groupId: number | string,
@@ -91,38 +99,41 @@ async function sendGroupMedia(
   onProgress?: (progress: UploadProgress) => void,
   clientKey?: string,
 ): Promise<{ success: boolean; message?: GroupMessage; error?: string }> {
-  const formData = new FormData()
-  formData.append(mediaType, file)
-  formData.append('group_id', String(groupId))
-  if (clientKey) formData.append('client_key', clientKey)
+  const mediaKind: MediaKind = mediaType === 'photo' ? 'image' : 'video'
+  const context: UploadContext = { type: 'group', groupId }
 
-  onProgress?.({ stage: 'uploading', progress: 10, message: SENDING_MEDIA_LABEL })
+  onProgress?.({ stage: 'uploading', progress: 5, message: SENDING_MEDIA_LABEL })
 
   try {
-    console.log('[GroupMedia] Sending', mediaType, 'to group', groupId)
-    
-    // Use simple fetch like ChatThread does - more reliable on iOS
-    const response = await fetch(`/api/group_chat/${groupId}/send_media`, {
+    const result = await uploadChatMediaBlob({
+      context,
+      file,
+      mediaKind,
+      quality: 'standard',
+      clientKey: clientKey || `group_${Date.now()}`,
+      onProgress: p => onProgress?.({ stage: p.stage as any, progress: p.progress, message: p.message }),
+    })
+
+    // Commit via media_urls (backend supports this path)
+    const fd = new FormData()
+    fd.append('media_urls', JSON.stringify([result.publicUrl]))
+    const res = await fetch(`/api/group_chat/${groupId}/send_media`, {
       method: 'POST',
       credentials: 'include',
-      body: formData,
+      body: fd,
     })
-    
-    const payload = await response.json().catch(() => null)
-    console.log('[GroupMedia] Response:', payload)
-    
+    const payload = await res.json().catch(() => null)
     if (!payload?.success) {
-      onProgress?.({ stage: 'error', progress: 0, message: payload?.error || 'Upload failed' })
+      onProgress?.({ stage: 'error', progress: 0, message: payload?.error || 'Failed to commit' })
       return { success: false, error: payload?.error || 'Failed to send' }
     }
-    
-      onProgress?.({ stage: 'done', progress: 100, message: 'Sent' })
+
+    onProgress?.({ stage: 'done', progress: 100, message: 'Sent!' })
     return { success: true, message: payload.message }
-    
   } catch (error) {
-    console.error('[GroupMedia] Error:', error)
-    onProgress?.({ stage: 'error', progress: 0, message: 'Network error' })
-    return { success: false, error: 'Network error' }
+    const msg = error instanceof Error ? error.message : 'Upload failed'
+    onProgress?.({ stage: 'error', progress: 0, message: msg })
+    return { success: false, error: msg }
   }
 }
 

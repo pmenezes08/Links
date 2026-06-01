@@ -15,6 +15,9 @@ import {
 import { removeMediaOutboxRecord, removeMediaOutboxRecordsByPrefix } from './upload/mediaOutbox'
 import type { EntitlementsError } from '../utils/entitlementsError'
 
+// DM multi-media parity with group v2 migration: sendMultiMediaMessage still uses legacy direct uploads (uploadDmImageDirect / uploadDmVideoDirect).
+// Group path is now fully on v2 (uploadChatMediaBatch + outbox). DM multi should follow the same pattern for consistency.
+
 interface BridgeRef {
   tempToServer: Map<string, string | number>
   serverToTemp: Map<string | number, string>

@@ -1155,6 +1155,7 @@ def send_group_media(group_id: int):
     Supports multiple files - they will be grouped in a single message.
     """
     username = session["username"]
+    client_key = request.form.get("client_key", "").strip() or None
     
     # Collect all files (supports multiple)
     files_to_upload = []
