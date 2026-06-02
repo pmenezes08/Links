@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { useTranslation } from 'react-i18next'
 import { CPOINT_EASE_OUT, PAGE_TRANSITION_MS, REDUCED_MOTION_FADE_MS } from '../design/motion'
 import { hapticImpactLight, hapticSelection } from '../utils/haptics'
@@ -38,11 +40,21 @@ const SHEET_HEIGHT_RATIO = 0.6
 const DRAG_DISMISS_THRESHOLD_RATIO = 0.3
 const DRAG_DISMISS_VELOCITY_PX_PER_S = 600
 const DRAG_START_THRESHOLD_PX = 6
+const SHEET_VIEWPORT_MARGIN_PX = 12
 
 function isIosCapacitor(): boolean {
   if (typeof window === 'undefined') return false
   try {
     return (window as any).Capacitor?.getPlatform?.() === 'ios'
+  } catch {
+    return false
+  }
+}
+
+function isAndroidCapacitor(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    return Capacitor.getPlatform() === 'android'
   } catch {
     return false
   }
@@ -131,6 +143,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
   }>({ startY: 0, lastY: 0, lastTime: 0, velocity: 0, sheetHeight: 0, started: false, active: false })
 
   const isIosNative = useMemo(() => isIosCapacitor(), [])
+  const isAndroidNative = useMemo(() => isAndroidCapacitor(), [])
 
   const sheetHeight = useMemo(() => {
     const base = Math.min(
@@ -138,8 +151,10 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
       Math.max(SHEET_MIN_HEIGHT_PX, vvHeight * SHEET_HEIGHT_RATIO),
     )
     const clamped = base - safeAreaTopPx - 8
-    return Math.max(SHEET_MIN_HEIGHT_PX, clamped)
-  }, [vvHeight, safeAreaTopPx])
+    const computedBase = Math.max(SHEET_MIN_HEIGHT_PX, clamped)
+    const available = vvHeight - keyboardLift - safeAreaTopPx - SHEET_VIEWPORT_MARGIN_PX
+    return Math.min(computedBase, Math.max(SHEET_MIN_HEIGHT_PX, available))
+  }, [vvHeight, safeAreaTopPx, keyboardLift])
 
   // ESC key dismiss
   useEffect(() => {
@@ -175,6 +190,12 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
   // Reset query/results on open
   useEffect(() => {
     if (!isOpen) return
+    if (Capacitor.getPlatform() === 'android') {
+      const active = document.activeElement
+      if (active instanceof HTMLElement) {
+        active.blur()
+      }
+    }
     setQuery('')
     setDebouncedQuery('')
     setResults([])
@@ -369,6 +390,16 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
     }, 50)
     return () => window.clearTimeout(t)
   }, [mounted, isIosNative])
+
+  // Android: defer search focus until sheet enter animation completes
+  useEffect(() => {
+    if (!mounted || !entered || !isAndroidNative) return
+    const delay = reducedMotion ? REDUCED_MOTION_FADE_MS : PAGE_TRANSITION_MS
+    const timer = window.setTimeout(() => {
+      try { inputRef.current?.focus() } catch {}
+    }, delay)
+    return () => window.clearTimeout(timer)
+  }, [mounted, entered, isAndroidNative, reducedMotion])
 
   // IntersectionObserver — pause off-screen GIF tiles, resume when visible
   useEffect(() => {
@@ -595,7 +626,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
   const showEmpty = !loading && !keyLoading && !error && results.length === 0
   const ariaLabel = t('shared.search_gifs') || 'GIF picker'
 
-  return (
+  return createPortal(
     <>
       <div
         className="fixed inset-0 z-[1399] bg-c-hover-bg backdrop-blur-sm"
@@ -622,17 +653,17 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
         >
           <div className="mx-auto mt-2 mb-1 h-1 w-7 rounded-full bg-white/20" aria-hidden="true" />
           <div className="px-3 pt-1 pb-2 flex items-center">
-            <div className="flex-1 min-w-0 min-h-9 rounded-lg border border-c-border bg-white/8 flex items-center transition-colors focus-within:border-cpoint-turquoise">
+            <div className="flex-1 min-w-0 min-h-9 rounded-lg border border-c-border bg-c-composer-input-bg flex items-center transition-colors focus-within:border-cpoint-turquoise">
               <i className="fa-solid fa-magnifying-glass text-[12px] text-c-text-tertiary ml-2.5" aria-hidden="true" />
               <input
                 ref={inputRef}
                 type="text"
                 value={query}
-                autoFocus={!isIosNative}
+                autoFocus={false}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t('shared.search_gifs') || 'Search GIFs'}
                 aria-label={t('shared.search_gifs') || 'Search GIFs'}
-                className="flex-1 min-w-0 bg-transparent px-2 py-1 text-[13px] text-c-text-primary placeholder-white/40 outline-none"
+                className="flex-1 min-w-0 bg-transparent px-2 py-1 text-[13px] text-c-text-primary placeholder:text-c-text-tertiary outline-none"
                 style={{ touchAction: 'auto' }}
               />
               {query && (
@@ -730,6 +761,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
           ) : null}
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   )
 }

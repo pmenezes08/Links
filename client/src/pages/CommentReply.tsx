@@ -1442,7 +1442,7 @@ export default function CommentReply() {
             <div className="mb-2 flex items-center gap-3 px-1">
               <span className="inline-block w-2 h-2 bg-cpoint-turquoise rounded-full animate-pulse" />
               <div className="flex-1 h-2 bg-c-active-bg rounded overflow-hidden">
-                <div className="h-full bg-[#7fe7df] transition-all" style={{ width: `${Math.max(6, Math.min(96, (level || 0) * 100))}%` }} />
+                <div className="h-full bg-c-accent-ink transition-all" style={{ width: `${Math.max(6, Math.min(96, (level || 0) * 100))}%` }} />
               </div>
               <div className="text-xs text-c-text-secondary">{Math.min(60, Math.round((recordMs || 0) / 1000))}s</div>
             </div>
@@ -1458,7 +1458,7 @@ export default function CommentReply() {
                 aria-label={t('feed.add_attachment')}
                 onClick={() => setShowAttachMenu(!showAttachMenu)}
               >
-                <i className={`fa-solid ${showAttachMenu ? 'fa-times' : 'fa-plus'} text-sm`} style={{ color: (file || selectedGif) ? '#7fe7df' : '#fff' }} />
+                <i className={`fa-solid ${showAttachMenu ? 'fa-times' : 'fa-plus'} text-sm ${(file || selectedGif) ? 'text-c-accent-ink' : 'text-c-text-primary'}`} />
               </NativeIconButton>
               {showAttachMenu && (
                 <div className="absolute bottom-full left-0 mb-2 w-40 rounded-xl bg-c-bg-surface border border-c-border shadow-xl overflow-hidden z-10">
@@ -1501,15 +1501,15 @@ export default function CommentReply() {
               className="hidden"
             />
 
-            <div className="flex-1 min-w-0 flex min-h-9 items-center rounded-lg border border-cpoint-turquoise bg-white/8">
+            <div className="flex-1 min-w-0 flex min-h-9 items-center rounded-lg border border-cpoint-turquoise bg-c-composer-input-bg">
               <MentionTextarea
                 value={replyText}
                 onChange={setReplyText}
                 communityId={post?.community_id}
                 postId={post?.id}
                 replyId={reply.id}
-                placeholder={t('feed.reply_to_user_ellipsis', { username: reply.username })}
-                className="w-full bg-transparent px-3 py-1 text-[15px] leading-5 text-c-text-primary placeholder-white/40 outline-none resize-none max-h-24 min-h-0"
+                placeholder={t('feed.write_reply_placeholder')}
+                className="w-full bg-transparent px-3 py-1 text-[15px] leading-5 text-c-text-primary placeholder:text-c-text-tertiary outline-none resize-none max-h-24 min-h-0"
                 rows={1}
                 autoExpand
                 perfDegraded={!!uploadFile}
@@ -1604,7 +1604,7 @@ export default function CommentReply() {
                 <h2 id="expanded-nested-reply-composer-title" className="text-base font-semibold">
                   {t('feed.write_reply_modal_title')}
                 </h2>
-                <p className="mt-1 text-xs leading-relaxed text-c-text-tertiary">
+                <p className="mt-1 text-xs leading-relaxed text-c-text-tertiary line-clamp-2">
                   {t('feed.write_reply_modal_hint')}
                 </p>
               </div>
@@ -1690,7 +1690,7 @@ export default function CommentReply() {
                   postId={post.id}
                   replyId={reply.id}
                   placeholder={t('feed.reply_to_user_ellipsis', { username: reply.username })}
-                  className="h-full min-h-0 resize-none overflow-y-auto bg-transparent px-4 py-4 text-[16px] leading-relaxed text-c-text-primary outline-none placeholder-white/45"
+                  className="h-full min-h-0 resize-none overflow-y-auto bg-transparent px-4 py-4 text-[16px] leading-relaxed text-c-text-primary outline-none placeholder:text-c-text-tertiary"
                   rows={10}
                   perfDegraded={!!uploadFile}
                 />

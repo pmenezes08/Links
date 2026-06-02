@@ -109,11 +109,24 @@ export default function MentionTextarea({
     if (!autoExpand) return
     const ta = taRef.current
     if (!ta) return
-    // Reset height to auto to get proper scrollHeight
     ta.style.height = 'auto'
-    // Set height to scrollHeight, respecting max-height from className
+    if (!value.trim()) {
+      try {
+        const computed = window.getComputedStyle(ta)
+        const lineHeight = parseFloat(computed.lineHeight) || 20
+        const paddingTop = parseFloat(computed.paddingTop) || 0
+        const paddingBottom = parseFloat(computed.paddingBottom) || 0
+        const borderTop = parseFloat(computed.borderTopWidth) || 0
+        const borderBottom = parseFloat(computed.borderBottomWidth) || 0
+        const singleLine = lineHeight * rows + paddingTop + paddingBottom + borderTop + borderBottom
+        ta.style.height = `${singleLine}px`
+      } catch {
+        ta.style.height = ''
+      }
+      return
+    }
     ta.style.height = `${ta.scrollHeight}px`
-  }, [value, autoExpand])
+  }, [value, autoExpand, rows])
 
   function insert(username: string){
     const ta = taRef.current

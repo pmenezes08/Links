@@ -5,6 +5,18 @@ import { App as CapacitorApp } from '@capacitor/app'
 import { FEED_NAV_FLOAT_GAP_PX } from '../constants/feedLayout'
 
 const IPHONE_HOME_INDICATOR_MIN = 34
+/** Conservative fallbacks when Android WebView reports env(safe-area-inset-*) as 0. */
+const ANDROID_STATUS_BAR_MIN = 24
+const ANDROID_GESTURE_NAV_MIN = 28
+const INSET_PROBE_THRESHOLD = 1
+
+function isAndroidPlatform(): boolean {
+  try {
+    return Capacitor.getPlatform() === 'android'
+  } catch {
+    return false
+  }
+}
 
 function hasIosHomeIndicator(): boolean {
   if (typeof window === 'undefined') return false
@@ -59,6 +71,15 @@ export function measureSafeAreaInsets(): { top: number; bottom: number; left: nu
 
   if (top < 1 && isIosDevice() && hasIosHomeIndicator()) {
     top = typeof window !== 'undefined' && window.innerHeight >= 812 ? 47 : 20
+  }
+
+  if (isAndroidPlatform()) {
+    if (top < INSET_PROBE_THRESHOLD) {
+      top = ANDROID_STATUS_BAR_MIN
+    }
+    if (bottom < INSET_PROBE_THRESHOLD) {
+      bottom = ANDROID_GESTURE_NAV_MIN
+    }
   }
 
   return { top, bottom, left, right }

@@ -5301,7 +5301,8 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                 postId={post.id}
                 placeholder={t('feed.write_reply_placeholder')}
                 className="w-full resize-none rounded-xl bg-transparent border-0 outline-none text-[14px] placeholder:text-c-text-tertiary px-1"
-                rows={2}
+                rows={1}
+                autoExpand
               />
             {replyGif && (
               <div className="flex items-center gap-2 rounded-lg border border-c-border bg-c-hover-bg p-2">

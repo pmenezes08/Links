@@ -244,7 +244,7 @@ export default function PostDetail(){
   const [activeInlineReplyFor, setActiveInlineReplyFor] = useState<number | null>(null)
   const viewRecordedRef = useRef(false)
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
-  const defaultComposerPadding = 200
+  const defaultComposerPadding = 96
   const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
   const composerRef = useRef<HTMLDivElement | null>(null)
   const composerCardRef = useRef<HTMLDivElement | null>(null)
@@ -2117,7 +2117,7 @@ export default function PostDetail(){
             <div className="mb-2 flex items-center gap-3 px-1">
               <span className="inline-block w-2 h-2 bg-cpoint-turquoise rounded-full animate-pulse" />
               <div className="flex-1 h-2 bg-c-active-bg rounded overflow-hidden">
-                <div className="h-full bg-[#7fe7df] transition-all" style={{ width: `${Math.max(6, Math.min(96, level*100))}%` }} />
+                <div className="h-full bg-c-accent-ink transition-all" style={{ width: `${Math.max(6, Math.min(96, level*100))}%` }} />
               </div>
               <div className="text-xs text-c-text-secondary">{Math.min(60, Math.round((recordMs||0)/1000))}s</div>
             </div>
@@ -2132,7 +2132,7 @@ export default function PostDetail(){
                 aria-label={t('feed.add_attachment')}
                 onClick={() => setShowAttachMenu(!showAttachMenu)}
               >
-                <i className={`fa-solid ${showAttachMenu ? 'fa-times' : 'fa-plus'} text-sm`} style={{ color: (file || replyGif) ? '#7fe7df' : '#fff' }} />
+                <i className={`fa-solid ${showAttachMenu ? 'fa-times' : 'fa-plus'} text-sm ${(file || replyGif) ? 'text-c-accent-ink' : 'text-c-text-primary'}`} />
               </NativeIconButton>
               
               {/* Attachment dropdown menu */}
@@ -2280,7 +2280,7 @@ export default function PostDetail(){
                 <h2 id="expanded-reply-composer-title" className="text-base font-semibold">
                   {t('feed.write_reply_modal_title')}
                 </h2>
-                <p className="mt-1 text-xs leading-relaxed text-c-text-tertiary">
+                <p className="mt-1 text-xs leading-relaxed text-c-text-tertiary line-clamp-2">
                   {t('feed.write_reply_modal_hint')}
                 </p>
               </div>
@@ -3061,7 +3061,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             <div className="flex items-center gap-2 mb-1">
               <span className="w-2 h-2 bg-cpoint-turquoise rounded-full animate-pulse" />
               <div className="flex-1 h-1.5 bg-c-active-bg rounded overflow-hidden">
-                <div className="h-full bg-[#7fe7df] transition-all" style={{ width: `${Math.max(6, Math.min(96, recLevel*100))}%` }} />
+                <div className="h-full bg-c-accent-ink transition-all" style={{ width: `${Math.max(6, Math.min(96, recLevel*100))}%` }} />
               </div>
               <span className="text-[10px] text-c-text-secondary">{Math.min(60, Math.round((recMs||0)/1000))}s</span>
             </div>
@@ -3075,7 +3075,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                 className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-c-active-bg hover:bg-c-hover-bg"
                 onClick={() => setShowInlineAttachMenu(!showInlineAttachMenu)}
               >
-                <i className={`fa-solid ${showInlineAttachMenu ? 'fa-times' : 'fa-plus'} text-xs`} style={{ color: (img || inlineGif) ? '#7fe7df' : '#fff' }} />
+                <i className={`fa-solid ${showInlineAttachMenu ? 'fa-times' : 'fa-plus'} text-xs ${(img || inlineGif) ? 'text-c-accent-ink' : 'text-c-text-primary'}`} />
               </button>
               
               {showInlineAttachMenu && (
@@ -3114,8 +3114,8 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                 onChange={setText}
                 communityId={communityId}
                 postId={postId}
-                placeholder={t('feed.reply_to_user', { username: reply.username })}
-                className="w-full bg-transparent px-3 py-1 text-[14px] leading-5 text-c-text-primary placeholder-c-text-tertiary outline-none resize-none max-h-20 min-h-0"
+                placeholder={t('feed.write_reply_placeholder')}
+                className="w-full bg-transparent px-3 py-1 text-[14px] leading-5 text-c-text-primary placeholder:text-c-text-tertiary outline-none resize-none max-h-20 min-h-0"
                 rows={1}
                 autoExpand
               />
