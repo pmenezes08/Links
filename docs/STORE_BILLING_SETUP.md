@@ -49,6 +49,15 @@ Because the iOS app offers Google Sign-In, App Store Guideline 4.8 requires an e
 5. Configure RTDN with Pub/Sub topic `projects/cpoint-127c2/topics/cpoint-play-rtdn`; the push subscription `cpoint-play-rtdn-to-app` delivers to `https://app.c-point.co/api/webhooks/google` (use the canonical host — `run.app` URLs redirect and Pub/Sub push will not reach the handler).
 6. Verify Premium, Community L1, L1→L2 upgrade, Steve add-on, restore purchases, and the extra-community web-link modal.
 
+### Play Console — Data safety (age gate, Option A)
+
+When completing **Data safety** for store review, disclose age-related processing per **`docs/COMPLIANCE_AGE_GATE.md`**:
+
+- **Purpose:** Legal compliance (EU DSA age-appropriate access; 18+ product policy) — not advertising or analytics.
+- **What is collected:** Eligibility **confirmation outcome** only on the server (timestamp + boolean); **no date of birth persisted** on the backend (Option A minimization). DOB may appear transiently in the onboarding UI date picker on device only.
+- **Retention:** Underage-declared accounts are **scheduled for deletion within 7 days** and removed by cron; confirmed users retain the confirmation timestamp until account deletion.
+- **Sharing:** Not sold or shared with third parties for marketing.
+
 ## Mobile UX Policy
 
 Native apps use Apple IAP or Google Play Billing for Premium and the first community subscription per store account. Additional communities are upgraded on `https://app.c-point.co/subscription_plans`, opened as an external web billing link.

@@ -24,17 +24,17 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/admin/users/<string:target_username>/manage` | GET | `manage_user` | `backend/blueprints/admin_users.py:131` | manage user | *(no exact string match — may use helpers)* |
 | `/api/admin/delete_user` | POST | `admin_delete_user` | `backend/blueprints/admin_users.py:211` | admin delete user | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Users.tsx` (1) |
 | `/login` | GET, POST | `login` | `backend/blueprints/auth.py:183` | login | `client/src/pages/MobileLogin.tsx` (13), `client/src/App.tsx` (4), `client/src/utils/internalLinkHandler.ts` (3), `admin-web/src/pages/Login.tsx` (3), `client/src/pages/Signup.tsx` (2), `admin-web/src/components/AuthGuard.tsx` (2), `admin-web/src/pages/FindAdmin.tsx` (2), `client/src/pages/OnboardingWelcome.tsx` (1) |
-| `/signup` | GET, POST | `signup` | `backend/blueprints/auth.py:266` | signup | `client/src/App.tsx` (6), `client/src/pages/MobileLogin.tsx` (2), `client/src/pages/AccountDangerZone.tsx` (1), `client/src/pages/Signup.tsx` (1), `client/src/utils/internalLinkHandler.ts` (1), `client/src/components/settings/DangerZoneSheet.tsx` (1) |
+| `/signup` | GET, POST | `signup` | `backend/blueprints/auth.py:266` | signup | `client/src/App.tsx` (6), `client/src/pages/MobileLogin.tsx` (2), `client/src/pages/AccountDangerZone.tsx` (1), `client/src/pages/Signup.tsx` (1), `client/src/utils/internalLinkHandler.ts` (1), `client/src/components/onboarding/OnboardingIntroGate.tsx` (1), `client/src/components/settings/DangerZoneSheet.tsx` (1) |
 | `/logout` | GET (default) | `logout` | `backend/blueprints/auth.py:610` | logout | `client/src/utils/logout.test.ts` (4), `client/src/utils/logout.ts` (4), `client/src/utils/clearAllUserData.ts` (3), `client/src/contexts/LogoutPromptContext.tsx` (1), `admin-web/src/components/Layout.tsx` (1) |
-| `/delete_account` | POST | `delete_account_post` | `backend/blueprints/auth.py:667` | delete account post | `client/src/pages/AccountDangerZone.tsx` (1), `client/src/components/settings/DangerZoneSheet.tsx` (1) |
-| `/login_password` | GET, POST | `login_password` | `backend/blueprints/auth.py:727` | login password | `client/src/pages/MobileLogin.tsx` (1), `admin-web/src/pages/Login.tsx` (1) |
-| `/login_back` | GET | `login_back` | `backend/blueprints/auth.py:974` | login back | *(no exact string match — may use helpers)* |
-| `/api/check_pending_login` | GET | `api_check_pending_login` | `backend/blueprints/auth.py:984` | api check pending login | `client/src/pages/MobileLogin.tsx` (1) |
-| `/api/clear_stale_session` | POST | `api_clear_stale_session` | `backend/blueprints/auth.py:998` | api clear stale session | `client/src/pages/MobileLogin.tsx` (1), `client/src/pages/Signup.tsx` (1) |
-| `/api/auth/google` | POST | `google_sign_in` | `backend/blueprints/auth.py:1128` | google sign in | `client/src/pages/MobileLogin.tsx` (1) |
-| `/api/auth/apple` | POST | `apple_sign_in` | `backend/blueprints/auth.py:1278` | apple sign in | `client/src/pages/MobileLogin.tsx` (1) |
-| `/request_password_reset` | POST | `request_password_reset` | `backend/blueprints/auth.py:1432` | request password reset | `client/src/pages/MobileLogin.tsx` (1) |
-| `/reset_password/<token>` | GET, POST | `reset_password` | `backend/blueprints/auth.py:1447` | reset password | *(no exact string match — may use helpers)* |
+| `/delete_account` | POST | `delete_account_post` | `backend/blueprints/auth.py:667` | delete account post | `client/src/pages/AccountDangerZone.tsx` (1), `client/src/components/onboarding/OnboardingIntroGate.tsx` (1), `client/src/components/settings/DangerZoneSheet.tsx` (1) |
+| `/login_password` | GET, POST | `login_password` | `backend/blueprints/auth.py:732` | login password | `client/src/pages/MobileLogin.tsx` (1), `admin-web/src/pages/Login.tsx` (1) |
+| `/login_back` | GET | `login_back` | `backend/blueprints/auth.py:979` | login back | *(no exact string match — may use helpers)* |
+| `/api/check_pending_login` | GET | `api_check_pending_login` | `backend/blueprints/auth.py:989` | api check pending login | `client/src/pages/MobileLogin.tsx` (1) |
+| `/api/clear_stale_session` | POST | `api_clear_stale_session` | `backend/blueprints/auth.py:1003` | api clear stale session | `client/src/pages/MobileLogin.tsx` (1), `client/src/pages/Signup.tsx` (1) |
+| `/api/auth/google` | POST | `google_sign_in` | `backend/blueprints/auth.py:1133` | google sign in | `client/src/pages/MobileLogin.tsx` (1) |
+| `/api/auth/apple` | POST | `apple_sign_in` | `backend/blueprints/auth.py:1283` | apple sign in | `client/src/pages/MobileLogin.tsx` (1) |
+| `/request_password_reset` | POST | `request_password_reset` | `backend/blueprints/auth.py:1437` | request password reset | `client/src/pages/MobileLogin.tsx` (1) |
+| `/reset_password/<token>` | GET, POST | `reset_password` | `backend/blueprints/auth.py:1452` | reset password | *(no exact string match — may use helpers)* |
 | `/billing_return` | GET | `billing_return_page` | `backend/blueprints/billing_return.py:19` | billing return page | `client/src/pages/BillingReturn.tsx` (1) |
 | `/admin/get_onboarding_welcome_video` | GET | `admin_get_onboarding_welcome_video` | `backend/blueprints/branding_assets.py:37` | admin get onboarding welcome video | `client/src/pages/AdminDashboard.tsx` (1) |
 | `/admin/upload_onboarding_welcome_video` | POST | `admin_upload_onboarding_welcome_video` | `backend/blueprints/branding_assets.py:48` | admin upload onboarding welcome video | `client/src/pages/AdminDashboard.tsx` (1) |
@@ -124,27 +124,27 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/chat/clear_history` | POST | `clear_chat_history` | `backend/blueprints/dm_chats.py:137` | clear chat history | `client/src/pages/Messages.tsx` (1) |
 | `/delete_chat_thread` | POST | `delete_chat_thread` | `backend/blueprints/dm_chats.py:176` | delete chat thread | `client/src/pages/Messages.tsx` (2) |
 | `/api/chat/dm/remove_message_media` | POST | `remove_dm_message_media` | `backend/blueprints/dm_chats.py:222` | remove dm message media | `client/src/pages/ChatThread.tsx` (1) |
-| `/api/chat/dm/remove_media_bulk` | POST | `remove_dm_media_bulk` | `backend/blueprints/dm_chats.py:425` | remove dm media bulk | `client/src/chat/MediaGalleryPage.tsx` (1) |
-| `/api/chat/dm/send_document` | POST | `send_dm_document` | `backend/blueprints/dm_chats.py:466` | send dm document | `client/src/chat/mediaSenders.ts` (1) |
-| `/api/chat/documents` | GET | `get_dm_documents` | `backend/blueprints/dm_chats.py:499` | get dm documents | `client/src/pages/ChatDocuments.tsx` (1) |
-| `/send_message` | POST | `send_message` | `backend/blueprints/dm_chats.py:514` | send message | `client/src/pages/ChatThread.tsx` (2), `client/src/pages/CommunityFeed.tsx` (1), `client/src/utils/outboxDrain.ts` (1) |
-| `/send_photo_message` | POST | `send_photo_message` | `backend/blueprints/dm_chats.py:531` | send photo message | `client/src/chat/groupChatMediaSenders.ts` (1), `client/src/chat/mediaSenders.ts` (1) |
-| `/send_dm_media` | POST | `send_dm_media` | `backend/blueprints/dm_chats.py:545` | send dm media | `client/src/chat/mediaSenders.ts` (3), `client/src/hooks/useMediaUploadResume.ts` (1) |
-| `/send_video_message` | POST | `send_video_message` | `backend/blueprints/dm_chats.py:562` | send video message | `client/src/chat/mediaSenders.ts` (3) |
-| `/send_audio_message` | POST | `send_audio_message` | `backend/blueprints/dm_chats.py:578` | send audio message | `client/src/pages/ChatThread.tsx` (3) |
-| `/get_messages` | POST | `get_messages` | `backend/blueprints/dm_chats.py:598` | get messages | `client/src/pages/ChatThread.tsx` (4), `client/src/chat/useDmMessagePoll.ts` (2) |
-| `/api/chat/mute` | POST | `mute_chat` | `backend/blueprints/dm_chats.py:612` | mute chat | `client/src/pages/Messages.tsx` (1) |
-| `/api/archive_chat` | POST | `archive_chat` | `backend/blueprints/dm_chats.py:627` | archive chat | `client/src/pages/Messages.tsx` (1) |
-| `/api/unarchive_chat` | POST | `unarchive_chat` | `backend/blueprints/dm_chats.py:636` | unarchive chat | `client/src/pages/Messages.tsx` (1) |
-| `/api/archived_chats` | GET (default) | `api_archived_chats` | `backend/blueprints/dm_chats.py:645` | api archived chats | `client/src/pages/Messages.tsx` (1) |
-| `/api/active_chat` | POST | `api_active_chat` | `backend/blueprints/dm_chats.py:656` | api active chat | `client/src/chat/useDmMessagePoll.ts` (1) |
-| `/delete_message` | POST | `delete_message` | `backend/blueprints/dm_chats.py:668` | delete message | `client/src/pages/ChatThread.tsx` (2) |
-| `/api/chat/edit_message` | POST | `edit_message_api` | `backend/blueprints/dm_chats.py:676` | edit message api | `client/src/pages/ChatThread.tsx` (1) |
-| `/api/chat/update_audio_summary` | POST | `update_dm_audio_summary_route` | `backend/blueprints/dm_chats.py:692` | update dm audio summary route | `client/src/pages/ChatThread.tsx` (1) |
-| `/api/chat/media` | GET | `get_chat_media` | `backend/blueprints/dm_chats.py:706` | get chat media | `client/src/chat/MediaGalleryPage.tsx` (1) |
-| `/api/chat/react_to_message` | POST | `react_to_message` | `backend/blueprints/dm_chats.py:716` | react to message | `client/src/pages/ChatThread.tsx` (1) |
-| `/api/dm/search` | GET | `api_dm_search` | `backend/blueprints/dm_chats.py:735` | api dm search | `client/src/chat/ChatThreadSearch.tsx` (1) |
-| `/api/dm/messages_around` | GET | `api_dm_messages_around` | `backend/blueprints/dm_chats.py:757` | api dm messages around | `client/src/pages/ChatThread.tsx` (1) |
+| `/api/chat/dm/remove_media_bulk` | POST | `remove_dm_media_bulk` | `backend/blueprints/dm_chats.py:429` | remove dm media bulk | `client/src/chat/MediaGalleryPage.tsx` (1) |
+| `/api/chat/dm/send_document` | POST | `send_dm_document` | `backend/blueprints/dm_chats.py:470` | send dm document | `client/src/chat/mediaSenders.ts` (1) |
+| `/api/chat/documents` | GET | `get_dm_documents` | `backend/blueprints/dm_chats.py:503` | get dm documents | `client/src/pages/ChatDocuments.tsx` (1) |
+| `/send_message` | POST | `send_message` | `backend/blueprints/dm_chats.py:518` | send message | `client/src/pages/ChatThread.tsx` (2), `client/src/pages/CommunityFeed.tsx` (1), `client/src/utils/outboxDrain.ts` (1) |
+| `/send_photo_message` | POST | `send_photo_message` | `backend/blueprints/dm_chats.py:535` | send photo message | `client/src/chat/groupChatMediaSenders.ts` (1), `client/src/chat/mediaSenders.ts` (1) |
+| `/send_dm_media` | POST | `send_dm_media` | `backend/blueprints/dm_chats.py:549` | send dm media | `client/src/chat/mediaSenders.ts` (3), `client/src/hooks/useMediaUploadResume.ts` (1) |
+| `/send_video_message` | POST | `send_video_message` | `backend/blueprints/dm_chats.py:566` | send video message | `client/src/chat/mediaSenders.ts` (3) |
+| `/send_audio_message` | POST | `send_audio_message` | `backend/blueprints/dm_chats.py:582` | send audio message | `client/src/pages/ChatThread.tsx` (3) |
+| `/get_messages` | POST | `get_messages` | `backend/blueprints/dm_chats.py:602` | get messages | `client/src/pages/ChatThread.tsx` (4), `client/src/chat/useDmMessagePoll.ts` (2) |
+| `/api/chat/mute` | POST | `mute_chat` | `backend/blueprints/dm_chats.py:616` | mute chat | `client/src/pages/Messages.tsx` (1) |
+| `/api/archive_chat` | POST | `archive_chat` | `backend/blueprints/dm_chats.py:631` | archive chat | `client/src/pages/Messages.tsx` (1) |
+| `/api/unarchive_chat` | POST | `unarchive_chat` | `backend/blueprints/dm_chats.py:640` | unarchive chat | `client/src/pages/Messages.tsx` (1) |
+| `/api/archived_chats` | GET (default) | `api_archived_chats` | `backend/blueprints/dm_chats.py:649` | api archived chats | `client/src/pages/Messages.tsx` (1) |
+| `/api/active_chat` | POST | `api_active_chat` | `backend/blueprints/dm_chats.py:660` | api active chat | `client/src/chat/useDmMessagePoll.ts` (1) |
+| `/delete_message` | POST | `delete_message` | `backend/blueprints/dm_chats.py:672` | delete message | `client/src/pages/ChatThread.tsx` (2) |
+| `/api/chat/edit_message` | POST | `edit_message_api` | `backend/blueprints/dm_chats.py:680` | edit message api | `client/src/pages/ChatThread.tsx` (1) |
+| `/api/chat/update_audio_summary` | POST | `update_dm_audio_summary_route` | `backend/blueprints/dm_chats.py:696` | update dm audio summary route | `client/src/pages/ChatThread.tsx` (1) |
+| `/api/chat/media` | GET | `get_chat_media` | `backend/blueprints/dm_chats.py:710` | get chat media | `client/src/chat/MediaGalleryPage.tsx` (1) |
+| `/api/chat/react_to_message` | POST | `react_to_message` | `backend/blueprints/dm_chats.py:720` | react to message | `client/src/pages/ChatThread.tsx` (1) |
+| `/api/dm/search` | GET | `api_dm_search` | `backend/blueprints/dm_chats.py:739` | api dm search | `client/src/chat/ChatThreadSearch.tsx` (1) |
+| `/api/dm/messages_around` | GET | `api_dm_messages_around` | `backend/blueprints/dm_chats.py:761` | api dm messages around | `client/src/pages/ChatThread.tsx` (1) |
 | `/api/me/enterprise-seats` | GET | `me_seats` | `backend/blueprints/enterprise.py:90` | me seats | *(no exact string match — may use helpers)* |
 | `/api/me/iap-nag` | GET | `me_iap_nag` | `backend/blueprints/enterprise.py:98` | me iap nag | *(no exact string match — may use helpers)* |
 | `/api/me/iap-nag/ack` | POST | `me_iap_nag_ack` | `backend/blueprints/enterprise.py:116` | me iap nag ack | *(no exact string match — may use helpers)* |
@@ -184,16 +184,16 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/group_chat/<int:group_id>/steve_personality` | GET, POST | `group_steve_personality` | `backend/blueprints/group_chat.py:2070` | group steve personality | *(no exact string match — may use helpers)* |
 | `/api/group_chat/<int:group_id>/steve_reset_context` | POST | `reset_steve_context` | `backend/blueprints/group_chat.py:2111` | reset steve context | *(no exact string match — may use helpers)* |
 | `/api/group_chat/<int:group_id>/message/<int:message_id>/delete` | POST | `delete_group_message` | `backend/blueprints/group_chat.py:2154` | delete group message | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/remove_message_media` | POST | `remove_group_message_media` | `backend/blueprints/group_chat.py:2208` | remove group message media | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/remove_media_bulk` | POST | `remove_group_media_bulk` | `backend/blueprints/group_chat.py:2406` | remove group media bulk | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/message/<int:message_id>/update_summary` | POST | `update_group_audio_summary` | `backend/blueprints/group_chat.py:2448` | update group audio summary | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/messages/bulk_delete` | POST | `bulk_delete_group_messages` | `backend/blueprints/group_chat.py:2487` | bulk delete group messages | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/message/<int:message_id>/edit` | POST | `edit_group_message` | `backend/blueprints/group_chat.py:2551` | edit group message | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/message/<int:message_id>/react` | POST | `react_to_group_message` | `backend/blueprints/group_chat.py:2606` | react to group message | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/available_members` | GET | `get_available_members` | `backend/blueprints/group_chat.py:2671` | get available members | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/add_members` | POST | `add_members_to_group` | `backend/blueprints/group_chat.py:2736` | add members to group | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/search` | GET | `api_group_chat_search` | `backend/blueprints/group_chat.py:2846` | api group chat search | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/messages_around` | GET | `api_group_messages_around` | `backend/blueprints/group_chat.py:2867` | api group messages around | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/remove_message_media` | POST | `remove_group_message_media` | `backend/blueprints/group_chat.py:2218` | remove group message media | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/remove_media_bulk` | POST | `remove_group_media_bulk` | `backend/blueprints/group_chat.py:2420` | remove group media bulk | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/message/<int:message_id>/update_summary` | POST | `update_group_audio_summary` | `backend/blueprints/group_chat.py:2462` | update group audio summary | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/messages/bulk_delete` | POST | `bulk_delete_group_messages` | `backend/blueprints/group_chat.py:2501` | bulk delete group messages | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/message/<int:message_id>/edit` | POST | `edit_group_message` | `backend/blueprints/group_chat.py:2565` | edit group message | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/message/<int:message_id>/react` | POST | `react_to_group_message` | `backend/blueprints/group_chat.py:2620` | react to group message | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/available_members` | GET | `get_available_members` | `backend/blueprints/group_chat.py:2685` | get available members | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/add_members` | POST | `add_members_to_group` | `backend/blueprints/group_chat.py:2750` | add members to group | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/search` | GET | `api_group_chat_search` | `backend/blueprints/group_chat.py:2860` | api group chat search | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/messages_around` | GET | `api_group_messages_around` | `backend/blueprints/group_chat.py:2881` | api group messages around | *(no exact string match — may use helpers)* |
 | `/api/group_feed` | GET | `api_group_feed` | `backend/blueprints/group_feed.py:184` | api group feed | `client/src/pages/CreatePost.tsx` (1), `client/src/pages/GroupFeed.tsx` (1) |
 | `/api/group_post_view` | POST | `api_group_post_view` | `backend/blueprints/group_feed.py:196` | api group post view | `client/src/pages/PostDetail.tsx` (1) |
 | `/api/group_announcements/<int:group_id>` | GET | `api_group_announcements_list` | `backend/blueprints/group_feed.py:225` | api group announcements list | *(no exact string match — may use helpers)* |
@@ -223,14 +223,16 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/admin/kb/tests/<test_id>/status` | PATCH | `kb_update_test_status` | `backend/blueprints/knowledge_base.py:239` | kb update test status | *(no exact string match — may use helpers)* |
 | `/api/admin/kb/special-access/audit` | GET | `kb_special_access_audit` | `backend/blueprints/knowledge_base.py:279` | kb special access audit | *(no exact string match — may use helpers)* |
 | `/api/admin/kb/special-access/revoke-expired` | POST | `kb_special_access_revoke_expired` | `backend/blueprints/knowledge_base.py:298` | kb special access revoke expired | *(no exact string match — may use helpers)* |
-| `/api/me/entitlements` | GET | `me_entitlements` | `backend/blueprints/me.py:141` | me entitlements | `client/src/hooks/useEntitlements.ts` (4) |
-| `/api/me/locale` | GET | `me_locale_get` | `backend/blueprints/me.py:179` | me locale get | `client/src/i18n/useLocale.ts` (2), `client/src/components/onboarding/OnboardingIntroGate.test.tsx` (2), `client/src/components/LocaleBootstrap.tsx` (1), `client/src/components/onboarding/OnboardingIntroGate.tsx` (1) |
-| `/api/me/locale` | PATCH, POST | `me_locale_set` | `backend/blueprints/me.py:202` | me locale set | `client/src/i18n/useLocale.ts` (2), `client/src/components/onboarding/OnboardingIntroGate.test.tsx` (2), `client/src/components/LocaleBootstrap.tsx` (1), `client/src/components/onboarding/OnboardingIntroGate.tsx` (1) |
-| `/api/me/ai-usage` | GET | `me_ai_usage` | `backend/blueprints/me.py:238` | me ai usage | `client/src/pages/MembershipAIUsage.tsx` (2), `client/src/components/membership/ManageMembershipModal.tsx` (1) |
-| `/api/me/billing` | GET | `me_billing` | `backend/blueprints/me.py:507` | me billing | `client/src/components/membership/ManageMembershipModal.tsx` (5), `client/src/pages/Success.tsx` (2), `client/src/pages/EditCommunity.tsx` (1), `client/src/pages/SubscriptionPlans.tsx` (1), `client/src/components/membership/PaidCommunitiesBillingSection.tsx` (1) |
-| `/api/me/payment-history` | GET | `me_payment_history` | `backend/blueprints/me.py:585` | me payment history | `client/src/components/membership/ManageMembershipModal.tsx` (1) |
-| `/api/me/billing/portal` | POST | `me_billing_portal` | `backend/blueprints/me.py:622` | me billing portal | `client/src/pages/Success.tsx` (2), `client/src/components/membership/ManageMembershipModal.tsx` (2), `client/src/pages/EditCommunity.tsx` (1), `client/src/pages/SubscriptionPlans.tsx` (1), `client/src/components/membership/PaidCommunitiesBillingSection.tsx` (1) |
-| `/api/me/communities-spotlight-tour-seen` | POST | `mark_communities_spotlight_tour_seen` | `backend/blueprints/me.py:751` | mark communities spotlight tour seen | `client/src/pages/Communities.tsx` (1) |
+| `/api/me/entitlements` | GET | `me_entitlements` | `backend/blueprints/me.py:143` | me entitlements | `client/src/hooks/useEntitlements.ts` (4) |
+| `/api/me/locale` | GET | `me_locale_get` | `backend/blueprints/me.py:181` | me locale get | `client/src/i18n/useLocale.ts` (2), `client/src/components/onboarding/OnboardingIntroGate.test.tsx` (2), `client/src/components/LocaleBootstrap.tsx` (1), `client/src/components/onboarding/OnboardingIntroGate.tsx` (1) |
+| `/api/me/locale` | PATCH, POST | `me_locale_set` | `backend/blueprints/me.py:204` | me locale set | `client/src/i18n/useLocale.ts` (2), `client/src/components/onboarding/OnboardingIntroGate.test.tsx` (2), `client/src/components/LocaleBootstrap.tsx` (1), `client/src/components/onboarding/OnboardingIntroGate.tsx` (1) |
+| `/api/me/ai-usage` | GET | `me_ai_usage` | `backend/blueprints/me.py:240` | me ai usage | `client/src/pages/MembershipAIUsage.tsx` (2), `client/src/components/membership/ManageMembershipModal.tsx` (1) |
+| `/api/me/billing` | GET | `me_billing` | `backend/blueprints/me.py:509` | me billing | `client/src/components/membership/ManageMembershipModal.tsx` (5), `client/src/pages/Success.tsx` (2), `client/src/pages/EditCommunity.tsx` (1), `client/src/pages/SubscriptionPlans.tsx` (1), `client/src/components/membership/PaidCommunitiesBillingSection.tsx` (1) |
+| `/api/me/payment-history` | GET | `me_payment_history` | `backend/blueprints/me.py:587` | me payment history | `client/src/components/membership/ManageMembershipModal.tsx` (1) |
+| `/api/me/billing/portal` | POST | `me_billing_portal` | `backend/blueprints/me.py:624` | me billing portal | `client/src/pages/Success.tsx` (2), `client/src/components/membership/ManageMembershipModal.tsx` (2), `client/src/pages/EditCommunity.tsx` (1), `client/src/pages/SubscriptionPlans.tsx` (1), `client/src/components/membership/PaidCommunitiesBillingSection.tsx` (1) |
+| `/api/me/age-confirmation` | POST | `me_age_confirmation` | `backend/blueprints/me.py:753` | me age confirmation | *(no exact string match — may use helpers)* |
+| `/api/cron/purge-underage` | POST | `cron_purge_underage` | `backend/blueprints/me.py:818` | cron purge underage | *(no exact string match — may use helpers)* |
+| `/api/me/communities-spotlight-tour-seen` | POST | `mark_communities_spotlight_tour_seen` | `backend/blueprints/me.py:854` | mark communities spotlight tour seen | `client/src/pages/Communities.tsx` (1) |
 | `/api/message_image_upload_url` | POST | `api_message_image_upload_url` | `backend/blueprints/media_assets.py:74` | api message image upload url | `client/src/chat/mediaSenders.ts` (1) |
 | `/api/video_upload_url` | POST | `api_video_upload_url` | `backend/blueprints/media_assets.py:98` | api video upload url | `client/src/chat/mediaSenders.ts` (2) |
 | `/api/post_video_upload_url` | POST | `api_post_video_upload_url` | `backend/blueprints/media_assets.py:122` | api post video upload url | `client/src/pages/CreatePost.tsx` (1) |

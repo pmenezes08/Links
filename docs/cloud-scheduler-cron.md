@@ -172,6 +172,22 @@ gcloud scheduler jobs create http chat-uploads-janitor \
   --headers="X-Cron-Secret=$SECRET" \
   --attempt-deadline=300s
 
+# Underage account purge — permanently deletes accounts that declared under 18
+# and whose 7-day grace period (``underage_delete_scheduled_at``) has passed.
+# Option A age gate — see docs/COMPLIANCE_AGE_GATE.md.
+# Daily at 03:30 UTC (low-traffic window). Response returns counts only in
+# production (no usernames). Dry-run:
+#   curl -X POST "$BASE/api/cron/purge-underage?dry_run=1" \
+#     -H "X-Cron-Secret: $CRON_SECRET"
+gcloud scheduler jobs create http purge-underage \
+  --location=europe-west1 \
+  --schedule="30 3 * * *" \
+  --time-zone=UTC \
+  --uri="$BASE/api/cron/purge-underage" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=300s
+
 # Event reminders — checks upcoming calendar events and sends the configured
 # 1-week, 1-day, and 1-hour reminders. The endpoint dedupes per
 # event/user/reminder type and supports dry-run:
@@ -269,6 +285,7 @@ migration), run:
 for job in enterprise-grace-sweep enterprise-iap-nag enterprise-winback-expire \
            subscriptions-revoke-expired usage-cycle-notify \
            communities-lifecycle-dispatch media-purge-retained-stories \
+           chat-uploads-janitor purge-underage \
            event-reminder-dispatch kb-weekly-synthesis steve-reminder-vault-dispatch \
            group-steve-agent-due; do
   gcloud scheduler jobs pause "$job" --location=europe-west1

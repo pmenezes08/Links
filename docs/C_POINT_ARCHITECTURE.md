@@ -14,6 +14,7 @@ Single reference for repository layout, HTTP surface, backend services, dependen
 | [`MONOLITH_REDUCTION_ROADMAP.md`](MONOLITH_REDUCTION_ROADMAP.md) | **Engineering** initiative: shrink oversized UI pages and backend modules; priority order, epics, Cursor rules; pairs with KB **Product Roadmap** “Monolith reduction” rows. |
 | [`AGENT_TASK_CHECKLIST.md`](AGENT_TASK_CHECKLIST.md) | Checklist for agents before merge: blueprints, `ai_usage`, KB, route/schema doc regen. |
 | [`STEVE_GROUP_AGENT.md`](STEVE_GROUP_AGENT.md) | **Group-feed Steve agent** (Career Expert v1): package gate, Ask Steve, delayed cron, auto budget, pool usage. |
+| [`COMPLIANCE_AGE_GATE.md`](COMPLIANCE_AGE_GATE.md) | **18+ age gate (Option A):** timestamp-only storage, `user_age_gate` service, `/api/me/age-confirmation`, `/api/cron/purge-underage`, 7-day underage retention. |
 
 ---
 

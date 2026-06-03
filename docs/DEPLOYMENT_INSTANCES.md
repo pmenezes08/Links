@@ -28,7 +28,7 @@ Out-of-repo or legacy names (`evalio`, `links` as separate cost centres) are cal
 |-------|---------------------|--------------------------------|
 | **Purpose** | Live traffic, revenue, cron in prod. | Smoke tests, manual QA, experiments. |
 | **Scale / cold start** | Typically warm (`min-instances` ≥ 1). | **`min-instances=1`** (since Steve/feed isolation deploy); Cloud SQL via **`run.googleapis.com/cloudsql-instances`** (same `cpoint-db` as prod). |
-| **Cron** | Scheduler jobs use prod `run.app` URL + `cron-shared-secret`. | Staging jobs use staging URL + `cron-shared-secret-staging`. See [cloud-scheduler-cron.md](cloud-scheduler-cron.md). |
+| **Cron** | Scheduler jobs use prod `run.app` URL + `cron-shared-secret`. Includes **`purge-underage`** → `/api/cron/purge-underage` (Option A underage account purge, 03:30 UTC — see [COMPLIANCE_AGE_GATE.md](COMPLIANCE_AGE_GATE.md)). | Staging jobs use staging URL + `cron-shared-secret-staging` (prefix job names with `staging-`). See [cloud-scheduler-cron.md](cloud-scheduler-cron.md). |
 | **Admin pairing** | Admin prod build targets prod API. | Staging **API** sets **`CSRF_ALLOWED_ORIGINS`** to the **staging admin** origin (`cloudbuild.yaml` — the staging admin **`.run.app`** URL). |
 
 **Shared DB caveat:** Both **`cpoint-app`** and **`cpoint-app-staging`** use the **same Cloud SQL instance** **`cpoint-db`** (same DB + credentials). Staging writes affect “prod” data — see **OPERATIONS** §6 before destructive ops.

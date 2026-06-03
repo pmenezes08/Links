@@ -12,6 +12,7 @@ Routes:
     GET  /api/me/billing                 — current subscription summary
     GET  /api/me/payment-history         — paid Stripe invoice history
     POST /api/me/billing/portal          — create a Stripe Customer Portal session
+    POST /api/me/age-confirmation        — 18+ self-declaration (Option A, no DOB stored)
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from backend.services import client_ui_flags, i18n, user_locale
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.entitlements import resolve_entitlements
 from backend.services.feature_flags import entitlements_enforcement_enabled
+from backend.services import user_age_gate
 from redis_cache import cache
 
 
@@ -746,6 +748,107 @@ def me_billing_portal():
         return jsonify({"success": False, "error": "Unable to open billing portal", "detail": str(err)}), 500
 
     return jsonify({"success": True, "url": portal.get("url")})
+
+
+@me_bp.route("/api/me/age-confirmation", methods=["POST"])
+def me_age_confirmation():
+    """Persist 18+ self-declaration (Option A — timestamp only, no DOB).
+
+    Body: ``{"confirmed": true}`` when the user is 18+, or ``{"confirmed": false}``
+    when under 18. Underage accounts are scheduled for purge after 7 days; sessions
+    are revoked immediately (no synchronous account deletion).
+    """
+    username = _session_username()
+    if not username:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    if "confirmed" not in payload:
+        return jsonify({"success": False, "error": "confirmed required"}), 400
+    if not isinstance(payload.get("confirmed"), bool):
+        return jsonify({"success": False, "error": "confirmed must be boolean"}), 400
+
+    confirmed = bool(payload["confirmed"])
+    try:
+        result = user_age_gate.confirm_age_gate(username, confirmed=confirmed)
+    except Exception:
+        logger.exception("me_age_confirmation failed for %s", username)
+        return jsonify({"success": False, "error": "Could not save age confirmation"}), 500
+
+    if result.get("code") == "not_found":
+        return jsonify({"success": False, "error": "User not found"}), 404
+
+    status = result.get("status")
+    body: Dict[str, Any] = {"success": True, "status": status}
+    if status == "confirmed":
+        if result.get("age_confirmed_at"):
+            body["age_confirmed_at"] = result["age_confirmed_at"]
+        if result.get("code") == "already_confirmed":
+            body["already_confirmed"] = True
+    elif status == "scheduled_deletion":
+        if result.get("purge_at"):
+            body["purge_at"] = result["purge_at"]
+        if result.get("code") == "already_scheduled":
+            body["already_scheduled"] = True
+
+    if not confirmed:
+        session.clear()
+        resp = jsonify(body)
+        remember_tokens.clear_cookie(resp)
+        auth_session.clear_session_cookie(resp)
+        auth_session.clear_install_cookie(resp)
+        auth_session.no_store(resp)
+        return resp
+
+    return jsonify(body)
+
+
+def _cron_authed() -> bool:
+    expected = os.environ.get("CRON_SHARED_SECRET") or ""
+    if not expected:
+        return False
+    provided = request.headers.get("X-Cron-Secret") or ""
+    return provided == expected
+
+
+def _is_production_env() -> bool:
+    return (os.getenv("FLASK_ENV") or "").strip().lower() == "production"
+
+
+@me_bp.route("/api/cron/purge-underage", methods=["POST"])
+def cron_purge_underage():
+    """Delete underage accounts whose grace period has expired (Cloud Scheduler)."""
+    if not _cron_authed():
+        return jsonify({"success": False, "error": "forbidden"}), 403
+
+    raw_dry_run = (request.args.get("dry_run") or "").strip().lower()
+    dry_run = raw_dry_run in {"1", "true", "yes", "on"}
+    try:
+        limit = int(request.args.get("limit") or 100)
+    except ValueError:
+        limit = 100
+
+    try:
+        result = user_age_gate.purge_due_underage_accounts(dry_run=dry_run, limit=limit)
+    except Exception:
+        logger.exception("cron_purge_underage failed")
+        return jsonify({"success": False, "error": "purge_failed"}), 500
+
+    body: Dict[str, Any] = {
+        "success": True,
+        "purged": int(result.get("purged") or 0),
+        "due": int(result.get("due") or 0),
+    }
+    if result.get("dry_run"):
+        body["dry_run"] = True
+
+    errors = result.get("errors") or []
+    if errors:
+        body["error_count"] = len(errors)
+        if not _is_production_env():
+            body["errors"] = errors
+
+    return jsonify(body)
 
 
 @me_bp.route("/api/me/communities-spotlight-tour-seen", methods=["POST"])

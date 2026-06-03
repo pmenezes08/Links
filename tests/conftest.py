@@ -277,6 +277,9 @@ def _bootstrap_schema() -> None:
         for column, col_def in (
             ("professional_company_intel", "TEXT NULL"),
             ("trial_revoked_at", "DATETIME NULL"),
+            ("age_confirmed_at", "DATETIME NULL"),
+            ("age_consent_given", "TINYINT(1) NULL"),
+            ("underage_delete_scheduled_at", "DATETIME NULL"),
         ):
             try:
                 c.execute(f"ALTER TABLE users ADD COLUMN {column} {col_def}")

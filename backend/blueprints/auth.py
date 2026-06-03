@@ -667,7 +667,12 @@ def logout():
 @auth_bp.route("/delete_account", methods=["POST"])
 @_session_required_api
 def delete_account_post():
-    """Permanently delete the current user's account (FK-safe)."""
+    """Permanently delete the current user's account (FK-safe).
+
+    Immediate self-service deletion. Underage users who only scheduled purge via
+    ``POST /api/me/age-confirmation`` with ``confirmed: false`` remain until cron;
+    this endpoint still deletes immediately when the user explicitly requests it.
+    """
     logger = current_app.logger
     username = session.get("username")
     if not username:

@@ -15,6 +15,20 @@ Short narratives for **how behaviour spans** Flask, Stripe, MySQL, Firestore, cr
 
 ---
 
+## 0a. Age gate (18+, Option A)
+
+Compliance and minimization rules: **`docs/COMPLIANCE_AGE_GATE.md`**. Server stores **timestamp + boolean outcome only** — no date of birth on `POST /api/me/age-confirmation`.
+
+1. **Sign-up / first login** — User completes `/signup` or OAuth (`§0`), lands on **`OnboardingIntroGate`** (`client/src/components/onboarding/OnboardingIntroGate.tsx`) after language/theme (page 0).
+2. **Client eligibility (DOB not sent to server)** — Page 1 collects DOB + explicit 18+ consent in the UI (`client/src/lib/ageGate.ts`). DOB is used only in-browser to enforce 18+; it is **not** posted to the API under Option A. A client-only `localStorage` key (`cpoint:age_gate_confirmed_at`) may skip the step on repeat visits until server state is wired.
+3. **Confirm 18+** — Client calls **`POST /api/me/age-confirmation`** with `{ "confirmed": true }` (session cookie). **`user_age_gate.confirm_age_gate`** sets **`users.age_confirmed_at`**, **`age_consent_given = 1`**, clears **`underage_delete_scheduled_at`**, sets **`is_active = 1`**. User continues welcome / Meet Steve onboarding pages.
+4. **Declare under 18** — Client calls `{ "confirmed": false }` (or user chooses **Delete my account** in the underage modal → immediate **`POST /delete_account`**). The schedule path sets **`age_consent_given = 0`**, **`underage_delete_scheduled_at = UTC now + 7 days`**, **`is_active = 0`**, revokes sessions/remember-me (same cookie stack as logout), and clears the Flask session on the response — **no synchronous hard delete**.
+5. **Scheduled purge** — Daily Cloud Scheduler job **`purge-underage`** POSTs to **`/api/cron/purge-underage`** on **`cpoint-app`** / staging with **`X-Cron-Secret`** (see **`docs/cloud-scheduler-cron.md`**, **`docs/DEPLOYMENT_INSTANCES.md`**). **`purge_due_underage_accounts`** selects rows where **`underage_delete_scheduled_at <= NOW()`** and runs **`account_deletion.delete_user_in_connection`** (MySQL + Firestore cleanup per existing deletion service). Production cron JSON returns counts only.
+
+**Tables:** three gate columns on **`users`** — see **`MYSQL_AND_FIRESTORE.md`**. **Routes:** grep **`age-confirmation`** / **`purge-underage`** in **`BACKEND_ROUTES.md`**.
+
+---
+
 ## 1. Subscription and Stripe
 
 1. User starts checkout from the client; backend creates a **Stripe Checkout** session (`backend/blueprints/subscriptions.py` and related).
@@ -122,9 +136,13 @@ Purchasing and lifecycle routes are in **`backend/blueprints/enterprise.py`** wi
 Cloud Scheduler POSTs to **`/api/cron/*`** on **`cpoint-app`** (or staging) with **`X-Cron-Secret`**. Full list, URLs, and secrets: **`docs/cloud-scheduler-cron.md`**.  
 **Do not** use custom domains that **301** for Scheduler POSTs — use the **`run.app`** URL from **[DEPLOYMENT_INSTANCES.md](DEPLOYMENT_INSTANCES.md)** / cron doc.
 
+**Underage account purge (Option A):** Job **`purge-underage`** → **`POST /api/cron/purge-underage`** daily at **03:30 UTC**. Deletes accounts whose **`underage_delete_scheduled_at`** has passed (7-day grace after underage self-declaration). Supports **`?dry_run=1`**. See **`docs/COMPLIANCE_AGE_GATE.md`** § retention.
+
 ---
 
 ## 7. Onboarding (Steve-guided setup)
+
+**Age gate (first):** Before welcome/Steve copy, new accounts pass the **18+ gate** in **`OnboardingIntroGate`** — see **§0a** and **`docs/COMPLIANCE_AGE_GATE.md`**.
 
 Onboarding stages and APIs: **`backend/blueprints/onboarding.py`** plus services such as **`onboarding_bootstrap`**, **`onboarding_company_intel`**, **`onboarding_cv_import`** (optional **PDF CV** upload: **`POST /api/onboarding/parse_cv`** extracts text locally, Grok returns structured current role / company / `current_role_start_ym` / prior roles; with **`persist=1`** the PDF is stored in **private R2** under `private/cv/{username}/…` and **`users.professional_cv_*`** metadata is updated when storage succeeds). **`POST /api/onboarding/apply_professional_structured`** persists to **`users`** after the user confirms, with **`mode`** **`replace`** (work history from the CV list only) or **`merge`** (keep and dedupe prior **`professional_work_history`**, promoting the previous current role into history when role/company change). Signed-in users download the last stored file via **`GET /api/profile/cv`**. **Firestore** collection **`steve_onboarding`** holds progressive state — see **`MYSQL_AND_FIRESTORE.md`**. Client navigates stages; backend enforces progression and ties into **Steve** where applicable.
 

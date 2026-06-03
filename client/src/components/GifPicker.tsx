@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { Capacitor } from '@capacitor/core'
+import type { PluginListenerHandle } from '@capacitor/core'
+import { Keyboard } from '@capacitor/keyboard'
+import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useTranslation } from 'react-i18next'
 import { CPOINT_EASE_OUT, PAGE_TRANSITION_MS, REDUCED_MOTION_FADE_MS } from '../design/motion'
 import { hapticImpactLight, hapticSelection } from '../utils/haptics'
@@ -35,12 +38,9 @@ type GiphyItem = {
 const TRANSPARENT_PIXEL =
   'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
 const SHEET_MIN_HEIGHT_PX = 320
-const SHEET_MAX_HEIGHT_PX = 560
-const SHEET_HEIGHT_RATIO = 0.6
 const DRAG_DISMISS_THRESHOLD_RATIO = 0.3
 const DRAG_DISMISS_VELOCITY_PX_PER_S = 600
 const DRAG_START_THRESHOLD_PX = 6
-const SHEET_VIEWPORT_MARGIN_PX = 12
 
 function isIosCapacitor(): boolean {
   if (typeof window === 'undefined') return false
@@ -74,25 +74,12 @@ function getInitialViewportHeight(): number {
   return window.visualViewport?.height || window.innerHeight || 600
 }
 
-function readSafeAreaTopPx(): number {
-  if (typeof document === 'undefined' || typeof window === 'undefined') return 0
-  try {
-    const raw = getComputedStyle(document.documentElement).getPropertyValue('--sat-px').trim()
-    if (raw) {
-      const parsed = parseFloat(raw)
-      if (!Number.isNaN(parsed) && parsed >= 0) return parsed
-    }
-  } catch {}
-  try {
-    const probe = document.createElement('div')
-    probe.style.cssText =
-      'position:fixed;top:0;left:0;width:0;height:0;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top, 0px);'
-    document.body.appendChild(probe)
-    const measured = probe.getBoundingClientRect().height
-    document.body.removeChild(probe)
-    if (!Number.isNaN(measured) && measured >= 0) return measured
-  } catch {}
-  return 0
+function getVisualViewportKeyboardLift(): number {
+  if (typeof window === 'undefined') return 0
+  const viewport = window.visualViewport
+  if (!viewport) return 0
+  const lift = window.innerHeight - (viewport.height + viewport.offsetTop)
+  return lift < 60 ? 0 : Math.max(0, lift)
 }
 
 export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps){
@@ -119,7 +106,6 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
   const [reducedMotion, setReducedMotion] = useState<boolean>(detectPrefersReducedMotion)
   const [keyboardLift, setKeyboardLift] = useState(0)
   const [vvHeight, setVvHeight] = useState<number>(getInitialViewportHeight)
-  const [safeAreaTopPx, setSafeAreaTopPx] = useState<number>(0)
 
   // Drag-to-dismiss state
   const [dragY, setDragY] = useState(0)
@@ -132,6 +118,8 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
   const observerRef = useRef<IntersectionObserver | null>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
   const dragTransitionTimerRef = useRef<number | null>(null)
+  const pluginKeyboardLiftRef = useRef(0)
+  const visualKeyboardLiftRef = useRef(0)
   const dragStateRef = useRef<{
     startY: number
     lastY: number
@@ -145,16 +133,11 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
   const isIosNative = useMemo(() => isIosCapacitor(), [])
   const isAndroidNative = useMemo(() => isAndroidCapacitor(), [])
 
+  // Explicit sheet height. iOS WKWebView can drop a top constraint on a
+  // fixed, transformed, backdrop-filtered element, so avoid top+bottom sizing.
   const sheetHeight = useMemo(() => {
-    const base = Math.min(
-      SHEET_MAX_HEIGHT_PX,
-      Math.max(SHEET_MIN_HEIGHT_PX, vvHeight * SHEET_HEIGHT_RATIO),
-    )
-    const clamped = base - safeAreaTopPx - 8
-    const computedBase = Math.max(SHEET_MIN_HEIGHT_PX, clamped)
-    const available = vvHeight - keyboardLift - safeAreaTopPx - SHEET_VIEWPORT_MARGIN_PX
-    return Math.min(computedBase, Math.max(SHEET_MIN_HEIGHT_PX, available))
-  }, [vvHeight, safeAreaTopPx, keyboardLift])
+    return Math.max(SHEET_MIN_HEIGHT_PX, vvHeight)
+  }, [vvHeight])
 
   // ESC key dismiss
   useEffect(() => {
@@ -168,24 +151,6 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [isOpen, onClose])
-
-  // Measure safe-area-inset-top once on open so the sheet height accounts for
-  // the iOS status bar / notch. Re-measure on viewport size changes (rotation).
-  useEffect(() => {
-    if (!isOpen) return
-    const sync = () => setSafeAreaTopPx(prev => {
-      const next = readSafeAreaTopPx()
-      return Math.abs(prev - next) < 0.5 ? prev : next
-    })
-    sync()
-    if (typeof window === 'undefined') return
-    window.addEventListener('resize', sync)
-    window.addEventListener('orientationchange', sync)
-    return () => {
-      window.removeEventListener('resize', sync)
-      window.removeEventListener('orientationchange', sync)
-    }
-  }, [isOpen])
 
   // Reset query/results on open
   useEffect(() => {
@@ -296,7 +261,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
         if (!cancelled) setKeyLoading(false)
       })
     return () => { cancelled = true }
-  }, [apiKey, isOpen])
+  }, [apiKey, isOpen, useProxy])
 
   // prefers-reduced-motion subscription
   useEffect(() => {
@@ -348,12 +313,87 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
     return () => window.clearTimeout(timer)
   }, [isOpen, reducedMotion])
 
-  // visualViewport keyboard lift + height (mirrors CommentReply.tsx :349-374 RAF pattern)
+  // Keyboard lift: native uses the Capacitor plugin plus visualViewport as a
+  // secondary source. The visualViewport pass catches the "keyboard already
+  // open before the picker mounted" case where no keyboard show event fires.
   useEffect(() => {
     if (!isOpen || typeof window === 'undefined') {
+      pluginKeyboardLiftRef.current = 0
+      visualKeyboardLiftRef.current = 0
       setKeyboardLift(0)
       return
     }
+
+    const platform = Capacitor.getPlatform()
+    const isNative = platform === 'ios' || platform === 'android'
+    const norm = (v: number) => (v < 60 ? 0 : Math.max(0, v))
+    const setNativeViewportState = () => {
+      const lift = Math.max(pluginKeyboardLiftRef.current, visualKeyboardLiftRef.current)
+      const nextH = Math.max(0, (window.innerHeight || getInitialViewportHeight()) - lift)
+      setKeyboardLift(prev => (Math.abs(prev - lift) < 1 ? prev : lift))
+      setVvHeight(prev => (Math.abs(prev - nextH) < 1 ? prev : nextH))
+    }
+
+    if (isNative) {
+      let disposed = false
+      const subs: PluginListenerHandle[] = []
+      const viewport = window.visualViewport
+      let rafId: number | null = null
+      const updateVisualViewportLift = () => {
+        visualKeyboardLiftRef.current = getVisualViewportKeyboardLift()
+        setNativeViewportState()
+      }
+      const scheduleVisualViewportLift = () => {
+        if (rafId !== null) cancelAnimationFrame(rafId)
+        rafId = requestAnimationFrame(updateVisualViewportLift)
+      }
+      const onShow = (info: KeyboardInfo) => {
+        pluginKeyboardLiftRef.current = norm(info?.keyboardHeight ?? 0)
+        visualKeyboardLiftRef.current = getVisualViewportKeyboardLift()
+        setNativeViewportState()
+      }
+      const onHide = () => {
+        pluginKeyboardLiftRef.current = 0
+        visualKeyboardLiftRef.current = getVisualViewportKeyboardLift()
+        setNativeViewportState()
+      }
+      const track = (promise: Promise<PluginListenerHandle>) => {
+        promise.then((sub) => {
+          if (disposed) {
+            sub.remove()
+            return
+          }
+          subs.push(sub)
+        }).catch(() => {
+          // Listener registration can fail on web-like test shells; native
+          // devices still get the visual fallback through the initial state.
+        })
+      }
+      track(Keyboard.addListener('keyboardWillShow', onShow))
+      track(Keyboard.addListener('keyboardDidShow', onShow))
+      track(Keyboard.addListener('keyboardWillHide', onHide))
+      track(Keyboard.addListener('keyboardDidHide', onHide))
+      if (viewport) {
+        viewport.addEventListener('resize', scheduleVisualViewportLift)
+        viewport.addEventListener('scroll', scheduleVisualViewportLift)
+      }
+      updateVisualViewportLift()
+      return () => {
+        disposed = true
+        if (rafId !== null) cancelAnimationFrame(rafId)
+        if (viewport) {
+          viewport.removeEventListener('resize', scheduleVisualViewportLift)
+          viewport.removeEventListener('scroll', scheduleVisualViewportLift)
+        }
+        subs.forEach(sub => sub.remove())
+        pluginKeyboardLiftRef.current = 0
+        visualKeyboardLiftRef.current = 0
+        setKeyboardLift(0)
+        setVvHeight(window.innerHeight)
+      }
+    }
+
+    // Web fallback: visualViewport (unchanged behavior for desktop / PWA)
     const viewport = window.visualViewport
     if (!viewport) {
       setKeyboardLift(0)
@@ -362,7 +402,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
     }
     let rafId: number | null = null
     const update = () => {
-      const lift = Math.max(0, window.innerHeight - (viewport.height + viewport.offsetTop))
+      const lift = getVisualViewportKeyboardLift()
       setKeyboardLift(prev => (Math.abs(prev - lift) < 1 ? prev : lift))
       const nextH = viewport.height
       setVvHeight(prev => (Math.abs(prev - nextH) < 1 ? prev : nextH))
@@ -582,13 +622,12 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
       transition,
       bottom: keyboardLift,
       height: sheetHeight,
-      maxHeight: sheetHeight,
       // Defense in depth: an opaque near-black background sits behind the
       // glass material so any caller that forgets to hide its composer still
       // gets an opaque sheet (no bleed-through). The liquid-glass-surface
       // ::before highlight still renders on top via CSS specificity.
       // Respect the iOS status bar / notch so the search row never tucks
-      // under the system UI. Pairs with the sheetHeight clamp above.
+      // under the system UI.
       paddingTop: 'env(safe-area-inset-top, 0px)',
     }
   }, [dragging, dragTransition, dragY, entered, keyboardLift, reducedMotion, sheetHeight])
