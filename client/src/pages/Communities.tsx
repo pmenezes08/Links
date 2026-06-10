@@ -11,6 +11,7 @@ import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/vide
 import { renderTextWithLinks } from '../utils/linkUtils.tsx'
 import EditableAISummary from '../components/EditableAISummary'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
+import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 import { invalidateDashboardCache } from '../utils/dashboardCache'
 import { triggerDashboardServerPull } from '../utils/serverPull'
 import { cacheKeyVal, getCachedKeyVal } from '../utils/offlineDb'
@@ -1531,6 +1532,7 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
                         const fd = new URLSearchParams({ group_id: String(g.id) })
                         const r = await fetch('/api/groups/join', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                         const j = await r.json().catch(()=>null)
+                        if (handleBasicProfileRequired(j)) return
                         if (j?.success){ setItems(list => list.map(it => it.id===g.id ? ({ ...it, membership_status: j.status }) : it)) }
                         else alert(j?.error || t('communities.failed_to_join_group'))
                       }catch{ alert(t('communities.network_error')) }
@@ -1930,6 +1932,11 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                                 // Server
                                 const res = await fetch('/vote_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ poll_id: p.poll!.id, option_id: option.id }) })
                                 const j = await res.json().catch(()=>null)
+                                if (handleBasicProfileRequired(j)) {
+                                  // Gate blocked the vote — restore the pre-vote poll state.
+                                  setPosts(list => list.map(it => it.id===p.id ? ({ ...it, poll: p.poll }) : it))
+                                  return
+                                }
                                 if (j?.success && Array.isArray(j.poll_results)){
                                   setPosts(list => list.map(it => {
                                     if (it.id !== p.id || !it.poll) return it
@@ -1983,6 +1990,11 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                         const fd = new URLSearchParams({ post_id: String(p.id), reaction: 'heart' })
                         const r = await fetch('/add_reaction', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
                         const j = await r.json().catch(()=>null)
+                        if (handleBasicProfileRequired(j)) {
+                          // Gate blocked the write — undo the optimistic toggle.
+                          setPosts(list => list.map(it => it.id===p.id ? ({ ...it, user_reaction: prev, reactions: { ...(p.reactions||{}) } }) : it))
+                          return
+                        }
                         if (j?.success){
                           setPosts(list => list.map(it => it.id===p.id ? ({ ...it, reactions: { ...(it.reactions||{}), ...j.counts }, user_reaction: j.user_reaction }) : it))
                         }
@@ -2002,6 +2014,11 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                         const fd = new URLSearchParams({ post_id: String(p.id), reaction: 'thumbs-up' })
                         const r = await fetch('/add_reaction', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
                         const j = await r.json().catch(()=>null)
+                        if (handleBasicProfileRequired(j)) {
+                          // Gate blocked the write — undo the optimistic toggle.
+                          setPosts(list => list.map(it => it.id===p.id ? ({ ...it, user_reaction: prev, reactions: { ...(p.reactions||{}) } }) : it))
+                          return
+                        }
                         if (j?.success){
                           setPosts(list => list.map(it => it.id===p.id ? ({ ...it, reactions: { ...(it.reactions||{}), ...j.counts }, user_reaction: j.user_reaction }) : it))
                         }
@@ -2021,6 +2038,11 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                         const fd = new URLSearchParams({ post_id: String(p.id), reaction: 'thumbs-down' })
                         const r = await fetch('/add_reaction', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
                         const j = await r.json().catch(()=>null)
+                        if (handleBasicProfileRequired(j)) {
+                          // Gate blocked the write — undo the optimistic toggle.
+                          setPosts(list => list.map(it => it.id===p.id ? ({ ...it, user_reaction: prev, reactions: { ...(p.reactions||{}) } }) : it))
+                          return
+                        }
                         if (j?.success){
                           setPosts(list => list.map(it => it.id===p.id ? ({ ...it, reactions: { ...(it.reactions||{}), ...j.counts }, user_reaction: j.user_reaction }) : it))
                         }

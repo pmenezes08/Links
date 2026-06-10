@@ -5495,6 +5495,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
                           fd.append('reaction', '❤️')
                           const res = await fetch('/add_reply_reaction', { method: 'POST', credentials: 'include', body: fd })
                           const data = await res.json()
+                          if (handleBasicProfileRequired(data)) return
                           if (data.success) {
                             r.reactions = data.counts
                             r.user_reaction = data.user_reaction
@@ -5521,6 +5522,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
                           fd.append('reaction', '👍')
                           const res = await fetch('/add_reply_reaction', { method: 'POST', credentials: 'include', body: fd })
                           const data = await res.json()
+                          if (handleBasicProfileRequired(data)) return
                           if (data.success) {
                             r.reactions = data.counts
                             r.user_reaction = data.user_reaction
@@ -5547,6 +5549,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
                           fd.append('reaction', '👎')
                           const res = await fetch('/add_reply_reaction', { method: 'POST', credentials: 'include', body: fd })
                           const data = await res.json()
+                          if (handleBasicProfileRequired(data)) return
                           if (data.success) {
                             r.reactions = data.counts
                             r.user_reaction = data.user_reaction

@@ -637,6 +637,7 @@ export default function CommentReply() {
       const endpoint = isGroupThread ? '/api/group_replies/react' : '/add_reply_reaction'
       const res = await fetch(endpoint, { method: 'POST', credentials: 'include', body: fd })
       const data = await res.json()
+      if (handleBasicProfileRequired(data)) return
       if (data.success) {
         setReply((prev) => {
           if (!prev) return prev
