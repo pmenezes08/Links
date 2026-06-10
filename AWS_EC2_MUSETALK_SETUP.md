@@ -316,7 +316,7 @@ For production with custom domain (api.yourdomain.com):
 
 ## Step 8: Test from Your Main App
 
-On your **PythonAnywhere server**:
+On your **Cloud Run server**:
 
 ```bash
 cd ~/WorkoutX/Links
@@ -341,7 +341,7 @@ print(f"{'✅' if healthy else '❌'} {message}")
 PYTEST
 
 # Reload app
-touch /var/www/puntz08_pythonanywhere_com_wsgi.py
+touch Cloud Run service configuration
 ```
 
 ---

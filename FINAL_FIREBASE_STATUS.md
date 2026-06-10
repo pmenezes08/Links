@@ -2,7 +2,7 @@
 
 ## ✅ **Server: 100% Ready**
 
-Your PythonAnywhere server is **completely configured**:
+Your Cloud Run server is **completely configured**:
 
 ```
 2025-11-24 18:20:06 ✅ Firebase Cloud Messaging initialized
@@ -150,7 +150,7 @@ push error: curve must be an EllipticCurve instance
 
 ## 🎯 **Current Status**
 
-### **✅ Server (PythonAnywhere):**
+### **✅ Server (Cloud Run):**
 - Firebase initialized ✅
 - Database ready ✅
 - API working ✅

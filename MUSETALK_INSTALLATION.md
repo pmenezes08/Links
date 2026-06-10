@@ -38,14 +38,14 @@ Should output: `✅ MuseTalk is ready!`
 
 ### 4. Set Environment Variables (Optional)
 ```bash
-# In PythonAnywhere Web tab > Environment variables
+# In Cloud Run Web tab > Environment variables
 MUSETALK_ENABLED=true
 MUSETALK_DEVICE=cpu  # Use 'cuda' if GPU available
 MUSETALK_BATCH_SIZE=8
 ```
 
 ### 5. Restart Flask App
-Reload your web app in PythonAnywhere.
+Reload your web app in Cloud Run.
 
 ## Usage
 

@@ -29,7 +29,7 @@ def get_mysql_connection():
         import pymysql
         from pymysql.cursors import DictCursor
         
-        host = os.environ.get('MYSQL_HOST', 'puntz08.mysql.pythonanywhere-services.com')
+        host = os.environ.get('MYSQL_HOST', 'YOUR_CLOUD_SQL_HOST')
         user = os.environ.get('MYSQL_USER', 'puntz08')
         password = os.environ.get('MYSQL_PASSWORD')
         database = os.environ.get('MYSQL_DATABASE', 'puntz08$C-Point')

@@ -51,7 +51,7 @@ def optimize_image_performance():
     print("• Images download once, then load instantly")
     print("• No network latency for cached images")
     print("• In-memory cache is faster than slow Redis")
-    print("• Best performance for PythonAnywhere environment")
+    print("• Best performance for Cloud Run environment")
     print()
     
     print("🚀 Implementation:")

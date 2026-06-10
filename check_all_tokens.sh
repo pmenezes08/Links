@@ -9,7 +9,7 @@ echo "============================================================"
 echo ""
 
 echo "1️⃣ All tokens in database:"
-mysql -u puntz08 -p"$MYSQL_PASSWORD" -h puntz08.mysql.pythonanywhere-services.com "puntz08\$C-Point" -e "
+mysql -u puntz08 -p"$MYSQL_PASSWORD" -h YOUR_CLOUD_SQL_HOST "puntz08\$C-Point" -e "
 SELECT 
   id, 
   username, 
@@ -24,7 +24,7 @@ ORDER BY created_at DESC;
 
 echo ""
 echo "2️⃣ Anonymous tokens:"
-mysql -u puntz08 -p"$MYSQL_PASSWORD" -h puntz08.mysql.pythonanywhere-services.com "puntz08\$C-Point" -e "
+mysql -u puntz08 -p"$MYSQL_PASSWORD" -h YOUR_CLOUD_SQL_HOST "puntz08\$C-Point" -e "
 SELECT COUNT(*) as anonymous_count
 FROM push_tokens 
 WHERE username LIKE 'anonymous_%';
@@ -32,7 +32,7 @@ WHERE username LIKE 'anonymous_%';
 
 echo ""
 echo "3️⃣ Paulo's tokens:"
-mysql -u puntz08 -p"$MYSQL_PASSWORD" -h puntz08.mysql.pythonanywhere-services.com "puntz08\$C-Point" -e "
+mysql -u puntz08 -p"$MYSQL_PASSWORD" -h YOUR_CLOUD_SQL_HOST "puntz08\$C-Point" -e "
 SELECT COUNT(*) as paulo_count
 FROM push_tokens 
 WHERE username = 'Paulo';
@@ -45,7 +45,7 @@ echo "============================================================"
 echo ""
 
 # Count anonymous tokens
-ANON_COUNT=$(mysql -u puntz08 -p"$MYSQL_PASSWORD" -h puntz08.mysql.pythonanywhere-services.com "puntz08\$C-Point" -se "SELECT COUNT(*) FROM push_tokens WHERE username LIKE 'anonymous_%';" 2>/dev/null)
+ANON_COUNT=$(mysql -u puntz08 -p"$MYSQL_PASSWORD" -h YOUR_CLOUD_SQL_HOST "puntz08\$C-Point" -se "SELECT COUNT(*) FROM push_tokens WHERE username LIKE 'anonymous_%';" 2>/dev/null)
 
 if [ "$ANON_COUNT" -gt 1 ]; then
     echo "✅ Found $ANON_COUNT anonymous token(s)"

@@ -97,7 +97,7 @@ You have 2 options:
 **Steps:**
 1. Follow `IOS_APNS_SETUP_COMPLETE_GUIDE.md`
 2. Get .p8 file from Apple Developer
-3. Upload to PythonAnywhere
+3. Upload to Cloud Run
 4. Add environment variables to WSGI
 5. Install `apns2` library
 6. Uncomment APNs code in `notifications.py`
@@ -139,7 +139,7 @@ Based on error logs, determine which step is failing:
 
 ## 💡 Quick Test:
 
-In PythonAnywhere MySQL console:
+In Cloud Run MySQL console:
 
 ```sql
 -- Check if table exists

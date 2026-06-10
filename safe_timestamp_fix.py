@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Safe timestamp fix that avoids MySQL datetime comparison errors
-Run this on PythonAnywhere bash console
+Run this on Cloud Run bash console
 """
 
 import pymysql
@@ -14,9 +14,9 @@ def safe_fix_timestamps():
     print("Safe Timestamp Fix Script")
     print("=" * 30)
     
-    # MySQL connection details for PythonAnywhere
+    # MySQL connection details for Cloud Run
     mysql_config = {
-        'host': 'puntz08.mysql.pythonanywhere-services.com',
+        'host': 'YOUR_CLOUD_SQL_HOST',
         'user': 'puntz08',
         'password': 'tHqF#6gTM_XQYbB',  # From user input
         'database': 'puntz08$C-Point'

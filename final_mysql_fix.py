@@ -14,7 +14,7 @@ def run_final_fix():
         from pymysql.cursors import DictCursor
         
         # Get MySQL credentials
-        host = os.environ.get('MYSQL_HOST', 'puntz08.mysql.pythonanywhere-services.com')
+        host = os.environ.get('MYSQL_HOST', 'YOUR_CLOUD_SQL_HOST')
         user = os.environ.get('MYSQL_USER', 'puntz08')
         password = os.environ.get('MYSQL_PASSWORD')
         database = os.environ.get('MYSQL_DATABASE', 'puntz08$C-Point')
@@ -157,7 +157,7 @@ def run_final_fix():
         print("1. Restart your Flask application")
         print("2. Set environment variables if not already set:")
         print("   export DB_BACKEND=mysql")
-        print("   export MYSQL_HOST=puntz08.mysql.pythonanywhere-services.com")
+        print("   export MYSQL_HOST=YOUR_CLOUD_SQL_HOST")
         print("   export MYSQL_USER=puntz08")
         print("   export MYSQL_PASSWORD=your_password")
         print("   export MYSQL_DATABASE='puntz08$C-Point'")

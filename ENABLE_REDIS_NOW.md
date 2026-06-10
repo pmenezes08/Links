@@ -2,15 +2,15 @@
 
 ## Your Redis Cloud Is Ready!
 
-You already have Redis Cloud configured. Here's how to enable it on PythonAnywhere.
+You already have Redis Cloud configured. Here's how to enable it on Cloud Run.
 
 ---
 
 ## ⚡ Quick Setup (5 minutes)
 
-### Step 1: Set Environment Variables on PythonAnywhere
+### Step 1: Set Environment Variables on Cloud Run
 
-1. **Go to PythonAnywhere**
+1. **Go to Cloud Run**
 2. **Web tab** → Your app → **Environment variables** section
 3. **Add these 5 variables**:
 
@@ -24,7 +24,7 @@ REDIS_PASSWORD=9wrV3MjrTnIC9uTcaEqrAvrW2fOsqdxV
 
 ### Step 2: Install Redis Package
 
-In PythonAnywhere **Bash console**:
+In Cloud Run **Bash console**:
 ```bash
 pip install redis==5.0.1 --user
 ```
@@ -147,7 +147,7 @@ With Redis + MySQL indices + current optimizations:
 
 1. **Never commit passwords to Git** ✅
    - I didn't include your password in any committed files
-   - Keep it in PythonAnywhere environment variables only
+   - Keep it in Cloud Run environment variables only
 
 2. **Redis Cloud Free Tier**:
    - 30MB storage (plenty for your cache needs)
@@ -155,7 +155,7 @@ With Redis + MySQL indices + current optimizations:
    - Daily backups included
 
 3. **If password changes**:
-   - Update PythonAnywhere environment variable
+   - Update Cloud Run environment variable
    - Reload web app
    - That's it!
 
@@ -176,7 +176,7 @@ pip install redis==5.0.1 --user
 ### "Connection timeout"
 - Redis Cloud might have IP restrictions
 - Check Redis Cloud dashboard → Security → Allowed IPs
-- Add PythonAnywhere IP range (or allow all)
+- Add Cloud Run IP range (or allow all)
 
 ### Still using in-memory cache
 - Make sure `REDIS_ENABLED=true` (not `True` or `1`)

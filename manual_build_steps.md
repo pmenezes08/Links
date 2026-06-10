@@ -1,6 +1,6 @@
-# Manual React Build Steps for PythonAnywhere
+# Manual React Build Steps for Cloud Run
 
-Since npm might not be in your PATH on PythonAnywhere, here are manual steps to rebuild your React app:
+Since npm might not be in your PATH on Cloud Run, here are manual steps to rebuild your React app:
 
 ## Option 1: Try sourcing nvm
 

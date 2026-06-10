@@ -16,9 +16,9 @@ def run_migration():
         # Set environment variables to force MySQL usage
         os.environ['DB_BACKEND'] = 'mysql'
         
-        # Set MySQL connection details for PythonAnywhere if not already set
+        # Set MySQL connection details for Cloud Run if not already set
         if not os.environ.get('MYSQL_HOST'):
-            os.environ['MYSQL_HOST'] = 'puntz08.mysql.pythonanywhere-services.com'
+            os.environ['MYSQL_HOST'] = 'YOUR_CLOUD_SQL_HOST'
         if not os.environ.get('MYSQL_USER'):
             os.environ['MYSQL_USER'] = 'puntz08'
         if not os.environ.get('MYSQL_DATABASE'):

@@ -8,7 +8,7 @@ echo ""
 
 # Check 1: push_tokens table
 echo "1️⃣ Checking if push_tokens table exists..."
-mysql -u puntz08 -p -h puntz08.mysql.pythonanywhere-services.com 'puntz08$C-Point' -e "SHOW TABLES LIKE 'push_tokens';" 2>/dev/null | grep -q push_tokens
+mysql -u puntz08 -p -h YOUR_CLOUD_SQL_HOST 'puntz08$C-Point' -e "SHOW TABLES LIKE 'push_tokens';" 2>/dev/null | grep -q push_tokens
 
 if [ $? -eq 0 ]; then
     echo "   ✅ push_tokens table exists"
@@ -16,7 +16,7 @@ if [ $? -eq 0 ]; then
     # Check for registered tokens
     echo ""
     echo "2️⃣ Checking for registered device tokens..."
-    mysql -u puntz08 -p -h puntz08.mysql.pythonanywhere-services.com 'puntz08$C-Point' -e "SELECT username, platform, LEFT(token, 30) as token_preview, created_at FROM push_tokens ORDER BY created_at DESC LIMIT 5;" 2>/dev/null
+    mysql -u puntz08 -p -h YOUR_CLOUD_SQL_HOST 'puntz08$C-Point' -e "SELECT username, platform, LEFT(token, 30) as token_preview, created_at FROM push_tokens ORDER BY created_at DESC LIMIT 5;" 2>/dev/null
     
 else
     echo "   ❌ push_tokens table does NOT exist"
@@ -37,7 +37,7 @@ fi
 
 echo ""
 echo "4️⃣ Backend logs check..."
-echo "   Open PythonAnywhere Web tab → Error log"
+echo "   Open Cloud Run Web tab → Error log"
 echo "   Look for:"
 echo "   - '📱 Registered new push token' = iOS app registered successfully"
 echo "   - '📱 [APNs] Would send to iOS device' = Trying to send (APNs not configured)"

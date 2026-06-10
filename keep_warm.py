@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple keep-warm script for PythonAnywhere.
+Simple keep-warm script for Cloud Run.
 
 Continuously pings key application endpoints so Gunicorn workers stay
 hot and ready to serve real traffic without cold-start latency.

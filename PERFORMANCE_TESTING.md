@@ -8,7 +8,7 @@ This guide shows you how to measure the performance impact of Redis caching on y
 
 ## 📊 Quick Test
 
-### On PythonAnywhere:
+### On Cloud Run:
 
 ```bash
 cd ~/WorkoutX/Links
@@ -162,7 +162,7 @@ cat performance_*.log
 
 **From your local machine:**
 ```bash
-# Test from outside PythonAnywhere network
+# Test from outside Cloud Run network
 curl -w "\nTime: %{time_total}s\n" https://www.c-point.co/premium_dashboard
 ```
 

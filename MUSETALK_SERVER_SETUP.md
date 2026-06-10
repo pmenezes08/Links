@@ -14,7 +14,7 @@
 - **CPU inference**: 1-3 minutes per 10-second video
 - **GPU inference (CUDA)**: 10-30 seconds per 10-second video
 
-## Installation Steps for PythonAnywhere Server
+## Installation Steps for Cloud Run Server
 
 ### 1. Check Available Space
 ```bash
@@ -30,7 +30,7 @@ git clone https://github.com/TMElyralab/MuseTalk.git
 
 ### 3. Install Dependencies
 ```bash
-# Install PyTorch (CPU version for PythonAnywhere)
+# Install PyTorch (CPU version for Cloud Run)
 pip3 install --user torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 
 # Install other dependencies
@@ -72,7 +72,7 @@ Make sure your `bodybuilding_app.py` has the MuseTalk integration (already done 
 
 ### 7. Restart Flask Application
 ```bash
-# On PythonAnywhere, reload your web app from the Web tab
+# On Cloud Run, reload your web app from the Web tab
 # Or restart the WSGI process
 ```
 
@@ -88,12 +88,12 @@ Make sure your `bodybuilding_app.py` has the MuseTalk integration (already done 
 ## Troubleshooting
 
 ### "No space left on device"
-- PythonAnywhere free tier has limited space
+- Cloud Run free tier has limited space
 - Consider upgrading or using a different server
 
 ### "Out of memory"
 - MuseTalk requires at least 8GB RAM
-- Free PythonAnywhere accounts may not have enough
+- Free Cloud Run accounts may not have enough
 - Consider using Hetzner Cloud or similar (~$5/month)
 
 ### Inference is very slow
@@ -105,7 +105,7 @@ Make sure your `bodybuilding_app.py` has the MuseTalk integration (already done 
 
 ## Alternative: Use Cheaper Cloud GPU
 
-If PythonAnywhere doesn't have enough resources, consider:
+If Cloud Run doesn't have enough resources, consider:
 
 1. **Hetzner Cloud** (~$5-10/month with GPU)
 2. **Linode** (~$10/month with 4GB RAM)

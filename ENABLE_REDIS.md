@@ -22,7 +22,7 @@
    - Username: `default`
    - Password: `your-password-here`
 
-3. **Set environment variables on PythonAnywhere**:
+3. **Set environment variables on Cloud Run**:
    ```bash
    # Go to: Web → Your app → Environment variables
    REDIS_ENABLED=true
@@ -149,7 +149,7 @@ Look for these in your app logs:
 - In-memory cache is already optimized, but Redis Cloud will be faster
 - Check database indices are created
 - Monitor database query time in logs
-- Consider upgrading PythonAnywhere plan for more resources
+- Consider upgrading Cloud Run plan for more resources
 
 ---
 

@@ -1,5 +1,5 @@
-# Manual Node.js Installation Commands for PythonAnywhere
-# Copy and paste these commands one by one in your PythonAnywhere console
+# Manual Node.js Installation Commands for Cloud Run
+# Copy and paste these commands one by one in your Cloud Run console
 
 # Step 1: Fix permissions
 chmod +x *.sh

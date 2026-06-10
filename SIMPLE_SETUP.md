@@ -41,7 +41,7 @@ open App.xcworkspace
 
 ### **Step 3: Server Setup (5 min)**
 
-**On PythonAnywhere:**
+**On Cloud Run:**
 ```bash
 cd ~/workspace
 git pull origin main

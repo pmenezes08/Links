@@ -31,7 +31,7 @@ def apply_database_optimizations():
     if not db_path:
         print("❌ Database not found!")
         print(f"   Searched: {', '.join(db_paths)}")
-        print("\n💡 Run this script on your PythonAnywhere server:")
+        print("\n💡 Run this script on your Cloud Run server:")
         print("   python3 apply_performance_fixes.py")
         return False
     

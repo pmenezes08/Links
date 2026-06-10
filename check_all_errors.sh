@@ -5,7 +5,7 @@ echo "🔍 Checking ALL Recent Server Errors"
 echo "====================================="
 echo ""
 
-ERROR_LOG="/var/log/puntz08.pythonanywhere.com.error.log"
+ERROR_LOG="/var/log/app.c-point.co.error.log"
 
 if [ ! -f "$ERROR_LOG" ]; then
     echo "❌ Error log not found"

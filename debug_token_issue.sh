@@ -103,11 +103,11 @@ echo ""
 
 # 5. Check recent server logs
 echo "5️⃣  Checking recent server logs for registration attempts..."
-if [ -f "/var/log/puntz08.pythonanywhere.com.error.log" ]; then
+if [ -f "/var/log/app.c-point.co.error.log" ]; then
     echo "   Last 10 lines with 'fcm' or 'register':"
-    tail -100 /var/log/puntz08.pythonanywhere.com.error.log | grep -iE "fcm|register_fcm|push.*token" | tail -10 || echo "   (No recent FCM activity in logs)"
+    tail -100 /var/log/app.c-point.co.error.log | grep -iE "fcm|register_fcm|push.*token" | tail -10 || echo "   (No recent FCM activity in logs)"
 else
-    echo "   ⚠️  Can't access server logs (run this on PythonAnywhere)"
+    echo "   ⚠️  Can't access server logs (run this on Cloud Run)"
 fi
 echo ""
 

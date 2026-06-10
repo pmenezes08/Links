@@ -5,7 +5,7 @@ import os
 import sys
 
 # Set MySQL env vars
-os.environ['MYSQL_HOST'] = 'puntz08.mysql.pythonanywhere-services.com'
+os.environ['MYSQL_HOST'] = 'YOUR_CLOUD_SQL_HOST'
 os.environ['MYSQL_USER'] = 'puntz08'
 os.environ['MYSQL_DB'] = 'puntz08$C-Point'
 os.environ['MYSQL_PASSWORD'] = '5r4VN4Qq'

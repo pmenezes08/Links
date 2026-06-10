@@ -149,7 +149,7 @@ ufw allow 5000
 
 ## Step 3: Configure Your Main App
 
-On your **PythonAnywhere server** (your main app):
+On your **Cloud Run server** (your main app):
 
 ```bash
 cd ~/WorkoutX/Links
@@ -183,9 +183,9 @@ Expected output: `(True, 'API healthy')`
 
 ```bash
 # Reload Flask app
-touch /var/www/puntz08_pythonanywhere_com_wsgi.py
+touch Cloud Run service configuration
 
-# Or use the PythonAnywhere web interface:
+# Or use the Cloud Run web interface:
 # "Web" tab → "Reload" button
 ```
 
@@ -198,7 +198,7 @@ touch /var/www/puntz08_pythonanywhere_com_wsgi.py
 3. Upload image and audio
 4. Submit!
 
-Check logs on PythonAnywhere:
+Check logs on Cloud Run:
 
 ```bash
 tail -f ~/WorkoutX/Links/server.log

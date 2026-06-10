@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Test script to verify sub-community creation permissions for Mary
-Run this on PythonAnywhere to simulate the exact request
+Run this on Cloud Run to simulate the exact request
 """
 
 import os
@@ -12,7 +12,7 @@ sys.path.insert(0, '/home/puntz08/dev/Links')
 
 # Set environment
 os.environ['USE_MYSQL'] = '1'
-os.environ['MYSQL_HOST'] = 'puntz08.mysql.pythonanywhere-services.com'
+os.environ['MYSQL_HOST'] = 'YOUR_CLOUD_SQL_HOST'
 os.environ['MYSQL_USER'] = 'puntz08'
 os.environ['MYSQL_PASSWORD'] = os.environ.get('MYSQL_PASSWORD', '')
 os.environ['MYSQL_DATABASE'] = 'puntz08$C-Point'

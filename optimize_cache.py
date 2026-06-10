@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Optimize In-Memory Cache Performance
-Tune caching settings for maximum speed on PythonAnywhere
+Tune caching settings for maximum speed on Cloud Run
 """
 
 import os
@@ -20,7 +20,7 @@ def optimize_cache_settings():
     # Optimized cache settings
     optimized_settings = {
         'CACHE_ENABLED': 'true',
-        'REDIS_ENABLED': 'false',  # Use in-memory for PythonAnywhere
+        'REDIS_ENABLED': 'false',  # Use in-memory for Cloud Run
         
         # Aggressive caching TTLs for speed
         'CACHE_TTL_PROFILES': '900',      # 15 minutes (profiles don't change often)

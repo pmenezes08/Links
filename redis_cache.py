@@ -55,7 +55,7 @@ MAX_CACHE_ENTRIES = int(os.environ.get('CACHE_MAX_ENTRIES', '10000'))
 CLEANUP_INTERVAL = int(os.environ.get('CACHE_CLEANUP_INTERVAL', '100'))
 
 class MemoryCache:
-    """In-memory cache with TTL support for PythonAnywhere"""
+    """In-memory cache with TTL support for Cloud Run"""
     def __init__(self):
         self.cache = {}
         self.expiry = {}

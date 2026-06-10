@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Test if Redis is configured correctly via environment variables
-Run this on PythonAnywhere to diagnose issues
+Run this on Cloud Run to diagnose issues
 """
 
 import os

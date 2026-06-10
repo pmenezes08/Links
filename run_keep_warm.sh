@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Wrapper script for PythonAnywhere always-on task.
+# Wrapper script for Cloud Run always-on task.
 # Ensures the keep-warm loop runs with the required environment variables.
 
 set -euo pipefail

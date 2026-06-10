@@ -18,7 +18,7 @@ export OPENAI_API_KEY='sk-proj-YOUR-KEY-HERE'
 python3 bodybuilding_app.py
 ```
 
-### Option 3: One-liner (for PythonAnywhere or remote server)
+### Option 3: One-liner (for Cloud Run or remote server)
 
 ```bash
 OPENAI_API_KEY='sk-proj-YOUR-KEY-HERE' python3 bodybuilding_app.py
@@ -48,9 +48,9 @@ OpenAI not available or API key not set, skipping transcription
 
 ---
 
-## 📱 For PythonAnywhere Users
+## 📱 For Cloud Run Users
 
-If you're on PythonAnywhere:
+If you're on Cloud Run:
 
 1. Go to **Web tab**
 2. Scroll to **Environment variables**

@@ -10,7 +10,7 @@ Your app has **Redis caching implemented but not enabled**. This is causing slow
 
 ### 1. Enable Database Indices (5 minutes, HUGE impact)
 
-**On PythonAnywhere**:
+**On Cloud Run**:
 ```bash
 # 1. Open Bash console
 # 2. Run the optimization script
@@ -67,7 +67,7 @@ Your app is already using Python's built-in in-memory cache. This provides:
    Password: your-password-here
    ```
 
-3. **Configure on PythonAnywhere**:
+3. **Configure on Cloud Run**:
    - Go to: Web → Your app → Environment variables
    - Add these:
    ```

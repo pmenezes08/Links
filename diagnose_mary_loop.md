@@ -5,7 +5,7 @@
 ### 1. Check Server Logs
 ```bash
 # On your server
-tail -100 /var/log/puntz08.pythonanywhere.com.error.log | grep -i "mary\|circular\|duplicate"
+tail -100 /var/log/app.c-point.co.error.log | grep -i "mary\|circular\|duplicate"
 ```
 
 ### 2. Check Browser Console

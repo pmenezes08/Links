@@ -7,7 +7,7 @@ You checked earlier and saw "nothing to pull" - that was BEFORE we pushed the fi
 QUICK FIX (5 minutes):
 
 1. SSH in:
-   ssh puntz08@ssh.pythonanywhere.com
+   ssh puntz08@Cloud Run access via gcloud
    cd ~/workspace
 
 2. Pull the NEW code:
@@ -24,7 +24,7 @@ QUICK FIX (5 minutes):
    ❌ If error: pip3.10 install --user "httpx[http2]>=0.24.0" "PyJWT>=2.8.0"
 
 4. Reload web app:
-   - Go to pythonanywhere.com
+   - Go to Cloud Run
    - Web tab
    - Click green Reload button
 

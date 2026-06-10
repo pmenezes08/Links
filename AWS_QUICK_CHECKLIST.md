@@ -162,7 +162,7 @@ curl http://localhost:5000/health
 
 ## ☑️ Configure Main App (5 minutes)
 
-### On PythonAnywhere:
+### On Cloud Run:
 
 ```bash
 cd ~/WorkoutX/Links
@@ -202,7 +202,7 @@ EOF
 ### Reload App
 
 ```bash
-touch /var/www/puntz08_pythonanywhere_com_wsgi.py
+touch Cloud Run service configuration
 ```
 
 - [ ] App reloaded
@@ -219,7 +219,7 @@ touch /var/www/puntz08_pythonanywhere_com_wsgi.py
 **Check logs:**
 
 ```bash
-# On PythonAnywhere:
+# On Cloud Run:
 tail -f ~/WorkoutX/Links/server.log
 
 # On EC2:

@@ -116,7 +116,7 @@ Per video: ~$0.001-0.003 (10-30 seconds)
                     🚀 GETTING STARTED
 ================================================================================
 
-STEP 1: Pull latest code on your PythonAnywhere server
+STEP 1: Pull latest code on your Cloud Run server
 ────────────────────────────────────────────────────────
 cd ~/WorkoutX/Links
 git pull origin main

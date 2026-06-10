@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-Find the correct MySQL password for PythonAnywhere
-Run this script ON PythonAnywhere to find the working password
+Find the correct MySQL password for Cloud Run
+Run this script ON Cloud Run to find the working password
 """
 
 import os
 import sys
 
 def test_mysql_passwords():
-    """Test all possible MySQL passwords on PythonAnywhere"""
+    """Test all possible MySQL passwords on Cloud Run"""
     print("🚨 FINDING CORRECT MYSQL PASSWORD")
     print("=" * 50)
-    print("🔍 Testing passwords on PythonAnywhere...")
+    print("🔍 Testing passwords on Cloud Run...")
     
     # Common passwords to try
     possible_passwords = [
@@ -35,13 +35,13 @@ def test_mysql_passwords():
         "links123",      # app name lowercase
         "C-Point123",    # domain name
         "c-point123",    # domain lowercase
-        "PythonAnywhere123",  # service name
-        "pythonanywhere123",  # service lowercase
+        "Cloud Run123",  # service name
+        "cloud-run123",  # service lowercase
         "PA123456",      # PA abbreviation
         "pa123456",      # PA lowercase
     ]
     
-    host = "puntz08.mysql.pythonanywhere-services.com"
+    host = "YOUR_CLOUD_SQL_HOST"
     user = "puntz08"
     database = "puntz08$C-Point"
     
@@ -125,7 +125,7 @@ def create_fix_script(working_password):
     
     # Create .env file
     env_content = f"""# MySQL Environment Variables for C-Point Production
-MYSQL_HOST=puntz08.mysql.pythonanywhere-services.com
+MYSQL_HOST=YOUR_CLOUD_SQL_HOST
 MYSQL_USER=puntz08
 MYSQL_PASSWORD={working_password}
 MYSQL_DB=puntz08$C-Point
@@ -151,7 +151,7 @@ CANONICAL_SCHEME=https
 echo "🚀 Starting C-Point with CORRECT password..."
 
 # Set environment variables
-export MYSQL_HOST="puntz08.mysql.pythonanywhere-services.com"
+export MYSQL_HOST="YOUR_CLOUD_SQL_HOST"
 export MYSQL_USER="puntz08"
 export MYSQL_PASSWORD="{working_password}"
 export MYSQL_DB="puntz08$C-Point"

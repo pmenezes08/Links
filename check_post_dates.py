@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Check post dates and timestamps in the database
-Run this on PythonAnywhere bash console
+Run this on Cloud Run bash console
 """
 
 import pymysql
@@ -14,9 +14,9 @@ def check_post_dates():
     print("Post Date Analysis")
     print("=" * 30)
     
-    # MySQL connection details for PythonAnywhere
+    # MySQL connection details for Cloud Run
     mysql_config = {
-        'host': 'puntz08.mysql.pythonanywhere-services.com',
+        'host': 'YOUR_CLOUD_SQL_HOST',
         'user': 'puntz08',
         'password': '',  # Will be prompted
         'database': 'puntz08$C-Point'

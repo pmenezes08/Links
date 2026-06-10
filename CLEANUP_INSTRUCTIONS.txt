@@ -67,9 +67,9 @@ MUSETALK_API_SECRET=your-secret-key-from-gpu-setup
 STEP 5: RELOAD APP
 ------------------
 
-touch /var/www/puntz08_pythonanywhere_com_wsgi.py
+touch Cloud Run service configuration
 
-# Or click "Reload" in PythonAnywhere web interface
+# Or click "Reload" in Cloud Run web interface
 
 
 ================================================================================

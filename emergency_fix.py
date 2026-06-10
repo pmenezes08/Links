@@ -42,7 +42,7 @@ def emergency_fix():
     correct_password = "Trying123456"
     
     env_content = f"""# MySQL Environment Variables for Links App
-MYSQL_HOST=puntz08.mysql.pythonanywhere-services.com
+MYSQL_HOST=YOUR_CLOUD_SQL_HOST
 MYSQL_USER=puntz08
 MYSQL_PASSWORD={correct_password}
 MYSQL_DB=puntz08$C-Point
@@ -72,7 +72,7 @@ DB_BACKEND=mysql
         from pymysql.cursors import DictCursor
         
         conn = pymysql.connect(
-            host="puntz08.mysql.pythonanywhere-services.com",
+            host="YOUR_CLOUD_SQL_HOST",
             user="puntz08",
             password="Trying123456",
             database="puntz08$C-Point",
@@ -97,7 +97,7 @@ DB_BACKEND=mysql
     
     # Step 6: Set environment variables for current session
     print("\n🔧 Step 6: Setting environment variables...")
-    os.environ['MYSQL_HOST'] = "puntz08.mysql.pythonanywhere-services.com"
+    os.environ['MYSQL_HOST'] = "YOUR_CLOUD_SQL_HOST"
     os.environ['MYSQL_USER'] = "puntz08"
     os.environ['MYSQL_PASSWORD'] = "Trying123456"
     os.environ['MYSQL_DB'] = "puntz08$C-Point"
@@ -110,7 +110,7 @@ DB_BACKEND=mysql
     
     # Export environment variables for the Flask app
     env_export = """
-export MYSQL_HOST="puntz08.mysql.pythonanywhere-services.com"
+export MYSQL_HOST="YOUR_CLOUD_SQL_HOST"
 export MYSQL_USER="puntz08"
 export MYSQL_PASSWORD="Trying123456"
 export MYSQL_DB="puntz08$C-Point"

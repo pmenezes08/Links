@@ -677,8 +677,8 @@ Your app is now:
 - ✅ Secure (SSL, encryption, private subnets)
 - ✅ Monitored (CloudWatch alarms)
 
-**Performance**: 10-50x faster than PythonAnywhere  
-**Capacity**: Can handle 1,000+ concurrent users  
+**Performance**: 10-50x faster than Cloud Run
+**Capacity**: Can handle 1,000+ concurrent users
 **Location**: EU-based for GDPR compliance
 
 🎉 **Congratulations!**

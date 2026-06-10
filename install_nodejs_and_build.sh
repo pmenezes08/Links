@@ -1,11 +1,11 @@
 #!/bin/bash
 # Install Node.js and npm, then build React app with chat fixes
 
-echo "Installing Node.js and npm on PythonAnywhere..."
+echo "Installing Node.js and npm on Cloud Run..."
 
-# Check if we're on PythonAnywhere
-if [[ "$(hostname)" == *"pythonanywhere"* ]]; then
-    echo "Detected PythonAnywhere environment"
+# Check if we're on Cloud Run
+if [[ "$(hostname)" == *"cloud-run"* ]]; then
+    echo "Detected Cloud Run environment"
     
     # Install Node.js using NodeSource repository
     echo "Adding NodeSource repository..."
@@ -26,7 +26,7 @@ if [[ "$(hostname)" == *"pythonanywhere"* ]]; then
         exit 1
     fi
 else
-    echo "Not on PythonAnywhere - assuming Node.js is available"
+    echo "Not on Cloud Run - assuming Node.js is available"
 fi
 
 # Navigate to client directory

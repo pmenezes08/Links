@@ -1,10 +1,10 @@
 #!/bin/bash
-# Quick MySQL Backup Script for PythonAnywhere
+# Quick MySQL Backup Script for Cloud Run
 # Usage: ./quick_backup.sh
 
 # Configuration - UPDATE THESE VALUES
 MYSQL_USER="YourUsername"
-MYSQL_HOST="YourUsername.mysql.pythonanywhere-services.com"
+MYSQL_HOST="YOUR_CLOUD_SQL_HOST"
 MYSQL_DATABASE="YourUsername\$database_name"
 BACKUP_DIR="$HOME/backups"
 

@@ -97,7 +97,7 @@ Then rebuild in Xcode.
 
 ### **Step 1: Run Debug Script on Server**
 
-On PythonAnywhere:
+On Cloud Run:
 ```bash
 cd /home/puntz08/WorkoutX/Links
 bash debug_token_issue.sh
@@ -219,7 +219,7 @@ EOF
 
 ### **Test Endpoint Manually**
 
-From PythonAnywhere bash:
+From Cloud Run bash:
 ```bash
 python3.10 << 'EOF'
 import requests
@@ -284,7 +284,7 @@ Based on similar issues, **90% of the time it's**:
 
 ## 📞 Next Steps
 
-1. Run `bash debug_token_issue.sh` on PythonAnywhere
+1. Run `bash debug_token_issue.sh` on Cloud Run
 2. Share the output
 3. Check Xcode for the file visibility issue
 4. If still stuck, connect iPhone to Mac and share Xcode console output

@@ -1,6 +1,6 @@
 # Rebuild React App - Quick Guide
 
-## On Your PythonAnywhere Server
+## On Your Cloud Run Server
 
 ```bash
 # 1. Exit musetalk_env if you're still in it
@@ -28,7 +28,7 @@ npm run build
 cd ..
 
 # 9. Reload your app
-touch /var/www/puntz08_pythonanywhere_com_wsgi.py
+touch Cloud Run service configuration
 ```
 
 ## Expected Output

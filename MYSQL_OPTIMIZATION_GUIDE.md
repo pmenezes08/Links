@@ -1,4 +1,4 @@
-# MySQL Performance Optimization Guide for PythonAnywhere
+# MySQL Performance Optimization Guide for Cloud Run
 
 ## 🎯 You're Using MySQL - Here's What To Do
 
@@ -6,10 +6,10 @@ The SQLite script won't work for you. Use one of these methods instead:
 
 ---
 
-## ✅ Method 1: Via PythonAnywhere MySQL Console (Easiest)
+## ✅ Method 1: Via Cloud Run MySQL Console (Easiest)
 
 ### Step 1: Go to MySQL Console
-1. Log into PythonAnywhere
+1. Log into Cloud Run
 2. Go to: **Databases** tab
 3. Click: **Start a console on: your_database_name**
 
@@ -70,9 +70,9 @@ pip install mysql-connector-python --user
 ```
 
 ### Step 2: Set Environment Variables
-In PythonAnywhere Web tab → Environment variables:
+In Cloud Run Web tab → Environment variables:
 ```
-MYSQL_HOST=your-mysql-host.mysql.pythonanywhere-services.com
+MYSQL_HOST=YOUR_CLOUD_SQL_HOST
 MYSQL_USER=your_username
 MYSQL_PASSWORD=your_password
 MYSQL_DATABASE=your_database_name
@@ -147,7 +147,7 @@ Post creation: 150-250ms ⚡ 4x faster
 ❌ Wrong database selected. Check your database name.
 
 ### "Access denied for user"
-❌ Need CREATE INDEX permission. Contact PythonAnywhere support.
+❌ Need CREATE INDEX permission. Contact Cloud Run support.
 
 ### "ERROR 1205: Lock wait timeout"
 ❌ Database is busy. Wait 1 minute and try again.

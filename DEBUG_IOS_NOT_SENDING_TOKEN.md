@@ -74,14 +74,14 @@ You're essentially flying blind. The only way to debug is:
 
 ---
 
-### Step 3: Check PythonAnywhere Server Logs
+### Step 3: Check Cloud Run Server Logs
 
-When you open the TestFlight app, check your PythonAnywhere error log:
+When you open the TestFlight app, check your Cloud Run error log:
 
-1. Go to PythonAnywhere dashboard
+1. Go to Cloud Run dashboard
 2. Go to "Files" tab
 3. Navigate to `/var/log/`
-4. Open your error log file (e.g., `puntz08.pythonanywhere.com.error.log`)
+4. Open your error log file (e.g., `app.c-point.co.error.log`)
 5. Scroll to the bottom (most recent entries)
 6. Look for:
 
@@ -217,7 +217,7 @@ Since you can't see console logs and the token isn't appearing:
 
 ### ✅ Step 1: Check Server Logs
 
-1. Open PythonAnywhere error log
+1. Open Cloud Run error log
 2. Force quit iOS app
 3. Open iOS app
 4. Refresh error log
@@ -267,7 +267,7 @@ Please share:
 
 1. **iPhone Settings → C-Point → Notifications** status (ON or OFF for each)
 2. **TestFlight build date** (when was it uploaded?)
-3. **PythonAnywhere error log** (last 20 lines, when you open the app)
+3. **Cloud Run error log** (last 20 lines, when you open the app)
 4. **Do you have Xcode access?** (to see iOS console logs)
 
 Without this info, it's very hard to diagnose further.

@@ -82,7 +82,7 @@ npm run ios:run
 
 ## App Configuration
 
-The app is configured to connect to: `https://puntz08.pythonanywhere.com`
+The app is configured to connect to: `https://app.c-point.co`
 
 To change the server URL, edit `client/capacitor.config.ts`:
 ```typescript

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Fix permissions and install Node.js on PythonAnywhere
+# Fix permissions and install Node.js on Cloud Run
 
 echo "Fixing permissions and installing Node.js..."
 

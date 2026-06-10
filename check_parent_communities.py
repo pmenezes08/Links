@@ -47,7 +47,7 @@ def check_mysql_parent_communities():
     print("\n=== MySQL Parent Community Data ===")
     try:
         # Get MySQL connection details from environment
-        host = os.environ.get('MYSQL_HOST', 'puntz08.mysql.pythonanywhere-services.com')
+        host = os.environ.get('MYSQL_HOST', 'YOUR_CLOUD_SQL_HOST')
         user = os.environ.get('MYSQL_USER', 'puntz08')
         password = os.environ.get('MYSQL_PASSWORD', '')
         database = os.environ.get('MYSQL_DATABASE', 'puntz08$C-Point')
@@ -103,7 +103,7 @@ def migrate_parent_community_data():
         sqlite_conn.row_factory = sqlite3.Row
         
         # MySQL connection
-        host = os.environ.get('MYSQL_HOST', 'puntz08.mysql.pythonanywhere-services.com')
+        host = os.environ.get('MYSQL_HOST', 'YOUR_CLOUD_SQL_HOST')
         user = os.environ.get('MYSQL_USER', 'puntz08')
         password = os.environ.get('MYSQL_PASSWORD', '')
         database = os.environ.get('MYSQL_DATABASE', 'puntz08$C-Point')

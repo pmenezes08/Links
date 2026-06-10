@@ -1,14 +1,14 @@
 #!/bin/bash
-# Setup MySQL Environment Variables for PythonAnywhere
+# Setup MySQL Environment Variables for Cloud Run
 # Run this script before starting your Flask app
 
-echo "Setting up MySQL environment variables for PythonAnywhere..."
+echo "Setting up MySQL environment variables for Cloud Run..."
 
 # Set the database backend to MySQL
 export DB_BACKEND=mysql
 
-# Set MySQL connection details for PythonAnywhere
-export MYSQL_HOST=puntz08.mysql.pythonanywhere-services.com
+# Set MySQL connection details for Cloud Run
+export MYSQL_HOST=YOUR_CLOUD_SQL_HOST
 export MYSQL_USER=puntz08
 export MYSQL_DATABASE='puntz08$C-Point'
 
@@ -29,7 +29,7 @@ echo "  MYSQL_PASSWORD=$(if [ -z "$MYSQL_PASSWORD" ]; then echo "NOT SET"; else 
 echo ""
 echo "To make these permanent, add them to your ~/.bashrc:"
 echo "echo 'export DB_BACKEND=mysql' >> ~/.bashrc"
-echo "echo 'export MYSQL_HOST=puntz08.mysql.pythonanywhere-services.com' >> ~/.bashrc"
+echo "echo 'export MYSQL_HOST=YOUR_CLOUD_SQL_HOST' >> ~/.bashrc"
 echo "echo 'export MYSQL_USER=puntz08' >> ~/.bashrc"
 echo "echo 'export MYSQL_DATABASE=\"puntz08\\\$C-Point\"' >> ~/.bashrc"
 echo "echo 'export MYSQL_PASSWORD=your_password' >> ~/.bashrc"

@@ -9,7 +9,7 @@ read -sp "MySQL Password: " MYSQL_PASSWORD
 echo ""
 echo ""
 
-mysql -u puntz08 -p"$MYSQL_PASSWORD" -h puntz08.mysql.pythonanywhere-services.com "puntz08\$C-Point" <<EOF
+mysql -u puntz08 -p"$MYSQL_PASSWORD" -h YOUR_CLOUD_SQL_HOST "puntz08\$C-Point" <<EOF
 -- Check if table exists
 SELECT 
     CASE 

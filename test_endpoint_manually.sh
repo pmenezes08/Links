@@ -8,7 +8,7 @@ echo ""
 
 # Test 1: Endpoint exists and responds
 echo "1️⃣ Testing if endpoint responds..."
-RESPONSE=$(curl -s -w "\n%{http_code}" -X POST https://puntz08.pythonanywhere.com/api/push/register_native \
+RESPONSE=$(curl -s -w "\n%{http_code}" -X POST https://app.c-point.co/api/push/register_native \
   -H "Content-Type: application/json" \
   -d '{"token": "test_manual_token_123456789", "platform": "ios"}')
 

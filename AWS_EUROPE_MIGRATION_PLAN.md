@@ -1,17 +1,17 @@
 # AWS Europe Migration Plan - Performance & GDPR Compliance
 
-Complete guide for migrating from PythonAnywhere to AWS with European hosting for GDPR compliance.
+Complete guide for migrating from Cloud Run to AWS with European hosting for GDPR compliance.
 
 ---
 
-## 📊 Current State: PythonAnywhere Analysis
+## 📊 Current State: Cloud Run Analysis
 
 ### **What You Have Now:**
 
 | Aspect | Current Status | Issues |
 |--------|---------------|---------|
-| **Server** | PythonAnywhere shared hosting | Limited resources, shared CPU |
-| **Database** | MySQL on PythonAnywhere | Shared instance, limited connections |
+| **Server** | Cloud Run shared hosting | Limited resources, shared CPU |
+| **Database** | MySQL on Cloud Run | Shared instance, limited connections |
 | **Storage** | Local filesystem (32GB limit) | Low capacity, no CDN |
 | **Scaling** | Manual, limited options | Can't auto-scale |
 | **Location** | US-based servers | Not ideal for GDPR |
@@ -81,7 +81,7 @@ Complete guide for migrating from PythonAnywhere to AWS with European hosting fo
 
 ## 💰 Cost Comparison
 
-### **PythonAnywhere (Current):**
+### **Cloud Run (Current):**
 
 ```
 Web App: $5-20/month
@@ -143,7 +143,7 @@ Total: ~$870-1,110/month
 
 ## 🏗️ Architecture Comparison
 
-### **Current (PythonAnywhere):**
+### **Current (Cloud Run):**
 
 ```
 ┌─────────────────────────────────────┐
@@ -152,7 +152,7 @@ Total: ~$870-1,110/month
                   │
                   ↓
 ┌─────────────────────────────────────┐
-│   PythonAnywhere (US)               │
+│   Cloud Run (US)               │
 │   ┌─────────────────────────────┐   │
 │   │  Flask App (Shared CPU)     │   │
 │   └──────────┬──────────────────┘   │
@@ -278,7 +278,7 @@ Total: ~$870-1,110/month
 ### **Phase 3: Migration (Week 3)**
 
 **Data Migration:**
-- [ ] Export MySQL database from PythonAnywhere
+- [ ] Export MySQL database from Cloud Run
 - [ ] Import to AWS RDS
 - [ ] Upload files to S3
 - [ ] Verify data integrity
@@ -327,17 +327,17 @@ Total: ~$870-1,110/month
 - [ ] Update DNS to point to AWS
 - [ ] Monitor traffic migration
 - [ ] Verify all functionality
-- [ ] Keep PythonAnywhere as backup (1 week)
+- [ ] Keep Cloud Run as backup (1 week)
 
 **Post-Launch:**
 - [ ] Monitor performance (24/7 for first week)
 - [ ] Fix any issues immediately
 - [ ] Optimize based on real traffic
-- [ ] Decommission PythonAnywhere
+- [ ] Decommission Cloud Run
 
 **Deliverables:**
 - Live on AWS
-- PythonAnywhere decommissioned
+- Cloud Run decommissioned
 
 ---
 
@@ -345,7 +345,7 @@ Total: ~$870-1,110/month
 
 ### **Expected Improvements:**
 
-| Metric | PythonAnywhere | AWS (Small) | AWS (Medium) | Improvement |
+| Metric | Cloud Run | AWS (Small) | AWS (Medium) | Improvement |
 |--------|----------------|-------------|--------------|-------------|
 | **Page Load (EU)** | 3-5 seconds | 500-800ms | 200-400ms | **10-25x faster** |
 | **API Response** | 800ms-2s | 100-300ms | 50-150ms | **8-40x faster** |
@@ -449,7 +449,7 @@ Follow guide: `AWS_CONTAINER_DEPLOY.md`
 - ✅ Can afford $70-200/month
 - ✅ Have technical resources for setup
 
-**Stay on PythonAnywhere if:**
+**Stay on Cloud Run if:**
 - ❌ <50 daily active users
 - ❌ Users mostly US-based
 - ❌ Budget <$50/month

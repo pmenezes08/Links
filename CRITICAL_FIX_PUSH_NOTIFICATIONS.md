@@ -81,7 +81,7 @@ Now Firebase starts automatically when the web app loads.
 ### **Step 1: Deploy to Server**
 
 ```bash
-# On PythonAnywhere
+# On Cloud Run
 cd ~/workspace
 git pull origin main
 
@@ -153,7 +153,7 @@ Server → fcm_tokens table → Firebase → ✅ Notification!
 - [x] Fixed `send_native_push()` to use Firebase
 - [x] Added Firebase initialization to app startup
 - [x] Verified Firebase service queries correct table
-- [ ] Deploy to PythonAnywhere (pull + reload)
+- [ ] Deploy to Cloud Run (pull + reload)
 - [ ] Install iOS build on iPhone
 - [ ] Log in as Paulo
 - [ ] Run test notification script
@@ -172,7 +172,7 @@ Server → fcm_tokens table → Firebase → ✅ Notification!
 
 ## 🚀 **Next Steps**
 
-1. **Deploy** - `git pull` on PythonAnywhere and reload web app
+1. **Deploy** - `git pull` on Cloud Run and reload web app
 2. **Wait** - TestFlight processes iOS build (30-60 min)
 3. **Install** - Install on iPhone from TestFlight
 4. **Log in** - Open app and log in as Paulo

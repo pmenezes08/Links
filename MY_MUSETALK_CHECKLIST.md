@@ -126,7 +126,7 @@ ngrok http 5000
 
 ## ☑️ Part 2: Configure Main App (3 minutes)
 
-### On PythonAnywhere Server
+### On Cloud Run Server
 
 ```bash
 # 1. Pull latest code
@@ -170,9 +170,9 @@ EOF
 
 ```bash
 # Option 1: Touch WSGI file
-touch /var/www/puntz08_pythonanywhere_com_wsgi.py
+touch Cloud Run service configuration
 
-# Option 2: Use PythonAnywhere web interface
+# Option 2: Use Cloud Run web interface
 # Go to "Web" tab → Click "Reload" button
 ```
 

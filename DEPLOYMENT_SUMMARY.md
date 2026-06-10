@@ -34,11 +34,11 @@ push error: curve must be an EllipticCurve instance
 
 ---
 
-## 🚀 Deployment Steps for PythonAnywhere
+## 🚀 Deployment Steps for Cloud Run
 
 ### Step 1: SSH and Pull Latest Code
 ```bash
-ssh puntz08@ssh.pythonanywhere.com
+ssh puntz08@Cloud Run access via gcloud
 cd ~/workspace
 git pull origin main
 ```
@@ -54,7 +54,7 @@ python3.10 -c "import httpx, jwt; print('✅ Dependencies ready!')"
 ```
 
 ### Step 4: Reload Web App
-1. Go to PythonAnywhere **Web** tab
+1. Go to Cloud Run **Web** tab
 2. Find `www.c-point.co`
 3. Click **Reload** button
 
@@ -140,4 +140,4 @@ Status: **READY TO DEPLOY** 🚀
 
 ---
 
-**Next: Follow the deployment steps above on PythonAnywhere!**
+**Next: Follow the deployment steps above on Cloud Run!**

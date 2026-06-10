@@ -39,7 +39,7 @@ def final_fix():
     # Step 4: Create new .env file with correct password
     print("\n🔧 Step 4: Creating new .env file with correct password...")
     env_content = """# MySQL Environment Variables for Links App
-MYSQL_HOST=puntz08.mysql.pythonanywhere-services.com
+MYSQL_HOST=YOUR_CLOUD_SQL_HOST
 MYSQL_USER=puntz08
 MYSQL_PASSWORD=Trying123456
 MYSQL_DB=puntz08$C-Point
@@ -68,7 +68,7 @@ DB_BACKEND=mysql
         from pymysql.cursors import DictCursor
         
         conn = pymysql.connect(
-            host="puntz08.mysql.pythonanywhere-services.com",
+            host="YOUR_CLOUD_SQL_HOST",
             user="puntz08",
             password="Trying123456",
             database="puntz08$C-Point",
@@ -98,7 +98,7 @@ def start_flask_with_explicit_env():
     
     # Create a startup script
     startup_script = """#!/bin/bash
-export MYSQL_HOST="puntz08.mysql.pythonanywhere-services.com"
+export MYSQL_HOST="YOUR_CLOUD_SQL_HOST"
 export MYSQL_USER="puntz08"
 export MYSQL_PASSWORD="Trying123456"
 export MYSQL_DB="puntz08$C-Point"

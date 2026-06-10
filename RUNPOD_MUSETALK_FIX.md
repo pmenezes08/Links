@@ -240,7 +240,7 @@ Copy the HTTPS URL (e.g., `https://abc123.ngrok.io`)
 
 ## 🔧 Configure Your Main App
 
-On your PythonAnywhere server:
+On your Cloud Run server:
 
 ```bash
 cd ~/WorkoutX/Links
@@ -258,7 +258,7 @@ MUSETALK_API_SECRET=your-secret-from-above
 Save and reload:
 
 ```bash
-touch /var/www/puntz08_pythonanywhere_com_wsgi.py
+touch Cloud Run service configuration
 ```
 
 ---

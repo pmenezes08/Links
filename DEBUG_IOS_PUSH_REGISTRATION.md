@@ -81,7 +81,7 @@ The most common issue! The app needs you to be logged in to register the token.
 4. Check database:
    ```bash
    # Check if token was registered
-   mysql -u puntz08 -p -h puntz08.mysql.pythonanywhere-services.com "puntz08\$C-Point" \
+   mysql -u puntz08 -p -h YOUR_CLOUD_SQL_HOST "puntz08\$C-Point" \
      -e "SELECT * FROM push_tokens WHERE username='Paulo'"
    ```
 
@@ -115,7 +115,7 @@ python3 -c "
 import os, pymysql
 os.environ['MYSQL_PASSWORD'] = 'YourPassword'
 conn = pymysql.connect(
-    host='puntz08.mysql.pythonanywhere-services.com',
+    host='YOUR_CLOUD_SQL_HOST',
     user='puntz08', 
     password=os.environ['MYSQL_PASSWORD'],
     database='puntz08\$C-Point'
@@ -132,7 +132,7 @@ else:
 ### Step 3: Check Recent Registrations
 ```bash
 export MYSQL_PASSWORD='YourPassword'
-mysql -u puntz08 -p"$MYSQL_PASSWORD" -h puntz08.mysql.pythonanywhere-services.com "puntz08\$C-Point" \
+mysql -u puntz08 -p"$MYSQL_PASSWORD" -h YOUR_CLOUD_SQL_HOST "puntz08\$C-Point" \
   -e "SELECT * FROM push_tokens ORDER BY created_at DESC LIMIT 5"
 ```
 
@@ -164,7 +164,7 @@ If you want to test notifications without fixing authentication, you can manuall
 ```bash
 # Get token from iOS app console logs (look for "Push registration success, token: ...")
 export MYSQL_PASSWORD='YourPassword'
-mysql -u puntz08 -p"$MYSQL_PASSWORD" -h puntz08.mysql.pythonanywhere-services.com "puntz08\$C-Point" <<EOF
+mysql -u puntz08 -p"$MYSQL_PASSWORD" -h YOUR_CLOUD_SQL_HOST "puntz08\$C-Point" <<EOF
 INSERT INTO push_tokens (username, token, platform, is_active) 
 VALUES ('Paulo', 'YOUR_DEVICE_TOKEN_HERE', 'ios', 1);
 EOF

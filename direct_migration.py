@@ -13,8 +13,8 @@ def run_migration():
         import pymysql
         from pymysql.cursors import DictCursor
         
-        # Get MySQL credentials from environment or use PythonAnywhere defaults
-        host = os.environ.get('MYSQL_HOST', 'puntz08.mysql.pythonanywhere-services.com')
+        # Get MySQL credentials from environment or use Cloud Run defaults
+        host = os.environ.get('MYSQL_HOST', 'YOUR_CLOUD_SQL_HOST')
         user = os.environ.get('MYSQL_USER', 'puntz08')
         password = os.environ.get('MYSQL_PASSWORD')
         database = os.environ.get('MYSQL_DATABASE', 'puntz08$C-Point')
@@ -180,7 +180,7 @@ def run_migration():
         print("\nNext steps:")
         print("1. Make sure your Flask app has these environment variables set:")
         print("   export DB_BACKEND=mysql")
-        print("   export MYSQL_HOST=puntz08.mysql.pythonanywhere-services.com")
+        print("   export MYSQL_HOST=YOUR_CLOUD_SQL_HOST")
         print("   export MYSQL_USER=puntz08")
         print("   export MYSQL_PASSWORD=your_password")
         print("   export MYSQL_DATABASE='puntz08$C-Point'")
@@ -203,7 +203,7 @@ if __name__ == "__main__":
         print("\nRequired environment variable:")
         print("  MYSQL_PASSWORD - Your MySQL password")
         print("\nOptional environment variables:")
-        print("  MYSQL_HOST     - MySQL host (default: puntz08.mysql.pythonanywhere-services.com)")
+        print("  MYSQL_HOST     - MySQL host (default: YOUR_CLOUD_SQL_HOST)")
         print("  MYSQL_USER     - MySQL user (default: puntz08)")
         print("  MYSQL_DATABASE - Database name (default: puntz08$C-Point)")
         print("\nExample:")

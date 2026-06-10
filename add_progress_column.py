@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
 Migration script to add progress column to imagine_jobs table
-Run this on PythonAnywhere: python3 add_progress_column.py
+Run this on Cloud Run: python3 add_progress_column.py
 """
 
 import os
 import sys
 
-# Check if running on PythonAnywhere
+# Check if running on Cloud Run
 if os.path.exists('/home/puntz08'):
     sys.path.insert(0, '/home/puntz08/dev/Links')
     os.chdir('/home/puntz08/dev/Links')

@@ -2,7 +2,7 @@
 """
 MySQL-Safe Database Fix Script
 Safely fixes MySQL datetime issues without causing errors
-Run this on PythonAnywhere bash console
+Run this on Cloud Run bash console
 """
 
 import pymysql
@@ -15,7 +15,7 @@ def mysql_safe_fix():
     print("=" * 30)
 
     mysql_config = {
-        'host': 'puntz08.mysql.pythonanywhere-services.com',
+        'host': 'YOUR_CLOUD_SQL_HOST',
         'user': 'puntz08',
         'password': '',  # Will be prompted
         'database': 'puntz08$C-Point'
@@ -276,14 +276,14 @@ def mysql_safe_fix():
             print(f"✅ Fixes applied: {fixes_applied}")
 
             print("\n🚀 NEXT STEPS:")
-            print("   1. Restart your Flask app on PythonAnywhere")
+            print("   1. Restart your Flask app on Cloud Run")
             print("   2. Clear browser cache (Ctrl+F5)")
             print("   3. Check home timeline - posts should appear")
             print("   4. Check communities page - communities should be visible")
             print("   5. Check profile pictures - avatars should display")
             print("")
             print("💡 If issues persist:")
-            print("   - Check Flask app logs on PythonAnywhere")
+            print("   - Check Flask app logs on Cloud Run")
             print("   - Verify your app is using the correct database connection")
             print("=" * 50)
 

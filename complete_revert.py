@@ -333,7 +333,7 @@ def main():
         print("📋 Next Steps:")
         print("1. Test the current ChatThread.tsx")
         print("2. If still issues, use ChatThread_minimal.tsx")
-        print("3. Deploy to PythonAnywhere")
+        print("3. Deploy to Cloud Run")
         print("")
         print("🎉 CHAT SHOULD WORK WITHOUT INFINITE LOOPS NOW!")
         print("=" * 60)

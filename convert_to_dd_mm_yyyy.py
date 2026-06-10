@@ -13,7 +13,7 @@ def convert_to_dd_mm_yyyy():
     print("=" * 40)
     
     mysql_config = {
-        'host': 'puntz08.mysql.pythonanywhere-services.com',
+        'host': 'YOUR_CLOUD_SQL_HOST',
         'user': 'puntz08',
         'password': 'tHqF#6gTM_XQYbB',
         'database': 'puntz08$C-Point'

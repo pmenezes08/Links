@@ -2,7 +2,7 @@
 """
 MySQL-Safe Database Diagnostic Script
 Handles MySQL datetime issues that cause the app to break
-Run this on PythonAnywhere bash console
+Run this on Cloud Run bash console
 """
 
 import pymysql
@@ -15,7 +15,7 @@ def mysql_safe_diagnose():
     print("=" * 40)
 
     mysql_config = {
-        'host': 'puntz08.mysql.pythonanywhere-services.com',
+        'host': 'YOUR_CLOUD_SQL_HOST',
         'user': 'puntz08',
         'password': '',  # Will be prompted
         'database': 'puntz08$C-Point'

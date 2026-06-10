@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Redis Setup for PythonAnywhere
+Redis Setup for Cloud Run
 Configure Redis caching for improved performance
 """
 
@@ -8,7 +8,7 @@ import os
 import sys
 
 def setup_redis():
-    """Set up Redis configuration for PythonAnywhere"""
+    """Set up Redis configuration for Cloud Run"""
     
     print("Redis Setup for C.Point App")
     print("=" * 30)
@@ -22,9 +22,9 @@ def setup_redis():
         print("Install with: pip install redis==5.0.1")
         return False
     
-    # PythonAnywhere Redis configuration
-    print("\n📋 Redis Configuration for PythonAnywhere:")
-    print("Since PythonAnywhere doesn't provide Redis by default,")
+    # Cloud Run Redis configuration
+    print("\n📋 Redis Configuration for Cloud Run:")
+    print("Since Cloud Run doesn't provide Redis by default,")
     print("we'll implement alternative caching strategies:")
     
     print("\n1. 🗄️ In-Memory Caching:")

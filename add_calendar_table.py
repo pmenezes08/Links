@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Script to add calendar_events table to the existing database.
-Run this on PythonAnywhere after pulling the latest code.
+Run this on Cloud Run after pulling the latest code.
 """
 
 import sqlite3

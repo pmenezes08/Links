@@ -1,11 +1,11 @@
 #!/bin/bash
-# Proper Node.js installation for PythonAnywhere
+# Proper Node.js installation for Cloud Run
 
-echo "Installing Node.js properly on PythonAnywhere..."
+echo "Installing Node.js properly on Cloud Run..."
 
-# Check if we're on PythonAnywhere
-if [[ "$(hostname)" == *"pythonanywhere"* ]]; then
-    echo "Detected PythonAnywhere environment"
+# Check if we're on Cloud Run
+if [[ "$(hostname)" == *"cloud-run"* ]]; then
+    echo "Detected Cloud Run environment"
     
     # Method 1: Try NodeSource repository
     echo "Method 1: Trying NodeSource repository..."
@@ -83,7 +83,7 @@ if [[ "$(hostname)" == *"pythonanywhere"* ]]; then
     fi
     
 else
-    echo "Not on PythonAnywhere - assuming Node.js is available"
+    echo "Not on Cloud Run - assuming Node.js is available"
 fi
 
 # Final verification

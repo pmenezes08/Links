@@ -1,4 +1,4 @@
-# 🗄️ MySQL Database Backup Guide for PythonAnywhere
+# 🗄️ MySQL Database Backup Guide for Cloud Run
 
 ## Quick Backup Methods
 
@@ -6,22 +6,22 @@
 
 ## ⚡ Method 1: Command Line (Recommended - Fastest)
 
-### In PythonAnywhere Bash Console:
+### In Cloud Run Bash Console:
 
 ```bash
 # Basic backup
-mysqldump -u YourUsername -h YourUsername.mysql.pythonanywhere-services.com 'YourUsername$database_name' > backup_$(date +%Y%m%d_%H%M%S).sql
+mysqldump -u YourUsername -h YOUR_CLOUD_SQL_HOST 'YourUsername$database_name' > backup_$(date +%Y%m%d_%H%M%S).sql
 
 # With password prompt
-mysqldump -u YourUsername -p -h YourUsername.mysql.pythonanywhere-services.com 'YourUsername$database_name' > backup_$(date +%Y%m%d_%H%M%S).sql
+mysqldump -u YourUsername -p -h YOUR_CLOUD_SQL_HOST 'YourUsername$database_name' > backup_$(date +%Y%m%d_%H%M%S).sql
 
 # Compressed backup (saves space)
-mysqldump -u YourUsername -p -h YourUsername.mysql.pythonanywhere-services.com 'YourUsername$database_name' | gzip > backup_$(date +%Y%m%d_%H%M%S).sql.gz
+mysqldump -u YourUsername -p -h YOUR_CLOUD_SQL_HOST 'YourUsername$database_name' | gzip > backup_$(date +%Y%m%d_%H%M%S).sql.gz
 ```
 
 **Example:**
 ```bash
-mysqldump -u pmenezes08 -p -h pmenezes08.mysql.pythonanywhere-services.com 'pmenezes08$users' > backup_20231120.sql
+mysqldump -u pmenezes08 -p -h YOUR_CLOUD_SQL_HOST 'pmenezes08$users' > backup_20231120.sql
 ```
 
 ---
@@ -33,7 +33,7 @@ Create `backup_database.py`:
 ```python
 #!/usr/bin/env python3
 """
-MySQL Database Backup Script for PythonAnywhere
+MySQL Database Backup Script for Cloud Run
 """
 
 import subprocess
@@ -42,7 +42,7 @@ from datetime import datetime
 
 # Configuration - UPDATE THESE
 MYSQL_USER = 'YourUsername'
-MYSQL_HOST = 'YourUsername.mysql.pythonanywhere-services.com'
+MYSQL_HOST = 'YOUR_CLOUD_SQL_HOST'
 MYSQL_DATABASE = 'YourUsername$database_name'
 MYSQL_PASSWORD = 'your_password'  # Or use environment variable
 BACKUP_DIR = '/home/YourUsername/backups'
@@ -184,14 +184,14 @@ python3 backup_database.py
 
 ## 🔄 Method 3: Scheduled Automatic Backups
 
-### Create a Daily Backup Task on PythonAnywhere:
+### Create a Daily Backup Task on Cloud Run:
 
-1. **Go to Tasks tab** on PythonAnywhere
+1. **Go to Tasks tab** on Cloud Run
 2. **Create a new scheduled task**:
    - **Time**: `03:00` (3 AM daily)
    - **Command**: 
      ```bash
-     /home/YourUsername/.local/bin/mysqldump -u YourUsername -pYourPassword -h YourUsername.mysql.pythonanywhere-services.com 'YourUsername$database_name' | gzip > /home/YourUsername/backups/backup_$(date +\%Y\%m\%d).sql.gz
+     /home/YourUsername/.local/bin/mysqldump -u YourUsername -pYourPassword -h YOUR_CLOUD_SQL_HOST 'YourUsername$database_name' | gzip > /home/YourUsername/backups/backup_$(date +\%Y\%m\%d).sql.gz
      ```
 
 ---
@@ -203,7 +203,7 @@ After creating a backup, download it:
 ### Option A: From Bash Console
 ```bash
 # Create backup in your home directory
-mysqldump -u YourUsername -p -h YourUsername.mysql.pythonanywhere-services.com 'YourUsername$database_name' > ~/backup.sql
+mysqldump -u YourUsername -p -h YOUR_CLOUD_SQL_HOST 'YourUsername$database_name' > ~/backup.sql
 
 # Compress it
 gzip ~/backup.sql
@@ -213,7 +213,7 @@ Then go to **Files tab** → navigate to `/home/YourUsername/` → download `bac
 
 ### Option B: Using wget (from your local machine)
 ```bash
-# First, move backup to web-accessible folder on PythonAnywhere
+# First, move backup to web-accessible folder on Cloud Run
 # Then download via HTTP (if you set up a download endpoint)
 ```
 
@@ -221,7 +221,7 @@ Then go to **Files tab** → navigate to `/home/YourUsername/` → download `bac
 
 ## 🔐 Secure Backup Script (No Password in Code)
 
-Use environment variables or PythonAnywhere's Secrets:
+Use environment variables or Cloud Run's Secrets:
 
 ```python
 import os
@@ -253,7 +253,7 @@ source ~/.bashrc
 ls -lh ~/backups/
 
 # Check backup integrity (should show no errors)
-mysql -u YourUsername -p -h YourUsername.mysql.pythonanywhere-services.com 'YourUsername$test_db' < backup.sql
+mysql -u YourUsername -p -h YOUR_CLOUD_SQL_HOST 'YourUsername$test_db' < backup.sql
 ```
 
 ---
@@ -262,10 +262,10 @@ mysql -u YourUsername -p -h YourUsername.mysql.pythonanywhere-services.com 'Your
 
 ```bash
 # Restore from uncompressed backup
-mysql -u YourUsername -p -h YourUsername.mysql.pythonanywhere-services.com 'YourUsername$database_name' < backup.sql
+mysql -u YourUsername -p -h YOUR_CLOUD_SQL_HOST 'YourUsername$database_name' < backup.sql
 
 # Restore from compressed backup
-gunzip < backup.sql.gz | mysql -u YourUsername -p -h YourUsername.mysql.pythonanywhere-services.com 'YourUsername$database_name'
+gunzip < backup.sql.gz | mysql -u YourUsername -p -h YOUR_CLOUD_SQL_HOST 'YourUsername$database_name'
 ```
 
 ⚠️ **Warning**: This will overwrite your current database!
@@ -278,7 +278,7 @@ Before running backups:
 - [ ] Know your MySQL username
 - [ ] Know your MySQL password
 - [ ] Know your database name (format: `username$dbname`)
-- [ ] Know your MySQL host (format: `username.mysql.pythonanywhere-services.com`)
+- [ ] Know your MySQL host (format: `YOUR_CLOUD_SQL_HOST`)
 - [ ] Have enough disk space (check with `df -h ~`)
 
 ---
@@ -315,7 +315,7 @@ Before running backups:
 
 ```bash
 # Quick one-liner backup
-mysqldump -u YourUsername -p -h YourUsername.mysql.pythonanywhere-services.com 'YourUsername$database_name' | gzip > ~/backup_before_optimization_$(date +%Y%m%d).sql.gz
+mysqldump -u YourUsername -p -h YOUR_CLOUD_SQL_HOST 'YourUsername$database_name' | gzip > ~/backup_before_optimization_$(date +%Y%m%d).sql.gz
 
 # Verify it was created
 ls -lh ~/backup_before_optimization_*.sql.gz
@@ -338,8 +338,8 @@ ls -lh ~/backup_before_optimization_*.sql.gz
 - Verify database name includes username prefix: `username$dbname`
 
 ### "Can't connect to MySQL server"
-- Check host name: `username.mysql.pythonanywhere-services.com`
-- Verify MySQL is running on PythonAnywhere (Databases tab)
+- Check host name: `YOUR_CLOUD_SQL_HOST`
+- Verify MySQL is running on Cloud Run (Databases tab)
 
 ### "Out of disk space"
 ```bash
@@ -349,7 +349,7 @@ df -h ~
 # Clean up old backups
 rm ~/backups/backup_old_*.sql.gz
 
-# Upgrade PythonAnywhere plan if needed
+# Upgrade Cloud Run plan if needed
 ```
 
 ---
@@ -359,7 +359,7 @@ rm ~/backups/backup_old_*.sql.gz
 **Replace `YourUsername` and `database_name` with your actual values:**
 
 ```bash
-mysqldump -u YourUsername -p -h YourUsername.mysql.pythonanywhere-services.com 'YourUsername$database_name' | gzip > ~/backup_$(date +%Y%m%d_%H%M%S).sql.gz && echo "✅ Backup created: ~/backup_$(date +%Y%m%d_%H%M%S).sql.gz"
+mysqldump -u YourUsername -p -h YOUR_CLOUD_SQL_HOST 'YourUsername$database_name' | gzip > ~/backup_$(date +%Y%m%d_%H%M%S).sql.gz && echo "✅ Backup created: ~/backup_$(date +%Y%m%d_%H%M%S).sql.gz"
 ```
 
 ---

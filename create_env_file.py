@@ -8,7 +8,7 @@ def create_env_file():
     print("🔧 Creating .env file with correct MySQL password...")
     
     env_content = """# MySQL Environment Variables for Links App
-MYSQL_HOST=puntz08.mysql.pythonanywhere-services.com
+MYSQL_HOST=YOUR_CLOUD_SQL_HOST
 MYSQL_USER=puntz08
 MYSQL_PASSWORD=tHqF#6gTM_XQYbB
 MYSQL_DB=puntz08$C-Point

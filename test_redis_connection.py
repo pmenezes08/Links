@@ -107,12 +107,12 @@ def test_redis_connection():
             print("   ✅ OK - Acceptable connection (< 200ms)")
         else:
             print("   ⚠️  SLOW - Connection is slower than expected")
-            print("      Check if Redis Cloud and PythonAnywhere are in same region")
+            print("      Check if Redis Cloud and Cloud Run are in same region")
         
         print("\n" + "=" * 60)
         print("🎉 Redis Cloud is working perfectly!")
         print("\n📝 Next Steps:")
-        print("   1. Set environment variables on PythonAnywhere:")
+        print("   1. Set environment variables on Cloud Run:")
         print("      REDIS_ENABLED=true")
         print(f"      REDIS_HOST={config['host']}")
         print(f"      REDIS_PORT={config['port']}")

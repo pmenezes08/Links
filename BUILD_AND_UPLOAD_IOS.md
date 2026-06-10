@@ -152,7 +152,7 @@ test_token_works  (16 characters)
 - Check for any compliance issues
 
 ### Token Still Not Registering
-- Check PythonAnywhere server logs when opening app
+- Check Cloud Run server logs when opening app
 - Look for `POST /api/push/register_native` with a long token
 - Verify notification permissions are ON in iPhone Settings
 

@@ -16,7 +16,7 @@ fi
 cd client
 
 echo "📦 Installing/updating dependencies..."
-# Try different npm paths for PythonAnywhere compatibility
+# Try different npm paths for Cloud Run compatibility
 if command -v npm >/dev/null 2>&1; then
     npm install
 elif [ -f "/home/ubuntu/.nvm/versions/node/v22.16.0/bin/npm" ]; then

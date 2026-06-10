@@ -15,7 +15,7 @@ python3 test_invitation_api.py
 ```
 
 **If it says table doesn't exist:**
-- Go to PythonAnywhere Web tab
+- Go to Cloud Run Web tab
 - Click "Reload" button
 - Wait 10 seconds
 - Run the script again

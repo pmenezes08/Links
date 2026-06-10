@@ -75,7 +75,7 @@ If OFF, the app won't generate a token.
 ### Step 5: Check if push_tokens Table Exists
 ```bash
 export MYSQL_PASSWORD='YourPassword'
-mysql -u puntz08 -p"$MYSQL_PASSWORD" -h puntz08.mysql.pythonanywhere-services.com "puntz08\$C-Point" -e "
+mysql -u puntz08 -p"$MYSQL_PASSWORD" -h YOUR_CLOUD_SQL_HOST "puntz08\$C-Point" -e "
 SHOW TABLES LIKE 'push_tokens';
 DESCRIBE push_tokens;
 "
@@ -135,7 +135,7 @@ Should return:
 ### Check if ANY tokens exist:
 ```bash
 export MYSQL_PASSWORD='YourPassword'
-mysql -u puntz08 -p"$MYSQL_PASSWORD" -h puntz08.mysql.pythonanywhere-services.com "puntz08\$C-Point" -e "
+mysql -u puntz08 -p"$MYSQL_PASSWORD" -h YOUR_CLOUD_SQL_HOST "puntz08\$C-Point" -e "
 SELECT * FROM push_tokens;
 "
 ```
@@ -143,7 +143,7 @@ SELECT * FROM push_tokens;
 ### Check for anonymous tokens:
 ```bash
 export MYSQL_PASSWORD='YourPassword'
-mysql -u puntz08 -p"$MYSQL_PASSWORD" -h puntz08.mysql.pythonanywhere-services.com "puntz08\$C-Point" -e "
+mysql -u puntz08 -p"$MYSQL_PASSWORD" -h YOUR_CLOUD_SQL_HOST "puntz08\$C-Point" -e "
 SELECT * FROM push_tokens WHERE username LIKE 'anonymous_%';
 "
 ```
@@ -151,7 +151,7 @@ SELECT * FROM push_tokens WHERE username LIKE 'anonymous_%';
 ### Check recent token activity:
 ```bash
 export MYSQL_PASSWORD='YourPassword'
-mysql -u puntz08 -p"$MYSQL_PASSWORD" -h puntz08.mysql.pythonanywhere-services.com "puntz08\$C-Point" -e "
+mysql -u puntz08 -p"$MYSQL_PASSWORD" -h YOUR_CLOUD_SQL_HOST "puntz08\$C-Point" -e "
 SELECT username, platform, created_at, updated_at 
 FROM push_tokens 
 ORDER BY created_at DESC 
@@ -190,7 +190,7 @@ If you can get the device token from iOS console logs, you can manually insert i
 ```bash
 # Get token from Xcode console, then:
 export MYSQL_PASSWORD='YourPassword'
-mysql -u puntz08 -p"$MYSQL_PASSWORD" -h puntz08.mysql.pythonanywhere-services.com "puntz08\$C-Point" <<EOF
+mysql -u puntz08 -p"$MYSQL_PASSWORD" -h YOUR_CLOUD_SQL_HOST "puntz08\$C-Point" <<EOF
 INSERT INTO push_tokens (username, token, platform, is_active) 
 VALUES ('Paulo', 'YOUR_DEVICE_TOKEN_HERE', 'ios', 1);
 EOF

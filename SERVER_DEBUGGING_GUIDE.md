@@ -2,7 +2,7 @@
 
 ## Quick Start
 
-On your PythonAnywhere server, run these commands:
+On your Cloud Run server, run these commands:
 
 ```bash
 cd /home/puntz08/WorkoutX/Links
@@ -178,7 +178,7 @@ python3.10 insert_test_token.py
 # Add to WSGI file
 os.environ['FIREBASE_CREDENTIALS'] = '/home/puntz08/secrets/cpoint-127c2-firebase-adminsdk-fbsvc-1f900dabeb.json'
 
-# Reload web app in PythonAnywhere dashboard
+# Reload web app in Cloud Run dashboard
 ```
 
 ---
@@ -260,10 +260,10 @@ bash check_server_logs.sh
 python3.10 test_push_server_detailed.py
 
 # 3. If no tokens, check if registration endpoint is called
-tail -f /var/log/puntz08.pythonanywhere.com.server.log | grep register_fcm
+tail -f /var/log/app.c-point.co.server.log | grep register_fcm
 
 # 4. If still broken, check web app error log in real-time
-tail -f /var/log/puntz08.pythonanywhere.com.error.log
+tail -f /var/log/app.c-point.co.error.log
 ```
 
 ---
@@ -289,7 +289,7 @@ If you get to step 2 (sends successfully) but Paulo doesn't receive:
 
 ### **Monitor logs in real-time:**
 ```bash
-tail -f /var/log/puntz08.pythonanywhere.com.error.log | grep -i firebase
+tail -f /var/log/app.c-point.co.error.log | grep -i firebase
 ```
 
 ### **Check database directly:**

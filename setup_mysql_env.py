@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Setup MySQL Environment Variables for PythonAnywhere
+Setup MySQL Environment Variables for Cloud Run
 This script helps configure the MySQL connection for your Links app
-Run this on PythonAnywhere bash console
+Run this on Cloud Run bash console
 """
 
 import os
@@ -10,15 +10,15 @@ import os
 def setup_mysql_env():
     """Set up MySQL environment variables"""
 
-    print("🔧 MySQL Environment Setup for PythonAnywhere")
+    print("🔧 MySQL Environment Setup for Cloud Run")
     print("=" * 50)
 
     print("This will help you set up the MySQL environment variables")
     print("needed for your Links app to connect to the database.\n")
 
-    # PythonAnywhere MySQL defaults
+    # Cloud Run MySQL defaults
     defaults = {
-        'MYSQL_HOST': 'puntz08.mysql.pythonanywhere-services.com',
+        'MYSQL_HOST': 'YOUR_CLOUD_SQL_HOST',
         'MYSQL_USER': 'puntz08',
         'MYSQL_DB': 'puntz08$C-Point',
         'DB_BACKEND': 'mysql'
@@ -64,12 +64,12 @@ DB_BACKEND={defaults['DB_BACKEND']}
 
     print("\n🚀 Next Steps:")
     print("1. Your .env file is ready")
-    print("2. Restart your Flask app on PythonAnywhere")
+    print("2. Restart your Flask app on Cloud Run")
     print("3. The app should now connect to MySQL")
     print("4. Check your website - posts, communities, and avatars should appear")
 
     print("\n💡 If the app still doesn't work:")
-    print("   - Check PythonAnywhere 'Web' tab → 'Environment variables'")
+    print("   - Check Cloud Run 'Web' tab → 'Environment variables'")
     print("   - Make sure the variables are set there too")
     print("   - Or load the .env file in your WSGI file")
 

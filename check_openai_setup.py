@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Diagnostic script to check OpenAI setup on PythonAnywhere
+Diagnostic script to check OpenAI setup on Cloud Run
 Run this to verify everything is configured correctly
 """
 import os
@@ -18,7 +18,7 @@ try:
     print("   ✅ OpenAI package is installed")
 except ImportError as e:
     print(f"   ❌ OpenAI package NOT installed: {e}")
-    print("   Fix: Run this command in PythonAnywhere bash console:")
+    print("   Fix: Run this command in Cloud Run bash console:")
     print("   pip install --user openai")
     sys.exit(1)
 
@@ -32,7 +32,7 @@ if api_key:
     print(f"   Key starts with: {api_key[:15]}...")
 else:
     print("   ❌ OPENAI_API_KEY is NOT set or empty")
-    print("   Fix: Add to PythonAnywhere WSGI file:")
+    print("   Fix: Add to Cloud Run WSGI file:")
     print("   os.environ['OPENAI_API_KEY'] = 'sk-proj-YOUR-KEY-HERE'")
     sys.exit(1)
 
@@ -53,7 +53,7 @@ print("🎉 SUCCESS! OpenAI is configured correctly!")
 print("="*60)
 print()
 print("Next steps:")
-print("1. Reload your web app in PythonAnywhere (green Reload button)")
+print("1. Reload your web app in Cloud Run (green Reload button)")
 print("2. Upload an audio post")
 print("3. Check error log for transcription messages")
 print()

@@ -7,7 +7,7 @@ Run with the exact same parameters Mary would use
 import requests
 
 # Test on your domain
-BASE_URL = "https://puntz08.pythonanywhere.com"
+BASE_URL = "https://app.c-point.co"
 
 # You'll need to login as Mary first and get her session cookie
 # Or run this from browser console:

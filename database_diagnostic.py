@@ -2,7 +2,7 @@
 """
 Database Diagnostic Script
 Check what's currently in your database to diagnose the issues
-Run this on PythonAnywhere bash console
+Run this on Cloud Run bash console
 """
 
 import pymysql
@@ -15,7 +15,7 @@ def diagnose_database():
     print("=" * 30)
 
     mysql_config = {
-        'host': 'puntz08.mysql.pythonanywhere-services.com',
+        'host': 'YOUR_CLOUD_SQL_HOST',
         'user': 'puntz08',
         'password': '',  # Will be prompted
         'database': 'puntz08$C-Point'

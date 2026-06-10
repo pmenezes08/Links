@@ -1,16 +1,16 @@
 #!/bin/bash
 # Check server error logs for push notification activity
 
-echo "🔍 Checking PythonAnywhere Error Logs for Push Notification Activity"
+echo "🔍 Checking Cloud Run Error Logs for Push Notification Activity"
 echo "======================================================================="
 echo ""
 
-ERROR_LOG="/var/log/puntz08.pythonanywhere.com.error.log"
-SERVER_LOG="/var/log/puntz08.pythonanywhere.com.server.log"
+ERROR_LOG="/var/log/app.c-point.co.error.log"
+SERVER_LOG="/var/log/app.c-point.co.server.log"
 
 if [ ! -f "$ERROR_LOG" ]; then
     echo "❌ Error log not found: $ERROR_LOG"
-    echo "   (This script must run on PythonAnywhere server)"
+    echo "   (This script must run on Cloud Run server)"
     exit 1
 fi
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3.10
 """
 Diagnostic script to find why APNs is still failing.
-Run this on PythonAnywhere: python3.10 diagnose_apns_error.py
+Run this on Cloud Run: python3.10 diagnose_apns_error.py
 """
 
 import sys
@@ -171,7 +171,7 @@ else:
     print("\n✅ All dependencies look good!")
     print("\nIf error persists:")
     print("1. Clear cache: find . -type d -name __pycache__ -exec rm -rf {} +")
-    print("2. Reload web app on pythonanywhere.com")
+    print("2. Reload web app on Cloud Run")
     print("3. Check if you're using the correct WSGI file")
 
 print("="*60)

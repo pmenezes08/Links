@@ -2,7 +2,7 @@
 """
 Test Chat Functionality Script
 Tests the chat system to identify why messages aren't showing up
-Run this on PythonAnywhere bash console
+Run this on Cloud Run bash console
 """
 
 import requests
@@ -15,7 +15,7 @@ def test_chat_functionality():
     print("🧪 Chat Functionality Test")
     print("=" * 40)
 
-    base_url = "https://pmenezes08.pythonanywhere.com"  # Replace with your actual domain
+    base_url = "https://app.c-point.co"  # Replace with your actual domain
 
     # Test data - you'll need to provide actual user IDs
     test_username = input("Enter your username: ").strip()

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MySQL Migration Script for PythonAnywhere
+MySQL Migration Script for Cloud Run
 This script migrates the database from SQLite to MySQL compatibility
 Uses the same database connection as the Flask app
 """
@@ -15,8 +15,8 @@ def get_db_connection():
         import pymysql
         from pymysql.cursors import DictCursor
         
-        # Use PythonAnywhere MySQL settings
-        host = os.environ.get('MYSQL_HOST', 'puntz08.mysql.pythonanywhere-services.com')
+        # Use Cloud Run MySQL settings
+        host = os.environ.get('MYSQL_HOST', 'YOUR_CLOUD_SQL_HOST')
         user = os.environ.get('MYSQL_USER', 'puntz08')
         password = os.environ.get('MYSQL_PASSWORD', '')
         database = os.environ.get('MYSQL_DATABASE', 'puntz08$C-Point')
@@ -167,7 +167,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--help":
         print("Usage: python mysql_migration.py")
         print("\nEnvironment variables:")
-        print("  MYSQL_HOST     - Database host (default: puntz08.mysql.pythonanywhere-services.com)")
+        print("  MYSQL_HOST     - Database host (default: YOUR_CLOUD_SQL_HOST)")
         print("  MYSQL_USER     - Database user (default: puntz08)")
         print("  MYSQL_PASSWORD - Database password (REQUIRED)")
         print("  MYSQL_DATABASE - Database name (default: puntz08$C-Point)")

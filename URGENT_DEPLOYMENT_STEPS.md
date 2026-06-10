@@ -12,9 +12,9 @@ You checked earlier and there was "nothing to pull" - that was **BEFORE** we pus
 
 ## 🚀 Deploy Steps (5 Minutes)
 
-### Step 1: SSH into PythonAnywhere
+### Step 1: SSH into Cloud Run
 ```bash
-ssh puntz08@ssh.pythonanywhere.com
+ssh puntz08@Cloud Run access via gcloud
 cd ~/workspace
 ```
 
@@ -76,7 +76,7 @@ from apns2.client import APNsClient  # ❌ Should NOT be there
 ```
 
 ### Step 7: Reload Web App
-1. Go to **pythonanywhere.com**
+1. Go to **Cloud Run**
 2. Click **Web** tab
 3. Find **www.c-point.co**
 4. Click green **Reload** button (🔄)

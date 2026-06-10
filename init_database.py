@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Database initialization script for PythonAnywhere deployment.
+Database initialization script for Cloud Run deployment.
 This script creates all necessary tables for the C.Point application.
 """
 
@@ -136,7 +136,10 @@ def init_database():
                       start_time TEXT,
                       end_time TEXT,
                       description TEXT,
+                      meeting_url TEXT,
                       created_at TEXT NOT NULL,
+                      starts_at_utc TEXT,
+                      ends_at_utc TEXT,
                       FOREIGN KEY (username) REFERENCES users(username))''')
         
         # Create index on date for faster queries

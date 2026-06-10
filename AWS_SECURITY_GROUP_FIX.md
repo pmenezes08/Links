@@ -93,7 +93,7 @@ Once you've verified your security group has **both rules** (SSH on port 22 and 
 
 ### Why Port 5000?
 - This is where your MuseTalk API server will listen
-- Your main app (PythonAnywhere) needs to connect to this port
+- Your main app (Cloud Run) needs to connect to this port
 
 ### Why 0.0.0.0/0 (Anywhere)?
 - Allows your main app to connect from any IP

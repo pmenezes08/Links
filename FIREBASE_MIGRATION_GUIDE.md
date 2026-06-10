@@ -68,7 +68,7 @@
 
 ### Step 1: Install Firebase Admin SDK
 
-On your **PythonAnywhere terminal:**
+On your **Cloud Run terminal:**
 
 ```bash
 cd ~/workspace
@@ -355,7 +355,7 @@ Open Xcode and build to TestFlight.
 
 ### Step 3: Test from Server
 
-In your PythonAnywhere terminal:
+In your Cloud Run terminal:
 
 ```bash
 python3.10 test_firebase_notification.py Paulo

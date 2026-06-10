@@ -1,5 +1,5 @@
 #!/bin/bash
-# Fix OpenAI version compatibility issue on PythonAnywhere
+# Fix OpenAI version compatibility issue on Cloud Run
 
 echo "=================================================="
 echo "Fixing OpenAI Package Compatibility"
@@ -19,6 +19,6 @@ python3 check_openai_setup.py
 
 echo ""
 echo "=================================================="
-echo "If successful, go to PythonAnywhere Web tab and"
+echo "If successful, go to Cloud Run Web tab and"
 echo "click the green 'Reload' button!"
 echo "=================================================="

@@ -15,7 +15,7 @@ Error in logs:
 2025-11-24 15:32:41,601: push error: curve must be an EllipticCurve instance
 ```
 
-**Root Cause:** The modern HTTP/2 implementation requires `httpx[http2]` and `PyJWT`, but they're not installed on your PythonAnywhere server.
+**Root Cause:** The modern HTTP/2 implementation requires `httpx[http2]` and `PyJWT`, but they're not installed on your Cloud Run server.
 
 ---
 
@@ -31,11 +31,11 @@ Just need to install the missing dependencies!
 
 ---
 
-## 🚀 Deployment Steps for PythonAnywhere
+## 🚀 Deployment Steps for Cloud Run
 
-### Step 1: SSH into PythonAnywhere
+### Step 1: SSH into Cloud Run
 ```bash
-ssh puntz08@ssh.pythonanywhere.com
+ssh puntz08@Cloud Run access via gcloud
 cd ~/workspace
 ```
 
@@ -59,7 +59,7 @@ python3.10 -c "import httpx, jwt; print('✅ Dependencies installed successfully
 You should see: `✅ Dependencies installed successfully!`
 
 ### Step 5: Reload Web App
-1. Go to PythonAnywhere **Web** tab
+1. Go to Cloud Run **Web** tab
 2. Find `www.c-point.co`
 3. Click the green **Reload** button
 
@@ -251,12 +251,12 @@ While PyAPNs2 works, it's an **unnecessary abstraction layer**:
 
 ## ✅ Final Checklist
 
-- [ ] SSH into PythonAnywhere
+- [ ] SSH into Cloud Run
 - [ ] Pull latest code (`git pull origin main`)
 - [ ] Install httpx: `pip3.10 install --user "httpx[http2]>=0.24.0"`
 - [ ] Install PyJWT: `pip3.10 install --user "PyJWT>=2.8.0"`
 - [ ] Verify: `python3.10 -c "import httpx, jwt; print('OK')"`
-- [ ] Reload web app in PythonAnywhere dashboard
+- [ ] Reload web app in Cloud Run dashboard
 - [ ] Test notification from iPhone
 - [ ] Check logs for `✅ APNs notification sent`
 

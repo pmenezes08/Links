@@ -10,7 +10,7 @@ Add the user site-packages to Python path in WSGI file.
 
 ## Edit Your WSGI File:
 
-Open `/var/www/puntz08_pythonanywhere_com_wsgi.py`
+Open `Cloud Run service configuration`
 
 **Add these lines RIGHT AT THE TOP (before any other code):**
 
@@ -53,7 +53,7 @@ os.environ['SESSION_COOKIE_DOMAIN'] = 'www.c-point.co'
 
 # DB (MySQL)
 os.environ['DB_BACKEND'] = 'mysql'
-os.environ['MYSQL_HOST'] = 'puntz08.mysql.pythonanywhere-services.com'
+os.environ['MYSQL_HOST'] = 'YOUR_CLOUD_SQL_HOST'
 os.environ['MYSQL_DB'] = 'puntz08$C-Point'
 os.environ['MYSQL_USER'] = 'puntz08'
 os.environ['MYSQL_PASSWORD'] = 'Trying123456'
@@ -92,4 +92,4 @@ from bodybuilding_app import app as application
 
 ## Why This Works:
 
-PythonAnywhere's web app runs with a different Python environment than the bash console. Adding `site.getusersitepackages()` to sys.path tells Python where to find packages installed with `--user`.
+Cloud Run's web app runs with a different Python environment than the bash console. Adding `site.getusersitepackages()` to sys.path tells Python where to find packages installed with `--user`.

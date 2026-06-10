@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Script to check and fix calendar_events table in the database.
-Run this on PythonAnywhere to diagnose and fix the issue.
+Run this on Cloud Run to diagnose and fix the issue.
 """
 
 import sqlite3
@@ -121,7 +121,7 @@ if __name__ == "__main__":
     
     if success:
         print("\n✅ SUCCESS: Your calendar feature should now work!")
-        print("Please reload your web app on PythonAnywhere.")
+        print("Please reload your web app on Cloud Run.")
     else:
         print("\n❌ FAILED: Please check the error messages above.")
         print("You may need to check your database path or permissions.")

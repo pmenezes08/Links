@@ -1,4 +1,4 @@
-# 🔍 Redis Troubleshooting Guide for PythonAnywhere
+# 🔍 Redis Troubleshooting Guide for Cloud Run
 
 ## Step-by-Step Diagnosis
 
@@ -6,7 +6,7 @@
 
 ## ✅ Step 1: Verify Redis Package is Installed
 
-In PythonAnywhere **Bash console**:
+In Cloud Run **Bash console**:
 
 ```bash
 pip list | grep redis
@@ -29,7 +29,7 @@ pip install redis==5.0.1 --user
 Check your WSGI file:
 
 ```bash
-cat /var/www/puntz08_pythonanywhere_com_wsgi.py | head -30
+cat Cloud Run service configuration | head -30
 ```
 
 **It should look like this:**
@@ -60,7 +60,7 @@ from bodybuilding_app import app as application
 
 ## ✅ Step 3: Check Application Logs
 
-Go to PythonAnywhere **Web tab** → scroll to **Log files** → click **Error log**
+Go to Cloud Run **Web tab** → scroll to **Log files** → click **Error log**
 
 ### Look for one of these messages:
 
@@ -86,7 +86,7 @@ Redis not available, using in-memory cache
 
 ## ✅ Step 4: Test Redis from Python Console
 
-In PythonAnywhere **Python console** (not Bash):
+In Cloud Run **Python console** (not Bash):
 
 ```python
 import os
@@ -142,7 +142,7 @@ def debug_env():
     }
 ```
 
-Visit: `https://puntz08.pythonanywhere.com/debug/env-check`
+Visit: `https://app.c-point.co/debug/env-check`
 
 **Expected output:**
 ```json
@@ -229,7 +229,7 @@ from bodybuilding_app import app as application  # ✅ After env vars
 
 1. **Firewall/IP restrictions**
    - Check Redis Cloud dashboard → Security tab
-   - Ensure PythonAnywhere IPs are allowed (or allow all)
+   - Ensure Cloud Run IPs are allowed (or allow all)
 
 2. **Wrong credentials**
    - Double-check password: `9wrV3MjrTnIC9uTcaEqrAvrW2fOsqdxV`
@@ -237,7 +237,7 @@ from bodybuilding_app import app as application  # ✅ After env vars
 
 3. **Network issues**
    - Redis Cloud might be down (rare)
-   - PythonAnywhere network issues (rare)
+   - Cloud Run network issues (rare)
 
 ---
 
@@ -281,7 +281,7 @@ Go to Redis Cloud dashboard → Your database
 
 If you added the debug endpoint:
 
-Visit: `https://puntz08.pythonanywhere.com/debug/redis-status`
+Visit: `https://app.c-point.co/debug/redis-status`
 
 Should show:
 ```json
@@ -306,10 +306,10 @@ Should show:
 
 2. **First 30 lines of WSGI file:**
    ```bash
-   head -30 /var/www/puntz08_pythonanywhere_com_wsgi.py
+   head -30 Cloud Run service configuration
    ```
 
-3. **Last 50 lines of error log** (from PythonAnywhere Web tab)
+3. **Last 50 lines of error log** (from Cloud Run Web tab)
 
 4. **Output of debug env check:** Visit `/debug/env-check`
 

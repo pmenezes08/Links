@@ -2,7 +2,7 @@
 """
 Comprehensive Database Fix for Links App
 Fixes all major database issues causing missing posts, avatars, and communities
-Run this on PythonAnywhere bash console
+Run this on Cloud Run bash console
 """
 
 import pymysql
@@ -20,9 +20,9 @@ def comprehensive_database_fix():
     print("🔧 Comprehensive Database Fix")
     print("=" * 50)
 
-    # MySQL connection details for PythonAnywhere
+    # MySQL connection details for Cloud Run
     mysql_config = {
-        'host': 'puntz08.mysql.pythonanywhere-services.com',
+        'host': 'YOUR_CLOUD_SQL_HOST',
         'user': 'puntz08',
         'password': '',  # Will be prompted
         'database': 'puntz08$C-Point'
@@ -274,7 +274,7 @@ def comprehensive_database_fix():
             print("   • Fixed user_profiles structure")
             print("")
             print("🚀 Next steps:")
-            print("   1. Restart your Flask app on PythonAnywhere")
+            print("   1. Restart your Flask app on Cloud Run")
             print("   2. Clear browser cache")
             print("   3. Check home timeline - posts should now appear")
             print("   4. Check communities page - all communities should be visible")

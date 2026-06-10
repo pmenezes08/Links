@@ -176,7 +176,7 @@ UPDATE communities SET type = 'Business' WHERE name = 'ACME Corporation';
 Once Mary's role is properly set to 'admin':
 
 1. Mary logs out and back in
-2. Reload your webapp on PythonAnywhere: `touch /var/www/puntz08_pythonanywhere_com_wsgi.py`
+2. Reload your webapp on Cloud Run: `touch Cloud Run service configuration`
 3. Mary should now be able to create Business sub-communities ✅
 
 ---

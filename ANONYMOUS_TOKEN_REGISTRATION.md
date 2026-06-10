@@ -119,7 +119,7 @@ When app opens and asks for notifications:
 ### **Step 5: Verify in Database**
 ```bash
 export MYSQL_PASSWORD='YourPassword'
-mysql -u puntz08 -p"$MYSQL_PASSWORD" -h puntz08.mysql.pythonanywhere-services.com "puntz08\$C-Point" -e "
+mysql -u puntz08 -p"$MYSQL_PASSWORD" -h YOUR_CLOUD_SQL_HOST "puntz08\$C-Point" -e "
 SELECT username, platform, LEFT(token, 20) as token_preview, created_at 
 FROM push_tokens 
 WHERE username = 'Paulo' OR username LIKE 'anonymous_%'
@@ -161,11 +161,11 @@ Should send test notification to your iPhone! 🔔
 ### **Check Database Directly**
 ```bash
 # Check for anonymous tokens
-mysql -u puntz08 -p -h puntz08.mysql.pythonanywhere-services.com "puntz08\$C-Point" \
+mysql -u puntz08 -p -h YOUR_CLOUD_SQL_HOST "puntz08\$C-Point" \
   -e "SELECT * FROM push_tokens WHERE username LIKE 'anonymous_%';"
 
 # Check Paulo's tokens
-mysql -u puntz08 -p -h puntz08.mysql.pythonanywhere-services.com "puntz08\$C-Point" \
+mysql -u puntz08 -p -h YOUR_CLOUD_SQL_HOST "puntz08\$C-Point" \
   -e "SELECT * FROM push_tokens WHERE username = 'Paulo';"
 ```
 

@@ -127,7 +127,7 @@ After cleanup, test your app:
 
 2. Restart your app:
    ```bash
-   touch /var/www/puntz08_pythonanywhere_com_wsgi.py
+   touch Cloud Run service configuration
    ```
 
 3. Test talking avatar generation

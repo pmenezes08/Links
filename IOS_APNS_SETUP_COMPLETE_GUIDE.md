@@ -45,9 +45,9 @@ After creating the key, you'll see:
 
 ---
 
-## 📦 Step 2: Install APNs Library on PythonAnywhere
+## 📦 Step 2: Install APNs Library on Cloud Run
 
-In PythonAnywhere **Bash console**:
+In Cloud Run **Bash console**:
 
 ```bash
 pip install apns2==0.7.2 --user
@@ -55,11 +55,11 @@ pip install apns2==0.7.2 --user
 
 ---
 
-## 🔧 Step 3: Upload APNs Key to PythonAnywhere
+## 🔧 Step 3: Upload APNs Key to Cloud Run
 
 ### 3.1 Upload the .p8 File
 
-1. Go to PythonAnywhere **Files** tab
+1. Go to Cloud Run **Files** tab
 2. Navigate to `/home/puntz08/WorkoutX/Links/`
 3. Create a new directory: `certs`
 4. Upload your `.p8` file to `/home/puntz08/WorkoutX/Links/certs/`
@@ -77,7 +77,7 @@ chmod 600 apns_key.p8
 
 ## 🌐 Step 4: Configure APNs in WSGI File
 
-Edit your WSGI file: `/var/www/puntz08_pythonanywhere_com_wsgi.py`
+Edit your WSGI file: `Cloud Run service configuration`
 
 Add these environment variables:
 
@@ -102,7 +102,7 @@ The code is already there, just commented out. I'll create an uncommented versio
 
 ## 🧪 Step 6: Create push_tokens Table
 
-On PythonAnywhere:
+On Cloud Run:
 
 ```bash
 cd ~/WorkoutX/Links
@@ -119,7 +119,7 @@ Expected output:
 
 ## 🔄 Step 7: Reload Web App
 
-Go to PythonAnywhere **Web tab** → Click **Reload**
+Go to Cloud Run **Web tab** → Click **Reload**
 
 ---
 

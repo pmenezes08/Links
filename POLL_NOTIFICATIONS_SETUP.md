@@ -24,14 +24,14 @@ Automated poll notifications system that sends reminders to community members at
 
 ## Setup Instructions
 
-### PythonAnywhere Setup (Recommended)
+### Cloud Run Setup (Recommended)
 
-1. **Go to PythonAnywhere Dashboard**
+1. **Go to Cloud Run Dashboard**
 2. **Click "Tasks" tab**
 3. **Add a new scheduled task**:
    - **Command**: 
      ```bash
-     curl -X POST https://yourapp.pythonanywhere.com/api/poll_notification_check
+     curl -X POST https://app.c-point.co/api/poll_notification_check
      ```
    - **Frequency**: Every 1 hour
    - **Time**: :00 (run at the top of each hour)

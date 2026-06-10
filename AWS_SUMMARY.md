@@ -121,7 +121,7 @@ API (5000):       Anywhere (0.0.0.0/0)
 Optional HTTP (80): Anywhere
 ```
 
-### Environment Variables (.env on PythonAnywhere):
+### Environment Variables (.env on Cloud Run):
 ```bash
 MUSETALK_API_URL=http://YOUR_EC2_IP:5000
 MUSETALK_API_SECRET=your-generated-secret
@@ -176,7 +176,7 @@ curl http://localhost:5000/health  # Should return healthy
 tail -f ~/musetalk-api/api.log  # Should show startup messages
 ```
 
-### From PythonAnywhere:
+### From Cloud Run:
 ```bash
 # Test connection
 python3 -c "

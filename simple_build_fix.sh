@@ -1,7 +1,7 @@
 #!/bin/bash
-# Simple build fix for PythonAnywhere without Node.js installation
+# Simple build fix for Cloud Run without Node.js installation
 
-echo "Simple build fix for PythonAnywhere..."
+echo "Simple build fix for Cloud Run..."
 
 # Check if we have the built files already
 if [ -d "client/dist" ]; then

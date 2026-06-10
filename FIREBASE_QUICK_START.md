@@ -26,8 +26,8 @@ All code is pushed to main! Here's your migration plan:
 ### **Phase 2: Server Setup (5 min)**
 
 ```bash
-# 1. SSH to PythonAnywhere
-ssh puntz08@ssh.pythonanywhere.com
+# 1. SSH to Cloud Run
+ssh puntz08@Cloud Run access via gcloud
 cd ~/workspace
 
 # 2. Pull latest code

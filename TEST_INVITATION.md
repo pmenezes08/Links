@@ -2,7 +2,7 @@
 
 ## Step 1: Verify You Have Latest Code
 
-On your PythonAnywhere server:
+On your Cloud Run server:
 
 ```bash
 cd ~/dev/Links
@@ -14,8 +14,8 @@ You should see: `c315f3e8 Allow re-invitation after user deletion`
 
 ## Step 2: Reload Webapp
 
-1. Go to PythonAnywhere Web tab
-2. Click **"Reload [your-app].pythonanywhere.com"** button
+1. Go to Cloud Run Web tab
+2. Click **"Reload [your-app].Cloud Run"** button
 3. Wait for it to finish
 
 ## Step 3: Test Invitation Verification API
@@ -30,7 +30,7 @@ import requests
 # Replace with your actual invitation token from the email
 TOKEN = "YOUR_INVITATION_TOKEN_HERE"
 
-response = requests.get(f"https://your-app.pythonanywhere.com/api/invitation/verify?token={TOKEN}")
+response = requests.get(f"https://app.c-point.co/api/invitation/verify?token={TOKEN}")
 print(f"Status: {response.status_code}")
 print(f"Response: {response.json()}")
 EOF

@@ -6,7 +6,7 @@ Now let's find why the error persists...
 
 ---
 
-## 🚨 Quick Checks (Run These on PythonAnywhere)
+## 🚨 Quick Checks (Run These on Cloud Run)
 
 ### Check 1: Are the dependencies installed?
 ```bash
@@ -66,7 +66,7 @@ print(f'APNS_AVAILABLE: {APNS_AVAILABLE}')
 ### Check 4: Did you reload the web app?
 **CRITICAL:** The web app **MUST** be reloaded after pulling code!
 
-1. Go to **pythonanywhere.com**
+1. Go to **Cloud Run**
 2. Click **Web** tab
 3. Find **www.c-point.co**
 4. Click the green **Reload** button (circular arrow icon)
@@ -176,7 +176,7 @@ pip3.10 install --user "httpx[http2]>=0.24.0" "PyJWT>=2.8.0"
 # 3. Clear Python cache
 find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
-# 4. Go to pythonanywhere.com → Web → Reload (GREEN BUTTON)
+# 4. Go to Cloud Run → Web → Reload (GREEN BUTTON)
 
 # 5. Test on iPhone (send new notification)
 

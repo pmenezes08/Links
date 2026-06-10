@@ -6,7 +6,7 @@ import sys
 
 # Set MySQL env vars if not set
 if not os.environ.get('MYSQL_HOST'):
-    os.environ['MYSQL_HOST'] = 'puntz08.mysql.pythonanywhere-services.com'
+    os.environ['MYSQL_HOST'] = 'YOUR_CLOUD_SQL_HOST'
     os.environ['MYSQL_USER'] = 'puntz08'
     os.environ['MYSQL_DB'] = 'puntz08$C-Point'
 

@@ -9,7 +9,7 @@ sys.path.insert(0, '/home/puntz08/WorkoutX/Links')
 # Set the credentials path
 os.environ['FIREBASE_CREDENTIALS'] = '/home/puntz08/secrets/cpoint-127c2-firebase-adminsdk-fbsvc-1f900dabeb.json'
 os.environ['DB_BACKEND'] = 'mysql'
-os.environ['MYSQL_HOST'] = 'puntz08.mysql.pythonanywhere-services.com'
+os.environ['MYSQL_HOST'] = 'YOUR_CLOUD_SQL_HOST'
 os.environ['MYSQL_DB'] = 'puntz08$C-Point'
 os.environ['MYSQL_USER'] = 'puntz08'
 os.environ['MYSQL_PASSWORD'] = 'Trying123456'
