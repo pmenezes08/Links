@@ -24,17 +24,17 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/admin/users/<string:target_username>/manage` | GET | `manage_user` | `backend/blueprints/admin_users.py:131` | manage user | *(no exact string match — may use helpers)* |
 | `/api/admin/delete_user` | POST | `admin_delete_user` | `backend/blueprints/admin_users.py:211` | admin delete user | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Users.tsx` (1) |
 | `/login` | GET, POST | `login` | `backend/blueprints/auth.py:184` | login | `client/src/pages/MobileLogin.tsx` (13), `client/src/App.tsx` (4), `client/src/pages/Signup.tsx` (3), `client/src/utils/internalLinkHandler.ts` (3), `admin-web/src/pages/Login.tsx` (3), `admin-web/src/components/AuthGuard.tsx` (2), `admin-web/src/pages/FindAdmin.tsx` (2), `client/src/pages/InvitePreview.tsx` (1) |
-| `/signup` | GET, POST | `signup` | `backend/blueprints/auth.py:267` | signup | `client/src/App.tsx` (6), `client/src/pages/MobileLogin.tsx` (2), `client/src/pages/AccountDangerZone.tsx` (1), `client/src/pages/InvitePreview.tsx` (1), `client/src/pages/Signup.tsx` (1), `client/src/utils/internalLinkHandler.ts` (1), `client/src/components/onboarding/OnboardingIntroGate.tsx` (1), `client/src/components/settings/DangerZoneSheet.tsx` (1) |
+| `/signup` | GET, POST | `signup` | `backend/blueprints/auth.py:267` | signup | `client/src/App.tsx` (6), `client/src/pages/MobileLogin.tsx` (2), `client/src/pages/AccountDangerZone.tsx` (1), `client/src/pages/InvitePreview.tsx` (1), `client/src/pages/Signup.tsx` (1), `client/src/utils/internalLinkHandler.ts` (1), `client/src/components/onboarding/AgeGate.tsx` (1), `client/src/components/onboarding/OnboardingIntroGate.tsx` (1) |
 | `/logout` | GET (default) | `logout` | `backend/blueprints/auth.py:510` | logout | `client/src/utils/logout.test.ts` (4), `client/src/utils/logout.ts` (4), `client/src/utils/clearAllUserData.ts` (3), `client/src/contexts/LogoutPromptContext.tsx` (1), `admin-web/src/components/Layout.tsx` (1) |
-| `/delete_account` | POST | `delete_account_post` | `backend/blueprints/auth.py:567` | delete account post | `client/src/pages/AccountDangerZone.tsx` (1), `client/src/components/onboarding/OnboardingIntroGate.tsx` (1), `client/src/components/settings/DangerZoneSheet.tsx` (1) |
+| `/delete_account` | POST | `delete_account_post` | `backend/blueprints/auth.py:567` | delete account post | `client/src/pages/AccountDangerZone.tsx` (1), `client/src/components/onboarding/AgeGate.tsx` (1), `client/src/components/onboarding/OnboardingIntroGate.tsx` (1), `client/src/components/settings/DangerZoneSheet.tsx` (1) |
 | `/login_password` | GET, POST | `login_password` | `backend/blueprints/auth.py:632` | login password | `client/src/pages/MobileLogin.tsx` (1), `admin-web/src/pages/Login.tsx` (1) |
-| `/login_back` | GET | `login_back` | `backend/blueprints/auth.py:770` | login back | *(no exact string match — may use helpers)* |
-| `/api/check_pending_login` | GET | `api_check_pending_login` | `backend/blueprints/auth.py:780` | api check pending login | `client/src/pages/MobileLogin.tsx` (1) |
-| `/api/clear_stale_session` | POST | `api_clear_stale_session` | `backend/blueprints/auth.py:794` | api clear stale session | `client/src/pages/MobileLogin.tsx` (1), `client/src/pages/Signup.tsx` (1) |
-| `/api/auth/google` | POST | `google_sign_in` | `backend/blueprints/auth.py:924` | google sign in | `client/src/pages/MobileLogin.tsx` (1) |
-| `/api/auth/apple` | POST | `apple_sign_in` | `backend/blueprints/auth.py:1078` | apple sign in | `client/src/pages/MobileLogin.tsx` (1) |
-| `/request_password_reset` | POST | `request_password_reset` | `backend/blueprints/auth.py:1236` | request password reset | `client/src/pages/MobileLogin.tsx` (1) |
-| `/reset_password/<token>` | GET, POST | `reset_password` | `backend/blueprints/auth.py:1251` | reset password | *(no exact string match — may use helpers)* |
+| `/login_back` | GET | `login_back` | `backend/blueprints/auth.py:768` | login back | *(no exact string match — may use helpers)* |
+| `/api/check_pending_login` | GET | `api_check_pending_login` | `backend/blueprints/auth.py:778` | api check pending login | `client/src/pages/MobileLogin.tsx` (1) |
+| `/api/clear_stale_session` | POST | `api_clear_stale_session` | `backend/blueprints/auth.py:792` | api clear stale session | `client/src/pages/MobileLogin.tsx` (1), `client/src/pages/Signup.tsx` (1) |
+| `/api/auth/google` | POST | `google_sign_in` | `backend/blueprints/auth.py:922` | google sign in | `client/src/pages/MobileLogin.tsx` (1) |
+| `/api/auth/apple` | POST | `apple_sign_in` | `backend/blueprints/auth.py:1076` | apple sign in | `client/src/pages/MobileLogin.tsx` (1) |
+| `/request_password_reset` | POST | `request_password_reset` | `backend/blueprints/auth.py:1234` | request password reset | `client/src/pages/MobileLogin.tsx` (1) |
+| `/reset_password/<token>` | GET, POST | `reset_password` | `backend/blueprints/auth.py:1249` | reset password | *(no exact string match — may use helpers)* |
 | `/billing_return` | GET | `billing_return_page` | `backend/blueprints/billing_return.py:19` | billing return page | `client/src/pages/BillingReturn.tsx` (1) |
 | `/admin/get_onboarding_welcome_video` | GET | `admin_get_onboarding_welcome_video` | `backend/blueprints/branding_assets.py:37` | admin get onboarding welcome video | `client/src/pages/AdminDashboard.tsx` (1) |
 | `/admin/upload_onboarding_welcome_video` | POST | `admin_upload_onboarding_welcome_video` | `backend/blueprints/branding_assets.py:48` | admin upload onboarding welcome video | `client/src/pages/AdminDashboard.tsx` (1) |
@@ -230,14 +230,15 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/me/entitlements` | GET | `me_entitlements` | `backend/blueprints/me.py:145` | me entitlements | `client/src/hooks/useEntitlements.ts` (4) |
 | `/api/me/locale` | GET | `me_locale_get` | `backend/blueprints/me.py:183` | me locale get | `client/src/i18n/useLocale.ts` (2), `client/src/components/onboarding/OnboardingIntroGate.test.tsx` (2), `client/src/components/LocaleBootstrap.tsx` (1), `client/src/components/onboarding/OnboardingIntroGate.tsx` (1) |
 | `/api/me/locale` | PATCH, POST | `me_locale_set` | `backend/blueprints/me.py:206` | me locale set | `client/src/i18n/useLocale.ts` (2), `client/src/components/onboarding/OnboardingIntroGate.test.tsx` (2), `client/src/components/LocaleBootstrap.tsx` (1), `client/src/components/onboarding/OnboardingIntroGate.tsx` (1) |
-| `/api/me/basic_profile` | GET, POST | `me_basic_profile` | `backend/blueprints/me.py:242` | me basic profile | `client/src/components/basic-profile/BasicProfileGateProvider.tsx` (1) |
+| `/api/me/basic_profile` | GET, POST | `me_basic_profile` | `backend/blueprints/me.py:242` | me basic profile | `client/src/components/basic-profile/BasicProfileGateProvider.test.tsx` (1), `client/src/components/basic-profile/BasicProfileGateProvider.tsx` (1) |
 | `/api/me/ai-usage` | GET | `me_ai_usage` | `backend/blueprints/me.py:285` | me ai usage | `client/src/pages/MembershipAIUsage.tsx` (2), `client/src/components/membership/ManageMembershipModal.tsx` (1) |
 | `/api/me/billing` | GET | `me_billing` | `backend/blueprints/me.py:554` | me billing | `client/src/components/membership/ManageMembershipModal.tsx` (5), `client/src/pages/Success.tsx` (2), `client/src/pages/EditCommunity.tsx` (1), `client/src/pages/SubscriptionPlans.tsx` (1), `client/src/components/membership/PaidCommunitiesBillingSection.tsx` (1) |
 | `/api/me/payment-history` | GET | `me_payment_history` | `backend/blueprints/me.py:632` | me payment history | `client/src/components/membership/ManageMembershipModal.tsx` (1) |
 | `/api/me/billing/portal` | POST | `me_billing_portal` | `backend/blueprints/me.py:669` | me billing portal | `client/src/pages/Success.tsx` (2), `client/src/components/membership/ManageMembershipModal.tsx` (2), `client/src/pages/EditCommunity.tsx` (1), `client/src/pages/SubscriptionPlans.tsx` (1), `client/src/components/membership/PaidCommunitiesBillingSection.tsx` (1) |
-| `/api/me/age-confirmation` | POST | `me_age_confirmation` | `backend/blueprints/me.py:798` | me age confirmation | *(no exact string match — may use helpers)* |
-| `/api/cron/purge-underage` | POST | `cron_purge_underage` | `backend/blueprints/me.py:863` | cron purge underage | *(no exact string match — may use helpers)* |
-| `/api/me/communities-spotlight-tour-seen` | POST | `mark_communities_spotlight_tour_seen` | `backend/blueprints/me.py:899` | mark communities spotlight tour seen | `client/src/pages/Communities.tsx` (1) |
+| `/api/me/age-gate` | GET | `me_age_gate_status` | `backend/blueprints/me.py:798` | me age gate status | `client/src/components/onboarding/AgeGate.tsx` (1) |
+| `/api/me/age-confirmation` | POST | `me_age_confirmation` | `backend/blueprints/me.py:821` | me age confirmation | `client/src/components/onboarding/AgeGate.tsx` (1) |
+| `/api/cron/purge-underage` | POST | `cron_purge_underage` | `backend/blueprints/me.py:886` | cron purge underage | *(no exact string match — may use helpers)* |
+| `/api/me/communities-spotlight-tour-seen` | POST | `mark_communities_spotlight_tour_seen` | `backend/blueprints/me.py:922` | mark communities spotlight tour seen | `client/src/pages/Communities.tsx` (1) |
 | `/api/message_image_upload_url` | POST | `api_message_image_upload_url` | `backend/blueprints/media_assets.py:74` | api message image upload url | `client/src/chat/mediaSenders.ts` (1) |
 | `/api/video_upload_url` | POST | `api_video_upload_url` | `backend/blueprints/media_assets.py:98` | api video upload url | `client/src/chat/mediaSenders.ts` (2) |
 | `/api/post_video_upload_url` | POST | `api_post_video_upload_url` | `backend/blueprints/media_assets.py:122` | api post video upload url | `client/src/pages/CreatePost.tsx` (1) |
@@ -262,26 +263,26 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/event_notification_check` | POST | `api_event_notification_check` | `backend/blueprints/notifications.py:1246` | api event notification check | *(no exact string match — may use helpers)* |
 | `/api/cron/events/reminders` | POST | `api_event_notification_check` | `backend/blueprints/notifications.py:1247` | api event notification check | *(no exact string match — may use helpers)* |
 | `/api/cron/steve/reminder-vault-dispatch` | POST | `api_cron_steve_reminder_vault_dispatch` | `backend/blueprints/notifications.py:1316` | api cron steve reminder vault dispatch | *(no exact string match — may use helpers)* |
-| `/onboarding` | GET (default) | `onboarding_react` | `backend/blueprints/onboarding.py:131` | onboarding react | `client/src/pages/OnboardingChat.tsx` (17), `client/src/components/onboarding/OnboardingIntroGate.test.tsx` (4), `client/src/App.tsx` (3), `client/src/pages/PremiumDashboard.tsx` (3), `client/src/i18n/index.ts` (2), `client/src/pages/Profile.tsx` (2), `client/src/components/onboarding/OnboardingIntroGate.tsx` (2) |
+| `/onboarding` | GET (default) | `onboarding_react` | `backend/blueprints/onboarding.py:131` | onboarding react | `client/src/pages/OnboardingChat.tsx` (17), `client/src/App.tsx` (4), `client/src/components/onboarding/OnboardingIntroGate.test.tsx` (4), `client/src/pages/PremiumDashboard.tsx` (3), `client/src/i18n/index.ts` (2), `client/src/pages/Profile.tsx` (2), `client/src/components/onboarding/OnboardingIntroGate.tsx` (2), `client/src/i18n/onboardingChatHelpers.ts` (1) |
 | `/debug_onboarding` | GET (default) | `debug_onboarding` | `backend/blueprints/onboarding.py:158` | debug onboarding | *(no exact string match — may use helpers)* |
 | `/clear_onboarding_storage` | GET, POST | `clear_onboarding_storage` | `backend/blueprints/onboarding.py:373` | clear onboarding storage | *(no exact string match — may use helpers)* |
 | `/onboarding/welcome` | GET (default) | `onboarding_welcome` | `backend/blueprints/onboarding.py:422` | onboarding welcome | *(no exact string match — may use helpers)* |
-| `/api/onboarding/state` | GET | `get_onboarding_state` | `backend/blueprints/onboarding.py:452` | get onboarding state | `client/src/pages/OnboardingChat.tsx` (4), `client/src/pages/PremiumDashboard.tsx` (2) |
-| `/api/onboarding/state` | POST | `save_onboarding_state` | `backend/blueprints/onboarding.py:511` | save onboarding state | `client/src/pages/OnboardingChat.tsx` (4), `client/src/pages/PremiumDashboard.tsx` (2) |
-| `/api/onboarding/defer_profile` | POST | `onboarding_defer_profile` | `backend/blueprints/onboarding.py:544` | onboarding defer profile | `client/src/components/onboarding/OnboardingIntroGate.test.tsx` (2), `client/src/pages/OnboardingChat.tsx` (1), `client/src/components/onboarding/OnboardingIntroGate.tsx` (1) |
-| `/api/cron/onboarding/reminders` | POST | `onboarding_reminders_cron` | `backend/blueprints/onboarding.py:575` | onboarding reminders cron | *(no exact string match — may use helpers)* |
-| `/api/onboarding/tier_hints` | GET | `onboarding_tier_hints` | `backend/blueprints/onboarding.py:592` | onboarding tier hints | `client/src/pages/OnboardingChat.tsx` (1) |
-| `/api/onboarding/bootstrap_communities` | POST | `onboarding_bootstrap_communities` | `backend/blueprints/onboarding.py:605` | onboarding bootstrap communities | `client/src/pages/OnboardingChat.tsx` (1) |
-| `/api/onboarding/redirect` | POST | `onboarding_redirect_message` | `backend/blueprints/onboarding.py:631` | onboarding redirect message | `client/src/pages/OnboardingChat.tsx` (1) |
-| `/api/onboarding/resolve_role` | POST | `onboarding_resolve_role` | `backend/blueprints/onboarding.py:671` | onboarding resolve role | `client/src/pages/OnboardingChat.tsx` (1) |
-| `/api/onboarding/resolve_location` | POST | `onboarding_resolve_location` | `backend/blueprints/onboarding.py:717` | onboarding resolve location | `client/src/pages/OnboardingChat.tsx` (1) |
-| `/api/onboarding/compose_bio` | POST | `onboarding_compose_bio` | `backend/blueprints/onboarding.py:797` | onboarding compose bio | `client/src/pages/OnboardingChat.tsx` (1) |
-| `/api/onboarding/enrich` | POST | `onboarding_enrich_profile` | `backend/blueprints/onboarding.py:1070` | onboarding enrich profile | *(no exact string match — may use helpers)* |
-| `/api/onboarding/save_field` | POST | `onboarding_save_field` | `backend/blueprints/onboarding.py:1260` | onboarding save field | `client/src/pages/OnboardingChat.tsx` (1) |
-| `/api/onboarding/parse_cv` | POST | `onboarding_parse_cv` | `backend/blueprints/onboarding.py:1317` | onboarding parse cv | `client/src/pages/OnboardingChat.tsx` (1), `client/src/pages/Profile.tsx` (1) |
-| `/api/onboarding/apply_professional_structured` | POST | `onboarding_apply_professional_structured` | `backend/blueprints/onboarding.py:1426` | onboarding apply professional structured | `client/src/pages/OnboardingChat.tsx` (1), `client/src/pages/Profile.tsx` (1) |
-| `/api/onboarding/social_links` | POST | `onboarding_save_social_links` | `backend/blueprints/onboarding.py:1538` | onboarding save social links | `client/src/pages/OnboardingChat.tsx` (1) |
-| `/api/onboarding/complete` | POST | `onboarding_complete` | `backend/blueprints/onboarding.py:1555` | onboarding complete | `client/src/pages/OnboardingChat.tsx` (1) |
+| `/api/onboarding/state` | GET | `get_onboarding_state` | `backend/blueprints/onboarding.py:452` | get onboarding state | `client/src/pages/OnboardingChat.tsx` (4), `client/src/pages/PremiumDashboard.tsx` (2), `client/src/pages/CommunityFeed.tsx` (1) |
+| `/api/onboarding/state` | POST | `save_onboarding_state` | `backend/blueprints/onboarding.py:513` | save onboarding state | `client/src/pages/OnboardingChat.tsx` (4), `client/src/pages/PremiumDashboard.tsx` (2), `client/src/pages/CommunityFeed.tsx` (1) |
+| `/api/onboarding/defer_profile` | POST | `onboarding_defer_profile` | `backend/blueprints/onboarding.py:546` | onboarding defer profile | `client/src/components/onboarding/OnboardingIntroGate.test.tsx` (2), `client/src/pages/OnboardingChat.tsx` (1), `client/src/components/onboarding/OnboardingIntroGate.tsx` (1) |
+| `/api/cron/onboarding/reminders` | POST | `onboarding_reminders_cron` | `backend/blueprints/onboarding.py:577` | onboarding reminders cron | *(no exact string match — may use helpers)* |
+| `/api/onboarding/tier_hints` | GET | `onboarding_tier_hints` | `backend/blueprints/onboarding.py:594` | onboarding tier hints | `client/src/i18n/onboardingChatHelpers.ts` (1), `client/src/pages/OnboardingChat.tsx` (1) |
+| `/api/onboarding/bootstrap_communities` | POST | `onboarding_bootstrap_communities` | `backend/blueprints/onboarding.py:607` | onboarding bootstrap communities | `client/src/pages/OnboardingChat.tsx` (1) |
+| `/api/onboarding/redirect` | POST | `onboarding_redirect_message` | `backend/blueprints/onboarding.py:633` | onboarding redirect message | `client/src/pages/OnboardingChat.tsx` (1) |
+| `/api/onboarding/resolve_role` | POST | `onboarding_resolve_role` | `backend/blueprints/onboarding.py:673` | onboarding resolve role | `client/src/pages/OnboardingChat.tsx` (1) |
+| `/api/onboarding/resolve_location` | POST | `onboarding_resolve_location` | `backend/blueprints/onboarding.py:719` | onboarding resolve location | `client/src/pages/OnboardingChat.tsx` (1) |
+| `/api/onboarding/compose_bio` | POST | `onboarding_compose_bio` | `backend/blueprints/onboarding.py:799` | onboarding compose bio | `client/src/pages/OnboardingChat.tsx` (1) |
+| `/api/onboarding/enrich` | POST | `onboarding_enrich_profile` | `backend/blueprints/onboarding.py:1072` | onboarding enrich profile | *(no exact string match — may use helpers)* |
+| `/api/onboarding/save_field` | POST | `onboarding_save_field` | `backend/blueprints/onboarding.py:1262` | onboarding save field | `client/src/pages/OnboardingChat.tsx` (1) |
+| `/api/onboarding/parse_cv` | POST | `onboarding_parse_cv` | `backend/blueprints/onboarding.py:1319` | onboarding parse cv | `client/src/pages/OnboardingChat.tsx` (1), `client/src/pages/Profile.tsx` (1) |
+| `/api/onboarding/apply_professional_structured` | POST | `onboarding_apply_professional_structured` | `backend/blueprints/onboarding.py:1428` | onboarding apply professional structured | `client/src/pages/OnboardingChat.tsx` (1), `client/src/pages/Profile.tsx` (1) |
+| `/api/onboarding/social_links` | POST | `onboarding_save_social_links` | `backend/blueprints/onboarding.py:1540` | onboarding save social links | `client/src/pages/OnboardingChat.tsx` (1) |
+| `/api/onboarding/complete` | POST | `onboarding_complete` | `backend/blueprints/onboarding.py:1557` | onboarding complete | `client/src/pages/OnboardingChat.tsx` (1) |
 | `/api/me/platform-activity-digest` | GET | `api_platform_activity_digest` | `backend/blueprints/platform_activity.py:34` | api platform activity digest | *(no exact string match — may use helpers)* |
 | `/api/post_view` | POST | `api_post_view` | `backend/blueprints/post_views.py:28` | api post view | `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/HomeTimeline.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
 | `/` | GET | `index` | `backend/blueprints/public.py:23` | index | *(no exact string match — may use helpers)* |
@@ -304,14 +305,14 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/webhooks/apple` | POST | `apple_webhook` | `backend/blueprints/subscription_webhooks.py:860` | apple webhook | *(no exact string match — may use helpers)* |
 | `/api/webhooks/google` | POST | `google_webhook` | `backend/blueprints/subscription_webhooks.py:943` | google webhook | *(no exact string match — may use helpers)* |
 | `/api/stripe/config` | GET | `api_stripe_config` | `backend/blueprints/subscriptions.py:246` | api stripe config | *(no exact string match — may use helpers)* |
-| `/api/me/subscriptions` | GET | `api_me_subscriptions` | `backend/blueprints/subscriptions.py:257` | api me subscriptions | `client/src/pages/SubscriptionPlans.test.tsx` (5), `client/src/pages/Communities.tsx` (1), `client/src/pages/SubscriptionPlans.tsx` (1), `client/src/components/membership/PaidCommunitiesBillingSection.tsx` (1), `client/src/components/subscriptions/StevePickerPanel.tsx` (1) |
-| `/api/kb/pricing` | GET | `api_kb_pricing` | `backend/blueprints/subscriptions.py:423` | api kb pricing | `client/src/pages/SubscriptionPlans.test.tsx` (5), `client/src/pages/SubscriptionPlans.tsx` (1) |
-| `/api/communities/<int:community_id>/billing` | GET | `api_community_billing` | `backend/blueprints/subscriptions.py:951` | api community billing | *(no exact string match — may use helpers)* |
-| `/api/communities/<int:community_id>/billing/change-tier` | POST | `api_community_billing_change_tier` | `backend/blueprints/subscriptions.py:1073` | api community billing change tier | *(no exact string match — may use helpers)* |
-| `/api/admin/communities/<int:community_id>/billing/change-tier` | POST | `api_admin_community_billing_change_tier` | `backend/blueprints/subscriptions.py:1205` | api admin community billing change tier | *(no exact string match — may use helpers)* |
-| `/api/admin/communities/<int:community_id>/billing/sync-stripe-renewal` | POST | `api_admin_community_billing_sync_stripe_renewal` | `backend/blueprints/subscriptions.py:1339` | api admin community billing sync stripe renewal | *(no exact string match — may use helpers)* |
-| `/api/stripe/checkout_status` | GET | `api_stripe_checkout_status` | `backend/blueprints/subscriptions.py:1373` | api stripe checkout status | `client/src/pages/Success.tsx` (2) |
-| `/api/stripe/create_checkout_session` | POST | `api_stripe_create_checkout_session` | `backend/blueprints/subscriptions.py:1466` | api stripe create checkout session | `client/src/pages/SubscriptionPlans.test.tsx` (1), `client/src/pages/SubscriptionPlans.tsx` (1) |
+| `/api/me/subscriptions` | GET | `api_me_subscriptions` | `backend/blueprints/subscriptions.py:257` | api me subscriptions | `client/src/pages/SubscriptionPlans.test.tsx` (6), `client/src/pages/Communities.tsx` (1), `client/src/pages/SubscriptionPlans.tsx` (1), `client/src/components/membership/PaidCommunitiesBillingSection.tsx` (1), `client/src/components/subscriptions/StevePickerPanel.tsx` (1) |
+| `/api/kb/pricing` | GET | `api_kb_pricing` | `backend/blueprints/subscriptions.py:423` | api kb pricing | `client/src/pages/SubscriptionPlans.test.tsx` (6), `client/src/pages/SubscriptionPlans.tsx` (1) |
+| `/api/communities/<int:community_id>/billing` | GET | `api_community_billing` | `backend/blueprints/subscriptions.py:962` | api community billing | *(no exact string match — may use helpers)* |
+| `/api/communities/<int:community_id>/billing/change-tier` | POST | `api_community_billing_change_tier` | `backend/blueprints/subscriptions.py:1084` | api community billing change tier | *(no exact string match — may use helpers)* |
+| `/api/admin/communities/<int:community_id>/billing/change-tier` | POST | `api_admin_community_billing_change_tier` | `backend/blueprints/subscriptions.py:1216` | api admin community billing change tier | *(no exact string match — may use helpers)* |
+| `/api/admin/communities/<int:community_id>/billing/sync-stripe-renewal` | POST | `api_admin_community_billing_sync_stripe_renewal` | `backend/blueprints/subscriptions.py:1350` | api admin community billing sync stripe renewal | *(no exact string match — may use helpers)* |
+| `/api/stripe/checkout_status` | GET | `api_stripe_checkout_status` | `backend/blueprints/subscriptions.py:1384` | api stripe checkout status | `client/src/pages/Success.tsx` (2) |
+| `/api/stripe/create_checkout_session` | POST | `api_stripe_create_checkout_session` | `backend/blueprints/subscriptions.py:1477` | api stripe create checkout session | `client/src/pages/SubscriptionPlans.test.tsx` (1), `client/src/pages/SubscriptionPlans.tsx` (1) |
 | `/api/summaries/voice/preflight` | POST | `voice_summary_preflight` | `backend/blueprints/summaries.py:28` | voice summary preflight | *(no exact string match — may use helpers)* |
 | `/get_links` | GET (default) | `get_links` | `backend/blueprints/useful_resources.py:41` | get links | `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/GroupFeed.tsx` (1), `client/src/pages/UsefulLinks.tsx` (1) |
 | `/add_link` | POST | `add_link` | `backend/blueprints/useful_resources.py:61` | add link | `client/src/pages/UsefulLinks.tsx` (1) |
@@ -339,34 +340,34 @@ Total **374** `@app.route` registrations, grouped below for readability.
 |------|-----------|---------|------|-----------------|----------------------|
 | `/api/admin/add_user` | POST | `admin_add_user` | 9692 | admin add user | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Users.tsx` (1) |
 | `/api/admin/add_user_to_community` | POST | `admin_add_user_to_community_api` | 9826 | admin add user to community api | — |
-| `/api/admin/all_blocked_users` | GET | `admin_get_all_blocked_users` | 19431 | admin get all blocked users | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Blocked.tsx` (1) |
+| `/api/admin/all_blocked_users` | GET | `admin_get_all_blocked_users` | 19447 | admin get all blocked users | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Blocked.tsx` (1) |
 | `/api/admin/communities` | GET | `admin_communities_api` | 9225 | admin communities api | `admin-web/src/pages/CommunitiesDirectory.tsx` (2), `admin-web/src/pages/Broadcast.tsx` (1), `admin-web/src/pages/ContentGeneration.tsx` (1), `admin-web/src/pages/Invites.tsx` (1), `admin-web/src/pages/Subscriptions.tsx` (1) |
 | `/api/admin/communities_list` | GET | `admin_communities_list_api` | 8991 | admin communities list api | `admin-web/src/pages/ContentGeneration.tsx` (1) |
 | `/api/admin/compress_images` | POST | `admin_compress_images` | 9734 | admin compress images | — |
 | `/api/admin/dashboard` | GET | `admin_dashboard_api` | 9443 | admin dashboard api | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/NetworkInsights.tsx` (1) |
-| `/api/admin/delete_reported_post` | POST | `admin_delete_reported_post` | 19181 | admin delete reported post | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Reports.tsx` (1) |
-| `/api/admin/embeddings/backfill` | POST | `admin_embeddings_backfill` | 32092 | admin embeddings backfill | `client/src/pages/AdminDashboard.tsx` (2) |
-| `/api/admin/embeddings/status` | GET | `admin_embeddings_status` | 32148 | admin embeddings status | `client/src/pages/AdminDashboard.tsx` (1) |
-| `/api/admin/get_user_exercises` | GET | `admin_get_user_exercises` | 30540 | admin get user exercises | — |
+| `/api/admin/delete_reported_post` | POST | `admin_delete_reported_post` | 19197 | admin delete reported post | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Reports.tsx` (1) |
+| `/api/admin/embeddings/backfill` | POST | `admin_embeddings_backfill` | 32121 | admin embeddings backfill | `client/src/pages/AdminDashboard.tsx` (2) |
+| `/api/admin/embeddings/status` | GET | `admin_embeddings_status` | 32177 | admin embeddings status | `client/src/pages/AdminDashboard.tsx` (1) |
+| `/api/admin/get_user_exercises` | GET | `admin_get_user_exercises` | 30569 | admin get user exercises | — |
 | `/api/admin/knowledge_base/<target_username>` | GET | `admin_knowledge_base_get` | 6721 | admin knowledge base get | — |
 | `/api/admin/knowledge_base/<target_username>/feedback` | POST | `admin_knowledge_base_feedback` | 6778 | admin knowledge base feedback | — |
 | `/api/admin/knowledge_base/<target_username>/reset` | mixed | `admin_knowledge_base_reset` | 6920 | admin knowledge base reset | — |
 | `/api/admin/knowledge_base/<target_username>/synthesize` | POST | `admin_knowledge_base_synthesize` | 6737 | admin knowledge base synthesize | — |
 | `/api/admin/knowledge_base/graph/<target_username>` | GET | `admin_knowledge_base_graph` | 6939 | admin knowledge base graph | — |
-| `/api/admin/knowledge_base/network/<int:network_id>/insights` | POST | `admin_network_insights` | 32520 | admin network insights | — |
+| `/api/admin/knowledge_base/network/<int:network_id>/insights` | POST | `admin_network_insights` | 32549 | admin network insights | — |
 | `/api/admin/knowledge_base/network/<int:network_id>/synthesize` | POST | `admin_network_knowledge_base_synthesize` | 6760 | admin network knowledge base synthesize | — |
 | `/api/admin/knowledge_base/shared_nodes` | GET | `admin_knowledge_base_shared_nodes` | 6988 | admin knowledge base shared nodes | — |
-| `/api/admin/legacy_user_exercises` | GET | `admin_legacy_user_exercises` | 30642 | admin legacy user exercises | — |
+| `/api/admin/legacy_user_exercises` | GET | `admin_legacy_user_exercises` | 30671 | admin legacy user exercises | — |
 | `/api/admin/login-by-email` | POST | `admin_login_by_email` | 9248 | admin login by email | `admin-web/src/pages/FindAdmin.tsx` (1) |
-| `/api/admin/merge_legacy_user_exercises` | POST | `admin_merge_legacy_user_exercises` | 30689 | admin merge legacy user exercises | — |
+| `/api/admin/merge_legacy_user_exercises` | POST | `admin_merge_legacy_user_exercises` | 30718 | admin merge legacy user exercises | — |
 | `/api/admin/metrics` | GET | `admin_metrics_api` | 9426 | admin metrics api | `admin-web/src/pages/Metrics.tsx` (2), `client/src/pages/AdminDashboard.tsx` (1) |
-| `/api/admin/networking/compute_outcomes` | POST | `admin_compute_networking_outcomes` | 32427 | admin compute networking outcomes | — |
-| `/api/admin/networking/health` | GET | `admin_networking_health` | 32192 | admin networking health | — |
+| `/api/admin/networking/compute_outcomes` | POST | `admin_compute_networking_outcomes` | 32456 | admin compute networking outcomes | — |
+| `/api/admin/networking/health` | GET | `admin_networking_health` | 32221 | admin networking health | — |
 | `/api/admin/overview` | GET | `admin_overview_api` | 9303 | admin overview api | `admin-web/src/components/Layout.tsx` (1), `admin-web/src/pages/Overview.tsx` (1) |
 | `/api/admin/profile` | GET | `admin_profile_api` | 9576 | admin profile api | `client/src/pages/AdminProfile.tsx` (1) |
-| `/api/admin/reported_posts` | GET | `admin_get_reported_posts` | 19078 | admin get reported posts | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Reports.tsx` (1) |
-| `/api/admin/review_report` | POST | `admin_review_report` | 19136 | admin review report | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Reports.tsx` (1) |
-| `/api/admin/set_parent` | POST | `admin_set_parent` | 30586 | admin set parent | — |
+| `/api/admin/reported_posts` | GET | `admin_get_reported_posts` | 19094 | admin get reported posts | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Reports.tsx` (1) |
+| `/api/admin/review_report` | POST | `admin_review_report` | 19152 | admin review report | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Reports.tsx` (1) |
+| `/api/admin/set_parent` | POST | `admin_set_parent` | 30615 | admin set parent | — |
 | `/api/admin/steve_profiles` | GET | `admin_steve_profiles` | 6301 | admin steve profiles | `client/src/pages/AdminDashboard.tsx` (8), `admin-web/src/pages/UserProfiles.tsx` (3) |
 | `/api/admin/steve_profiles/<target_username>/analysis` | mixed | `admin_steve_profile_delete` | 6545 | admin steve profile delete | — |
 | `/api/admin/steve_profiles/<target_username>/analysis/sections` | mixed | `admin_steve_profile_patch` | 6641 | admin steve profile patch | — |
@@ -374,7 +375,7 @@ Total **374** `@app.route` registrations, grouped below for readability.
 | `/api/admin/steve_profiles/<target_username>/edit` | POST | `admin_steve_profile_edit` | 6805 | admin steve profile edit | — |
 | `/api/admin/steve_profiles/<target_username>/feedback` | mixed | `admin_steve_profile_feedback` | 6675 | admin steve profile feedback | — |
 | `/api/admin/steve_profiles/<target_username>/wrong_person` | POST | `admin_steve_profile_wrong_person` | 6565 | admin steve profile wrong person | — |
-| `/api/admin/steve_profiles/refresh_stale` | POST | `admin_steve_profiles_refresh_stale` | 32354 | admin steve profiles refresh stale | `client/src/pages/AdminDashboard.tsx` (1) |
+| `/api/admin/steve_profiles/refresh_stale` | POST | `admin_steve_profiles_refresh_stale` | 32383 | admin steve profiles refresh stale | `client/src/pages/AdminDashboard.tsx` (1) |
 | `/api/admin/tenants` | GET | `admin_list_tenants` | 9021 | admin list tenants | `admin-web/src/pages/Tenants.tsx` (7) |
 | `/api/admin/tenants` | POST | `admin_create_tenant` | 9063 | admin create tenant | `admin-web/src/pages/Tenants.tsx` (7) |
 | `/api/admin/tenants/<int:tenant_id>` | mixed | `admin_update_tenant` | 9100 | admin update tenant | — |
@@ -382,7 +383,7 @@ Total **374** `@app.route` registrations, grouped below for readability.
 | `/api/admin/tenants/<int:tenant_id>/assign-users` | mixed | `admin_assign_tenant_users` | 9174 | admin assign tenant users | — |
 | `/api/admin/tenants/<int:tenant_id>/communities` | GET | `admin_tenant_communities` | 9153 | admin tenant communities | — |
 | `/api/admin/tenants/<int:tenant_id>/users` | GET | `admin_tenant_users` | 9132 | admin tenant users | — |
-| `/api/admin/unblock_user` | POST | `admin_unblock_user` | 19494 | admin unblock user | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Blocked.tsx` (1) |
+| `/api/admin/unblock_user` | POST | `admin_unblock_user` | 19510 | admin unblock user | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Blocked.tsx` (1) |
 | `/api/admin/update_community` | POST | `admin_update_community` | 9664 | admin update community | — |
 | `/api/admin/update_user` | POST | `admin_update_user` | 9635 | admin update user | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Users.tsx` (1) |
 | `/api/admin/users` | GET | `admin_users_api` | 9340 | admin users api | `admin-web/src/pages/Users.tsx` (5), `admin-web/src/pages/Tenants.tsx` (1) |
@@ -391,39 +392,39 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/ai/personalities` | GET | `get_ai_personalities` | 20943 | get ai personalities | `client/src/pages/EditCommunity.tsx` (1), `client/src/components/community/CommunityOwnerSetupIntro.tsx` (1) |
-| `/api/ai/steve_preflight` | POST | `ai_steve_preflight` | 21014 | ai steve preflight | `client/src/utils/stevePreflight.test.ts` (1), `client/src/utils/stevePreflight.ts` (1) |
-| `/api/ai/steve_reply` | POST | `ai_steve_reply` | 21648 | ai steve reply | `client/src/pages/CommentReply.tsx` (1), `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
+| `/api/ai/personalities` | GET | `get_ai_personalities` | 20959 | get ai personalities | `client/src/pages/EditCommunity.tsx` (1), `client/src/components/community/CommunityOwnerSetupIntro.tsx` (1) |
+| `/api/ai/steve_preflight` | POST | `ai_steve_preflight` | 21030 | ai steve preflight | `client/src/utils/stevePreflight.test.ts` (1), `client/src/utils/stevePreflight.ts` (1) |
+| `/api/ai/steve_reply` | POST | `ai_steve_reply` | 21664 | ai steve reply | `client/src/pages/CommentReply.tsx` (1), `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
 
 ### `/api/all_active_polls`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/all_active_polls` | GET | `api_all_active_polls` | 14728 | api all active polls | `client/src/pages/Notifications.tsx` (1) |
+| `/api/all_active_polls` | GET | `api_all_active_polls` | 14744 | api all active polls | `client/src/pages/Notifications.tsx` (1) |
 
 ### `/api/all_communities_debug`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/all_communities_debug` | GET | `get_all_communities_debug` | 26340 | get all communities debug | — |
+| `/api/all_communities_debug` | GET | `get_all_communities_debug` | 26369 | get all communities debug | — |
 
 ### `/api/all_my_tasks`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/all_my_tasks` | GET | `api_all_my_tasks` | 14682 | api all my tasks | `client/src/pages/Notifications.tsx` (1) |
+| `/api/all_my_tasks` | GET | `api_all_my_tasks` | 14698 | api all my tasks | `client/src/pages/Notifications.tsx` (1) |
 
 ### `/api/block_user`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/block_user` | POST | `block_user` | 19242 | block user | `client/src/pages/ChatThread.tsx` (1), `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
+| `/api/block_user` | POST | `block_user` | 19258 | block user | `client/src/pages/ChatThread.tsx` (1), `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
 
 ### `/api/blocked_users`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/blocked_users` | GET | `get_blocked_users` | 19362 | get blocked users | `client/src/pages/AccountSecurity.tsx` (1), `client/src/components/settings/PrivacySecurityPanel.tsx` (1) |
+| `/api/blocked_users` | GET | `get_blocked_users` | 19378 | get blocked users | `client/src/pages/AccountSecurity.tsx` (1), `client/src/components/settings/PrivacySecurityPanel.tsx` (1) |
 
 ### `/api/check_admin`
 
@@ -435,7 +436,7 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/check_gym_membership` | GET | `check_gym_membership` | 26182 | check gym membership | `client/src/pages/PremiumDashboard.tsx` (1), `client/src/pages/YourSports.tsx` (1) |
+| `/api/check_gym_membership` | GET | `check_gym_membership` | 26211 | check gym membership | `client/src/pages/PremiumDashboard.tsx` (1), `client/src/pages/YourSports.tsx` (1) |
 
 ### `/api/client_log`
 
@@ -447,27 +448,27 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/community/<int:community_id>/ai_personality` | POST | `community_ai_personality` | 20953 | community ai personality | — |
-| `/api/community/mute` | POST | `mute_community` | 24052 | mute community | `client/src/pages/CommunityFeed.tsx` (2) |
-| `/api/community/mute_status` | GET | `community_mute_status` | 24087 | community mute status | `client/src/pages/CommunityFeed.tsx` (1) |
+| `/api/community/<int:community_id>/ai_personality` | POST | `community_ai_personality` | 20969 | community ai personality | — |
+| `/api/community/mute` | POST | `mute_community` | 24081 | mute community | `client/src/pages/CommunityFeed.tsx` (2) |
+| `/api/community/mute_status` | GET | `community_mute_status` | 24116 | community mute status | `client/src/pages/CommunityFeed.tsx` (1) |
 
 ### `/api/community_feed`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/community_feed/<int:community_id>` | GET | `api_community_feed` | 24376 | api community feed | — |
+| `/api/community_feed/<int:community_id>` | GET | `api_community_feed` | 24405 | api community feed | — |
 
 ### `/api/community_key_posts`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/community_key_posts` | GET | `api_community_key_posts` | 25035 | api community key posts | `client/src/pages/KeyPosts.tsx` (1) |
+| `/api/community_key_posts` | GET | `api_community_key_posts` | 25064 | api community key posts | `client/src/pages/KeyPosts.tsx` (1) |
 
 ### `/api/community_member_suggest`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/community_member_suggest` | GET | `api_community_member_suggest` | 24864 | api community member suggest | `client/src/components/MentionTextarea.tsx` (1) |
+| `/api/community_member_suggest` | GET | `api_community_member_suggest` | 24893 | api community member suggest | `client/src/components/MentionTextarea.tsx` (1) |
 
 ### `/api/community_photos`
 
@@ -485,13 +486,13 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/community_tasks` | GET | `api_community_tasks` | 14612 | api community tasks | `client/src/pages/CommunityTasks.tsx` (3) |
+| `/api/community_tasks` | GET | `api_community_tasks` | 14628 | api community tasks | `client/src/pages/CommunityTasks.tsx` (3) |
 
 ### `/api/complete_task`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/complete_task` | POST | `api_complete_task` | 15048 | api complete task | `client/src/pages/CommunityTasks.tsx` (1) |
+| `/api/complete_task` | POST | `api_complete_task` | 15064 | api complete task | `client/src/pages/CommunityTasks.tsx` (1) |
 
 ### `/api/config`
 
@@ -503,20 +504,20 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/create_task` | POST | `api_create_task` | 14804 | api create task | `client/src/pages/CommunityTasks.tsx` (1) |
+| `/api/create_task` | POST | `api_create_task` | 14820 | api create task | `client/src/pages/CommunityTasks.tsx` (1) |
 
 ### `/api/cron`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/cron/group-steve-agent-due` | POST | `cron_group_steve_agent_due` | 21592 | cron group steve agent due | — |
-| `/api/cron/kb/weekly-synthesis` | POST | `cron_kb_weekly_synthesis` | 32255 | cron kb weekly synthesis | — |
+| `/api/cron/group-steve-agent-due` | POST | `cron_group_steve_agent_due` | 21608 | cron group steve agent due | — |
+| `/api/cron/kb/weekly-synthesis` | POST | `cron_kb_weekly_synthesis` | 32284 | cron kb weekly synthesis | — |
 
 ### `/api/dashboard_communities_test`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/dashboard_communities_test` | GET | `dashboard_communities_test` | 26249 | dashboard communities test | — |
+| `/api/dashboard_communities_test` | GET | `dashboard_communities_test` | 26278 | dashboard communities test | — |
 
 ### `/api/debug_communities`
 
@@ -528,19 +529,19 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/debug_image_paths` | GET | `api_debug_image_paths` | 26012 | api debug image paths | — |
+| `/api/debug_image_paths` | GET | `api_debug_image_paths` | 26041 | api debug image paths | — |
 
 ### `/api/delete_task`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/delete_task` | POST | `api_delete_task` | 15160 | api delete task | `client/src/pages/CommunityTasks.tsx` (1) |
+| `/api/delete_task` | POST | `api_delete_task` | 15176 | api delete task | `client/src/pages/CommunityTasks.tsx` (1) |
 
 ### `/api/edit_task`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/edit_task` | POST | `api_edit_task` | 15095 | api edit task | — |
+| `/api/edit_task` | POST | `api_edit_task` | 15111 | api edit task | — |
 
 ### `/api/email_verified_status`
 
@@ -590,13 +591,13 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/get_user_id_by_username` | POST | `api_get_user_id_by_username` | 31494 | api get user id by username | `client/src/pages/ChatThread.tsx` (2), `client/src/pages/CommunityFeed.tsx` (1) |
+| `/api/get_user_id_by_username` | POST | `api_get_user_id_by_username` | 31523 | api get user id by username | `client/src/pages/ChatThread.tsx` (2), `client/src/pages/CommunityFeed.tsx` (1) |
 
 ### `/api/get_user_profile_brief`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/get_user_profile_brief` | GET | `api_get_user_profile_brief` | 31518 | api get user profile brief | `client/src/pages/ChatThread.tsx` (1) |
+| `/api/get_user_profile_brief` | GET | `api_get_user_profile_brief` | 31547 | api get user profile brief | `client/src/pages/ChatThread.tsx` (1) |
 
 ### `/api/giphy`
 
@@ -608,211 +609,211 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/group_members/<int:group_id>` | GET | `api_group_members_list` | 28025 | api group members list | — |
-| `/api/group_members/<int:group_id>/add` | POST | `api_group_members_add` | 28148 | api group members add | — |
-| `/api/group_members/<int:group_id>/available` | GET | `api_group_members_available` | 28101 | api group members available | — |
-| `/api/group_members/<int:group_id>/remove` | POST | `api_group_members_remove` | 28192 | api group members remove | — |
-| `/api/group_members/<int:group_id>/set_role` | POST | `api_group_members_set_role` | 28230 | api group members set role | — |
+| `/api/group_members/<int:group_id>` | GET | `api_group_members_list` | 28054 | api group members list | — |
+| `/api/group_members/<int:group_id>/add` | POST | `api_group_members_add` | 28177 | api group members add | — |
+| `/api/group_members/<int:group_id>/available` | GET | `api_group_members_available` | 28130 | api group members available | — |
+| `/api/group_members/<int:group_id>/remove` | POST | `api_group_members_remove` | 28221 | api group members remove | — |
+| `/api/group_members/<int:group_id>/set_role` | POST | `api_group_members_set_role` | 28259 | api group members set role | — |
 
 ### `/api/group_post`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/group_post` | GET | `api_group_post` | 27148 | api group post | `client/src/pages/PostDetail.tsx` (6), `client/src/pages/GroupFeed.tsx` (4), `client/src/pages/CreatePost.tsx` (1), `client/src/utils/pilotRoutePrefetch.ts` (1) |
+| `/api/group_post` | GET | `api_group_post` | 27177 | api group post | `client/src/pages/PostDetail.tsx` (6), `client/src/pages/GroupFeed.tsx` (4), `client/src/pages/CreatePost.tsx` (1), `client/src/utils/pilotRoutePrefetch.ts` (1) |
 
 ### `/api/group_posts`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/group_posts` | POST | `api_group_posts_create` | 27164 | api group posts create | `client/src/pages/GroupFeed.tsx` (4), `client/src/pages/PostDetail.tsx` (3), `client/src/pages/CreatePost.tsx` (1) |
-| `/api/group_posts/delete` | POST | `api_group_posts_delete` | 27582 | api group posts delete | `client/src/pages/GroupFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
-| `/api/group_posts/edit` | POST | `api_group_posts_edit` | 27519 | api group posts edit | `client/src/pages/GroupFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
-| `/api/group_posts/react` | POST | `api_group_posts_react` | 27451 | api group posts react | `client/src/pages/GroupFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
+| `/api/group_posts` | POST | `api_group_posts_create` | 27193 | api group posts create | `client/src/pages/GroupFeed.tsx` (4), `client/src/pages/PostDetail.tsx` (3), `client/src/pages/CreatePost.tsx` (1) |
+| `/api/group_posts/delete` | POST | `api_group_posts_delete` | 27611 | api group posts delete | `client/src/pages/GroupFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
+| `/api/group_posts/edit` | POST | `api_group_posts_edit` | 27548 | api group posts edit | `client/src/pages/GroupFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
+| `/api/group_posts/react` | POST | `api_group_posts_react` | 27480 | api group posts react | `client/src/pages/GroupFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
 
 ### `/api/group_replies`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/group_replies` | POST | `api_group_replies_create` | 27628 | api group replies create | `client/src/pages/CommentReply.tsx` (5), `client/src/pages/PostDetail.tsx` (4) |
-| `/api/group_replies/react` | POST | `api_group_replies_react` | 27855 | api group replies react | `client/src/pages/CommentReply.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
+| `/api/group_replies` | POST | `api_group_replies_create` | 27657 | api group replies create | `client/src/pages/CommentReply.tsx` (5), `client/src/pages/PostDetail.tsx` (4) |
+| `/api/group_replies/react` | POST | `api_group_replies_react` | 27884 | api group replies react | `client/src/pages/CommentReply.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
 
 ### `/api/group_settings`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/group_settings/<int:group_id>` | GET | `api_group_settings_get` | 27942 | api group settings get | — |
-| `/api/group_settings/<int:group_id>` | POST | `api_group_settings_update` | 27985 | api group settings update | — |
+| `/api/group_settings/<int:group_id>` | GET | `api_group_settings_get` | 27971 | api group settings get | — |
+| `/api/group_settings/<int:group_id>` | POST | `api_group_settings_update` | 28014 | api group settings update | — |
 
 ### `/api/groups`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/groups` | GET | `api_groups_list` | 26720 | api groups list | `client/src/pages/Communities.tsx` (8), `client/src/pages/EditGroup.tsx` (1), `client/src/pages/GroupFeed.tsx` (1), `client/src/pages/Messages.tsx` (1) |
-| `/api/groups/<int:group_id>/steve_agent` | mixed | `api_groups_steve_agent_patch` | 26915 | api groups steve agent patch | — |
-| `/api/groups/available_count` | GET | `api_groups_available_count` | 27019 | api groups available count | — |
-| `/api/groups/available_count_legacy_disabled` | GET | `api_groups_available_count_legacy` | 26550 | api groups available count legacy | — |
-| `/api/groups/create` | POST | `api_groups_create` | 26591 | api groups create | `client/src/pages/Communities.tsx` (1) |
-| `/api/groups/create_legacy_disabled` | POST | `api_groups_create_legacy` | 26400 | api groups create legacy | — |
-| `/api/groups/delete` | POST | `api_groups_delete` | 26888 | api groups delete | `client/src/pages/Communities.tsx` (1), `client/src/pages/EditGroup.tsx` (1) |
-| `/api/groups/join` | POST | `api_groups_join` | 26787 | api groups join | `client/src/pages/Communities.tsx` (2) |
-| `/api/groups/join_legacy_disabled` | POST | `api_groups_join_legacy` | 26502 | api groups join legacy | — |
-| `/api/groups/leave` | POST | `api_groups_leave` | 26863 | api groups leave | `client/src/pages/Communities.tsx` (1), `client/src/pages/GroupFeed.tsx` (1), `client/src/pages/Messages.tsx` (1) |
-| `/api/groups/my` | GET | `api_groups_my` | 27062 | api groups my | `client/src/pages/Communities.tsx` (2) |
+| `/api/groups` | GET | `api_groups_list` | 26749 | api groups list | `client/src/pages/Communities.tsx` (8), `client/src/pages/EditGroup.tsx` (1), `client/src/pages/GroupFeed.tsx` (1), `client/src/pages/Messages.tsx` (1) |
+| `/api/groups/<int:group_id>/steve_agent` | mixed | `api_groups_steve_agent_patch` | 26944 | api groups steve agent patch | — |
+| `/api/groups/available_count` | GET | `api_groups_available_count` | 27048 | api groups available count | — |
+| `/api/groups/available_count_legacy_disabled` | GET | `api_groups_available_count_legacy` | 26579 | api groups available count legacy | — |
+| `/api/groups/create` | POST | `api_groups_create` | 26620 | api groups create | `client/src/pages/Communities.tsx` (1) |
+| `/api/groups/create_legacy_disabled` | POST | `api_groups_create_legacy` | 26429 | api groups create legacy | — |
+| `/api/groups/delete` | POST | `api_groups_delete` | 26917 | api groups delete | `client/src/pages/Communities.tsx` (1), `client/src/pages/EditGroup.tsx` (1) |
+| `/api/groups/join` | POST | `api_groups_join` | 26816 | api groups join | `client/src/pages/Communities.tsx` (2) |
+| `/api/groups/join_legacy_disabled` | POST | `api_groups_join_legacy` | 26531 | api groups join legacy | — |
+| `/api/groups/leave` | POST | `api_groups_leave` | 26892 | api groups leave | `client/src/pages/Communities.tsx` (1), `client/src/pages/GroupFeed.tsx` (1), `client/src/pages/Messages.tsx` (1) |
+| `/api/groups/my` | GET | `api_groups_my` | 27091 | api groups my | `client/src/pages/Communities.tsx` (2) |
 
 ### `/api/groups_legacy_disabled`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/groups_legacy_disabled` | GET | `api_groups_list_legacy` | 26445 | api groups list legacy | — |
+| `/api/groups_legacy_disabled` | GET | `api_groups_list_legacy` | 26474 | api groups list legacy | — |
 
 ### `/api/hidden_posts`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/hidden_posts` | GET | `get_hidden_posts` | 19012 | get hidden posts | `client/src/pages/AccountSecurity.tsx` (1), `client/src/components/settings/PrivacySecurityPanel.tsx` (1) |
+| `/api/hidden_posts` | GET | `get_hidden_posts` | 19028 | get hidden posts | `client/src/pages/AccountSecurity.tsx` (1), `client/src/components/settings/PrivacySecurityPanel.tsx` (1) |
 
 ### `/api/hide_post`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/hide_post` | POST | `hide_post` | 18972 | hide post | `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
+| `/api/hide_post` | POST | `hide_post` | 18988 | hide post | `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
 
 ### `/api/home_timeline`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/home_timeline` | GET | `api_home_timeline_route` | 25823 | api home timeline route | `client/src/pages/EventDetail.tsx` (1), `client/src/pages/HomeTimeline.tsx` (1), `client/src/pages/MobileLogin.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
+| `/api/home_timeline` | GET | `api_home_timeline_route` | 25852 | api home timeline route | `client/src/pages/EventDetail.tsx` (1), `client/src/pages/HomeTimeline.tsx` (1), `client/src/pages/MobileLogin.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
 
 ### `/api/invitation`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/invitation/verify` | GET | `verify_invitation` | 23989 | verify invitation | `client/src/pages/MobileLogin.tsx` (2), `client/src/pages/Signup.tsx` (1) |
+| `/api/invitation/verify` | GET | `verify_invitation` | 24018 | verify invitation | `client/src/pages/MobileLogin.tsx` (2), `client/src/pages/Signup.tsx` (1) |
 
 ### `/api/is_blocked`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/is_blocked` | GET | `is_user_blocked` | 19398 | is user blocked | — |
+| `/api/is_blocked` | GET | `is_user_blocked` | 19414 | is user blocked | — |
 
 ### `/api/key_posts`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/key_posts` | GET | `api_key_posts` | 25076 | api key posts | `client/src/pages/KeyPosts.tsx` (1) |
+| `/api/key_posts` | GET | `api_key_posts` | 25105 | api key posts | `client/src/pages/KeyPosts.tsx` (1) |
 
 ### `/api/link-preview`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/link-preview` | GET | `get_link_preview` | 12510 | get link preview | `client/src/components/LinkPreview.tsx` (1) |
+| `/api/link-preview` | GET | `get_link_preview` | 12526 | get link preview | `client/src/components/LinkPreview.tsx` (1) |
 
 ### `/api/my_tasks`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/my_tasks` | GET | `api_my_tasks` | 14647 | api my tasks | `client/src/pages/CommunityTasks.tsx` (3) |
+| `/api/my_tasks` | GET | `api_my_tasks` | 14663 | api my tasks | `client/src/pages/CommunityTasks.tsx` (3) |
 
 ### `/api/native_push`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/native_push/claim` | POST | `api_native_push_claim` | 31767 | api native push claim | — |
-| `/api/native_push/register` | POST | `api_native_push_register` | 31691 | api native push register | — |
-| `/api/native_push/unregister` | POST | `api_native_push_unregister` | 31820 | api native push unregister | — |
+| `/api/native_push/claim` | POST | `api_native_push_claim` | 31796 | api native push claim | — |
+| `/api/native_push/register` | POST | `api_native_push_register` | 31720 | api native push register | — |
+| `/api/native_push/unregister` | POST | `api_native_push_unregister` | 31849 | api native push unregister | — |
 
 ### `/api/networking`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/networking/communities` | GET | `api_networking_communities` | 12571 | api networking communities | `client/src/pages/Networking.tsx` (1) |
-| `/api/networking/community_members/<int:community_id>` | GET | `api_networking_community_members` | 12594 | api networking community members | — |
-| `/api/networking/steve_auto_match` | POST | `api_networking_steve_auto_match` | 13399 | api networking steve auto match | `client/src/pages/Networking.tsx` (1) |
-| `/api/networking/steve_feedback` | POST | `api_steve_feedback` | 13732 | api steve feedback | `client/src/pages/Networking.tsx` (1) |
-| `/api/networking/steve_match` | POST | `api_networking_steve_match` | 13031 | api networking steve match | `client/src/pages/Networking.tsx` (1) |
-| `/api/networking/steve_session` | POST | `api_steve_session_create` | 13664 | api steve session create | `client/src/pages/Networking.tsx` (7) |
-| `/api/networking/steve_session/<int:session_id>` | mixed | `api_steve_session_delete` | 13711 | api steve session delete | — |
-| `/api/networking/steve_session/<int:session_id>/message` | POST | `api_steve_session_add_message` | 13686 | api steve session add message | — |
-| `/api/networking/steve_session/<int:session_id>/messages` | GET | `api_steve_session_messages` | 13626 | api steve session messages | — |
-| `/api/networking/steve_sessions` | GET | `api_steve_sessions` | 13589 | api steve sessions | `client/src/pages/Networking.tsx` (1) |
+| `/api/networking/communities` | GET | `api_networking_communities` | 12587 | api networking communities | `client/src/pages/Networking.tsx` (1) |
+| `/api/networking/community_members/<int:community_id>` | GET | `api_networking_community_members` | 12610 | api networking community members | — |
+| `/api/networking/steve_auto_match` | POST | `api_networking_steve_auto_match` | 13415 | api networking steve auto match | `client/src/pages/Networking.tsx` (1) |
+| `/api/networking/steve_feedback` | POST | `api_steve_feedback` | 13748 | api steve feedback | `client/src/pages/Networking.tsx` (1) |
+| `/api/networking/steve_match` | POST | `api_networking_steve_match` | 13047 | api networking steve match | `client/src/pages/Networking.tsx` (1) |
+| `/api/networking/steve_session` | POST | `api_steve_session_create` | 13680 | api steve session create | `client/src/pages/Networking.tsx` (7) |
+| `/api/networking/steve_session/<int:session_id>` | mixed | `api_steve_session_delete` | 13727 | api steve session delete | — |
+| `/api/networking/steve_session/<int:session_id>/message` | POST | `api_steve_session_add_message` | 13702 | api steve session add message | — |
+| `/api/networking/steve_session/<int:session_id>/messages` | GET | `api_steve_session_messages` | 13642 | api steve session messages | — |
+| `/api/networking/steve_sessions` | GET | `api_steve_sessions` | 13605 | api steve sessions | `client/src/pages/Networking.tsx` (1) |
 
 ### `/api/post`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/post/<int:post_id>/summary` | GET | `get_post_summary` | 22404 | get post summary | — |
+| `/api/post/<int:post_id>/summary` | GET | `get_post_summary` | 22420 | get post summary | — |
 
 ### `/api/product_poll`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/product_poll` | POST | `api_create_product_poll` | 25349 | api create product poll | — |
+| `/api/product_poll` | POST | `api_create_product_poll` | 25378 | api create product poll | — |
 
 ### `/api/product_poll_close`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/product_poll_close` | POST | `api_product_poll_close` | 25438 | api product poll close | — |
+| `/api/product_poll_close` | POST | `api_product_poll_close` | 25467 | api product poll close | — |
 
 ### `/api/product_poll_delete`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/product_poll_delete` | POST | `api_product_poll_delete` | 25457 | api product poll delete | — |
+| `/api/product_poll_delete` | POST | `api_product_poll_delete` | 25486 | api product poll delete | — |
 
 ### `/api/product_poll_vote`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/product_poll_vote` | POST | `api_product_poll_vote` | 25390 | api product poll vote | — |
+| `/api/product_poll_vote` | POST | `api_product_poll_vote` | 25419 | api product poll vote | — |
 
 ### `/api/product_polls`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/product_polls` | GET | `api_product_polls` | 25316 | api product polls | — |
+| `/api/product_polls` | GET | `api_product_polls` | 25345 | api product polls | — |
 
 ### `/api/product_post`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/product_post` | POST | `api_create_product_post` | 25157 | api create product post | — |
+| `/api/product_post` | POST | `api_create_product_post` | 25186 | api create product post | — |
 
 ### `/api/product_post_delete`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/product_post_delete` | POST | `api_delete_product_post` | 25231 | api delete product post | — |
+| `/api/product_post_delete` | POST | `api_delete_product_post` | 25260 | api delete product post | — |
 
 ### `/api/product_post_edit`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/product_post_edit` | POST | `api_edit_product_post` | 25204 | api edit product post | — |
+| `/api/product_post_edit` | POST | `api_edit_product_post` | 25233 | api edit product post | — |
 
 ### `/api/product_posts`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/product_posts` | GET | `api_product_posts` | 25117 | api product posts | — |
+| `/api/product_posts` | GET | `api_product_posts` | 25146 | api product posts | — |
 
 ### `/api/product_reply`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/product_reply` | POST | `api_create_product_reply` | 25183 | api create product reply | — |
+| `/api/product_reply` | POST | `api_create_product_reply` | 25212 | api create product reply | — |
 
 ### `/api/product_reply_delete`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/product_reply_delete` | POST | `api_delete_product_reply` | 25290 | api delete product reply | — |
+| `/api/product_reply_delete` | POST | `api_delete_product_reply` | 25319 | api delete product reply | — |
 
 ### `/api/product_reply_edit`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/product_reply_edit` | POST | `api_edit_product_reply` | 25263 | api edit product reply | — |
+| `/api/product_reply_edit` | POST | `api_edit_product_reply` | 25292 | api edit product reply | — |
 
 ### `/api/profile`
 
@@ -835,90 +836,90 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/public/logo` | GET | `api_public_logo` | 23803 | api public logo | `client/src/components/BrandLogo.tsx` (1) |
+| `/api/public/logo` | GET | `api_public_logo` | 23832 | api public logo | `client/src/components/BrandLogo.tsx` (1) |
 
 ### `/api/push`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/push/public_key` | GET | `api_push_public_key` | 31608 | api push public key | `client/src/components/PushInit.tsx` (1) |
-| `/api/push/status` | GET | `api_push_status` | 31659 | api push status | — |
-| `/api/push/subscribe` | POST | `api_push_subscribe` | 31616 | api push subscribe | `client/src/components/PushInit.tsx` (2) |
-| `/api/push/test` | POST | `api_push_test` | 32019 | api push test | — |
-| `/api/push/unsubscribe_web` | POST | `api_push_unsubscribe_web` | 31637 | api push unsubscribe web | `client/src/utils/logout.ts` (1) |
+| `/api/push/public_key` | GET | `api_push_public_key` | 31637 | api push public key | `client/src/components/PushInit.tsx` (1) |
+| `/api/push/status` | GET | `api_push_status` | 31688 | api push status | — |
+| `/api/push/subscribe` | POST | `api_push_subscribe` | 31645 | api push subscribe | `client/src/components/PushInit.tsx` (2) |
+| `/api/push/test` | POST | `api_push_test` | 32048 | api push test | — |
+| `/api/push/unsubscribe_web` | POST | `api_push_unsubscribe_web` | 31666 | api push unsubscribe web | `client/src/utils/logout.ts` (1) |
 
 ### `/api/reply`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/reply/<int:reply_id>` | GET | `api_get_reply` | 22508 | api get reply | — |
+| `/api/reply/<int:reply_id>` | GET | `api_get_reply` | 22524 | api get reply | — |
 
 ### `/api/reply_view`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/reply_view` | POST | `api_reply_view` | 22269 | api reply view | `client/src/pages/CommentReply.tsx` (1) |
+| `/api/reply_view` | POST | `api_reply_view` | 22285 | api reply view | `client/src/pages/CommentReply.tsx` (1) |
 
 ### `/api/report_post`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/report_post` | POST | `report_post` | 18861 | report post | `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
+| `/api/report_post` | POST | `report_post` | 18877 | report post | `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
 
 ### `/api/simple_test`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/simple_test` | GET | `simple_community_test` | 26218 | simple community test | — |
+| `/api/simple_test` | GET | `simple_community_test` | 26247 | simple community test | — |
 
 ### `/api/steve`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/steve/reset_dm_context` | POST | `reset_steve_dm_context` | 12529 | reset steve dm context | `client/src/pages/ChatThread.tsx` (1) |
+| `/api/steve/reset_dm_context` | POST | `reset_steve_dm_context` | 12545 | reset steve dm context | `client/src/pages/ChatThread.tsx` (1) |
 
 ### `/api/test_sub_permissions`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/test_sub_permissions` | POST | `test_sub_permissions` | 22639 | test sub permissions | — |
+| `/api/test_sub_permissions` | POST | `test_sub_permissions` | 22655 | test sub permissions | — |
 
 ### `/api/toggle_community_key_post`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/toggle_community_key_post` | POST | `api_toggle_community_key_post` | 24987 | api toggle community key post | `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
+| `/api/toggle_community_key_post` | POST | `api_toggle_community_key_post` | 25016 | api toggle community key post | `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
 
 ### `/api/toggle_key_post`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/toggle_key_post` | POST | `api_toggle_key_post` | 24927 | api toggle key post | `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
+| `/api/toggle_key_post` | POST | `api_toggle_key_post` | 24956 | api toggle key post | `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
 
 ### `/api/typing`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/typing` | POST | `api_set_typing` | 31556 | api set typing | `client/src/pages/ChatThread.tsx` (3), `client/src/chat/useDmMessagePoll.ts` (1) |
-| `/api/typing` | GET | `api_get_typing` | 31581 | api get typing | `client/src/pages/ChatThread.tsx` (3), `client/src/chat/useDmMessagePoll.ts` (1) |
+| `/api/typing` | POST | `api_set_typing` | 31585 | api set typing | `client/src/pages/ChatThread.tsx` (3), `client/src/chat/useDmMessagePoll.ts` (1) |
+| `/api/typing` | GET | `api_get_typing` | 31610 | api get typing | `client/src/pages/ChatThread.tsx` (3), `client/src/chat/useDmMessagePoll.ts` (1) |
 
 ### `/api/unblock_user`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/unblock_user` | POST | `unblock_user` | 19331 | unblock user | `client/src/pages/AccountSecurity.tsx` (1), `client/src/components/settings/PrivacySecurityPanel.tsx` (1) |
+| `/api/unblock_user` | POST | `unblock_user` | 19347 | unblock user | `client/src/pages/AccountSecurity.tsx` (1), `client/src/components/settings/PrivacySecurityPanel.tsx` (1) |
 
 ### `/api/unhide_post`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/unhide_post` | POST | `unhide_post` | 19051 | unhide post | `client/src/pages/AccountSecurity.tsx` (1), `client/src/components/settings/PrivacySecurityPanel.tsx` (1) |
+| `/api/unhide_post` | POST | `unhide_post` | 19067 | unhide post | `client/src/pages/AccountSecurity.tsx` (1), `client/src/components/settings/PrivacySecurityPanel.tsx` (1) |
 
 ### `/.well-known`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/.well-known/apple-app-site-association` | GET | `apple_app_site_association` | 25933 | apple app site association | — |
+| `/.well-known/apple-app-site-association` | GET | `apple_app_site_association` | 25962 | apple app site association | — |
 
 ### `/account_settings`
 
@@ -930,48 +931,48 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/add_ad/<int:community_id>` | POST | `add_ad` | 17454 | add ad | — |
+| `/add_ad/<int:community_id>` | POST | `add_ad` | 17470 | add ad | — |
 
 ### `/add_exercise`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/add_exercise` | POST | `add_exercise` | 28562 | add exercise | `client/src/pages/WorkoutTracking.tsx` (1) |
+| `/add_exercise` | POST | `add_exercise` | 28591 | add exercise | `client/src/pages/WorkoutTracking.tsx` (1) |
 
 ### `/add_exercise_to_workout`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/add_exercise_to_workout` | POST | `add_exercise_to_workout` | 30326 | add exercise to workout | — |
+| `/add_exercise_to_workout` | POST | `add_exercise_to_workout` | 30355 | add exercise to workout | — |
 
 ### `/add_reaction`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/add_reaction` | POST | `add_reaction` | 14218 | add reaction | `client/src/pages/Communities.tsx` (3), `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
+| `/add_reaction` | POST | `add_reaction` | 14234 | add reaction | `client/src/pages/Communities.tsx` (3), `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
 
 ### `/add_reply_reaction`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/add_reply_reaction` | POST | `add_reply_reaction` | 22224 | add reply reaction | `client/src/pages/CommunityFeed.tsx` (3), `client/src/pages/CommentReply.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
+| `/add_reply_reaction` | POST | `add_reply_reaction` | 22240 | add reply reaction | `client/src/pages/CommunityFeed.tsx` (3), `client/src/pages/CommentReply.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
 
 ### `/admin`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
 | `/admin` | POST | `admin` | 9865 | admin | `client/src/pages/AdminDashboard.tsx` (34), `admin-web/src/pages/ContentGeneration.tsx` (9), `admin-web/src/pages/Tenants.tsx` (9), `admin-web/src/pages/Users.tsx` (8), `client/src/components/KnowledgeBaseGraph.tsx` (6) |
-| `/admin/ads_overview` | GET | `admin_ads_overview` | 18502 | admin ads overview | — |
-| `/admin/communities_list` | GET | `admin_communities_list` | 19831 | admin communities list | `admin-web/src/pages/ContentGeneration.tsx` (1) |
-| `/admin/deactivate_community/<int:community_id>` | POST | `deactivate_community` | 18384 | deactivate community | — |
-| `/admin/deactivate_user/<username>` | POST | `deactivate_user` | 18350 | deactivate user | — |
-| `/admin/get_invite_logo` | GET | `admin_get_invite_logo` | 19992 | admin get invite logo | `admin-web/src/pages/Settings.tsx` (1) |
-| `/admin/grant_admin` | POST | `admin_grant_admin` | 15201 | admin grant admin | — |
+| `/admin/ads_overview` | GET | `admin_ads_overview` | 18518 | admin ads overview | — |
+| `/admin/communities_list` | GET | `admin_communities_list` | 19847 | admin communities list | `admin-web/src/pages/ContentGeneration.tsx` (1) |
+| `/admin/deactivate_community/<int:community_id>` | POST | `deactivate_community` | 18400 | deactivate community | — |
+| `/admin/deactivate_user/<username>` | POST | `deactivate_user` | 18366 | deactivate user | — |
+| `/admin/get_invite_logo` | GET | `admin_get_invite_logo` | 20008 | admin get invite logo | `admin-web/src/pages/Settings.tsx` (1) |
+| `/admin/grant_admin` | POST | `admin_grant_admin` | 15217 | admin grant admin | — |
 | `/admin/regenerate_app_icons` | POST | `regenerate_app_icons` | 11617 | regenerate app icons | — |
-| `/admin/remove_invite_logo` | POST | `admin_remove_invite_logo` | 20073 | admin remove invite logo | `admin-web/src/pages/Settings.tsx` (1) |
-| `/admin/upload_invite_logo` | POST | `admin_upload_invite_logo` | 20019 | admin upload invite logo | `admin-web/src/pages/Settings.tsx` (1) |
-| `/admin/upload_welcome_card` | POST | `admin_upload_welcome_card` | 19937 | admin upload welcome card | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Settings.tsx` (1) |
-| `/admin/user_statistics` | GET | `admin_user_statistics` | 18423 | admin user statistics | — |
+| `/admin/remove_invite_logo` | POST | `admin_remove_invite_logo` | 20089 | admin remove invite logo | `admin-web/src/pages/Settings.tsx` (1) |
+| `/admin/upload_invite_logo` | POST | `admin_upload_invite_logo` | 20035 | admin upload invite logo | `admin-web/src/pages/Settings.tsx` (1) |
+| `/admin/upload_welcome_card` | POST | `admin_upload_welcome_card` | 19953 | admin upload welcome card | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Settings.tsx` (1) |
+| `/admin/user_statistics` | GET | `admin_user_statistics` | 18439 | admin user statistics | — |
 
 ### `/admin_dashboard`
 
@@ -995,7 +996,7 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/apple-app-site-association` | GET | `apple_app_site_association` | 25934 | apple app site association | — |
+| `/apple-app-site-association` | GET | `apple_app_site_association` | 25963 | apple app site association | — |
 
 ### `/apple-touch-icon.png`
 
@@ -1013,37 +1014,37 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/audio_compat/<path:filename>` | GET | `serve_audio_compat` | 13835 | serve audio compat | — |
+| `/audio_compat/<path:filename>` | GET | `serve_audio_compat` | 13851 | serve audio compat | — |
 
 ### `/business_login`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/business_login` | POST | `business_login` | 12222 | business login | — |
+| `/business_login` | POST | `business_login` | 12238 | business login | — |
 
 ### `/business_logout`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/business_logout` | GET | `business_logout` | 12228 | business logout | — |
+| `/business_logout` | GET | `business_logout` | 12244 | business logout | — |
 
 ### `/cf_add_entry`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/cf_add_entry` | POST | `cf_add_entry` | 28306 | cf add entry | `client/src/pages/Crossfit.tsx` (1), `client/src/pages/CrossfitExact.tsx` (1) |
+| `/cf_add_entry` | POST | `cf_add_entry` | 28335 | cf add entry | `client/src/pages/Crossfit.tsx` (1), `client/src/pages/CrossfitExact.tsx` (1) |
 
 ### `/cf_compare_item_in_box`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/cf_compare_item_in_box` | GET | `cf_compare_item_in_box` | 28415 | cf compare item in box | `client/src/pages/Crossfit.tsx` (1), `client/src/pages/CrossfitExact.tsx` (1) |
+| `/cf_compare_item_in_box` | GET | `cf_compare_item_in_box` | 28444 | cf compare item in box | `client/src/pages/Crossfit.tsx` (1), `client/src/pages/CrossfitExact.tsx` (1) |
 
 ### `/check_exercise_in_workout`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/check_exercise_in_workout` | GET | `check_exercise_in_workout` | 29666 | check exercise in workout | — |
+| `/check_exercise_in_workout` | GET | `check_exercise_in_workout` | 29695 | check exercise in workout | — |
 
 ### `/check_profile_picture`
 
@@ -1055,117 +1056,117 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/cleanup_missing_images` | GET | `cleanup_missing_images` | 31326 | cleanup missing images | — |
+| `/cleanup_missing_images` | GET | `cleanup_missing_images` | 31355 | cleanup missing images | — |
 
 ### `/close_poll`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/close_poll` | POST | `close_poll` | 16307 | close poll | `client/src/pages/CommunityPolls.tsx` (1) |
+| `/close_poll` | POST | `close_poll` | 16323 | close poll | `client/src/pages/CommunityPolls.tsx` (1) |
 
 ### `/club`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/club/<int:club_id>/join` | POST | `join_club` | 18029 | join club | — |
+| `/club/<int:club_id>/join` | POST | `join_club` | 18045 | join club | — |
 
 ### `/communities`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/communities` | GET | `communities` | 22632 | communities | `client/src/pages/CommunityFeed.tsx` (3), `client/src/pages/EditCommunity.tsx` (3), `client/src/pages/PremiumDashboard.tsx` (3), `client/src/components/pageTransition.test.ts` (2), `client/src/components/community/CommunityOwnerSetupIntro.tsx` (2) |
+| `/communities` | GET | `communities` | 22648 | communities | `client/src/pages/CommunityFeed.tsx` (3), `client/src/pages/EditCommunity.tsx` (3), `client/src/pages/PremiumDashboard.tsx` (3), `client/src/components/pageTransition.test.ts` (2), `client/src/components/community/CommunityOwnerSetupIntro.tsx` (2) |
 
 ### `/community`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/community/<int:community_id>/admins` | GET | `get_community_admins` | 17910 | get community admins | — |
-| `/community/<int:community_id>/appoint_admin` | POST | `appoint_community_admin` | 17822 | appoint community admin | — |
-| `/community/<int:community_id>/calendar_react` | GET | `community_calendar_react` | 25851 | community calendar react | — |
-| `/community/<int:community_id>/clubs` | GET | `clubs_directory` | 17934 | clubs directory | — |
-| `/community/<int:community_id>/clubs/create` | POST | `create_club` | 17981 | create club | — |
-| `/community/<int:community_id>/event/<int:event_id>/rsvp` | GET | `event_rsvp_page` | 18242 | event rsvp page | — |
-| `/community/<int:community_id>/feedback` | POST | `submit_feedback` | 18084 | submit feedback | — |
-| `/community/<int:community_id>/feedback/view` | GET | `view_feedback` | 18316 | view feedback | — |
-| `/community/<int:community_id>/members` | GET | `react_members_page` | 25921 | react members page | — |
-| `/community/<int:community_id>/members/list` | GET | `get_community_members_list` | 18115 | get community members list | — |
-| `/community/<int:community_id>/polls_react` | GET | `community_polls_react` | 25881 | community polls react | — |
-| `/community/<int:community_id>/remove_admin` | POST | `remove_community_admin` | 17872 | remove community admin | — |
-| `/community/<int:community_id>/resources` | GET | `community_resources` | 17608 | community resources | — |
-| `/community/<int:community_id>/resources/create` | POST | `create_resource_post` | 17664 | create resource post | — |
-| `/community/<int:community_id>/tasks_react` | GET | `community_tasks_react` | 25868 | community tasks react | — |
+| `/community/<int:community_id>/admins` | GET | `get_community_admins` | 17926 | get community admins | — |
+| `/community/<int:community_id>/appoint_admin` | POST | `appoint_community_admin` | 17838 | appoint community admin | — |
+| `/community/<int:community_id>/calendar_react` | GET | `community_calendar_react` | 25880 | community calendar react | — |
+| `/community/<int:community_id>/clubs` | GET | `clubs_directory` | 17950 | clubs directory | — |
+| `/community/<int:community_id>/clubs/create` | POST | `create_club` | 17997 | create club | — |
+| `/community/<int:community_id>/event/<int:event_id>/rsvp` | GET | `event_rsvp_page` | 18258 | event rsvp page | — |
+| `/community/<int:community_id>/feedback` | POST | `submit_feedback` | 18100 | submit feedback | — |
+| `/community/<int:community_id>/feedback/view` | GET | `view_feedback` | 18332 | view feedback | — |
+| `/community/<int:community_id>/members` | GET | `react_members_page` | 25950 | react members page | — |
+| `/community/<int:community_id>/members/list` | GET | `get_community_members_list` | 18131 | get community members list | — |
+| `/community/<int:community_id>/polls_react` | GET | `community_polls_react` | 25910 | community polls react | — |
+| `/community/<int:community_id>/remove_admin` | POST | `remove_community_admin` | 17888 | remove community admin | — |
+| `/community/<int:community_id>/resources` | GET | `community_resources` | 17624 | community resources | — |
+| `/community/<int:community_id>/resources/create` | POST | `create_resource_post` | 17680 | create resource post | — |
+| `/community/<int:community_id>/tasks_react` | GET | `community_tasks_react` | 25897 | community tasks react | — |
 
 ### `/community_feed`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/community_feed/<int:community_id>` | GET | `community_feed` | 24213 | community feed | — |
+| `/community_feed/<int:community_id>` | GET | `community_feed` | 24242 | community feed | — |
 
 ### `/community_feed_react`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/community_feed_react/<int:community_id>` | GET | `community_feed_react` | 25838 | community feed react | — |
+| `/community_feed_react/<int:community_id>` | GET | `community_feed_react` | 25867 | community feed react | — |
 
 ### `/community_feed_smart`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/community_feed_smart/<int:community_id>` | GET | `community_feed_smart` | 24248 | community feed smart | — |
+| `/community_feed_smart/<int:community_id>` | GET | `community_feed_smart` | 24277 | community feed smart | — |
 
 ### `/compare_attendance_in_community`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/compare_attendance_in_community` | GET | `compare_attendance_in_community` | 29121 | compare attendance in community | — |
+| `/compare_attendance_in_community` | GET | `compare_attendance_in_community` | 29150 | compare attendance in community | — |
 
 ### `/compare_exercise_in_community`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/compare_exercise_in_community` | GET | `compare_exercise_in_community` | 28918 | compare exercise in community | — |
+| `/compare_exercise_in_community` | GET | `compare_exercise_in_community` | 28947 | compare exercise in community | — |
 
 ### `/compare_improvement_in_community`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/compare_improvement_in_community` | GET | `compare_improvement_in_community` | 29195 | compare improvement in community | — |
+| `/compare_improvement_in_community` | GET | `compare_improvement_in_community` | 29224 | compare improvement in community | — |
 
 ### `/compare_overview_in_community`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/compare_overview_in_community` | GET | `compare_overview_in_community` | 29043 | compare overview in community | — |
+| `/compare_overview_in_community` | GET | `compare_overview_in_community` | 29072 | compare overview in community | — |
 
 ### `/create_community`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/create_community` | POST | `create_community` | 22697 | create community | `client/src/pages/Communities.tsx` (1), `client/src/pages/PremiumDashboard.tsx` (1) |
+| `/create_community` | POST | `create_community` | 22713 | create community | `client/src/pages/Communities.tsx` (1), `client/src/pages/PremiumDashboard.tsx` (1) |
 
 ### `/create_poll`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/create_poll` | POST | `create_poll` | 16115 | create poll | `client/src/pages/CommunityPolls.tsx` (1) |
+| `/create_poll` | POST | `create_poll` | 16131 | create poll | `client/src/pages/CommunityPolls.tsx` (1) |
 
 ### `/create_workout`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/create_workout` | POST | `create_workout` | 30166 | create workout | `client/src/pages/WorkoutTracking.tsx` (1) |
+| `/create_workout` | POST | `create_workout` | 30195 | create workout | `client/src/pages/WorkoutTracking.tsx` (1) |
 
 ### `/crossfit`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/crossfit` | GET | `crossfit` | 28280 | crossfit | `client/src/App.tsx` (2), `client/src/pages/YourSports.tsx` (1) |
+| `/crossfit` | GET | `crossfit` | 28309 | crossfit | `client/src/App.tsx` (2), `client/src/pages/YourSports.tsx` (1) |
 
 ### `/crossfit_react`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/crossfit_react` | GET | `crossfit_react` | 28291 | crossfit react | `client/src/App.tsx` (1) |
+| `/crossfit_react` | GET | `crossfit_react` | 28320 | crossfit react | `client/src/App.tsx` (1) |
 
 ### `/dashboard`
 
@@ -1177,153 +1178,153 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/debug/message_photos` | GET | `debug_message_photos` | 14086 | debug message photos | — |
-| `/debug/r2_status` | GET | `debug_r2_status` | 14022 | debug r2 status | — |
+| `/debug/message_photos` | GET | `debug_message_photos` | 14102 | debug message photos | — |
+| `/debug/r2_status` | GET | `debug_r2_status` | 14038 | debug r2 status | — |
 
 ### `/debug_community`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/debug_community/<int:community_id>` | GET | `debug_community` | 23741 | debug community | — |
+| `/debug_community/<int:community_id>` | GET | `debug_community` | 23770 | debug community | — |
 
 ### `/debug_posts`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/debug_posts` | GET | `debug_posts` | 23769 | debug posts | — |
+| `/debug_posts` | GET | `debug_posts` | 23798 | debug posts | — |
 
 ### `/delete_ad`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/delete_ad/<int:ad_id>` | POST | `delete_ad` | 17576 | delete ad | — |
+| `/delete_ad/<int:ad_id>` | POST | `delete_ad` | 17592 | delete ad | — |
 
 ### `/delete_community_announcement`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/delete_community_announcement` | POST | `delete_community_announcement` | 31226 | delete community announcement | `client/src/pages/CommunityFeed.tsx` (1) |
+| `/delete_community_announcement` | POST | `delete_community_announcement` | 31255 | delete community announcement | `client/src/pages/CommunityFeed.tsx` (1) |
 
 ### `/delete_community_file`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/delete_community_file` | POST | `delete_community_file` | 30944 | delete community file | — |
+| `/delete_community_file` | POST | `delete_community_file` | 30973 | delete community file | — |
 
 ### `/delete_exercise`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/delete_exercise` | POST | `delete_exercise` | 28874 | delete exercise | `client/src/pages/WorkoutTracking.tsx` (1) |
+| `/delete_exercise` | POST | `delete_exercise` | 28903 | delete exercise | `client/src/pages/WorkoutTracking.tsx` (1) |
 
 ### `/delete_poll`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/delete_poll` | POST | `delete_poll` | 16956 | delete poll | `client/src/pages/CommunityFeed.tsx` (1) |
+| `/delete_poll` | POST | `delete_poll` | 16972 | delete poll | `client/src/pages/CommunityFeed.tsx` (1) |
 
 ### `/delete_post`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/delete_post` | POST | `delete_post` | 18745 | delete post | `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
+| `/delete_post` | POST | `delete_post` | 18761 | delete post | `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
 
 ### `/delete_reply`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/delete_reply` | POST | `delete_reply` | 20095 | delete reply | `client/src/pages/CommentReply.tsx` (1), `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
+| `/delete_reply` | POST | `delete_reply` | 20111 | delete reply | `client/src/pages/CommentReply.tsx` (1), `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
 
 ### `/delete_set`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/delete_set` | POST | `delete_set` | 29433 | delete set | — |
+| `/delete_set` | POST | `delete_set` | 29462 | delete set | — |
 
 ### `/delete_weight_entry`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/delete_weight_entry` | POST | `delete_weight_entry` | 29470 | delete weight entry | `client/src/pages/WorkoutTracking.tsx` (1) |
+| `/delete_weight_entry` | POST | `delete_weight_entry` | 29499 | delete weight entry | `client/src/pages/WorkoutTracking.tsx` (1) |
 
 ### `/delete_workout`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/delete_workout` | POST | `delete_workout` | 30428 | delete workout | — |
+| `/delete_workout` | POST | `delete_workout` | 30457 | delete workout | — |
 
 ### `/download_announcement_file`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/download_announcement_file/<int:file_id>` | GET | `download_announcement_file` | 31293 | download announcement file | — |
+| `/download_announcement_file/<int:file_id>` | GET | `download_announcement_file` | 31322 | download announcement file | — |
 
 ### `/download_community_file`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/download_community_file/<filename>` | GET | `download_community_file` | 30925 | download community file | — |
+| `/download_community_file/<filename>` | GET | `download_community_file` | 30954 | download community file | — |
 
 ### `/edit_community`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/edit_community` | POST | `edit_community` | 23266 | edit community | — |
+| `/edit_community` | POST | `edit_community` | 23295 | edit community | — |
 
 ### `/edit_exercise`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/edit_exercise` | POST | `edit_exercise` | 28820 | edit exercise | — |
+| `/edit_exercise` | POST | `edit_exercise` | 28849 | edit exercise | — |
 
 ### `/edit_poll`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/edit_poll` | POST | `edit_poll` | 16429 | edit poll | `client/src/pages/CommunityPolls.tsx` (1) |
+| `/edit_poll` | POST | `edit_poll` | 16445 | edit poll | `client/src/pages/CommunityPolls.tsx` (1) |
 
 ### `/edit_post`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/edit_post` | POST | `edit_post` | 19537 | edit post | `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
+| `/edit_post` | POST | `edit_post` | 19553 | edit post | `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
 
 ### `/edit_profile`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/edit_profile` | POST | `edit_profile` | 12167 | edit profile | — |
+| `/edit_profile` | POST | `edit_profile` | 12183 | edit profile | — |
 
 ### `/edit_reply`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/edit_reply` | POST | `edit_reply` | 25477 | edit reply | `client/src/pages/CommentReply.tsx` (2), `client/src/pages/PostDetail.tsx` (1) |
+| `/edit_reply` | POST | `edit_reply` | 25506 | edit reply | `client/src/pages/CommentReply.tsx` (2), `client/src/pages/PostDetail.tsx` (1) |
 
 ### `/edit_set`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/edit_set` | POST | `edit_set` | 29394 | edit set | `client/src/pages/WorkoutTracking.tsx` (1) |
+| `/edit_set` | POST | `edit_set` | 29423 | edit set | `client/src/pages/WorkoutTracking.tsx` (1) |
 
 ### `/favicon.svg`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
 | `/favicon.svg` | GET | `favicon` | 5872 | favicon | — |
-| `/favicon.svg` | GET | `serve_favicon` | 25990 | serve favicon | — |
+| `/favicon.svg` | GET | `serve_favicon` | 26019 | serve favicon | — |
 
 ### `/feed`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/feed` | GET | `feed` | 14198 | feed | `client/src/components/pageTransition.test.ts` (8), `client/src/App.tsx` (4), `client/src/components/pageTransitionUtils.ts` (3), `client/src/components/DashboardBottomNav.tsx` (2), `client/src/components/KnowledgeBaseGraph.tsx` (1) |
+| `/feed` | GET | `feed` | 14214 | feed | `client/src/components/pageTransition.test.ts` (8), `client/src/App.tsx` (4), `client/src/components/pageTransitionUtils.ts` (3), `client/src/components/DashboardBottomNav.tsx` (2), `client/src/components/KnowledgeBaseGraph.tsx` (1) |
 
 ### `/fix_database_issues`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/fix_database_issues` | GET | `fix_database_issues` | 23607 | fix database issues | — |
+| `/fix_database_issues` | GET | `fix_database_issues` | 23636 | fix database issues | — |
 
 ### `/followers`
 
@@ -1335,175 +1336,175 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_active_chat_counts` | GET | `get_active_chat_counts` | 32037 | get active chat counts | — |
+| `/get_active_chat_counts` | GET | `get_active_chat_counts` | 32066 | get active chat counts | — |
 
 ### `/get_active_polls`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_active_polls` | GET | `get_active_polls` | 16899 | get active polls | `client/src/pages/CommunityPolls.tsx` (1) |
+| `/get_active_polls` | GET | `get_active_polls` | 16915 | get active polls | `client/src/pages/CommunityPolls.tsx` (1) |
 
 ### `/get_available_parent_communities`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_available_parent_communities` | GET | `get_available_parent_communities` | 23064 | get available parent communities | `client/src/pages/EditCommunity.tsx` (1) |
+| `/get_available_parent_communities` | GET | `get_available_parent_communities` | 23093 | get available parent communities | `client/src/pages/EditCommunity.tsx` (1) |
 
 ### `/get_community_announcements`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_community_announcements` | GET | `get_community_announcements` | 31171 | get community announcements | `client/src/pages/CommunityFeed.tsx` (2) |
+| `/get_community_announcements` | GET | `get_community_announcements` | 31200 | get community announcements | `client/src/pages/CommunityFeed.tsx` (2) |
 
 ### `/get_community_files`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_community_files` | GET | `get_community_files` | 30893 | get community files | — |
+| `/get_community_files` | GET | `get_community_files` | 30922 | get community files | — |
 
 ### `/get_exercise_one_rm`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_exercise_one_rm` | GET | `get_exercise_one_rm` | 29588 | get exercise one rm | — |
+| `/get_exercise_one_rm` | GET | `get_exercise_one_rm` | 29617 | get exercise one rm | — |
 
 ### `/get_exercise_progress`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_exercise_progress` | GET | `get_exercise_progress` | 29517 | get exercise progress | — |
+| `/get_exercise_progress` | GET | `get_exercise_progress` | 29546 | get exercise progress | — |
 
 ### `/get_historical_polls`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_historical_polls` | GET | `get_historical_polls` | 17052 | get historical polls | — |
+| `/get_historical_polls` | GET | `get_historical_polls` | 17068 | get historical polls | — |
 
 ### `/get_image_color`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_image_color` | GET | `get_image_color` | 18651 | get image color | — |
+| `/get_image_color` | GET | `get_image_color` | 18667 | get image color | — |
 
 ### `/get_individual_workout_summary`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_individual_workout_summary` | GET | `get_individual_workout_summary` | 30021 | get individual workout summary | — |
+| `/get_individual_workout_summary` | GET | `get_individual_workout_summary` | 30050 | get individual workout summary | — |
 
 ### `/get_logo`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_logo` | GET | `get_logo` | 15288 | get logo | — |
+| `/get_logo` | GET | `get_logo` | 15304 | get logo | — |
 
 ### `/get_poll_results`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_poll_results/<int:poll_id>` | GET | `get_poll_results` | 16695 | get poll results | — |
+| `/get_poll_results/<int:poll_id>` | GET | `get_poll_results` | 16711 | get poll results | — |
 
 ### `/get_poll_voters`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_poll_voters/<int:poll_id>` | GET | `get_poll_voters` | 16727 | get poll voters | — |
+| `/get_poll_voters/<int:poll_id>` | GET | `get_poll_voters` | 16743 | get poll voters | — |
 
 ### `/get_post`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_post` | GET | `get_post` | 22392 | get post | `client/src/pages/PostDetail.tsx` (4), `client/src/pages/CommunityFeed.tsx` (1), `client/src/utils/pilotRoutePrefetch.ts` (1) |
+| `/get_post` | GET | `get_post` | 22408 | get post | `client/src/pages/PostDetail.tsx` (4), `client/src/pages/CommunityFeed.tsx` (1), `client/src/utils/pilotRoutePrefetch.ts` (1) |
 
 ### `/get_post_reactors`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_post_reactors/<int:post_id>` | GET | `get_post_reactors` | 16781 | get post reactors | — |
+| `/get_post_reactors/<int:post_id>` | GET | `get_post_reactors` | 16797 | get post reactors | — |
 
 ### `/get_progress_summary`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_progress_summary` | GET | `get_progress_summary` | 29751 | get progress summary | — |
+| `/get_progress_summary` | GET | `get_progress_summary` | 29780 | get progress summary | — |
 
 ### `/get_reply_reactors`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_reply_reactors/<int:reply_id>` | GET | `get_reply_reactors` | 22296 | get reply reactors | — |
+| `/get_reply_reactors/<int:reply_id>` | GET | `get_reply_reactors` | 22312 | get reply reactors | — |
 
 ### `/get_university_ads`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_university_ads` | GET | `get_university_ads` | 17297 | get university ads | — |
+| `/get_university_ads` | GET | `get_university_ads` | 17313 | get university ads | — |
 
 ### `/get_user_communities`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_user_communities` | GET | `get_user_communities` | 23218 | get user communities | `client/src/components/GroupChatCreator.tsx` (1), `client/src/components/ParentCommunityPicker.tsx` (1), `client/src/pages/Crossfit.tsx` (1), `client/src/pages/CrossfitExact.tsx` (1), `client/src/pages/Messages.tsx` (1) |
+| `/get_user_communities` | GET | `get_user_communities` | 23247 | get user communities | `client/src/components/GroupChatCreator.tsx` (1), `client/src/components/ParentCommunityPicker.tsx` (1), `client/src/pages/Crossfit.tsx` (1), `client/src/pages/CrossfitExact.tsx` (1), `client/src/pages/Messages.tsx` (1) |
 
 ### `/get_user_communities_with_members`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_user_communities_with_members` | GET | `get_user_communities_with_members` | 23129 | get user communities with members | `client/src/pages/Messages.tsx` (1), `client/src/utils/serverPull.ts` (1) |
+| `/get_user_communities_with_members` | GET | `get_user_communities_with_members` | 23158 | get user communities with members | `client/src/pages/Messages.tsx` (1), `client/src/utils/serverPull.ts` (1) |
 
 ### `/get_user_exercises`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_user_exercises` | GET | `get_user_exercises` | 30477 | get user exercises | `client/src/pages/WorkoutTracking.tsx` (1) |
+| `/get_user_exercises` | GET | `get_user_exercises` | 30506 | get user exercises | `client/src/pages/WorkoutTracking.tsx` (1) |
 
 ### `/get_workout_details`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_workout_details` | GET | `get_workout_details` | 30268 | get workout details | — |
+| `/get_workout_details` | GET | `get_workout_details` | 30297 | get workout details | — |
 
 ### `/get_workout_exercises`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_workout_exercises` | GET | `get_workout_exercises` | 28753 | get workout exercises | `client/src/pages/WorkoutTracking.tsx` (2) |
+| `/get_workout_exercises` | GET | `get_workout_exercises` | 28782 | get workout exercises | `client/src/pages/WorkoutTracking.tsx` (2) |
 
 ### `/get_workout_summary`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_workout_summary` | GET | `get_workout_summary` | 29824 | get workout summary | — |
+| `/get_workout_summary` | GET | `get_workout_summary` | 29853 | get workout summary | — |
 
 ### `/get_workouts`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/get_workouts` | GET | `get_workouts` | 30231 | get workouts | `client/src/pages/WorkoutTracking.tsx` (2) |
+| `/get_workouts` | GET | `get_workouts` | 30260 | get workouts | `client/src/pages/WorkoutTracking.tsx` (2) |
 
 ### `/group`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/group/<int:group_id>/edit` | GET | `group_edit_react` | 27931 | group edit react | — |
+| `/group/<int:group_id>/edit` | GET | `group_edit_react` | 27960 | group edit react | — |
 
 ### `/group_feed_react`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/group_feed_react/<int:group_id>` | GET | `group_feed_react` | 27920 | group feed react | — |
+| `/group_feed_react/<int:group_id>` | GET | `group_feed_react` | 27949 | group feed react | — |
 
 ### `/gym`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/gym` | GET | `gym` | 18414 | gym | `client/src/App.tsx` (1) |
+| `/gym` | GET | `gym` | 18430 | gym | `client/src/App.tsx` (1) |
 
 ### `/gym_react`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/gym_react` | GET | `gym_react` | 28275 | gym react | — |
+| `/gym_react` | GET | `gym_react` | 28304 | gym react | — |
 
 ### `/health`
 
@@ -1515,7 +1516,7 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/home` | GET | `react_home_timeline_page` | 25828 | react home timeline page | `client/src/App.tsx` (1), `client/src/components/HeaderBar.tsx` (1), `client/src/components/StayLiquidBridge.tsx` (1), `client/src/pages/Communities.tsx` (1), `client/src/pages/EventDetail.tsx` (1) |
+| `/home` | GET | `react_home_timeline_page` | 25857 | react home timeline page | `client/src/App.tsx` (1), `client/src/components/HeaderBar.tsx` (1), `client/src/components/StayLiquidBridge.tsx` (1), `client/src/pages/Communities.tsx` (1), `client/src/pages/EventDetail.tsx` (1) |
 
 ### `/icons`
 
@@ -1523,13 +1524,13 @@ Total **374** `@app.route` registrations, grouped below for readability.
 |------|-----------|---------|------|-----------------|----------------------|
 | `/icons/<path:filename>` | GET | `icons` | 5895 | icons | — |
 | `/icons/<path:filename>` | GET | `serve_generated_icons` | 11688 | serve generated icons | — |
-| `/icons/<path:filename>` | GET | `serve_icons` | 25998 | serve icons | — |
+| `/icons/<path:filename>` | GET | `serve_icons` | 26027 | serve icons | — |
 
 ### `/invite`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/invite/<token>` | GET | `invite_landing` | 23819 | invite landing | — |
+| `/invite/<token>` | GET | `invite_landing` | 23848 | invite landing | — |
 
 ### `/keep-warm`
 
@@ -1541,38 +1542,38 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/leaderboard_exercise_in_community` | GET | `leaderboard_exercise_in_community` | 28993 | leaderboard exercise in community | `client/src/pages/WorkoutTracking.tsx` (1) |
+| `/leaderboard_exercise_in_community` | GET | `leaderboard_exercise_in_community` | 29022 | leaderboard exercise in community | `client/src/pages/WorkoutTracking.tsx` (1) |
 
 ### `/leave_community`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/leave_community` | POST | `leave_community` | 24108 | leave community | `client/src/pages/Communities.tsx` (2), `client/src/pages/Members.tsx` (1) |
+| `/leave_community` | POST | `leave_community` | 24137 | leave community | `client/src/pages/Communities.tsx` (2), `client/src/pages/Members.tsx` (1) |
 
 ### `/log_weight_set`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/log_weight_set` | POST | `log_weight_set` | 29289 | log weight set | `client/src/pages/WorkoutTracking.tsx` (1) |
+| `/log_weight_set` | POST | `log_weight_set` | 29318 | log weight set | `client/src/pages/WorkoutTracking.tsx` (1) |
 
 ### `/manage_ads`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/manage_ads/<int:community_id>` | GET | `manage_ads` | 17397 | manage ads | — |
+| `/manage_ads/<int:community_id>` | GET | `manage_ads` | 17413 | manage ads | — |
 
 ### `/manifest.webmanifest`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
 | `/manifest.webmanifest` | GET | `manifest` | 5880 | manifest | — |
-| `/manifest.webmanifest` | GET | `serve_manifest` | 25977 | serve manifest | — |
+| `/manifest.webmanifest` | GET | `serve_manifest` | 26006 | serve manifest | — |
 
 ### `/migrate_parent_communities`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/migrate_parent_communities` | GET | `migrate_parent_communities` | 23547 | migrate parent communities | — |
+| `/migrate_parent_communities` | GET | `migrate_parent_communities` | 23576 | migrate parent communities | — |
 
 ### `/networking`
 
@@ -1584,20 +1585,20 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/post/<int:post_id>` | GET | `react_post_detail` | 25894 | react post detail | — |
-| `/post/<int:post_id>/delete` | mixed | `delete_community_post` | 17791 | delete community post | — |
+| `/post/<int:post_id>` | GET | `react_post_detail` | 25923 | react post detail | — |
+| `/post/<int:post_id>/delete` | mixed | `delete_community_post` | 17807 | delete community post | — |
 
 ### `/post_reply`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/post_reply` | POST | `post_reply` | 15855 | post reply | `client/src/pages/PostDetail.tsx` (2), `client/src/pages/CommentReply.tsx` (1), `client/src/pages/CommunityFeed.tsx` (1) |
+| `/post_reply` | POST | `post_reply` | 15871 | post reply | `client/src/pages/PostDetail.tsx` (2), `client/src/pages/CommentReply.tsx` (1), `client/src/pages/CommunityFeed.tsx` (1) |
 
 ### `/post_status`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/post_status` | POST | `post_status` | 15396 | post status | `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/CreatePost.tsx` (1) |
+| `/post_status` | POST | `post_status` | 15412 | post status | `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/CreatePost.tsx` (1) |
 
 ### `/premium_dashboard`
 
@@ -1615,38 +1616,38 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/profile` | GET | `profile` | 11080 | profile | `client/src/pages/Profile.tsx` (9), `client/src/App.tsx` (5), `client/src/pages/CommentReply.tsx` (5), `client/src/pages/Networking.tsx` (5), `client/src/pages/PremiumDashboard.tsx` (5) |
+| `/profile` | GET | `profile` | 11080 | profile | `client/src/pages/Profile.tsx` (9), `client/src/App.tsx` (6), `client/src/pages/CommentReply.tsx` (5), `client/src/pages/Networking.tsx` (5), `client/src/pages/PremiumDashboard.tsx` (5) |
 | `/profile/<username>` | GET | `public_profile` | 10738 | public profile | — |
 
 ### `/remove_exercise_from_workout`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/remove_exercise_from_workout` | POST | `remove_exercise_from_workout` | 30380 | remove exercise from workout | — |
+| `/remove_exercise_from_workout` | POST | `remove_exercise_from_workout` | 30409 | remove exercise from workout | — |
 
 ### `/remove_logo`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/remove_logo` | POST | `remove_logo` | 15320 | remove logo | — |
+| `/remove_logo` | POST | `remove_logo` | 15336 | remove logo | — |
 
 ### `/remove_poll_option`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/remove_poll_option` | POST | `remove_poll_option` | 16995 | remove poll option | — |
+| `/remove_poll_option` | POST | `remove_poll_option` | 17011 | remove poll option | — |
 
 ### `/reply`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/reply/<int:reply_id>` | GET | `react_reply_detail` | 25907 | react reply detail | — |
+| `/reply/<int:reply_id>` | GET | `react_reply_detail` | 25936 | react reply detail | — |
 
 ### `/report_issue`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/report_issue` | POST | `report_issue` | 17110 | report issue | — |
+| `/report_issue` | POST | `report_issue` | 17126 | report issue | — |
 
 ### `/resend_verification`
 
@@ -1664,75 +1665,75 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/resolve_issue` | POST | `resolve_issue` | 17253 | resolve issue | — |
+| `/resolve_issue` | POST | `resolve_issue` | 17269 | resolve issue | — |
 
 ### `/resource`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/resource/post/<int:post_id>/delete` | mixed | `delete_resource_post` | 17754 | delete resource post | — |
+| `/resource/post/<int:post_id>/delete` | mixed | `delete_resource_post` | 17770 | delete resource post | — |
 
 ### `/save_community_announcement`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/save_community_announcement` | POST | `save_community_announcement` | 30999 | save community announcement | `client/src/pages/CommunityFeed.tsx` (1) |
+| `/save_community_announcement` | POST | `save_community_announcement` | 31028 | save community announcement | `client/src/pages/CommunityFeed.tsx` (1) |
 
 ### `/save_community_info`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/save_community_info` | POST | `save_community_info` | 30789 | save community info | — |
+| `/save_community_info` | POST | `save_community_info` | 30818 | save community info | — |
 
 ### `/seed_dummy_data`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/seed_dummy_data` | POST | `seed_dummy_data` | 31364 | seed dummy data | — |
+| `/seed_dummy_data` | POST | `seed_dummy_data` | 31393 | seed dummy data | — |
 
 ### `/share_individual_workout`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/share_individual_workout` | POST | `share_individual_workout` | 30063 | share individual workout | — |
+| `/share_individual_workout` | POST | `share_individual_workout` | 30092 | share individual workout | — |
 
 ### `/share_progress`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/share_progress` | POST | `share_progress` | 29865 | share progress | — |
+| `/share_progress` | POST | `share_progress` | 29894 | share progress | — |
 
 ### `/share_workouts`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/share_workouts` | POST | `share_workouts` | 29963 | share workouts | — |
+| `/share_workouts` | POST | `share_workouts` | 29992 | share workouts | — |
 
 ### `/simple_test`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/simple_test` | GET | `simple_test_route` | 30784 | simple test route | — |
+| `/simple_test` | GET | `simple_test_route` | 30813 | simple test route | — |
 
 ### `/static`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/static/community_backgrounds/<path:filename>` | GET | `community_background_file` | 26101 | community background file | — |
-| `/static/uploads/<path:filename>` | GET | `serve_static_uploads` | 24266 | serve static uploads | — |
-| `/static/uploads/<path:filename>` | GET | `static_uploaded_file` | 25953 | static uploaded file | — |
+| `/static/community_backgrounds/<path:filename>` | GET | `community_background_file` | 26130 | community background file | — |
+| `/static/uploads/<path:filename>` | GET | `serve_static_uploads` | 24295 | serve static uploads | — |
+| `/static/uploads/<path:filename>` | GET | `static_uploaded_file` | 25982 | static uploaded file | — |
 
 ### `/subscribe`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/subscribe` | POST | `subscribe` | 12173 | subscribe | `client/src/components/PushInit.tsx` (2), `client/src/utils/nativeDeviceCalendar.ts` (1) |
+| `/subscribe` | POST | `subscribe` | 12189 | subscribe | `client/src/components/PushInit.tsx` (2), `client/src/utils/nativeDeviceCalendar.ts` (1) |
 
 ### `/success`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/success` | GET | `success` | 12197 | success | `client/src/pages/Success.test.tsx` (2), `client/src/App.tsx` (1) |
+| `/success` | GET | `success` | 12213 | success | `client/src/pages/Success.test.tsx` (2), `client/src/App.tsx` (1) |
 
 ### `/sw.js`
 
@@ -1744,43 +1745,43 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/sync_gym_to_crossfit` | POST | `sync_gym_to_crossfit` | 28374 | sync gym to crossfit | — |
+| `/sync_gym_to_crossfit` | POST | `sync_gym_to_crossfit` | 28403 | sync gym to crossfit | — |
 
 ### `/toggle_ad`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/toggle_ad/<int:ad_id>` | POST | `toggle_ad` | 17497 | toggle ad | — |
+| `/toggle_ad/<int:ad_id>` | POST | `toggle_ad` | 17513 | toggle ad | — |
 
 ### `/track_ad_click`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/track_ad_click` | POST | `track_ad_click` | 17378 | track ad click | — |
+| `/track_ad_click` | POST | `track_ad_click` | 17394 | track ad click | — |
 
 ### `/translate_summary`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/translate_summary` | POST | `translate_summary` | 19713 | translate summary | `client/src/utils/translateSummary.ts` (1) |
+| `/translate_summary` | POST | `translate_summary` | 19729 | translate summary | `client/src/utils/translateSummary.ts` (1) |
 
 ### `/update_ad`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/update_ad/<int:ad_id>` | POST | `update_ad` | 17530 | update ad | — |
+| `/update_ad/<int:ad_id>` | POST | `update_ad` | 17546 | update ad | — |
 
 ### `/update_audio_summary`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/update_audio_summary` | POST | `update_audio_summary` | 19645 | update audio summary | `client/src/components/EditableAISummary.tsx` (1), `client/src/pages/ChatThread.tsx` (1) |
+| `/update_audio_summary` | POST | `update_audio_summary` | 19661 | update audio summary | `client/src/components/EditableAISummary.tsx` (1), `client/src/pages/ChatThread.tsx` (1) |
 
 ### `/update_community`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/update_community` | POST | `update_community` | 23300 | update community | `client/src/pages/EditCommunity.tsx` (1), `client/src/components/community/CommunityOwnerSetupIntro.tsx` (1) |
+| `/update_community` | POST | `update_community` | 23329 | update community | `client/src/pages/EditCommunity.tsx` (1), `client/src/components/community/CommunityOwnerSetupIntro.tsx` (1) |
 
 ### `/update_email`
 
@@ -1792,13 +1793,13 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/update_exercise_in_workout` | POST | `update_exercise_in_workout` | 29709 | update exercise in workout | — |
+| `/update_exercise_in_workout` | POST | `update_exercise_in_workout` | 29738 | update exercise in workout | — |
 
 ### `/update_exercise_one_rm`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/update_exercise_one_rm` | POST | `update_exercise_one_rm` | 29628 | update exercise one rm | — |
+| `/update_exercise_one_rm` | POST | `update_exercise_one_rm` | 29657 | update exercise one rm | — |
 
 ### `/update_password`
 
@@ -1810,13 +1811,13 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/update_personal_info` | POST | `update_personal_info` | 12051 | update personal info | `client/src/pages/Profile.tsx` (2) |
+| `/update_personal_info` | POST | `update_personal_info` | 12066 | update personal info | `client/src/pages/Profile.tsx` (3) |
 
 ### `/update_professional`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/update_professional` | POST | `update_professional` | 11973 | update professional | `client/src/pages/Profile.tsx` (2) |
+| `/update_professional` | POST | `update_professional` | 11973 | update professional | `client/src/pages/Profile.tsx` (3) |
 
 ### `/update_public_profile`
 
@@ -1828,13 +1829,13 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/update_user_password` | POST | `update_user_password` | 14163 | update user password | — |
+| `/update_user_password` | POST | `update_user_password` | 14179 | update user password | — |
 
 ### `/upload_community_files`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/upload_community_files` | POST | `upload_community_files` | 30836 | upload community files | — |
+| `/upload_community_files` | POST | `upload_community_files` | 30865 | upload community files | — |
 
 ### `/upload_logo`
 
@@ -1858,20 +1859,20 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/uploads/<path:filename>` | GET | `serve_uploads` | 24272 | serve uploads | — |
+| `/uploads/<path:filename>` | GET | `serve_uploads` | 24301 | serve uploads | — |
 
 ### `/upvote_issue`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/upvote_issue` | POST | `upvote_issue` | 17203 | upvote issue | — |
+| `/upvote_issue` | POST | `upvote_issue` | 17219 | upvote issue | — |
 
 ### `/user_chat`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/user_chat` | GET | `user_chat` | 14118 | user chat | `client/src/App.tsx` (5), `client/src/components/pageTransition.test.ts` (5), `client/src/utils/pushNotificationPayload.test.ts` (5), `client/src/pages/GroupChatThread.tsx` (4), `client/src/pages/Messages.tsx` (3) |
-| `/user_chat/<path:subpath>` | GET | `user_chat_subpath` | 14146 | user chat subpath | — |
+| `/user_chat` | GET | `user_chat` | 14134 | user chat | `client/src/App.tsx` (5), `client/src/components/pageTransition.test.ts` (5), `client/src/utils/pushNotificationPayload.test.ts` (5), `client/src/pages/GroupChatThread.tsx` (4), `client/src/pages/Messages.tsx` (3) |
+| `/user_chat/<path:subpath>` | GET | `user_chat_subpath` | 14162 | user chat subpath | — |
 
 ### `/verify_email`
 
@@ -1895,22 +1896,22 @@ Total **374** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/vote_poll` | POST | `vote_poll` | 16543 | vote poll | `client/src/pages/Communities.tsx` (1), `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/CommunityPolls.tsx` (1), `client/src/pages/HomeTimeline.tsx` (1) |
+| `/vote_poll` | POST | `vote_poll` | 16559 | vote poll | `client/src/pages/Communities.tsx` (1), `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/CommunityPolls.tsx` (1), `client/src/pages/HomeTimeline.tsx` (1) |
 
 ### `/welcome_cards`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/welcome_cards` | GET | `welcome_cards` | 19879 | welcome cards | `client/src/pages/AdminDashboard.tsx` (1), `client/src/pages/OnboardingWelcome.tsx` (1), `admin-web/src/pages/Settings.tsx` (1) |
+| `/welcome_cards` | GET | `welcome_cards` | 19895 | welcome cards | `client/src/pages/AdminDashboard.tsx` (1), `client/src/pages/OnboardingWelcome.tsx` (1), `admin-web/src/pages/Settings.tsx` (1) |
 
 ### `/workout_tracking`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/workout_tracking` | GET | `workout_tracking` | 28543 | workout tracking | `client/src/pages/Communities.tsx` (4), `client/src/App.tsx` (1), `client/src/pages/Gym.tsx` (1), `client/src/pages/YourSports.tsx` (1) |
+| `/workout_tracking` | GET | `workout_tracking` | 28572 | workout tracking | `client/src/pages/Communities.tsx` (4), `client/src/App.tsx` (1), `client/src/pages/Gym.tsx` (1), `client/src/pages/YourSports.tsx` (1) |
 
 ### `/your_sports`
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/your_sports` | GET | `your_sports` | 26139 | your sports | `client/src/pages/PremiumDashboard.tsx` (2), `client/src/App.tsx` (1) |
+| `/your_sports` | GET | `your_sports` | 26168 | your sports | `client/src/pages/PremiumDashboard.tsx` (2), `client/src/App.tsx` (1) |

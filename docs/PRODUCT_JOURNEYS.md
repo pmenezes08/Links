@@ -34,13 +34,13 @@ Short narratives for **how behaviour spans** Flask, Stripe, MySQL, Firestore, cr
 
 Compliance and minimization rules: **`docs/COMPLIANCE_AGE_GATE.md`**. Server stores **timestamp + boolean outcome only** — no date of birth on `POST /api/me/age-confirmation`.
 
-1. **Sign-up / first login** — User completes `/signup` or OAuth (`§0`), lands on **`OnboardingIntroGate`** (`client/src/components/onboarding/OnboardingIntroGate.tsx`) after language/theme (page 0).
-2. **Client eligibility (DOB not sent to server)** — Page 1 collects DOB + explicit 18+ consent in the UI (`client/src/lib/ageGate.ts`). DOB is used only in-browser to enforce 18+; it is **not** posted to the API under Option A. A client-only `localStorage` key (`cpoint:age_gate_confirmed_at`) may skip the step on repeat visits until server state is wired.
+1. **Any authenticated session** — The app-level **`AgeGateController`** (`client/src/components/onboarding/AgeGate.tsx`, mounted in `client/src/App.tsx` beside `BasicProfileGateProvider`) checks **`GET /api/me/age-gate`** once per signed-in account and renders the full-screen gate whenever the server status is **`pending`**. This catches every entry path — invited members landing in a community feed, OAuth signups, deep links — not just dashboard visits. (History: the gate originally lived inside `OnboardingIntroGate`, which became unreachable after the "optional enrichment" refactor and never called the API; that intro component — language/theme picker, welcome video, manifesto — remains unmounted pending a product decision to revive or retire it.)
+2. **Client eligibility (DOB not sent to server)** — The gate collects DOB + explicit 18+ consent in the UI (`client/src/lib/ageGate.ts`). DOB is used only in-browser to enforce 18+; it is **not** posted to the API under Option A. A client-only `localStorage` key (`cpoint:age_gate_confirmed_at`) is a skip-cache only; server truth (`users.age_confirmed_at`, read back via `GET /api/me/age-gate`) wins on new devices.
 3. **Confirm 18+** — Client calls **`POST /api/me/age-confirmation`** with `{ "confirmed": true }` (session cookie). **`user_age_gate.confirm_age_gate`** sets **`users.age_confirmed_at`**, **`age_consent_given = 1`**, clears **`underage_delete_scheduled_at`**, sets **`is_active = 1`**. User continues welcome / Meet Steve onboarding pages.
 4. **Declare under 18** — Client calls `{ "confirmed": false }` (or user chooses **Delete my account** in the underage modal → immediate **`POST /delete_account`**). The schedule path sets **`age_consent_given = 0`**, **`underage_delete_scheduled_at = UTC now + 7 days`**, **`is_active = 0`**, revokes sessions/remember-me (same cookie stack as logout), and clears the Flask session on the response — **no synchronous hard delete**.
 5. **Scheduled purge** — Daily Cloud Scheduler job **`purge-underage`** POSTs to **`/api/cron/purge-underage`** on **`cpoint-app`** / staging with **`X-Cron-Secret`** (see **`docs/cloud-scheduler-cron.md`**, **`docs/DEPLOYMENT_INSTANCES.md`**). **`purge_due_underage_accounts`** selects rows where **`underage_delete_scheduled_at <= NOW()`** and runs **`account_deletion.delete_user_in_connection`** (MySQL + Firestore cleanup per existing deletion service). Production cron JSON returns counts only.
 
-**Tables:** three gate columns on **`users`** — see **`MYSQL_AND_FIRESTORE.md`**. **Routes:** grep **`age-confirmation`** / **`purge-underage`** in **`BACKEND_ROUTES.md`**.
+**Tables:** three gate columns on **`users`** — see **`MYSQL_AND_FIRESTORE.md`**. **Routes:** `GET /api/me/age-gate` (status), `POST /api/me/age-confirmation`, `POST /api/cron/purge-underage` — see **`BACKEND_ROUTES.md`**. **Tests:** `tests/test_age_gate_api.py`. **Grandfathering:** accounts created before this gate see it once on their next session (all three columns `NULL` → `pending`).
 
 ---
 
@@ -161,7 +161,7 @@ Cloud Scheduler POSTs to **`/api/cron/*`** on **`cpoint-app`** (or staging) with
 
 ## 7. Onboarding (Steve-guided setup)
 
-**Age gate (first):** Before welcome/Steve copy, new accounts pass the **18+ gate** in **`OnboardingIntroGate`** — see **§0a** and **`docs/COMPLIANCE_AGE_GATE.md`**.
+**Age gate (first):** Accounts with an unanswered server-side age status pass the app-level **18+ gate** (`AgeGateController` in `client/src/components/onboarding/AgeGate.tsx`) — see **§0a** and **`docs/COMPLIANCE_AGE_GATE.md`**.
 
 **Simple participation rule:** Users may accept invites and read community feeds first. The only hard participation requirement is a **basic real profile**: `users.first_name`, `users.last_name`, and `user_profiles.profile_picture`. `GET /api/me/basic_profile` returns completion status and missing fields; `POST /api/me/basic_profile` saves those three fields. Social write routes return **`412 Precondition Failed`** with `error_code="basic_profile_required"` when incomplete, and the client opens a focused basic-profile sheet. Feed reads and invite acceptance remain open.
 

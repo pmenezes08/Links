@@ -795,6 +795,29 @@ def me_billing_portal():
     return jsonify({"success": True, "url": portal.get("url")})
 
 
+@me_bp.route("/api/me/age-gate", methods=["GET"])
+def me_age_gate_status():
+    """Return the signed-in user's age-gate state so the client knows
+    whether to show the 18+ gate (Option A — docs/COMPLIANCE_AGE_GATE.md).
+
+    Response: ``{"success": true, "status": "pending" | "confirmed" |
+    "scheduled_deletion", "age_confirmed_at": "<iso>" | null}``.
+    """
+    username = _session_username()
+    if not username:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+    try:
+        status = user_age_gate.get_age_gate_status(username)
+    except Exception:
+        logger.exception("me_age_gate_status failed for %s", username)
+        return jsonify({"success": False, "error": "Could not load age gate status"}), 500
+    return jsonify({
+        "success": True,
+        "status": status.get("status"),
+        "age_confirmed_at": status.get("age_confirmed_at"),
+    })
+
+
 @me_bp.route("/api/me/age-confirmation", methods=["POST"])
 def me_age_confirmation():
     """Persist 18+ self-declaration (Option A — timestamp only, no DOB).

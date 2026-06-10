@@ -30,6 +30,7 @@ import OfflineBanner from './components/OfflineBanner'
 import OutboxDrainer from './components/OutboxDrainer'
 import BrandAssetsInit from './components/BrandAssetsInit'
 import BasicProfileGateProvider from './components/basic-profile/BasicProfileGateProvider'
+import AgeGateController from './components/onboarding/AgeGate'
 import LocaleBootstrap from './components/LocaleBootstrap'
 import CrossfitExact from './pages/CrossfitExact'
 import CommunityFeed from './pages/CommunityFeed'
@@ -868,6 +869,9 @@ function AppRoutes(){
           }} />
         )}
         <BasicProfileGateProvider />
+        {/* 18+ compliance gate (Option A): fires once per account when the
+            server-side status is unanswered — see docs/COMPLIANCE_AGE_GATE.md. */}
+        {authLoaded ? <AgeGateController username={userMeta.username || null} /> : null}
       </HeaderContext.Provider>
       </BadgeProvider>
     </UserProfileContext.Provider>
