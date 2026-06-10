@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { useTheme, type Theme } from '../../contexts/ThemeContext'
+import { useTheme, type ThemePreference } from '../../contexts/ThemeContext'
 import { matchLocale, type SupportedLocale } from '../../i18n'
 import { LOCALE_OPTIONS } from '../../i18n/localeOptions'
 import { useLocale } from '../../i18n/useLocale'
@@ -85,7 +85,7 @@ function buildProgressPages(skipLanguageStep: boolean, skipAgeStep: boolean): In
 export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProps) {
   const { t } = useTranslation()
   const { locale, supported, saving, setLocale } = useLocale()
-  const { theme, setTheme } = useTheme()
+  const { preference, setPreference } = useTheme()
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [videoFailed, setVideoFailed] = useState(false)
   const [manifestoOpen, setManifestoOpen] = useState(false)
@@ -93,7 +93,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
   const [skipLanguageStep, setSkipLanguageStep] = useState(false)
   const [skipAgeStep, setSkipAgeStep] = useState(false)
   const [draftLocale, setDraftLocale] = useState<SupportedLocale>(locale)
-  const [draftAppearance, setDraftAppearance] = useState<Theme>(theme)
+  const [draftAppearance, setDraftAppearance] = useState<ThemePreference>(preference)
   const [localeError, setLocaleError] = useState<string | null>(null)
   const [dob, setDob] = useState('')
   const [consent18, setConsent18] = useState(false)
@@ -115,17 +115,19 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
   }, [locale])
 
   useEffect(() => {
-    setDraftAppearance(theme)
-  }, [theme])
+    setDraftAppearance(preference)
+  }, [preference])
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       let hasSavedLocale = false
-      const ageConfirmed = isAgeGateConfirmed()
-      if (ageConfirmed) {
-        setSkipAgeStep(true)
-      }
+      // The 18+ gate now lives app-level (components/onboarding/AgeGate.tsx,
+      // API-wired and reachable on every entry path), so the intro flow
+      // never re-asks for age. The age page below is kept for reference but
+      // unreachable.
+      const ageConfirmed = true
+      setSkipAgeStep(true)
 
       try {
         const localeRes = await fetchMockable('/api/me/locale', {
@@ -195,9 +197,9 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
       setLocaleError(t('account.language.save_failed'))
       return
     }
-    setTheme(draftAppearance)
+    setPreference(draftAppearance)
     setPage(resolveNextPageAfterLanguage(skipAgeStep || isAgeGateConfirmed()))
-  }, [draftLocale, draftAppearance, setLocale, setTheme, skipAgeStep, t])
+  }, [draftLocale, draftAppearance, setLocale, setPreference, skipAgeStep, t])
 
   const handleAgeGateContinue = useCallback(() => {
     setAgeGateError(null)
@@ -373,7 +375,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                       {t('onboarding_intro.appearance_subtitle')}
                     </p>
                     <div className="space-y-2" role="radiogroup" aria-label={t('onboarding_intro.appearance_title')}>
-                      {(['dark', 'light'] as const).map((option) => {
+                      {(['dark', 'light', 'system'] as const).map((option) => {
                         const checked = draftAppearance === option
                         return (
                           <label

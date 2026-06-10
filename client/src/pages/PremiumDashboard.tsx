@@ -987,6 +987,19 @@ export default function PremiumDashboard() {
         return
       }
 
+      // Revived first-session intro: language + appearance (dark/light/system)
+      // + welcome video/manifesto, shown once per account for newly verified
+      // users. The 18+ AgeGate is app-level and stacks above this overlay, so
+      // compliance still runs first. Marked seen on show so an abandoned
+      // intro never re-nags.
+      try {
+        const introSeenKey = `cpoint:intro_gate_done:${username}`
+        if (localStorage.getItem(introSeenKey) !== '1') {
+          localStorage.setItem(introSeenKey, '1')
+          setShowOnboardingWelcome(true)
+        }
+      } catch {}
+
       onboardingTriggeredRef.current = true
     })()
     // Intentionally omit `communities`: array identity changes on every parent-community refetch and caused

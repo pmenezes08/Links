@@ -2402,6 +2402,7 @@
     "appearance_subtitle": "Choose how C-Point looks",
     "appearance_dark": "Dark",
     "appearance_light": "Light",
+    "appearance_system": "Match my device",
     "appearance_change_later": "You can change this later in Settings.",
     "age_title": "Confirm your age",
     "dob_hint": "C-Point is for members 18 and older. This quick check helps us keep communities safe and compliant.",

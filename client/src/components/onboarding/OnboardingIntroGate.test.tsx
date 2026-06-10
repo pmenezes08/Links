@@ -4,6 +4,9 @@ import '@testing-library/jest-dom/vitest'
 
 import OnboardingIntroGate from './OnboardingIntroGate'
 
+// The 18+ age step moved to the app-level AgeGate (AgeGate.test.tsx); the
+// intro flow is now: language + appearance → welcome → profile setup.
+
 function mockIntroFetches(options?: { preferredLocale?: string | null }) {
   const preferred = options?.preferredLocale ?? null
   return vi.fn((url: string | URL, init?: RequestInit) => {
@@ -43,7 +46,7 @@ async function advancePastLanguageIfNeeded() {
   if (!languageHeading) return
   fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
   await waitFor(() => {
-    expect(screen.getByRole('heading', { name: 'Confirm your age' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Welcome to C-Point' })).toBeInTheDocument()
   })
 }
 
@@ -54,16 +57,7 @@ describe('OnboardingIntroGate', () => {
     localStorage.clear()
   })
 
-  async function completeAgeGate() {
-    fireEvent.change(screen.getByRole('textbox', { name: /^date of birth$/i }), { target: { value: '05/06/1990' } })
-    fireEvent.click(screen.getByLabelText(/I confirm that I am 18 or older/i))
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Welcome to C-Point' })).toBeInTheDocument()
-    })
-  }
-
-  it('shows language step first, then age, welcome and profile setup before starting onboarding', async () => {
+  it('shows language + appearance first, then welcome and profile setup before starting onboarding', async () => {
     const onStart = vi.fn()
     vi.stubGlobal('fetch', mockIntroFetches({ preferredLocale: null }))
 
@@ -75,12 +69,17 @@ describe('OnboardingIntroGate', () => {
       ).toBeInTheDocument()
     })
 
+    // Appearance options include dark, light, and follow-the-device.
+    expect(screen.getByLabelText('Dark')).toBeInTheDocument()
+    expect(screen.getByLabelText('Light')).toBeInTheDocument()
+    expect(screen.getByLabelText('Match my device')).toBeInTheDocument()
+
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Confirm your age' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Welcome to C-Point' })).toBeInTheDocument()
     })
-    expect(screen.getByText(/used for age verification/i)).toBeInTheDocument()
-    await completeAgeGate()
+    // The age step never appears in the intro flow anymore.
+    expect(screen.queryByRole('heading', { name: 'Confirm your age' })).not.toBeInTheDocument()
 
     expect(screen.getByText(/the world is meant to be lived/i)).toBeInTheDocument()
     expect(screen.queryByText(/C-Point's heart and intelligence/i)).not.toBeInTheDocument()
@@ -99,30 +98,11 @@ describe('OnboardingIntroGate', () => {
     render(<OnboardingIntroGate onStart={onStart} />)
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Confirm your age' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Welcome to C-Point' })).toBeInTheDocument()
     })
     expect(
       screen.queryByRole('heading', { name: /choose your preferred language/i }),
     ).not.toBeInTheDocument()
-  })
-
-  it('accepts compact DDMMYYYY dates from mobile numeric keyboards', async () => {
-    vi.stubGlobal('fetch', mockIntroFetches({ preferredLocale: 'en' }))
-
-    render(<OnboardingIntroGate onStart={vi.fn()} />)
-
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Confirm your age' })).toBeInTheDocument()
-    })
-
-    fireEvent.change(screen.getByRole('textbox', { name: /^date of birth$/i }), { target: { value: '08101988' } })
-    fireEvent.click(screen.getByLabelText(/I confirm that I am 18 or older/i))
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
-
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Welcome to C-Point' })).toBeInTheDocument()
-    })
-    expect(screen.queryByText(/valid date of birth/i)).not.toBeInTheDocument()
   })
 
   it('opens the manifesto modal and can start onboarding from it', async () => {
@@ -137,9 +117,6 @@ describe('OnboardingIntroGate', () => {
       ).toBeInTheDocument()
     })
     await advancePastLanguageIfNeeded()
-    if (screen.queryByRole('heading', { name: 'Confirm your age' })) {
-      await completeAgeGate()
-    }
 
     fireEvent.click(screen.getByRole('button', { name: 'Read the manifesto' }))
 
@@ -164,7 +141,6 @@ describe('OnboardingIntroGate', () => {
       ).toBeInTheDocument()
     })
     await advancePastLanguageIfNeeded()
-    await completeAgeGate()
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Set up my profile later' }))
@@ -211,9 +187,8 @@ describe('OnboardingIntroGate', () => {
     const { container } = render(<OnboardingIntroGate onStart={vi.fn()} />)
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Confirm your age' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Welcome to C-Point' })).toBeInTheDocument()
     })
-    await completeAgeGate()
 
     await waitFor(() => {
       const video = container.querySelector('video')
