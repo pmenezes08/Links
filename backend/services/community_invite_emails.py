@@ -1,4 +1,4 @@
-"""Email copy / rendering for community invitations.
+﻿"""Email copy / rendering for community invitations.
 
 Recipient-locale aware. Each render function accepts a ``locale`` arg;
 callers (community_invites etc.) resolve the recipient's
@@ -7,7 +7,7 @@ and pass it in. Default is English so legacy call sites that omit the
 argument keep their current behaviour.
 
 The HTML shell (table layout, brand colours, CTA pill) stays a single
-template — only the user-facing text is keyed off ``email.*`` in the
+template â€” only the user-facing text is keyed off ``email.*`` in the
 JSON catalogs.
 """
 
@@ -77,9 +77,9 @@ def render_existing_user_added_email(
       <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#000;">
         <tr><td align="center" style="padding:40px 20px;">
           <table width="600" cellpadding="0" cellspacing="0" style="background-color:#1a1a1a;border-radius:12px;overflow:hidden;max-width:100%;">
-            <tr><td style="background:#00CEC8;padding:30px;text-align:center;">
+            <tr><td style="background:#ffffff;padding:30px;text-align:center;">
               <img src="{logo_url}" alt="C-Point" style="max-width:160px;max-height:60px;margin-bottom:12px;" />
-              <h1 style="margin:0;color:#000;font-size:28px;font-weight:700;">{heading}</h1>
+              <h1 style="margin:0;color:#0F1419;font-size:28px;font-weight:700;">{heading}</h1>
             </td></tr>
             <tr><td style="padding:40px 30px;color:#fff;">
               <p style="margin:0 0 20px;font-size:16px;line-height:1.6;">{lead_html}</p>
@@ -138,9 +138,9 @@ def render_new_user_invite_email(
       <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#000;">
         <tr><td align="center" style="padding:40px 20px;">
           <table width="600" cellpadding="0" cellspacing="0" style="background-color:#1a1a1a;border-radius:12px;overflow:hidden;max-width:100%;">
-            <tr><td style="background:#00CEC8;padding:30px;text-align:center;">
+            <tr><td style="background:#ffffff;padding:30px;text-align:center;">
               <img src="{logo_url}" alt="C-Point" style="max-width:160px;max-height:60px;margin-bottom:12px;" />
-              <h1 style="margin:0;color:#000;font-size:28px;font-weight:700;">{heading}</h1>
+              <h1 style="margin:0;color:#0F1419;font-size:28px;font-weight:700;">{heading}</h1>
             </td></tr>
             <tr><td style="padding:40px 30px;color:#fff;">
               <p style="margin:0 0 20px;font-size:16px;line-height:1.6;">{lead_html}</p>
