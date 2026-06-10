@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 
 export default function CommunityResources(){
+  const { t } = useTranslation()
   const { community_id } = useParams()
   const navigate = useNavigate()
   const { setTitle } = useHeader()
@@ -16,7 +18,7 @@ export default function CommunityResources(){
   const categoryRef = useRef<HTMLSelectElement|null>(null)
   const attachRef = useRef<HTMLInputElement|null>(null)
 
-  useEffect(() => { setTitle('Forum') }, [setTitle])
+  useEffect(() => { setTitle(t('feed.forum')) }, [setTitle, t])
 
   function resolveAvatar(url?:string|null){
     if (!url) return null
@@ -27,23 +29,21 @@ export default function CommunityResources(){
   async function load(){
     setLoading(true)
     try{
-      // No direct API for posts; reuse HTML route data would be heavy. For now, render links only.
-      // Future: add /api/resource_posts endpoint. Here we fallback to links list as core requirement is links + forum entry.
       setPosts([])
     }finally{ setLoading(false) }
   }
   useEffect(()=>{ load() }, [community_id])
 
   async function submitPost(){
-    const t = titleRef.current?.value.trim() || ''
-    const c = contentRef.current?.value.trim() || ''
+    const title = titleRef.current?.value.trim() || ''
+    const content = contentRef.current?.value.trim() || ''
     const cat = categoryRef.current?.value || 'General'
     const att = attachRef.current?.value || ''
-    if (!t || !c){ alert('Title and content are required'); return }
-    const r = await fetch(`/community/${community_id}/resources/create`, { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ title:t, content:c, category:cat, attachment_url:att }) })
+    if (!title || !content){ alert(t('feed.forum_page.title_content_required')); return }
+    const r = await fetch(`/community/${community_id}/resources/create`, { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ title, content, category:cat, attachment_url:att }) })
     const j = await r.json().catch(()=>null)
     if (j?.success){ setShowForm(false); if (titleRef.current) titleRef.current.value=''; if (contentRef.current) contentRef.current.value=''; if (attachRef.current) attachRef.current.value=''; load() }
-    else alert(j?.message || 'Failed to create')
+    else alert(j?.message || t('feed.forum_page.create_failed'))
   }
 
   return (
@@ -53,10 +53,10 @@ export default function CommunityResources(){
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
       >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-c-hover-bg" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label="Back">
+          <button className="p-2 rounded-full hover:bg-c-hover-bg" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label={t('common.back')}>
             <i className="fa-solid fa-arrow-left" />
           </button>
-          <div className="flex-1 font-medium">Forum</div>
+          <div className="flex-1 font-medium">{t('feed.forum')}</div>
         </div>
       </div>
 
@@ -71,43 +71,43 @@ export default function CommunityResources(){
       >
         <div className="rounded-2xl border border-c-border bg-white/[0.035]">
           <div className="px-3 py-2 flex items-center justify-between border-b border-c-border">
-            <div className="text-sm font-semibold">Create a Post</div>
+            <div className="text-sm font-semibold">{t('feed.forum_page.create_post')}</div>
             <button className="px-2 py-1 rounded-full bg-cpoint-turquoise text-black text-xs hover:brightness-110" onClick={()=> setShowForm(v=>!v)}>
-              {showForm ? 'Close' : 'New Post'}
+              {showForm ? t('feed.forum_page.close') : t('feed.forum_page.new_post')}
             </button>
           </div>
           {showForm && (
             <div className="p-3 space-y-2">
-              <label className="text-xs text-c-text-tertiary">Title
+              <label className="text-xs text-c-text-tertiary">{t('feed.forum_page.title_label')}
                 <input ref={titleRef} className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
               </label>
-              <label className="text-xs text-c-text-tertiary">Category
+              <label className="text-xs text-c-text-tertiary">{t('feed.forum_page.category_label')}
                 <select ref={categoryRef} className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm focus:border-teal-400/70 outline-none">
-                  <option>General</option>
-                  <option>Study Materials</option>
-                  <option>Notes</option>
-                  <option>Tips & Tricks</option>
-                  <option>Questions</option>
-                  <option>Announcements</option>
+                  <option value="General">{t('feed.forum_page.category_general')}</option>
+                  <option value="Study Materials">{t('feed.forum_page.category_study')}</option>
+                  <option value="Notes">{t('feed.forum_page.category_notes')}</option>
+                  <option value="Tips & Tricks">{t('feed.forum_page.category_tips')}</option>
+                  <option value="Questions">{t('feed.forum_page.category_questions')}</option>
+                  <option value="Announcements">{t('feed.forum_page.category_announcements')}</option>
                 </select>
               </label>
-              <label className="text-xs text-c-text-tertiary">Content
+              <label className="text-xs text-c-text-tertiary">{t('feed.forum_page.content_label')}
                 <textarea ref={contentRef} className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[100px]" />
               </label>
-              <label className="text-xs text-c-text-tertiary">Attachment URL (optional)
+              <label className="text-xs text-c-text-tertiary">{t('feed.forum_page.attachment_label')}
                 <input ref={attachRef} className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm focus:border-teal-400/70 outline-none" placeholder="https://..." />
               </label>
               <div className="flex justify-end">
-                <button className="px-3 py-1.5 rounded-md bg-cpoint-turquoise text-black text-sm hover:brightness-110" onClick={submitPost}>Post</button>
+                <button className="px-3 py-1.5 rounded-md bg-cpoint-turquoise text-black text-sm hover:brightness-110" onClick={submitPost}>{t('feed.forum_page.post_button')}</button>
               </div>
             </div>
           )}
         </div>
 
         <div className="mt-3 space-y-3">
-          {loading ? (<div className="text-c-text-tertiary">Loading…</div>) : (
+          {loading ? (<div className="text-c-text-tertiary">{t('common.loading')}</div>) : (
             posts.length === 0 ? (
-              <div className="text-c-text-tertiary">No posts yet. Be the first to share!</div>
+              <div className="text-c-text-tertiary">{t('feed.forum_page.empty_posts')}</div>
             ) : posts.map(p => (
               <div key={p.id} className="rounded-2xl border border-c-border bg-white/[0.035]">
                 <div className="px-3 py-2 border-b border-c-border flex items-center gap-2">
@@ -117,7 +117,7 @@ export default function CommunityResources(){
                 </div>
                 <div className="px-3 py-2 text-sm">{p.content}</div>
                 {p.attachment_url ? (
-                  <div className="px-3 pb-3"><a className="text-teal-300 hover:underline" href={p.attachment_url} target="_blank" rel="noreferrer">View Attachment</a></div>
+                  <div className="px-3 pb-3"><a className="text-teal-300 hover:underline" href={p.attachment_url} target="_blank" rel="noreferrer">{t('feed.forum_page.view_attachment')}</a></div>
                 ) : null}
               </div>
             ))

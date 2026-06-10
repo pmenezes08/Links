@@ -6,7 +6,7 @@ import { Keyboard, KeyboardResize } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
 import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { extractInviteToken, isInternalLink, joinCommunityWithInvite } from './utils/internalLinkHandler'
+import { extractInviteToken, isInternalLink } from './utils/internalLinkHandler'
 import {
   isClipboardInviteConsumed,
   markClipboardInviteConsumed,
@@ -29,6 +29,7 @@ import { BadgeProvider } from './contexts/BadgeContext'
 import OfflineBanner from './components/OfflineBanner'
 import OutboxDrainer from './components/OutboxDrainer'
 import BrandAssetsInit from './components/BrandAssetsInit'
+import BasicProfileGateProvider from './components/basic-profile/BasicProfileGateProvider'
 import LocaleBootstrap from './components/LocaleBootstrap'
 import CrossfitExact from './pages/CrossfitExact'
 import CommunityFeed from './pages/CommunityFeed'
@@ -65,12 +66,14 @@ import AccountDangerZone from './pages/AccountDangerZone'
 import SubscriptionPlans from './pages/SubscriptionPlans'
 import Success from './pages/Success'
 import Signup from './pages/Signup'
+import InvitePreview from './pages/InvitePreview'
 import Notifications from './pages/Notifications'
 import AdminDashboard from './pages/AdminDashboard'
 import AdminProfile from './pages/AdminProfile'
 import KeyPosts from './pages/KeyPosts'
 import AboutCPoint from './pages/AboutCPoint'
 import OnboardingWelcome from './pages/OnboardingWelcome'
+import ScopedProfileBuilder from './pages/ScopedProfileBuilder'
 import VerifyOverlay from './components/VerifyOverlay'
 import { isPremiumDashboardPath } from './components/DashboardBottomNav'
 import { isDashboardTabPath } from './components/pageTransitionUtils'
@@ -142,6 +145,7 @@ function AppRoutes(){
         '/login',
         '/signup',
         '/signup_react',
+        '/invite-preview',
         '/verify_required',
         '/share/incoming',
       ]),
@@ -284,7 +288,6 @@ function AppRoutes(){
     }
   }, [applyKeyboardOffset, isChatRoute, fullscreenOverlayTick])
 
-  const [deepLinkJoin, setDeepLinkJoin] = useState<{ name: string; id: number } | null>(null)
   const processedUrlsRef = useRef<Set<string>>(new Set())
   const clipboardInviteAttemptedRef = useRef(false)
   const pendingShareUrlRef = useRef<string | null>(null)
@@ -365,33 +368,11 @@ function AppRoutes(){
       }
 
       if (profileData) {
-        console.log('🔗 User is authenticated, attempting to join community')
-        try {
-          const result = await joinCommunityWithInvite(inviteToken)
-          console.log('🔗 Join result:', result)
-
-          if (result.success && result.communityId) {
-            if (result.communityName) {
-              setDeepLinkJoin({ name: result.communityName, id: result.communityId })
-              setTimeout(() => {
-                setDeepLinkJoin(null)
-                navigate(`/community_feed_react/${result.communityId}`)
-              }, 2500)
-            } else {
-              navigate(`/community_feed_react/${result.communityId}`)
-            }
-          } else if (result.alreadyMember && result.communityId) {
-            console.log('🔗 Already a member, navigating to community')
-            navigate(`/community_feed_react/${result.communityId}`)
-          } else {
-            console.log('🔗 Join failed but user is logged in:', result.error)
-          }
-        } catch (err) {
-          console.error('🔗 Error processing invite:', err)
-        }
+        console.log('🔗 User is authenticated, opening invite preview')
+        navigate(`/invite-preview/${encodeURIComponent(inviteToken)}`)
       } else {
         console.log('🔗 User not authenticated, redirecting to login with invite token')
-        navigate(`/login?invite=${inviteToken}`)
+        navigate(`/login?invite=${encodeURIComponent(inviteToken)}`)
       }
     },
     [navigate, profileData, isUrlProcessed, markUrlProcessed],
@@ -607,7 +588,7 @@ function AppRoutes(){
         setProfileData(null)
         setIsVerified(null)
         try { localStorage.removeItem('cached_profile') } catch {}
-        if (!publicPaths.has(currentPath)) {
+        if (!publicPaths.has(currentPath) && !currentPath.startsWith('/invite-preview/')) {
           window.location.href = '/'
         } else {
           setAuthLoaded(true)
@@ -748,6 +729,7 @@ function AppRoutes(){
     currentPathName === '/login' ||
     currentPathName === '/signup' ||
     currentPathName === '/signup_react' ||
+    currentPathName.startsWith('/invite-preview/') ||
     currentPathName.startsWith('/user_chat/chat/') ||
     currentPathName.startsWith('/group_chat/') ||
     currentPathName.startsWith('/post/') ||
@@ -811,6 +793,7 @@ function AppRoutes(){
                 <Route path="/login" element={<MobileLogin />} />
                 <Route path="/signup" element={<Signup />} />
                 <Route path="/signup_react" element={<Signup />} />
+                <Route path="/invite-preview/:token" element={<InvitePreview />} />
                 <Route path="/onboarding" element={<OnboardingWelcome />} />
                 <Route element={<DashboardLayout />}>
                   <Route path="/premium" element={<PremiumDashboard />} />
@@ -850,6 +833,7 @@ function AppRoutes(){
                 <Route path="/admin_profile_react" element={<AdminProfile />} />
                 <Route path="/home" element={<HomeTimeline />} />
                 <Route path="/workout_tracking" element={<WorkoutTracking />} />
+                <Route path="/steve/profile-builder/:section" element={<ScopedProfileBuilder />} />
                 <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
                 <Route path="/community/:community_id/calendar_react" element={<CommunityCalendar />} />
                 <Route path="/community/:community_id/tasks_react" element={<CommunityTasks />} />
@@ -883,23 +867,7 @@ function AppRoutes(){
             }catch{}
           }} />
         )}
-
-        {deepLinkJoin && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-c-bg-app/70 backdrop-blur-sm">
-            <div className="mx-4 w-full max-w-sm rounded-2xl border border-cpoint-turquoise/30 bg-c-bg-elevated p-6 shadow-2xl animate-fade-in">
-              <div className="flex flex-col items-center text-center">
-                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-cpoint-turquoise/20">
-                  <i className="fa-solid fa-check text-3xl text-cpoint-turquoise" />
-                </div>
-                <h3 className="mb-2 text-xl font-semibold text-white">Welcome!</h3>
-                <p className="mb-4 text-sm text-c-text-secondary">
-                  You've joined <span className="font-medium text-cpoint-turquoise">{deepLinkJoin.name}</span>
-                </p>
-                <p className="text-xs text-c-text-tertiary">Taking you to the community...</p>
-              </div>
-            </div>
-          </div>
-        )}
+        <BasicProfileGateProvider />
       </HeaderContext.Provider>
       </BadgeProvider>
     </UserProfileContext.Provider>

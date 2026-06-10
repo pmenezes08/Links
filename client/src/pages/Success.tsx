@@ -1,19 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
-
-/**
- * Post-Stripe-Checkout landing page.
- *
- * Stripe redirects here with `?session_id=cs_...`. We poll
- * `/api/stripe/checkout_status` until the webhook has written the SKU's
- * actual billing state. Community purchases therefore confirm the exact
- * community/tier rather than showing a personal Premium-only fallback.
- *
- * The user's tier is NOT mutated here — the server-side `/success`
- * route serves this SPA; the webhook is the single source of truth for
- * subscription state.
- */
 
 const MAX_POLL_ATTEMPTS = 10
 const POLL_INTERVAL_MS = 2_000
@@ -32,6 +20,7 @@ type CheckoutStatus = {
 }
 
 export default function Success() {
+  const { t } = useTranslation()
   const { setTitle } = useHeader()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -45,8 +34,8 @@ export default function Success() {
   const pollTimer = useRef<number | null>(null)
 
   useEffect(() => {
-    setTitle('Welcome')
-  }, [setTitle])
+    setTitle(t('billing.checkout_success.page_title'))
+  }, [setTitle, t])
 
   const isActive = checkout?.status === 'active'
   const isCommunity = checkout?.sku === 'community_tier'
@@ -67,9 +56,9 @@ export default function Success() {
         const data = await res.json()
         if (cancelled) return
         setCheckout(data)
-        if (!data?.success) setStatusError(data?.error || 'Unable to confirm checkout')
+        if (!data?.success) setStatusError(data?.error || t('billing.checkout_success.confirm_failed'))
       } catch {
-        if (!cancelled) setStatusError('Unable to confirm checkout')
+        if (!cancelled) setStatusError(t('billing.checkout_success.confirm_failed'))
       } finally {
         if (!cancelled) {
           setLoading(false)
@@ -78,8 +67,10 @@ export default function Success() {
       }
     }
     loadInitialStatus()
-    return () => { cancelled = true }
-  }, [sessionId])
+    return () => {
+      cancelled = true
+    }
+  }, [sessionId, t])
 
   useEffect(() => {
     if (!sessionId || isActive) return
@@ -89,30 +80,31 @@ export default function Success() {
         credentials: 'include',
         headers: { Accept: 'application/json' },
       })
-        .then((r) => r.json())
-        .then((data) => {
+        .then(r => r.json())
+        .then(data => {
           setCheckout(data)
-          if (!data?.success) setStatusError(data?.error || 'Unable to confirm checkout')
+          if (!data?.success) setStatusError(data?.error || t('billing.checkout_success.confirm_failed'))
         })
-        .catch(() => setStatusError('Unable to confirm checkout'))
+        .catch(() => setStatusError(t('billing.checkout_success.confirm_failed')))
         .finally(() => {
           setLoading(false)
-          setAttempts((n) => n + 1)
+          setAttempts(n => n + 1)
         })
     }, POLL_INTERVAL_MS)
     pollTimer.current = handle
     return () => {
       if (pollTimer.current !== null) window.clearTimeout(pollTimer.current)
     }
-  }, [attempts, isActive, sessionId])
+  }, [attempts, isActive, sessionId, t])
 
   const onOpenPortal = useCallback(async () => {
     setPortalLoading(true)
     setPortalError(null)
     try {
-      const portalUrl = isCommunity && checkout?.community_id
-        ? `/api/me/billing/portal?community_id=${checkout.community_id}`
-        : '/api/me/billing/portal'
+      const portalUrl =
+        isCommunity && checkout?.community_id
+          ? `/api/me/billing/portal?community_id=${checkout.community_id}`
+          : '/api/me/billing/portal'
       const res = await fetch(portalUrl, {
         method: 'POST',
         credentials: 'include',
@@ -121,37 +113,42 @@ export default function Success() {
           Accept: 'application/json',
         },
         body: JSON.stringify({
-          return_path: isCommunity && checkout?.community_id
-            ? `/community/${checkout.community_id}/edit`
-            : '/account_settings',
+          return_path:
+            isCommunity && checkout?.community_id
+              ? `/community/${checkout.community_id}/edit`
+              : '/account_settings',
         }),
       })
       const data = await res.json()
       if (!res.ok || !data?.success || !data?.url) {
-        throw new Error(data?.error || 'Unable to open billing portal')
+        throw new Error(data?.error || t('billing.checkout_success.portal_open_failed'))
       }
       window.location.assign(data.url)
     } catch (err) {
-      setPortalError(err instanceof Error ? err.message : 'Unable to open billing portal')
+      setPortalError(err instanceof Error ? err.message : t('billing.checkout_success.portal_open_failed'))
       setPortalLoading(false)
     }
-  }, [checkout?.community_id, isCommunity])
+  }, [checkout?.community_id, isCommunity, t])
 
   const headline = isActive
     ? isCommunity
-      ? `${checkout?.tier_label || 'Paid tier'} is active.`
-      : 'Premium is active.'
-    : 'Payment received.'
+      ? t('billing.checkout_success.tier_active', {
+          tier: checkout?.tier_label || t('billing.checkout_success.paid_tier_fallback'),
+        })
+      : t('billing.checkout_success.premium_active')
+    : t('billing.checkout_success.payment_received')
 
   const body = isActive
     ? isCommunity
-      ? `Your ${checkout?.community_name || 'community'} subscription has been activated.`
-      : 'Your Premium benefits are active across C-Point.'
+      ? t('billing.checkout_success.community_body', {
+          name: checkout?.community_name || t('billing.checkout_success.community_fallback'),
+        })
+      : t('billing.checkout_success.premium_body')
     : loading || attempts < MAX_POLL_ATTEMPTS
-    ? 'Payment received, finalising subscription.'
-    : isCommunity
-    ? 'Payment recorded, still syncing. Check Manage Community in a minute.'
-    : "Payment recorded, still syncing. Check your membership shortly."
+      ? t('billing.checkout_success.finalising')
+      : isCommunity
+        ? t('billing.checkout_success.syncing_community')
+        : t('billing.checkout_success.syncing_membership')
 
   return (
     <div className="min-h-screen bg-c-bg-app text-c-text-primary pt-16 pb-24">
@@ -171,33 +168,29 @@ export default function Success() {
           </svg>
         </div>
 
-        <h1 className="mt-8 text-2xl font-semibold tracking-tight">
-          {headline}
-        </h1>
-        <p className="mt-4 text-c-text-tertiary leading-relaxed">
-          {body}
-        </p>
+        <h1 className="mt-8 text-2xl font-semibold tracking-tight">{headline}</h1>
+        <p className="mt-4 text-c-text-tertiary leading-relaxed">{body}</p>
 
-        {statusError && (
+        {statusError ? (
           <div className="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100">
             {statusError}
           </div>
-        )}
+        ) : null}
 
-        {sessionId && (
+        {sessionId ? (
           <p className="mt-4 text-[11px] uppercase tracking-[0.22em] text-c-text-tertiary">
-            Ref {sessionId.slice(0, 18)}…
+            {t('billing.checkout_success.ref_prefix')} {sessionId.slice(0, 18)}…
           </p>
-        )}
+        ) : null}
 
-        {portalError && (
+        {portalError ? (
           <div className="mt-6 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
             {portalError}
           </div>
-        )}
+        ) : null}
 
         <div className="mt-10 flex flex-col gap-3">
-          {portalAvailable && (
+          {portalAvailable ? (
             <button
               type="button"
               onClick={onOpenPortal}
@@ -209,24 +202,26 @@ export default function Success() {
                   : 'bg-cpoint-turquoise text-black hover:bg-cpoint-turquoise/90')
               }
             >
-              {portalLoading ? 'Opening portal…' : 'Open billing portal'}
+              {portalLoading ? t('billing.checkout_success.opening_portal') : t('billing.checkout_success.open_portal')}
             </button>
-          )}
-          {isCommunity && checkout?.community_id && (
+          ) : null}
+          {isCommunity && checkout?.community_id ? (
             <button
               type="button"
               onClick={() => navigate(`/community/${checkout.community_id}/edit`)}
               className="inline-flex w-full items-center justify-center rounded-full bg-cpoint-turquoise px-6 py-3 text-sm font-semibold text-black hover:bg-cpoint-turquoise/90"
             >
-              Manage community
+              {t('billing.checkout_success.manage_community')}
             </button>
-          )}
+          ) : null}
           <button
             type="button"
-            onClick={() => navigate(isCommunity && checkout?.community_id ? `/community_feed_react/${checkout.community_id}` : '/home')}
+            onClick={() =>
+              navigate(isCommunity && checkout?.community_id ? `/community_feed_react/${checkout.community_id}` : '/home')
+            }
             className="inline-flex w-full items-center justify-center rounded-full border border-white/20 px-6 py-3 text-sm font-semibold text-c-text-primary hover:bg-c-hover-bg"
           >
-            Continue
+            {t('billing.checkout_success.continue')}
           </button>
         </div>
       </div>

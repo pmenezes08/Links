@@ -795,7 +795,7 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
                   </div>
                   <p className="text-xs text-c-text-tertiary">Saved summary: {scheduleSummary(schedule)}</p>
                   {schedulePreviewError ? (
-                    <p className="text-xs text-amber-200/90">{schedulePreviewError}</p>
+                    <p className="text-xs text-amber-800 dark:text-amber-200/90">{schedulePreviewError}</p>
                   ) : schedulePreview ? (
                     <p className="text-xs text-c-accent-ink">
                       First run: <span className="font-medium text-c-text-primary">{schedulePreview.first_run_local_label}</span>{' '}

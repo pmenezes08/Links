@@ -53,13 +53,13 @@ export default function FeedBottomNav({
       }}
     >
       <div
-        className="liquid-glass-surface border border-c-border rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.55)] max-w-2xl mx-auto"
+        className="liquid-glass-surface border border-c-border rounded-2xl shadow-c-glass max-w-2xl mx-auto"
         style={{ pointerEvents: 'auto' }}
       >
           <div className="h-14 px-2 sm:px-6 flex items-center justify-between text-c-text-secondary">
           <button
             type="button"
-            className="p-3 rounded-full bg-white/10 transition-colors touch-manipulation"
+            className="p-3 rounded-full bg-c-active-bg transition-colors touch-manipulation"
             aria-label={t('navigation.home')}
             onClick={onHome}
           >
@@ -67,7 +67,7 @@ export default function FeedBottomNav({
           </button>
           <button
             type="button"
-            className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors touch-manipulation"
+            className="p-3 rounded-full hover:bg-c-hover-bg active:bg-c-active-bg transition-colors touch-manipulation"
             aria-label={t('navigation.members')}
             onClick={onMembers}
           >
@@ -76,7 +76,7 @@ export default function FeedBottomNav({
           {composeControl}
           <button
             type="button"
-            className="relative p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors touch-manipulation"
+            className="relative p-3 rounded-full hover:bg-c-hover-bg active:bg-c-active-bg transition-colors touch-manipulation"
             aria-label={t('feed.announcements')}
             onClick={onAnnouncements}
           >
@@ -92,7 +92,7 @@ export default function FeedBottomNav({
           </button>
           <button
             type="button"
-            className="relative p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors touch-manipulation"
+            className="relative p-3 rounded-full hover:bg-c-hover-bg active:bg-c-active-bg transition-colors touch-manipulation"
             aria-label={t('common.more')}
             onClick={onMore}
           >

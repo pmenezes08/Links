@@ -48,6 +48,25 @@ Test accounts available after seeding:
 
 ---
 
+## Simple Onboarding — Basic Profile Gate
+
+Run after any deploy touching onboarding, invite acceptance, community feed participation, DMs/group chat, or profile editing.
+
+- [ ] First-time invitee signs up or logs in from an invite, accepts the invite, and lands on the community feed without being forced into full Steve onboarding.
+- [ ] With that same account missing first name, last name, or profile photo, open the community feed and verify posts are readable.
+- [ ] Attempt to post, reply, react, vote in a poll, send a DM/group message, or send a community invite. Expected: the focused basic profile sheet opens and the backend response is `412` with `error_code = "basic_profile_required"`.
+- [ ] Complete first name, last name, and profile photo in the sheet. Retry the blocked action and confirm it succeeds without opening Steve onboarding.
+- [ ] Call one blocked write endpoint directly with an incomplete-profile session. Expected: same `basic_profile_required` payload; frontend-only hiding is not the enforcement.
+- [ ] As a complete-profile user, repeat post/reply/react/message/invite flows. Expected: no basic-profile interruption.
+- [ ] As a community owner, set `recommended_profile_mode = professional` in Manage Community. As a member, verify a dismissible soft recommendation card appears and links to Steve profile help.
+- [ ] Click the professional recommendation card. Expected: the app swipe-transitions to `/steve/profile-builder/professional?...`, shows the originating community context, and Steve runs only the professional-background section.
+- [ ] Complete the professional-background flow and return to the community feed. Expected: the card is suppressed after refresh because the professional section is effectively complete.
+- [ ] For an account with both personal and professional background already filled, open Premium Dashboard. Expected: “Improve your profile with Steve” is not shown.
+- [ ] Dismiss the recommendation card and reload the feed. Expected: it stays dismissed for that community/user and never blocks participation.
+- [ ] Open Steve onboarding/profile help from Premium Dashboard. Expected: it remains available as optional enrichment and does not auto-open as a first-session gate.
+
+---
+
 ## Chat Media Upload v2.1 — DM/group regression
 
 Run after any deploy touching `client/src/chat/upload/`, `mediaSenders.ts`, `groupChatMediaSenders.ts`, or `backend/services/chat_uploads.py`.
@@ -576,6 +595,43 @@ catalog convention and namespaces.
       layout, brand colours, and CTA pill stay unchanged.
 - [ ] Trigger the same invite to an English recipient. Email must stay
       English.
+
+### Stickiness + secondary surfaces (pt-PT finish)
+
+- [ ] Open an invite preview link (`/invite/preview?token=…`) with
+      `Accept-Language: pt-PT`. Expected: expired/unavailable states,
+      join/sign-in CTAs, and email-mismatch copy are in Portuguese.
+- [ ] Accept a community invite and land on the feed with
+      `?joined=1`. Expected: orientation card, optional intro-thread
+      link, and owner first-post banner (if owner) render in Portuguese.
+- [ ] As a new community owner, open the AI draft first-post modal.
+      Expected: banner chrome, draft variants, and regenerate labels
+      are in Portuguese (informal **tu**).
+- [ ] Complete Stripe checkout and open `/success` (or billing return).
+      Expected: polling/status copy is in Portuguese.
+- [ ] Open **Account Security**, **Followers**, and **Steve knows me**
+      from profile/settings. Expected: page chrome is in Portuguese.
+- [ ] Create a community with a pt-PT owner account. Expected: Steve
+      welcome post, cold-start poll, and owner DM use Portuguese at
+      creation (existing English posts are not backfilled).
+
+### §15.F — pt-PT pass 2
+
+- [ ] With pt-PT saved, open **Key Posts**, **Media**, and **Forum**
+      from the community feed menu (`/community/:id/key_posts`,
+      `photos_react`, `resources_react`). Expected: tab labels, empty
+      states, date headers, and form chrome are in Portuguese.
+- [ ] Open a story on the community feed and open the comments panel.
+      Expected: loading/empty comment copy is in Portuguese; story
+      media alt and send-DM control use localized aria/title text.
+- [ ] Create a calendar event with missing title or invalid dates.
+      Expected: validation toast/error uses Portuguese (`calendar.errors.*`).
+- [ ] Delete a reply, block/unblock a user, and edit community settings.
+      Expected: success toasts use Portuguese (`feed.reply_deleted`,
+      `feed.user_blocked`, `communities.updated`).
+- [ ] Change email in Account Settings with an empty field or an email
+      already in use. Expected: API errors use Portuguese
+      (`auth.email.*`).
 
 ### Layout regression
 

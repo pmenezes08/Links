@@ -29,6 +29,7 @@ import { FixedComposerShell } from '../components/FixedComposerShell'
 import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
 import { composerControlPointerProps } from '../utils/composerBlurGuard'
 import { triggerHaptic, hapticImpactLight } from '../utils/haptics'
+import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 
 function replyDisplayUrl(raw: string | null | undefined): string {
   const s = (raw ?? '').trim()
@@ -540,6 +541,10 @@ export default function CommentReply() {
       }
       const res = await fetch(submitUrl, { method: 'POST', credentials: 'include', body: fd })
       const data = await res.json()
+
+      if (handleBasicProfileRequired(data)) {
+        return
+      }
 
       if (data.success && data.reply) {
         const raw = data.reply as Reply & { children?: Reply[] }

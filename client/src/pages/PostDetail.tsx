@@ -35,6 +35,7 @@ import { FixedComposerShell } from '../components/FixedComposerShell'
 import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
 import { preventComposerBlur, composerControlPointerProps } from '../utils/composerBlurGuard'
 import { triggerHaptic, hapticImpactLight } from '../utils/haptics'
+import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 import {
   attachReplyToPostTree,
   normalizePostForDetail,
@@ -89,6 +90,14 @@ export default function PostDetail(){
   const { post_id } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
+  const promptMode = useMemo(() => {
+    try {
+      return new URLSearchParams(location.search || '').get('prompt') || ''
+    } catch {
+      return ''
+    }
+  }, [location.search])
+  const isIntroducePrompt = promptMode === 'introduce' || promptMode === 'welcome'
   const entitlementsHandler = useEntitlementsHandler()
   const { entitlements, enforcement_enabled, loading: entitlementsLoading } = useEntitlements()
   const blockSteveMentionReply = useCallback(
@@ -864,6 +873,10 @@ export default function PostDetail(){
     const endpoint = isGroupPost ? '/api/group_posts/react' : '/add_reaction'
     const r = await fetch(endpoint, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: form })
     const j = await r.json().catch(()=>null)
+    if (handleBasicProfileRequired(j)) {
+      await refreshPost()
+      return
+    }
     if (j?.success){
       setPost(p => p ? ({ ...p, reactions: { ...p.reactions, ...j.counts }, user_reaction: j.user_reaction }) : p)
     }
@@ -889,6 +902,7 @@ export default function PostDetail(){
     const endpoint = isGroupPost ? '/api/group_replies/react' : '/add_reply_reaction'
     const r = await fetch(endpoint, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: form })
     const j = await r.json().catch(()=>null)
+    if (handleBasicProfileRequired(j)) return
     if (j?.success){
       setPost(p => {
         if (!p) return p
@@ -964,6 +978,7 @@ export default function PostDetail(){
     const r = await fetch(replyEndpoint, { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
     setSubmittingReply(false)
+    if (handleBasicProfileRequired(j)) return
     if (j?.success && j.reply){
       setPost(p => {
         if (!p) return p
@@ -1035,6 +1050,7 @@ export default function PostDetail(){
     const r = await fetch(inlineEndpoint, { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
     setInlineSending(s => ({ ...s, [parentId]: false }))
+    if (handleBasicProfileRequired(j)) return
     if (j?.success && j.reply){
       setPost(p => {
         if (!p) return p
@@ -1643,6 +1659,15 @@ export default function PostDetail(){
         }}
       >
         <div className="max-w-2xl mx-auto px-3" style={{ paddingBottom: contentPaddingBottom }}>
+        {isIntroducePrompt && (
+          <div className="mb-3 rounded-3xl border border-cpoint-turquoise/20 bg-c-bg-surface p-4 shadow-c-card">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cpoint-turquoise/80">Welcome</div>
+            <h2 className="mt-1 text-base font-semibold text-c-text-primary">Introduce yourself when ready</h2>
+            <p className="mt-1 text-sm leading-relaxed text-c-text-secondary">
+              A few lines is enough: who you are, what brought you here, and one thing you are working on or looking for.
+            </p>
+          </div>
+        )}
         <div className="rounded-2xl border border-c-border bg-c-bg-app shadow-sm shadow-black/20">
           {/* Post Header with avatar, username, date, and action buttons */}
           <div className="px-3 py-2 border-b border-c-border flex items-center gap-2">
@@ -2189,7 +2214,7 @@ export default function PostDetail(){
                 onChange={setContent}
                 communityId={(post as any)?.community_id}
                 postId={post?.id}
-                placeholder={t('feed.write_reply_placeholder')}
+                placeholder={isIntroducePrompt ? 'Introduce yourself in a few lines...' : t('feed.write_reply_placeholder')}
                 className="w-full bg-transparent px-3 py-1 text-[15px] leading-5 text-c-text-primary placeholder-c-text-tertiary outline-none resize-none max-h-24 min-h-0"
                 rows={1}
                 autoExpand
@@ -2360,7 +2385,7 @@ export default function PostDetail(){
                   onChange={setContent}
                   communityId={(post as any)?.community_id}
                   postId={post?.id}
-                  placeholder={t('feed.write_reply_placeholder')}
+                  placeholder={isIntroducePrompt ? 'Introduce yourself in a few lines...' : t('feed.write_reply_placeholder')}
                   className="h-full min-h-0 resize-none overflow-y-auto bg-transparent px-4 py-4 text-[16px] leading-relaxed text-c-text-primary outline-none placeholder-c-text-tertiary"
                   rows={10}
                   perfDegraded={!!uploadFile}

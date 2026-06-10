@@ -156,6 +156,8 @@
   --c-glass-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
   --c-glass-blur: 32px;
   --c-glass-saturate: 160%;
+  --c-page-transition-shadow: 0 22px 64px rgba(0, 0, 0, 0.42);
+  --c-page-transition-overlay: transparent;
 
   /* Chat Bubbles */
   --c-bubble-sent-bg: linear-gradient(135deg, rgba(0, 206, 200, 0.9), rgba(32, 84, 78, 0.85));
@@ -222,18 +224,18 @@
   --glass-tint: rgba(0, 206, 200, 0.10);
   --glass-border: rgba(0, 0, 0, 0.08);
   --glass-highlight: rgba(255, 255, 255, 0.6);
-  --glass-shadow: 0 8px 24px rgba(15, 23, 42, 0.10);
+  --glass-shadow: 0 12px 34px rgba(15, 23, 42, 0.12);
   --glass-gradient: radial-gradient(
       circle at 10% 20%,
-      rgba(0, 206, 200, 0.06),
+      rgba(0, 206, 200, 0.10),
       transparent 55%
     ),
     radial-gradient(
       circle at 80% 10%,
-      rgba(105, 119, 255, 0.04),
+      rgba(105, 119, 255, 0.07),
       transparent 50%
     ),
-    #FFFFFF;
+    #FAFBFC;
 
   /* ===== Semantic tokens (--c-*) — Light theme ===== */
   
@@ -263,9 +265,11 @@
   --c-glass-tint: rgba(0, 206, 200, 0.10);
   --c-glass-border: rgba(0, 0, 0, 0.08);
   --c-glass-highlight: rgba(255, 255, 255, 0.6);
-  --c-glass-shadow: 0 8px 24px rgba(15, 23, 42, 0.10);
+  --c-glass-shadow: 0 12px 34px rgba(15, 23, 42, 0.12);
   --c-glass-blur: 24px;
   --c-glass-saturate: 120%;
+  --c-page-transition-shadow: 0 18px 48px rgba(15, 23, 42, 0.14);
+  --c-page-transition-overlay: rgba(15, 23, 42, 0.035);
 
   /* Chat Bubbles */
   --c-bubble-sent-bg: linear-gradient(135deg, rgba(0, 206, 200, 0.95), rgba(0, 158, 153, 0.95));
@@ -334,6 +338,8 @@
   --c-glass-base: rgba(12, 12, 16, 0.68);
   --c-glass-border: rgba(255, 255, 255, 0.14);
   --c-glass-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  --c-page-transition-shadow: 0 22px 64px rgba(0, 0, 0, 0.42);
+  --c-page-transition-overlay: transparent;
   --c-skeleton-strong: rgba(255, 255, 255, 0.08);
   --c-skeleton-subtle: rgba(255, 255, 255, 0.04);
   --c-reply-snippet-bg: rgba(0, 0, 0, 0.22);
@@ -351,9 +357,9 @@
   background: var(--glass-gradient);
 }
 
-/* Light mode: chat thread stays white so grey received bubbles read */
+/* Light mode keeps a soft brand tint while grey received bubbles stay readable. */
 html[data-theme='light'] .chat-thread-bg {
-  background: #FFFFFF;
+  background: var(--glass-gradient);
 }
 html[data-theme='light'] .liquid-glass-bubble--received {
   background: #ECEEF2;
@@ -375,8 +381,8 @@ html[data-theme='light'] .liquid-glass-bubble--received {
   background: var(--glass-base);
   border: 1px solid var(--glass-border);
   box-shadow: var(--glass-shadow);
-  backdrop-filter: blur(32px) saturate(160%);
-  -webkit-backdrop-filter: blur(32px) saturate(160%);
+  backdrop-filter: blur(var(--c-glass-blur, 32px)) saturate(var(--c-glass-saturate, 160%));
+  -webkit-backdrop-filter: blur(var(--c-glass-blur, 32px)) saturate(var(--c-glass-saturate, 160%));
 }
 
 .liquid-glass-surface::before {
@@ -522,10 +528,6 @@ html[data-theme='light'] .liquid-glass-chip {
   background: rgba(0, 0, 0, 0.05);
   border-color: rgba(0, 0, 0, 0.08);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
-}
-
-html[data-theme='light'] .chat-thread-bg {
-  background: var(--c-bg-app);
 }
 
 html[data-theme='light'] .burger-menu-backdrop {
@@ -735,4 +737,17 @@ html.page-transition-active .page-transition-outgoing .liquid-glass-surface,
 html.page-transition-active .page-transition-incoming .liquid-glass-surface {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+
+html.page-transition-active .page-transition-incoming .liquid-glass-surface {
+  box-shadow: var(--c-page-transition-shadow, var(--glass-shadow));
+}
+
+html.page-transition-active .page-transition-outgoing::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2147483647;
+  pointer-events: none;
+  background: var(--c-page-transition-overlay, transparent);
 }

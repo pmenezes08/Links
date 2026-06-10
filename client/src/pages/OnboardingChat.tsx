@@ -172,7 +172,8 @@ interface OnboardingChatProps {
   communityName?: string | null
   hasCommunity: boolean
   existingProfilePic: string
-  mode?: 'fresh' | 'profile_builder'
+  mode?: 'fresh' | 'profile_builder' | 'section_only'
+  targetSection?: ProfileSection
   onComplete: () => void
   onCreateCommunity: () => void
   onGoToCommunity: () => void
@@ -272,7 +273,16 @@ function nextSectionAfterCompletion(c: Collected): Stage {
   return nextIncompleteProfileStage(c)
 }
 
-function normalizeResumeStage(savedStage: Stage, c: Collected): Stage {
+export function isIntroProfileDeferredStage(savedStage: unknown): boolean {
+  return String(savedStage || '') === 'intro_profile_later'
+}
+
+export function shouldShowResumeWelcome(saved: { stage?: unknown; resume_welcome_shown?: unknown }): boolean {
+  return !isIntroProfileDeferredStage(saved.stage) && !saved.resume_welcome_shown
+}
+
+export function normalizeResumeStage(savedStage: Stage | string, c: Collected): Stage {
+  if (isIntroProfileDeferredStage(savedStage)) return 'welcome'
   if (savedStage === 'complete') return 'complete'
   if (savedStage === 'personal_section_intro' || savedStage === 'professional_section_intro') return savedStage
   if (savedStage === 'talk_all_day' || savedStage === 'reach_out' || savedStage === 'journey' || savedStage === 'recommend' || savedStage === 'optional_social' || savedStage === 'personal_bio_review') {
@@ -287,7 +297,7 @@ function normalizeResumeStage(savedStage: Stage, c: Collected): Stage {
   if (savedStage === 'profile_review') {
     return c.personalSectionComplete && c.professionalSectionComplete ? 'profile_review' : nextIncompleteProfileStage(c)
   }
-  return savedStage || 'section_picker'
+  return (savedStage as Stage) || 'section_picker'
 }
 
 const STAGES_REQUIRING_VALIDATION: Stage[] = [
@@ -356,6 +366,7 @@ export default function OnboardingChat({
   onGoToCommunity: _onGoToCommunity,
   onExit,
   mode = 'fresh',
+  targetSection,
 }: OnboardingChatProps) {
   const { t } = useTranslation()
   const tourSteps = useMemo(() => getTourSteps(t), [t])
@@ -415,6 +426,8 @@ export default function OnboardingChat({
   const [deferringProfile, setDeferringProfile] = useState(false)
   const [deferError, setDeferError] = useState('')
   const [bioDraftingKind, setBioDraftingKind] = useState<'personal' | 'professional' | null>(null)
+  const isSectionOnly = mode === 'section_only'
+  const sectionOnlyTarget: ProfileSection = targetSection || 'professional'
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -494,7 +507,7 @@ export default function OnboardingChat({
           setTierHints(tj.hints as OnboardingTierHints)
         }
       } catch {}
-      if (mode === 'profile_builder') {
+      if (mode === 'profile_builder' || isSectionOnly) {
         profileBuilderPostPbRef.current = { skipLocation: false, skipProfessional: false }
         try {
           const pr = await fetch('/api/profile_me', { credentials: 'include', headers: { Accept: 'application/json' } })
@@ -519,22 +532,22 @@ export default function OnboardingChat({
               recommend: '',
               reachOut: '',
               journey: '',
-              personalSectionComplete: false,
-              professionalSectionComplete: false,
-              activeProfileSection: undefined,
-              profileSectionOrder: [],
+              personalSectionComplete: isSectionOnly && sectionOnlyTarget === 'professional',
+              professionalSectionComplete: isSectionOnly && sectionOnlyTarget === 'personal',
+              activeProfileSection: isSectionOnly ? sectionOnlyTarget : undefined,
+              profileSectionOrder: isSectionOnly ? [sectionOnlyTarget] : [],
             }
             originalPublicBioRef.current = next.bio
             originalProfessionalBioRef.current = next.professionalBio
             setCollected(next)
-            startStage('welcome', next)
+            startStage(isSectionOnly ? startOrResumeSection(sectionOnlyTarget, next) : 'welcome', next)
             setBooting(false)
             return
           }
         } catch {}
         originalPublicBioRef.current = ''
         originalProfessionalBioRef.current = ''
-        startStage('welcome', collected)
+        startStage(isSectionOnly ? startOrResumeSection(sectionOnlyTarget, collected) : 'welcome', collected)
         setBooting(false)
         return
       }
@@ -567,9 +580,9 @@ export default function OnboardingChat({
             if (sc.b2bOrgTypeHint) b2bOrgRef.current = String(sc.b2bOrgTypeHint)
             if (sc.b2bParentName) b2bParentRef.current = String(sc.b2bParentName)
           }
-          const resumeStage = normalizeResumeStage(saved.stage as Stage, savedCollected)
+          const resumeStage = normalizeResumeStage(saved.stage, savedCollected)
           setStage(resumeStage)
-          if (!saved.resume_welcome_shown) {
+          if (shouldShowResumeWelcome(saved)) {
             setMessages([{ from: 'steve', text: oc(t, 'messages.resume_welcome') }])
             try {
               await fetch('/api/onboarding/state', {
@@ -1060,6 +1073,16 @@ export default function OnboardingChat({
   }
 
   function showCompleteMsg() {
+    if (isSectionOnly) {
+      const sectionLabel = sectionOnlyTarget === 'professional' ? 'professional background' : 'personal background'
+      addSteveMessage(`Your ${sectionLabel} is ready. You can head back to the community whenever you are ready.`, {
+        options: [
+          { label: 'Back to community', value: 'go_feed' },
+          { label: 'Edit full profile', value: 'edit_profile' },
+        ],
+      })
+      return
+    }
     addSteveMessage(oc(t, 'messages.complete'), {
       options: [
         ocOpt(t, 'add_edit_profile', 'edit_profile'),
@@ -1106,10 +1129,10 @@ export default function OnboardingChat({
           opposite_bio: kind === 'professional' ? (c.bio || '').trim() : (c.professionalBio || '').trim(),
           existing_bio:
             kind === 'professional'
-              ? (mode === 'profile_builder'
+              ? ((mode === 'profile_builder' || isSectionOnly)
                   ? (originalProfessionalBioRef.current || '').trim()
                   : (c.professionalBio || '').trim())
-              : (mode === 'profile_builder'
+              : ((mode === 'profile_builder' || isSectionOnly)
                   ? (originalPublicBioRef.current || '').trim()
                   : (c.bio || '').trim()),
           reuse_company_intel: reuseIntel,
@@ -1615,10 +1638,13 @@ export default function OnboardingChat({
           addSteveMessage(
             kind === 'professional' ? oc(t, 'messages.bio_saved_professional') : oc(t, 'messages.bio_saved_personal'),
           )
-          setTimeout(
-            () => advanceTo(nextSectionAfterCompletion(newCollected), newCollected),
-            800,
-          )
+          setTimeout(() => {
+            if (isSectionOnly) {
+              advanceToComplete()
+            } else {
+              advanceTo(nextSectionAfterCompletion(newCollected), newCollected)
+            }
+          }, 800)
         }
         break
       }
@@ -1678,12 +1704,16 @@ export default function OnboardingChat({
         setTourStep(0)
         break
       case 'go_feed':
-        await completeOnboarding()
+        if (!isSectionOnly) {
+          await completeOnboarding()
+        }
         onComplete()
         break
       case 'edit_profile':
         addUserMessage(oc(t, 'user_echo.add_edit_profile'))
-        await completeOnboarding()
+        if (!isSectionOnly) {
+          await completeOnboarding()
+        }
         window.location.href = '/profile'
         break
       case 'create_community':
@@ -1943,10 +1973,13 @@ export default function OnboardingChat({
         addSteveMessage(
           lastKind === 'professional' ? oc(t, 'messages.bio_saved_professional') : oc(t, 'messages.bio_saved_personal'),
         )
-        setTimeout(
-          () => advanceTo(nextSectionAfterCompletion(newCollected), newCollected),
-          800,
-        )
+        setTimeout(() => {
+          if (isSectionOnly) {
+            advanceToComplete()
+          } else {
+            advanceTo(nextSectionAfterCompletion(newCollected), newCollected)
+          }
+        }, 800)
         break
       }
       case 'b2b_org_type': {

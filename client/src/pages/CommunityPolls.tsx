@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
+import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 
 type PollOption = { id: number; option_text: string; votes: number; voters?: { username: string; profile_picture?: string; voted_at: string }[] }
 type ActivePoll = { id:number; question:string; options: PollOption[]; single_vote?: boolean; total_votes?: number; user_vote?: number|null; is_active: number; expires_at?: string; created_by?: string }
@@ -134,6 +135,7 @@ export default function CommunityPolls(){
       }
       const r = await fetch('/create_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
       const j = await r.json().catch(()=>null)
+      if (handleBasicProfileRequired(j)) return
       if (j?.success){
         setSuccessMsg(t('communities.polls_created'))
         setQuestion('')
@@ -190,6 +192,10 @@ export default function CommunityPolls(){
     optimisticVote(pollId, optionId)
     const res = await fetch('/vote_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ poll_id: pollId, option_id: optionId }) })
     const j = await res.json().catch(()=>null)
+    if (handleBasicProfileRequired(j)) {
+      load()
+      return
+    }
     if (!j?.success){
       load()
     } else {

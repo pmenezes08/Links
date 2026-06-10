@@ -8,6 +8,7 @@ from functools import wraps
 from flask import Blueprint, abort, jsonify, request, session
 
 from backend.services import api_errors, auth_session, session_identity
+from backend.services.basic_profile_gate import require_basic_profile_payload
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services.dm_chat_threads import build_chat_threads_payload
 from backend.services.dm_chats_tables import ensure_deleted_chat_threads_table
@@ -68,6 +69,14 @@ def _login_required(view_func):
         return view_func(*args, **kwargs)
 
     return wrapper
+
+
+def _basic_profile_required_response(username: str | None):
+    gated = require_basic_profile_payload(username)
+    if gated is None:
+        return None
+    payload, status = gated
+    return jsonify(payload), status
 
 
 @dm_chats_bp.route("/api/chat_threads", methods=["GET"])
@@ -520,6 +529,9 @@ def get_dm_documents():
 def send_message():
     """Send a message to another user (supports E2E encryption)."""
     username = session.get("username")
+    gate_resp = _basic_profile_required_response(username)
+    if gate_resp is not None:
+        return gate_resp
     payload = send_dm_text_message(
         username,
         recipient_id=request.form.get("recipient_id"),
@@ -537,6 +549,9 @@ def send_message():
 def send_photo_message():
     """Send a photo message to another user."""
     username = session.get("username")
+    gate_resp = _basic_profile_required_response(username)
+    if gate_resp is not None:
+        return gate_resp
     payload = send_dm_photo_message(
         username,
         recipient_id=request.form.get("recipient_id"),
@@ -551,6 +566,9 @@ def send_photo_message():
 def send_dm_media():
     """Upload and send one or more photos/videos as a single grouped DM message."""
     username = session.get("username")
+    gate_resp = _basic_profile_required_response(username)
+    if gate_resp is not None:
+        return gate_resp
     files_to_upload, media_urls, upload_only = parse_grouped_media_request(request.form, request.files)
     payload, status = send_dm_grouped_media(
         username,
@@ -568,6 +586,9 @@ def send_dm_media():
 def send_video_message():
     """Send a video message to another user."""
     username = session.get("username")
+    gate_resp = _basic_profile_required_response(username)
+    if gate_resp is not None:
+        return gate_resp
     payload = send_dm_video_message(
         username,
         recipient_id=request.form.get("recipient_id"),
@@ -584,6 +605,9 @@ def send_video_message():
 def send_audio_message():
     """Send a voice message to another user, optionally with AI summary (premium only)."""
     username = session.get("username")
+    gate_resp = _basic_profile_required_response(username)
+    if gate_resp is not None:
+        return gate_resp
     duration_seconds_raw = (request.form.get("duration_seconds") or "").strip()
     try:
         duration_seconds = int(duration_seconds_raw) if duration_seconds_raw else None
@@ -682,6 +706,9 @@ def delete_message():
 def edit_message_api():
     """Edit an existing message's text. Only the sender can edit. Records edited_at."""
     username = session.get("username")
+    gate_resp = _basic_profile_required_response(username)
+    if gate_resp is not None:
+        return gate_resp
     if request.is_json:
         data = request.get_json(silent=True) or {}
         message_id = data.get("message_id")
@@ -698,6 +725,9 @@ def edit_message_api():
 def update_dm_audio_summary_route():
     """Update the AI summary for a DM voice message. Only the sender can edit."""
     username = session.get("username")
+    gate_resp = _basic_profile_required_response(username)
+    if gate_resp is not None:
+        return gate_resp
     data = request.get_json() or {}
     payload, status = update_dm_audio_summary(
         username,
@@ -722,6 +752,9 @@ def get_chat_media():
 def react_to_message():
     """React to a DM message with an emoji and notify the other participant."""
     username = session.get("username")
+    gate_resp = _basic_profile_required_response(username)
+    if gate_resp is not None:
+        return gate_resp
     message_id, emoji = parse_reaction_request(
         use_json=request.is_json,
         json_payload=request.get_json(silent=True) if request.is_json else None,

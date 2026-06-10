@@ -145,6 +145,19 @@ gcloud scheduler jobs create http communities-lifecycle-dispatch \
   --headers="X-Cron-Secret=$SECRET" \
   --attempt-deadline=300s
 
+# Rolling welcome summaries — once a week, Steve posts one batched summary
+# of newly joined members per community/window. Dry-run:
+#   curl -X POST "$BASE/api/cron/communities/rolling-welcome?dry_run=1" \
+#     -H "X-Cron-Secret: $CRON_SECRET"
+gcloud scheduler jobs create http communities-rolling-welcome \
+  --location=europe-west1 \
+  --schedule="30 10 * * MON" \
+  --time-zone=Europe/Dublin \
+  --uri="$BASE/api/cron/communities/rolling-welcome" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=300s
+
 # Retained story media purge — deletes story objects after they have been
 # invisible for 7 days. Daily at 02:40 UTC, after the low-traffic expiry
 # window. Dry-run:

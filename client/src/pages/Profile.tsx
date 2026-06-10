@@ -847,6 +847,53 @@ export default function Profile() {
     }
   }
 
+  async function handleDeletePersonalSection() {
+    if (!navigator.onLine) { alert(t('profile.alert.offline_save')); return }
+    if (savingPersonal) return
+    const confirmed = window.confirm('Delete your personal background section? Your name and profile photo will stay, but your bio, location, personal prompts, gender, and date of birth will be cleared.')
+    if (!confirmed) return
+    const cleared: PersonalForm = {
+      ...PERSONAL_DEFAULT,
+      first_name: personal.first_name,
+      last_name: personal.last_name,
+      display_name: personal.display_name,
+    }
+    setSavingPersonal(true)
+    try {
+      const form = new FormData()
+      form.append('clear_personal', '1')
+      form.append('first_name', cleared.first_name)
+      form.append('last_name', cleared.last_name)
+      form.append('bio', '')
+      form.append('display_name', cleared.display_name)
+      form.append('gender', '')
+      form.append('country', '')
+      form.append('city', '')
+      form.append('personal_answer_five_minutes', '')
+      form.append('personal_answer_outside_work', '')
+      form.append('personal_answer_cpoint_goals', '')
+      const response = await fetch('/update_personal_info', { method: 'POST', credentials: 'include', body: form })
+      const payload = await response.json().catch(() => null)
+      if (payload?.success) {
+        setPersonal(cleared)
+        serverPersonalRef.current = { ...cleared }
+        try { sessionStorage.removeItem(PROFILE_DRAFT_KEY) } catch {}
+        setSummary(prev => prev ? { ...prev, location: '', bio: '' } : prev)
+        setFeedback('Personal background deleted.')
+        try {
+          await refreshUserProfile()
+          await prefetchPublicProfileApi()
+        } catch {}
+      } else {
+        setFeedback(payload?.error || 'Could not delete personal background.')
+      }
+    } catch {
+      setFeedback('Could not delete personal background.')
+    } finally {
+      setSavingPersonal(false)
+    }
+  }
+
   async function handleProfessionalSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!navigator.onLine) { alert(t('profile.alert.offline_save')); return }
@@ -884,6 +931,45 @@ export default function Profile() {
       }
     } catch {
       setFeedback(t('profile.feedback.professional_save_failed'))
+    } finally {
+      setSavingProfessional(false)
+    }
+  }
+
+  async function handleDeleteProfessionalSection() {
+    if (!navigator.onLine) { alert(t('profile.alert.offline_save')); return }
+    if (savingProfessional) return
+    const confirmed = window.confirm('Delete your professional profile section? This clears your role, company, professional bio, LinkedIn, interests, work history, education, and saved CV reference.')
+    if (!confirmed) return
+    setSavingProfessional(true)
+    try {
+      const form = new FormData()
+      form.append('clear_cv', '1')
+      form.append('role', '')
+      form.append('company', '')
+      form.append('company_intel', '')
+      form.append('industry', '')
+      form.append('linkedin', '')
+      form.append('about', '')
+      form.append('interests', JSON.stringify([]))
+      form.append('current_role_start_ym', '')
+      form.append('work_history_json', JSON.stringify([]))
+      form.append('education_json', JSON.stringify([]))
+      const response = await fetch('/update_professional', { method: 'POST', credentials: 'include', body: form })
+      const payload = await response.json().catch(() => null)
+      if (payload?.success) {
+        setProfessional(PROFESSIONAL_DEFAULT)
+        setInterestInput('')
+        setFeedback('Professional profile deleted.')
+        try {
+          await refreshUserProfile()
+          await prefetchPublicProfileApi()
+        } catch {}
+      } else {
+        setFeedback(payload?.error || 'Could not delete professional profile.')
+      }
+    } catch {
+      setFeedback('Could not delete professional profile.')
     } finally {
       setSavingProfessional(false)
     }
@@ -1324,13 +1410,23 @@ export default function Profile() {
                 </div>
               </label>
             </div>
-            <button
-              type="submit"
-              className="px-4 py-2 rounded-md bg-cpoint-turquoise text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
-              disabled={savingPersonal}
-            >
-              {savingPersonal ? t('profile.saving') : t('profile.personal.save')}
-            </button>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <button
+                type="button"
+                className="rounded-md border border-red-500/35 px-4 py-2 text-sm font-medium text-red-300 hover:bg-red-500/10 disabled:opacity-50"
+                disabled={savingPersonal}
+                onClick={() => void handleDeletePersonalSection()}
+              >
+                Delete personal section
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-md bg-cpoint-turquoise text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
+                disabled={savingPersonal}
+              >
+                {savingPersonal ? t('profile.saving') : t('profile.personal.save')}
+              </button>
+            </div>
           </form>
         </section>
 
@@ -1450,13 +1546,23 @@ export default function Profile() {
                 />
               </label>
             </div>
-            <button
-              type="submit"
-              className="px-4 py-2 rounded-md bg-cpoint-turquoise text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
-              disabled={savingProfessional}
-            >
-              {savingProfessional ? t('profile.saving') : t('profile.professional.save')}
-            </button>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <button
+                type="button"
+                className="rounded-md border border-red-500/35 px-4 py-2 text-sm font-medium text-red-300 hover:bg-red-500/10 disabled:opacity-50"
+                disabled={savingProfessional}
+                onClick={() => void handleDeleteProfessionalSection()}
+              >
+                Delete professional section
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-md bg-cpoint-turquoise text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
+                disabled={savingProfessional}
+              >
+                {savingProfessional ? t('profile.saving') : t('profile.professional.save')}
+              </button>
+            </div>
           </form>
 
           {cvModalOpen && cvPending ? (

@@ -14,6 +14,7 @@ import {
 } from './upload'
 import { removeMediaOutboxRecord, removeMediaOutboxRecordsByPrefix } from './upload/mediaOutbox'
 import type { EntitlementsError } from '../utils/entitlementsError'
+import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 
 interface BridgeRef {
   tempToServer: Map<string, string | number>
@@ -73,6 +74,8 @@ const defaultNotify = (msg: string) => {
     window.alert(msg)
   }
 }
+
+const BASIC_PROFILE_SENTINEL = '__basic_profile_required__'
 
 function uploadLimitError(err: unknown): EntitlementsError | null {
   if (!(err instanceof UploadRequestError)) return null
@@ -160,6 +163,7 @@ export async function sendImageMessage(options: ImageMediaOptions) {
       fd.append('client_key', tempId)
       const res = await fetch('/send_dm_media', { method: 'POST', credentials: 'include', body: fd })
       const payload = await res.json().catch(() => null)
+      if (handleBasicProfileRequired(payload)) throw new Error(BASIC_PROFILE_SENTINEL)
       if (!payload?.success) throw new Error(payload?.error || 'Failed to send photo')
       if (outboxId) await removeMediaOutboxRecord(outboxId, tempId)
       if (payload.id) {
@@ -189,6 +193,7 @@ export async function sendImageMessage(options: ImageMediaOptions) {
       body: formData,
     })
     const payload = await response.json().catch(() => null)
+    if (handleBasicProfileRequired(payload)) throw new Error(BASIC_PROFILE_SENTINEL)
     if (!payload?.success) {
       throw new Error(payload?.error || 'Failed to send photo')
     }
@@ -217,6 +222,8 @@ export async function sendImageMessage(options: ImageMediaOptions) {
     const limitErr = uploadLimitError(error)
     if (controller?.signal.aborted) {
       // User cancelled the upload.
+    } else if (error instanceof Error && error.message === BASIC_PROFILE_SENTINEL) {
+      // The basic-profile sheet is already open.
     } else if (limitErr && onLimitReached) {
       onLimitReached(limitErr)
     } else {
@@ -295,6 +302,7 @@ export async function sendVideoMessage(options: VideoMediaOptions) {
       fd.append('client_key', tempId)
       const msgRes = await fetch('/send_video_message', { method: 'POST', credentials: 'include', body: fd })
       const payload = await msgRes.json().catch(() => null) || {}
+      if (handleBasicProfileRequired(payload)) throw new Error(BASIC_PROFILE_SENTINEL)
       if (!payload?.success) throw new Error(payload?.error || 'Failed to send video')
       if (outboxId) await removeMediaOutboxRecord(outboxId, tempId)
       onProgress?.({ stage: 'done', progress: 100, message: 'Sent' })
@@ -439,6 +447,8 @@ export async function sendVideoMessage(options: VideoMediaOptions) {
     recentOptimisticRef.current.delete(tempId)
     if (controller?.signal.aborted) {
       // Cancelled by the user.
+    } else if (error instanceof Error && error.message === BASIC_PROFILE_SENTINEL) {
+      // The basic-profile sheet is already open.
     } else if (limitErr && onLimitReached) onLimitReached(limitErr)
     else notifyError(errMsg)
   } finally {
@@ -590,6 +600,7 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
       fd.append('client_key', tempId)
       const res = await fetch('/send_dm_media', { method: 'POST', credentials: 'include', body: fd })
       const payload = await res.json().catch(() => null)
+      if (handleBasicProfileRequired(payload)) throw new Error(BASIC_PROFILE_SENTINEL)
       if (!payload?.success) throw new Error(payload?.error || 'Failed to send media')
       await removeMediaOutboxRecordsByPrefix(tempId)
       if (payload.id) {
@@ -653,6 +664,7 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
 
     const res = await fetch('/send_dm_media', { method: 'POST', credentials: 'include', body: fd })
     const payload = await res.json().catch(() => null)
+    if (handleBasicProfileRequired(payload)) throw new Error(BASIC_PROFILE_SENTINEL)
     if (!payload?.success) {
       throw new Error(payload?.error || 'Failed to send media')
     }
@@ -690,6 +702,8 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
     recentOptimisticRef.current.delete(tempId)
     if (controller?.signal.aborted) {
       // Cancelled by the user.
+    } else if (error instanceof Error && error.message === BASIC_PROFILE_SENTINEL) {
+      // The basic-profile sheet is already open.
     } else if (limitErr && onLimitReached) onLimitReached(limitErr)
     else notifyError(errMsg)
   } finally {
@@ -747,6 +761,7 @@ export async function sendDocumentMessage(options: DocumentMediaOptions) {
     fd.append('document', file, file.name)
     const res = await fetch('/api/chat/dm/send_document', { method: 'POST', credentials: 'include', body: fd })
     const payload = await res.json().catch(() => null)
+    if (handleBasicProfileRequired(payload)) throw new Error(BASIC_PROFILE_SENTINEL)
     if (!payload?.success) {
       throw new Error(payload?.error || 'Failed to send document')
     }
@@ -770,6 +785,11 @@ export async function sendDocumentMessage(options: DocumentMediaOptions) {
     finalizeOptimisticEntry(recentOptimisticRef, tempId)
   } catch (error) {
     console.error('Document upload failed', error)
+    if (error instanceof Error && error.message === BASIC_PROFILE_SENTINEL) {
+      setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
+      recentOptimisticRef.current.delete(tempId)
+      return
+    }
     const errMsg = error instanceof Error ? error.message : 'Failed to send document'
     setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
     recentOptimisticRef.current.delete(tempId)
@@ -796,6 +816,7 @@ export async function sendGroupDocumentMessage(options: { file: File; groupId: n
     body: fd,
   })
   const payload = await res.json().catch(() => null)
+  if (handleBasicProfileRequired(payload)) throw new Error(BASIC_PROFILE_SENTINEL)
   if (!payload?.success) {
     throw new Error(payload?.error || 'Failed to send document')
   }

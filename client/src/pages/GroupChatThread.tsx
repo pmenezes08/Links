@@ -43,6 +43,7 @@ import {
   releaseShareHandoffKey,
   releaseShareUrlHandoffKey,
 } from '../services/shareImportStore'
+import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 
 type Message = {
   id: number
@@ -1044,6 +1045,10 @@ export default function GroupChatThread() {
       .then(response => response.json())
       .then(data => {
         clearTimeout(sendTimeout)
+        if (handleBasicProfileRequired(data)) {
+          markFailed(tempId)
+          return
+        }
         if (data?.entitlements_error && isEntitlementsError(data.entitlements_error)) {
           entitlementsHandler.showError(data.entitlements_error)
         }
@@ -1111,6 +1116,10 @@ export default function GroupChatThread() {
       .then(r => r.json())
       .then(data => {
         clearTimeout(retryTimeout)
+        if (handleBasicProfileRequired(data)) {
+          markRetryFailed()
+          return
+        }
         if (data?.entitlements_error && isEntitlementsError(data.entitlements_error)) {
           entitlementsHandler.showError(data.entitlements_error)
         }
@@ -1222,6 +1231,7 @@ export default function GroupChatThread() {
       }
     } catch (err) {
       setServerMessages(prev => prev.filter(m => m.id !== optimisticId))
+      if (err instanceof Error && err.message === '__basic_profile_required__') return
       alert(err instanceof Error ? err.message : 'Failed to send document')
     } finally {
       setSending(false)
@@ -1413,6 +1423,10 @@ export default function GroupChatThread() {
           body: JSON.stringify({ voice: uploadData.audio_path }),
         })
         const data = await response.json()
+        if (handleBasicProfileRequired(data)) {
+          setServerMessages(prev => prev.filter(m => m.id !== optimisticId))
+          return
+        }
         if (data.success) {
           setServerMessages(prev =>
             prev.map(m => (m.id === optimisticId ? { ...data.message, isOptimistic: false } : m))
@@ -1586,6 +1600,11 @@ export default function GroupChatThread() {
         })
         const data = await response.json()
 
+        if (handleBasicProfileRequired(data)) {
+          setServerMessages(prev => prev.filter(m => m.id !== optimisticId))
+          return
+        }
+
         if (data.success) {
           setServerMessages(prev => prev.map(m => m.id === optimisticId ? { ...data.message, isOptimistic: false } : m))
           lastMessageIdRef.current = data.message.id
@@ -1644,6 +1663,11 @@ export default function GroupChatThread() {
           body: JSON.stringify({ voice: uploadData.audio_path }),
         })
         const data = await response.json()
+
+        if (handleBasicProfileRequired(data)) {
+          setServerMessages(prev => prev.filter(m => m.id !== optimisticId))
+          return
+        }
 
         if (data.success) {
           setServerMessages(prev => prev.map(m => m.id === optimisticId ? { ...data.message, isOptimistic: false } : m))

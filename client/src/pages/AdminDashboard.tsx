@@ -55,6 +55,14 @@ interface Community {
 type SimpleCommunityOption = { id: number; name: string }
 type NestedCommunityOption = { id: number; name: string; depth: number }
 
+function formatInviteExpiry(value?: string) {
+  if (!value) return ''
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T')
+  const date = new Date(normalized.endsWith('Z') ? normalized : `${normalized}Z`)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
 export default function AdminDashboard() {
   const { setTitle } = useHeader()
   const navigate = useNavigate()
@@ -164,6 +172,7 @@ export default function AdminDashboard() {
   const [inviteLoading, setInviteLoading] = useState(false)
   const [inviteError, setInviteError] = useState('')
   const [inviteSuccess, setInviteSuccess] = useState(false)
+  const [inviteSuccessMessage, setInviteSuccessMessage] = useState('')
   const [showQRCode, setShowQRCode] = useState(false)
   const [qrCodeUrl, setQRCodeUrl] = useState('')
   const [inviteScope, setInviteScope] = useState<'parent-only' | 'all-nested' | 'selected-nested'>('parent-only')
@@ -1168,6 +1177,7 @@ export default function AdminDashboard() {
     setInviteEmail('')
     setInviteError('')
     setInviteSuccess(false)
+    setInviteSuccessMessage('')
     setInviteScope('parent-only')
     setInviteNestedOptions([])
     setInviteSelectedNestedIds([])
@@ -1372,6 +1382,7 @@ export default function AdminDashboard() {
     setInviteEmail('')
     setInviteError('')
     setInviteSuccess(false)
+    setInviteSuccessMessage('')
     setInviteScope('parent-only')
     setShowQRCode(false)
 
@@ -1421,7 +1432,9 @@ export default function AdminDashboard() {
       const data = await response.json()
 
       if (response.ok && data.success) {
+        const expiry = formatInviteExpiry(data.expires_at)
         setInviteSuccess(true)
+        setInviteSuccessMessage(expiry ? `Invitation sent successfully. Valid until ${expiry}.` : 'Invitation sent successfully.')
         setInviteEmail('')
         setTimeout(() => {
           handleCloseInviteModal()
@@ -1462,7 +1475,9 @@ export default function AdminDashboard() {
       const data = await response.json()
 
       if (response.ok && data.success) {
+        const expiry = formatInviteExpiry(data.expires_at)
         setQRCodeUrl(data.invite_url)
+        setInviteSuccessMessage(expiry ? `Invite link generated. Valid until ${expiry}.` : 'Invite link generated.')
         setShowQRCode(true)
       } else {
         setInviteError(data.error || 'Failed to generate QR code')
@@ -3850,7 +3865,7 @@ export default function AdminDashboard() {
 
               {inviteSuccess && (
                 <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg text-green-400 text-sm">
-                  Invitation sent successfully!
+                  {inviteSuccessMessage || 'Invitation sent successfully.'}
                 </div>
               )}
 
@@ -4071,6 +4086,11 @@ export default function AdminDashboard() {
             <div className="text-xs text-c-text-tertiary mb-4 text-center break-all">
               {qrCodeUrl}
             </div>
+            {inviteSuccessMessage ? (
+              <div className="mb-4 rounded-lg border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-2 text-center text-xs text-cpoint-turquoise">
+                {inviteSuccessMessage}
+              </div>
+            ) : null}
 
             <div className="flex gap-2">
               <button

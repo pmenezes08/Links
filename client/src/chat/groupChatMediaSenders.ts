@@ -14,6 +14,7 @@ import {
 } from './upload'
 import { removeMediaOutboxRecordsByPrefix } from './upload/mediaOutbox'
 import type { EntitlementsError } from '../utils/entitlementsError'
+import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 
 export interface GroupMessage {
   id: number
@@ -64,6 +65,8 @@ const defaultErrorHandler = (msg: string) => {
   }
 }
 
+const BASIC_PROFILE_SENTINEL = '__basic_profile_required__'
+
 function uploadLimitError(err: unknown): EntitlementsError | null {
   if (!(err instanceof UploadRequestError)) return null
   if (err.code !== 'upload_size_limit' && err.code !== 'upload_daily_limit') return null
@@ -111,6 +114,10 @@ async function sendGroupMedia(
     const payload = await response.json().catch(() => null)
     console.log('[GroupMedia] Response:', payload)
     
+    if (handleBasicProfileRequired(payload)) {
+      throw new Error(BASIC_PROFILE_SENTINEL)
+    }
+
     if (!payload?.success) {
       onProgress?.({ stage: 'error', progress: 0, message: payload?.error || 'Upload failed' })
       return { success: false, error: payload?.error || 'Failed to send' }
@@ -121,6 +128,9 @@ async function sendGroupMedia(
     
   } catch (error) {
     console.error('[GroupMedia] Error:', error)
+    if (error instanceof Error && error.message === BASIC_PROFILE_SENTINEL) {
+      return { success: false, error: BASIC_PROFILE_SENTINEL }
+    }
     onProgress?.({ stage: 'error', progress: 0, message: 'Network error' })
     return { success: false, error: 'Network error' }
   }
@@ -183,7 +193,9 @@ export async function sendGroupImageMessage(options: ImageMediaOptions): Promise
     console.error('[GroupMedia] Image send failed:', error)
     setServerMessages(prev => prev.filter(m => (m as any).clientKey !== tempId))
     const limitErr = uploadLimitError(error)
-    if (limitErr && onLimitReached) onLimitReached(limitErr)
+    if (error instanceof Error && error.message === BASIC_PROFILE_SENTINEL) {
+      // The basic-profile sheet is already open.
+    } else if (limitErr && onLimitReached) onLimitReached(limitErr)
     else onError(kind === 'gif' ? "Couldn't send GIF. Try again." : "Couldn't send photo. Try again.")
     return false
   } finally {
@@ -265,6 +277,7 @@ export async function sendGroupMultiMedia(options: MultiMediaOptions): Promise<b
       body: fd,
     })
     const payload = await res.json().catch(() => null)
+    if (handleBasicProfileRequired(payload)) throw new Error(BASIC_PROFILE_SENTINEL)
     if (!payload?.success) {
       throw new Error(payload?.error || 'Failed to send media')
     }
@@ -287,6 +300,8 @@ export async function sendGroupMultiMedia(options: MultiMediaOptions): Promise<b
     const limitErr = uploadLimitError(error)
     if (controller.signal.aborted) {
       // Cancelled by the user.
+    } else if (error instanceof Error && error.message === BASIC_PROFILE_SENTINEL) {
+      // The basic-profile sheet is already open.
     } else if (limitErr && onLimitReached) onLimitReached(limitErr)
     else onError(errorMsg)
     return false

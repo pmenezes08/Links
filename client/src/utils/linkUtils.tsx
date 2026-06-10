@@ -1,7 +1,7 @@
 // Utility functions for detecting and handling links in post content
-import React, { useState } from 'react'
+import React from 'react'
 import { useNavigate } from 'react-router-dom'
-import { isInternalLink, isLandingPageLink, extractInviteToken, extractInternalPath, joinCommunityWithInvite } from './internalLinkHandler'
+import { isInternalLink, isLandingPageLink, extractInviteToken, extractInternalPath } from './internalLinkHandler'
 
 export type DetectedLink = {
   url: string
@@ -79,7 +79,7 @@ export function replaceLinkInText(text: string, oldUrl: string, newDisplayText: 
 export function SmartLink({ 
   href, 
   displayText, 
-  onJoinCommunity,
+  onJoinCommunity: _onJoinCommunity,
   onExternalClick,
   linkClassName,
   isSent = false,
@@ -94,7 +94,6 @@ export function SmartLink({
   isSent?: boolean
 }) {
   const navigate = useNavigate()
-  const [processing, setProcessing] = useState(false)
 
   const handleClick = async (e: React.MouseEvent) => {
     e.preventDefault()
@@ -110,22 +109,7 @@ export function SmartLink({
           : `https://app.c-point.co${raw}`
       const pathInvite = extractInviteToken(absForInvite)
       if (pathInvite) {
-        setProcessing(true)
-        try {
-          const result = await joinCommunityWithInvite(pathInvite)
-          if (result.success && result.communityId) {
-            if (onJoinCommunity && result.communityName) {
-              onJoinCommunity(result.communityName, result.communityId)
-            }
-            navigate(`/community_feed_react/${result.communityId}`)
-          } else if (result.alreadyMember && result.communityId) {
-            navigate(`/community_feed_react/${result.communityId}`)
-          } else {
-            alert(result.error || 'Failed to join community')
-          }
-        } finally {
-          setProcessing(false)
-        }
+        navigate(`/invite-preview/${encodeURIComponent(pathInvite)}`)
         return
       }
       navigate(raw)
@@ -155,23 +139,7 @@ export function SmartLink({
 
     const inviteToken = extractInviteToken(resolvedHref)
     if (inviteToken) {
-      setProcessing(true)
-      try {
-        const result = await joinCommunityWithInvite(inviteToken)
-
-        if (result.success && result.communityId) {
-          if (onJoinCommunity && result.communityName) {
-            onJoinCommunity(result.communityName, result.communityId)
-          }
-          navigate(`/community_feed_react/${result.communityId}`)
-        } else if (result.alreadyMember && result.communityId) {
-          navigate(`/community_feed_react/${result.communityId}`)
-        } else {
-          alert(result.error || 'Failed to join community')
-        }
-      } finally {
-        setProcessing(false)
-      }
+      navigate(`/invite-preview/${encodeURIComponent(inviteToken)}`)
       return
     }
 
@@ -185,11 +153,10 @@ export function SmartLink({
     <a
       href={href}
       onClick={handleClick}
-      className={`${isSent ? 'text-white' : 'text-cpoint-turquoise'} underline inline py-0.5 break-all ${processing ? 'opacity-50 cursor-wait' : ''} ${linkClassName || ''}`}
+      className={`${isSent ? 'text-white' : 'text-cpoint-turquoise'} underline inline py-0.5 break-all ${linkClassName || ''}`}
       style={{ minHeight: '32px', lineHeight: '1.6' }}
     >
       {displayText}
-      {processing && <span className="ml-1 inline-block animate-spin">⏳</span>}
     </a>
   )
 }

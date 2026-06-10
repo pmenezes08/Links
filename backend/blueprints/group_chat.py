@@ -15,6 +15,7 @@ from flask import Blueprint, jsonify, request, session, url_for
 from werkzeug.utils import secure_filename
 
 from backend.services.chat_message_preview import format_chat_message_preview
+from backend.services.basic_profile_gate import require_basic_profile_payload
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.media import save_uploaded_file
 from backend.services import ai_usage, api_errors, auth_session, session_identity
@@ -134,6 +135,14 @@ def _login_required(view_func):
         return view_func(*args, **kwargs)
 
     return wrapper
+
+
+def _basic_profile_required_response(username: str | None):
+    gated = require_basic_profile_payload(username)
+    if gated is None:
+        return None
+    payload, status = gated
+    return jsonify(payload), status
 
 
 def _ensure_document_columns(cursor):
@@ -587,6 +596,9 @@ def upload_chat_image():
 def create_group_chat():
     """Create a new group chat."""
     username = session["username"]
+    gate_resp = _basic_profile_required_response(username)
+    if gate_resp is not None:
+        return gate_resp
     data = request.get_json() or {}
     
     name = data.get("name", "").strip()
@@ -1155,6 +1167,9 @@ def send_group_media(group_id: int):
     Supports multiple files - they will be grouped in a single message.
     """
     username = session["username"]
+    gate_resp = _basic_profile_required_response(username)
+    if gate_resp is not None:
+        return gate_resp
     
     # Collect all files (supports multiple)
     files_to_upload = []
@@ -1396,6 +1411,9 @@ def send_group_media(group_id: int):
 def send_group_document(group_id: int):
     """Upload and send a PDF document to a group chat."""
     username = session["username"]
+    gate_resp = _basic_profile_required_response(username)
+    if gate_resp is not None:
+        return gate_resp
     document = request.files.get("document")
     caption = (request.form.get("message") or "").strip()
 
@@ -1469,6 +1487,9 @@ def send_group_document(group_id: int):
 def send_group_message(group_id: int):
     """Send a message to a group chat."""
     username = session["username"]
+    gate_resp = _basic_profile_required_response(username)
+    if gate_resp is not None:
+        return gate_resp
     data = request.get_json() or {}
     
     message_text = data.get("message", "").strip()

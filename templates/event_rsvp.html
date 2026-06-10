@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ locale }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Event RSVP - {{ event.title }}</title>
+    <title>{{ tt('event_rsvp.page_title', title=event.title) }}</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         * {
@@ -294,7 +294,7 @@
             <h1 class="event-title">{{ event.title }}</h1>
             <div class="community-name">{{ event.community_name }}</div>
             {% if invitation %}
-            <div class="invited-by">Invited by {{ invitation.invited_by }}</div>
+            <div class="invited-by">{{ tt('event_rsvp.invited_by', name=invitation.invited_by) }}</div>
             {% endif %}
         </div>
         
@@ -302,7 +302,7 @@
             <div class="detail-row">
                 <i class="fas fa-calendar detail-icon"></i>
                 <div class="detail-text">
-                    <div class="detail-label">Date</div>
+                    <div class="detail-label">{{ tt('event_rsvp.date_label') }}</div>
                     <div>{{ event.date }}{% if event.end_date %} - {{ event.end_date }}{% endif %}</div>
                 </div>
             </div>
@@ -311,7 +311,7 @@
             <div class="detail-row">
                 <i class="fas fa-clock detail-icon"></i>
                 <div class="detail-text">
-                    <div class="detail-label">Time</div>
+                    <div class="detail-label">{{ tt('event_rsvp.time_label') }}</div>
                     <div>{{ event.start_time }}{% if event.end_time %} - {{ event.end_time }}{% endif %}</div>
                 </div>
             </div>
@@ -321,7 +321,7 @@
             <div class="detail-row">
                 <i class="fas fa-info-circle detail-icon"></i>
                 <div class="detail-text">
-                    <div class="detail-label">Description</div>
+                    <div class="detail-label">{{ tt('event_rsvp.description_label') }}</div>
                     <div>{{ event.description }}</div>
                 </div>
             </div>
@@ -330,7 +330,7 @@
             <div class="detail-row">
                 <i class="fas fa-user detail-icon"></i>
                 <div class="detail-text">
-                    <div class="detail-label">Organizer</div>
+                    <div class="detail-label">{{ tt('event_rsvp.organizer_label') }}</div>
                     <div>{{ event.username }}</div>
                 </div>
             </div>
@@ -339,53 +339,56 @@
         <div class="rsvp-counts">
             <div class="count-item going">
                 <div class="count-number">{{ rsvp_counts.going }}</div>
-                <div class="count-label">Going</div>
+                <div class="count-label">{{ tt('event_rsvp.going') }}</div>
             </div>
             <div class="count-item maybe">
                 <div class="count-number">{{ rsvp_counts.maybe }}</div>
-                <div class="count-label">Maybe</div>
+                <div class="count-label">{{ tt('event_rsvp.maybe') }}</div>
             </div>
             <div class="count-item not-going">
                 <div class="count-number">{{ rsvp_counts.not_going }}</div>
-                <div class="count-label">Can't Go</div>
+                <div class="count-label">{{ tt('event_rsvp.cant_go') }}</div>
             </div>
         </div>
         
         <div class="rsvp-section">
-            <div class="rsvp-question">Will you attend this event?</div>
+            <div class="rsvp-question">{{ tt('event_rsvp.will_attend') }}</div>
             <div class="success-message" id="successMessage">
-                Your response has been saved!
+                {{ tt('event_rsvp.response_saved') }}
             </div>
             <div class="rsvp-buttons">
                 <button class="rsvp-btn going {% if current_rsvp == 'going' %}active{% endif %}" 
                         onclick="submitRSVP('going')">
                     <i class="fas fa-check-circle"></i>
-                    Going
+                    {{ tt('event_rsvp.going') }}
                 </button>
                 <button class="rsvp-btn maybe {% if current_rsvp == 'maybe' %}active{% endif %}" 
                         onclick="submitRSVP('maybe')">
                     <i class="fas fa-question-circle"></i>
-                    Maybe
+                    {{ tt('event_rsvp.maybe') }}
                 </button>
                 <button class="rsvp-btn not-going {% if current_rsvp == 'not_going' %}active{% endif %}" 
                         onclick="submitRSVP('not_going')">
                     <i class="fas fa-times-circle"></i>
-                    Can't Go
+                    {{ tt('event_rsvp.cant_go') }}
                 </button>
             </div>
         </div>
         
         <div class="action-buttons">
             <a href="{{ url_for('community_feed', community_id=community_id) }}" class="action-btn btn-primary">
-                View Community
+                {{ tt('event_rsvp.view_community') }}
             </a>
             <a href="{{ url_for('dashboard') }}" class="action-btn btn-secondary">
-                Back to Dashboard
+                {{ tt('event_rsvp.back_dashboard') }}
             </a>
         </div>
     </div>
     
     <script>
+        const RSVP_FAILED = {{ tt('event_rsvp.rsvp_failed', message='__MSG__')|tojson }};
+        const RSVP_UNKNOWN = {{ tt('event_rsvp.rsvp_unknown_error')|tojson }};
+        const RSVP_NETWORK = {{ tt('event_rsvp.rsvp_network_error')|tojson }};
         function submitRSVP(response) {
             const eventId = {{ event.id }};
             
@@ -417,12 +420,12 @@
                         successMsg.classList.remove('show');
                     }, 3000);
                 } else {
-                    alert('Failed to submit RSVP: ' + (data.message || 'Unknown error'));
+                    alert(RSVP_FAILED.replace('__MSG__', data.message || RSVP_UNKNOWN));
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('An error occurred while submitting your RSVP');
+                alert(RSVP_NETWORK);
             });
         }
         

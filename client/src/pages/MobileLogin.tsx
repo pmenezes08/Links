@@ -121,16 +121,6 @@ export default function MobileLogin() {
 
   const finishAuthSuccess = useCallback(
     async (j: { username?: string; is_new?: boolean }) => {
-      if (inviteToken) {
-        try {
-          await fetch('/api/join_with_invite', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ invite_token: inviteToken }),
-          })
-        } catch {}
-      }
       try {
         localStorage.removeItem('cached_profile')
       } catch {
@@ -160,6 +150,10 @@ export default function MobileLogin() {
         await refresh()
       } catch {
         /* ignore; dashboard will refetch */
+      }
+      if (inviteToken) {
+        window.location.assign('/premium_dashboard?invite_prompt=1')
+        return
       }
       window.location.assign('/premium_dashboard')
     },
@@ -280,7 +274,7 @@ export default function MobileLogin() {
     }
   }, [step, postGoogleIdToken])
 
-  // If already authenticated, auto-join community if invited
+  // If already authenticated, show the invitation before joining.
   useEffect(() => {
     // Skip auth check if we're on the password step or already checked
     if (step === 'password') return
@@ -306,29 +300,11 @@ export default function MobileLogin() {
           if (j?.success && j?.profile) {
             const profile = j.profile as Record<string, unknown>
             applyProfileFromServer(profile)
-            // If user has invite token, auto-join them
+            // If user has an invite token, show the invitation before joining.
             if (inviteToken) {
-              try {
-                const joinResponse = await fetch('/api/join_with_invite', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  credentials: 'include',
-                  body: JSON.stringify({ invite_token: inviteToken })
-                })
-                const joinData = await joinResponse.json()
-                if (joinData?.success) {
-                  await triggerDashboardServerPull()
-                  setAuthCheckDone(true)
-                  // Redirect to the community
-                  navigate(`/community_feed_react/${joinData.community_id}`, { replace: true })
-                  return
-                } else if (joinResponse.status === 403) {
-                  // Email mismatch - show error
-                  setError(joinData?.error || 'This invitation was sent to a different email address')
-                }
-              } catch (err) {
-                console.error('Error joining via invite:', err)
-              }
+              setAuthCheckDone(true)
+              navigate('/premium_dashboard?invite_prompt=1', { replace: true })
+              return
             }
             
             // Normal flow
@@ -489,7 +465,11 @@ export default function MobileLogin() {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                   credentials: 'include',
-                  body: new URLSearchParams({ password, username: pendingUsername })
+                  body: new URLSearchParams({
+                    password,
+                    username: pendingUsername,
+                    ...(inviteToken ? { invite_token: inviteToken } : {}),
+                  })
                 })
                 
                 // Check for redirect (successful login)
@@ -515,7 +495,11 @@ export default function MobileLogin() {
                   // Successful login - re-register push token, clear stored username, redirect
                   try { sessionStorage.removeItem('cpoint_pending_username') } catch {}
                   await (window as any).__reregisterPushToken?.()
-                  window.location.href = url.pathname + url.search
+                  if (inviteToken || url.pathname.startsWith('/invite-preview/')) {
+                    window.location.href = '/premium_dashboard?invite_prompt=1'
+                  } else {
+                    window.location.href = url.pathname + url.search
+                  }
                   return
                 }
                 
@@ -530,7 +514,7 @@ export default function MobileLogin() {
                   }
                 } else if (response.ok) {
                   await (window as any).__reregisterPushToken?.()
-                  window.location.href = '/premium_dashboard'
+                  window.location.href = inviteToken ? '/premium_dashboard?invite_prompt=1' : '/premium_dashboard'
                 } else {
                   setError('Login failed. Please try again.')
                 }

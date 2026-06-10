@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import Avatar from '../components/Avatar'
 import { triggerDashboardServerPull } from '../utils/serverPull'
 import { refreshDashboardCommunities } from '../utils/dashboardCache'
+import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 
 type Member = {
   username: string;
@@ -13,6 +14,14 @@ type Member = {
 }
 
 type InviteStep = 'choose' | 'username' | 'email' | 'link'
+
+function formatInviteExpiry(value?: string) {
+  if (!value) return ''
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T')
+  const date = new Date(normalized.endsWith('Z') ? normalized : `${normalized}Z`)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
 
 export default function Members(){
   const { t } = useTranslation()
@@ -259,9 +268,12 @@ export default function Members(){
 
       const data = await response.json()
 
+      if (handleBasicProfileRequired(data)) return
+
       if (response.ok && data.success) {
         setInviteSuccess(true)
-        setInviteSuccessMessage(t('social.invite_sent_success'))
+        const expiry = formatInviteExpiry(data.expires_at)
+        setInviteSuccessMessage(expiry ? `${t('social.invite_sent_success')} Valid until ${expiry}.` : t('social.invite_sent_success'))
         setInviteEmail('')
         setTimeout(() => {
           handleCloseInviteModal()
@@ -305,9 +317,12 @@ export default function Members(){
 
       const data = await response.json()
 
+      if (handleBasicProfileRequired(data)) return
+
       if (response.ok && data.success) {
         setInviteSuccess(true)
-        setInviteSuccessMessage(data.message || t('social.invite_sent_if_exists'))
+        const expiry = formatInviteExpiry(data.expires_at)
+        setInviteSuccessMessage(`${data.message || t('social.invite_sent_if_exists')}${expiry ? ` Valid until ${expiry}.` : ''}`)
         setInviteUsername('')
       } else {
         if (data?.show_upgrade && data?.upgrade_url) setInviteUpgradeUrl(data.upgrade_url)
@@ -343,6 +358,8 @@ export default function Members(){
 
       if (response.ok && data.success) {
         setQRCodeUrl(data.invite_url)
+        const expiry = formatInviteExpiry(data.expires_at)
+        setInviteSuccessMessage(expiry ? `Invite link generated. Valid until ${expiry}.` : 'Invite link generated.')
         setShowQRCode(true)
       } else {
         if (data?.show_upgrade && data?.upgrade_url) setInviteUpgradeUrl(data.upgrade_url)

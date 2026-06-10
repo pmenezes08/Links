@@ -98,7 +98,7 @@ export default function DeleteCommunityModal({
               <p className="text-sm leading-6 text-c-text-secondary">
                 {t('communities.delete_modal_body', { name: displayName })}
               </p>
-              <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-100">
+              <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-800 dark:text-red-100">
                 {t('communities.delete_modal_type_delete_hint')}
               </div>
               <input
@@ -106,7 +106,7 @@ export default function DeleteCommunityModal({
                 value={typed}
                 onChange={(event) => setTyped(event.target.value)}
                 placeholder={t('communities.delete_modal_type_delete_placeholder')}
-                className="w-full rounded-xl border border-c-border bg-white/[0.03] px-4 py-3 text-[16px] text-c-text-primary outline-none transition placeholder:text-white/30 focus:border-cpoint-turquoise"
+                className="w-full rounded-xl border border-c-border bg-c-composer-input-bg px-4 py-3 text-[16px] text-c-text-primary outline-none transition placeholder:text-c-text-tertiary focus:border-cpoint-turquoise"
               />
             </>
           ) : (
@@ -121,7 +121,7 @@ export default function DeleteCommunityModal({
                       {subscription.tier || t('communities.delete_modal_paid_tier')} · {subscription.subscription_status || 'active'}
                     </div>
                     {(subscription.benefits_end_at || subscription.current_period_end) && (
-                      <div className="mt-1 text-xs text-white/65">
+                      <div className="mt-1 text-xs text-c-text-secondary">
                         {t('communities.delete_modal_benefits_until', {
                           date: formatDate(subscription.benefits_end_at || subscription.current_period_end || ''),
                         })}
@@ -138,7 +138,7 @@ export default function DeleteCommunityModal({
           )}
 
           {error && (
-            <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100">
+            <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-800 dark:text-red-100">
               {error}
             </div>
           )}

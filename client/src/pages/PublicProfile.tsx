@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
@@ -13,6 +13,7 @@ import { useEntitlements } from '../hooks/useEntitlements'
 import { SkeletonProfileShell } from '../components/SkeletonRow'
 import { hapticImpactLight } from '../utils/haptics'
 import { SEP_EM_DASH, formatDateRange } from '../utils/typography'
+import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 
 type PersonalHighlight = {
   id?: string | null
@@ -292,6 +293,9 @@ export default function PublicProfile() {
           body: JSON.stringify({ community_id: communityId, username: profile.username })
         })
         const data = await resp.json().catch(() => null)
+        if (handleBasicProfileRequired(data)) {
+          throw new Error('__basic_profile_required__')
+        }
         if (!resp.ok || !data?.success) {
           throw new Error(data?.error || t('profile.invite.send_failed'))
         }
@@ -305,6 +309,7 @@ export default function PublicProfile() {
       )
       setSelectedInviteCommunityIds([])
     } catch (err) {
+      if (err instanceof Error && err.message === '__basic_profile_required__') return
       setInviteError(err instanceof Error ? err.message : t('profile.invite.send_failed'))
     } finally {
       setInviteSubmitting(false)

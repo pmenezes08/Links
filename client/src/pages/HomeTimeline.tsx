@@ -18,6 +18,7 @@ import { useBadges } from '../contexts/BadgeContext'
 import PullToRefreshPuck from '../components/PullToRefreshPuck'
 import { PAGE_TRANSITION_MS } from '../design/motion'
 import { hapticImpactLight } from '../utils/haptics'
+import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 const HOME_TIMELINE_CACHE_KEY = 'home-timeline'
 const HOME_TIMELINE_CACHE_TTL_MS = 2 * 60 * 1000 // 2 minutes
 const HOME_TIMELINE_CACHE_VERSION = 'home-timeline-v1'
@@ -713,6 +714,10 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
     try{
       const res = await fetch('/vote_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ poll_id: pollId, option_id: optionId }) })
       const j = await res.json().catch(()=>null)
+      if (handleBasicProfileRequired(j)) {
+        setRefreshKey(prev => prev + 1)
+        return
+      }
       if (!j?.success){
         // Reload on error
         setRefreshKey(prev => prev + 1)

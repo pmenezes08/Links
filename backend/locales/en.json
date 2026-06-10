@@ -29,6 +29,15 @@
     "authentication_required": "Authentication required",
     "invalid_credentials": "Invalid username or password.",
     "user_not_found": "User not found",
+    "password": {
+      "current_incorrect": "Current password is incorrect",
+      "server_error": "Server error. Please try again."
+    },
+    "email": {
+      "required": "Email required",
+      "already_in_use": "Email is already in use",
+      "server_error": "Server error. Please try again."
+    },
     "signup": {
       "missing_required_fields": "All required fields must be filled.",
       "passwords_do_not_match": "Passwords do not match.",
@@ -244,13 +253,221 @@
       "already_member": "This user is already a member of this community.",
       "root_only": "Invites can only be created from root communities.",
       "invite_sent": "Invitation sent.",
-      "invite_revoked": "Invitation revoked."
+      "invite_revoked": "Invitation revoked.",
+      "if_exists": "If that user exists, we will send an invitation.",
+      "expired": "This invitation has expired. Ask the sender to send a new one.",
+      "token_required": "Invitation token required.",
+      "invalid_invitation": "Invalid invitation.",
+      "not_pending": "Invite is no longer pending.",
+      "email_mismatch": "This invitation was sent to a different email address."
     },
     "join": {
       "joined": "Welcome to {community_name}!",
       "expired_invite": "This invitation has expired.",
       "used_invite": "This invitation has already been used.",
       "invalid_invite": "This invitation is not valid."
+    },
+    "updated": "Community updated successfully"
+  },
+  "steve_welcome": {
+    "posted_by": "*Posted by Steve.*",
+    "welcome": {
+      "header": "**Welcome to {name} 👋**",
+      "community_fallback": "your community",
+      "sub_intro": "\nThis is a sub-space inside **{parent}** — members of {parent} can find their way here.\n",
+      "tour_intro": "A quick tour of what's inside:",
+      "bullets_base": "- **Posts** — share text, photos, videos, audio, links, or polls.\n- **Stories** — quick photo/video moments that disappear in 24h.\n- **Reactions & replies** — long-press any post to react or reply.\n- **Summarise** — tap the **Summarise** button on long threads to get the gist.\n- **Key Posts** — pinned highlights live in the *Key Posts* tab so people can find them later.\n- **Links & Docs** — every link or document shared here, in one tab.\n- **Media** — every photo and video shared here, in one gallery.\n",
+      "bullet_business_extra": "- **Member directory** — see who's in the community.\n",
+      "bullets_tail": "- **Hide or report** — see something off? Hide it just for you, or report it.\n- **Tag me in** — tag **@steve** in any post or reply if you want my take.\n",
+      "closer": "I'm also pinned at the top of your chats — **DM me anytime** for anything."
+    },
+    "owner_dm": {
+      "who_fallback": "there",
+      "standard": "Hey {who} — congrats on **{name}**.\n\nI just published a quick welcome post in your feed so people landing here for the first time get the lay of the land. It'll stay in *Key Posts*.\n\nWant a hand getting started? Just tell me — I can help you invite people, set a cover image, write the description, or draft your first post.",
+      "late": "Hey {who} — quick one about **{name}**.\n\nI should have done this when you launched, better late than never: I just published a welcome post in your feed so people landing here for the first time get the lay of the land. It'll stay in *Key Posts*.\n\nIf you want a hand with cover, description, or first invites, just DM me."
+    },
+    "poll": {
+      "generic": {
+        "question": "Quick one: what brought you here?",
+        "option_1": "People I already know",
+        "option_2": "A topic I care about",
+        "option_3": "A fresh start",
+        "option_4": "Just looking around"
+      },
+      "professional": {
+        "question": "Quick one: what should this space be useful for first?",
+        "option_1": "Finding the right people",
+        "option_2": "Sharing useful work",
+        "option_3": "Asking sharp questions",
+        "option_4": "Spotting new opportunities"
+      },
+      "fitness": {
+        "question": "Quick one: what are you training for right now?",
+        "option_1": "Building strength",
+        "option_2": "Getting consistent",
+        "option_3": "Feeling better day to day",
+        "option_4": "A specific goal or event"
+      }
+    },
+    "introduce": {
+      "title": "**👋 Introduce Yourself!**",
+      "community_fallback": "this community",
+      "lead": "New here? Start with a short note.",
+      "prompt_intro": "You can keep it simple:",
+      "bullet_name": "- Your name",
+      "bullet_why": "- What brought you to **{name}**",
+      "bullet_working": "- One thing you are working on, curious about, or looking for",
+      "no_bio": "No long bio needed. A few lines is enough.",
+      "pinned_closer": "I'll keep this thread pinned in *Key Posts* so new members have one clear place to land."
+    },
+    "rolling": {
+      "header": "**New faces in {name}**",
+      "community_fallback": "this community",
+      "names_few": "a few new people",
+      "names_overflow": "{names}, and {count} more",
+      "names_and_last": "{prefix}, and {last}",
+      "joined_line": "A few people joined this week: {names}.",
+      "new_members": "If you are new, drop a note in the **Introduce Yourself** thread when you are ready. Name, reason you joined, and one thing you are looking for is plenty.",
+      "existing_members": "If you have been here a while, say hello. Good spaces get built in small replies."
+    }
+  },
+  "feed": {
+    "poll_created": "Poll created successfully!",
+    "poll_closed": "Poll closed successfully",
+    "poll_updated": "Poll updated successfully",
+    "poll_option_removed": "Option removed successfully",
+    "poll_invalid_id": "Invalid poll ID",
+    "poll_not_found_or_closed": "Poll not found or already closed",
+    "poll_create_failed": "Error creating poll",
+    "issue_reported": "Issue reported successfully",
+    "issue_resolved": "Issue marked as resolved",
+    "post_deleted": "Post deleted successfully",
+    "reply_deleted": "Reply deleted successfully",
+    "user_blocked": "@{username} has been blocked",
+    "user_already_blocked": "User already blocked",
+    "user_unblocked": "@{username} has been unblocked",
+    "post_not_found": "Post not found",
+    "appoint_admin_only": "Only community owner or app admin can appoint admins",
+    "remove_admin_only": "Only community owner or app admin can remove admins",
+    "username_required": "Username is required",
+    "user_not_found": "User not found",
+    "already_admin": "User is already an admin",
+    "not_admin": "User is not an admin",
+    "admin_appointed": "{username} appointed as community admin",
+    "admin_removed": "{username} removed as community admin",
+    "community_id_required": "Community ID is required",
+    "feedback_required": "Feedback text is required",
+    "feedback_submitted": "Feedback submitted successfully",
+    "community_not_found": "Community not found",
+    "not_community_member": "Forbidden: not a member of this community",
+    "post_reported": "Post reported successfully. Our team will review it.",
+    "post_already_reported": "You have already reported this post",
+    "post_hidden": "Post hidden",
+    "post_already_hidden": "Post already hidden",
+    "post_unhidden": "Post unhidden",
+    "leave_community_success": "Successfully left the community"
+  },
+  "calendar": {
+    "event_created": "Event added successfully. {invited_count} members invited.",
+    "event_updated": "Event updated successfully",
+    "event_deleted": "Event deleted successfully",
+    "rsvp_cancelled": "RSVP cancelled",
+    "event_id_required": "Event ID is required",
+    "server_error": "Server error. Please try again.",
+    "errors": {
+      "title_start_required": "Title and start date are required",
+      "invalid_start_date": "Invalid start date format",
+      "invalid_end_date": "Invalid end date format",
+      "end_before_start_date": "End date cannot be before start date",
+      "invalid_start_time_format": "Invalid start time format",
+      "invalid_end_time_format": "Invalid end time format",
+      "end_before_start_time": "End time cannot be before start time",
+      "invalid_meeting_url": "Meeting link must be a valid https URL",
+      "group_not_found": "Group not found",
+      "forbidden": "Forbidden",
+      "cannot_access_event": "You cannot access this event",
+      "event_not_found": "Event not found",
+      "group_community_mismatch": "Group does not belong to this community",
+      "community_id_required": "Community is required",
+      "edit_forbidden": "You do not have permission to edit this event",
+      "delete_forbidden": "You do not have permission to delete this event",
+      "invalid_rsvp_response": "Invalid response",
+      "not_invited": "You are not invited to this event",
+      "no_rsvp": "No RSVP found"
+    }
+  },
+  "templates": {
+    "reset_password": {
+      "page_title": "Reset Password - C-Point",
+      "heading": "Reset Your Password",
+      "resetting_for": "Resetting password for:",
+      "new_password_label": "New Password",
+      "new_password_placeholder": "Enter new password",
+      "confirm_password_label": "Confirm Password",
+      "confirm_password_placeholder": "Confirm new password",
+      "password_requirements": "Password must be at least 6 characters long",
+      "submit": "Reset Password",
+      "close_return": "Close and Return to App",
+      "passwords_match": "Passwords match",
+      "passwords_mismatch": "Passwords do not match",
+      "alert_too_short": "Password must be at least 6 characters long",
+      "alert_mismatch": "Passwords do not match",
+      "invalid_link": "Invalid or expired reset link.",
+      "fill_all": "Please fill in all fields.",
+      "success": "Your password has been reset successfully."
+    },
+    "verification": {
+      "page_title": "Email Verification",
+      "success_title": "Email Verified",
+      "success_message": "Your email has been successfully verified.",
+      "success_hint": "Please close this page and return to the C-Point app to sign in.",
+      "close_page": "Close This Page",
+      "close_hint": "If this page doesn't close, you can safely close it manually.",
+      "failed_title": "Verification Failed",
+      "failed_default": "The verification link is invalid or has expired.",
+      "signup_pending": "We sent a verification link to your email. Please verify to complete sign up.",
+      "verified_success": "Your email has been verified successfully.",
+      "invalid_link": "Invalid verification link",
+      "pending_not_found": "Pending registration not found or expired",
+      "link_mismatch": "Verification link mismatch",
+      "finalize_error": "Server error while finalizing registration",
+      "expired_link": "Verification link is invalid or expired",
+      "verify_error": "Server error while verifying email"
+    },
+    "verify_required": {
+      "page_title": "Verify your email",
+      "title": "Verify your email",
+      "body": "Please verify your email before continuing. Check your inbox for the verification link. You can request a new link if needed.",
+      "resend": "Resend verification",
+      "ok": "OK",
+      "resent_ok": "Verification email sent.",
+      "resent_failed": "Failed to send email."
+    },
+    "error_page": {
+      "page_title": "Error",
+      "heading": "Something went wrong",
+      "default_message": "An error occurred. Please try again later.",
+      "go_dashboard": "Go to Dashboard",
+      "internal_error": "An internal server error occurred. Please try again later.",
+      "not_found": "Page not found. Please check the URL or return to the homepage."
+    },
+    "event_rsvp": {
+      "page_title": "Event RSVP - {title}",
+      "invited_by": "Invited by {name}",
+      "date_label": "Date",
+      "time_label": "Time",
+      "description_label": "Description",
+      "organizer_label": "Organizer",
+      "going": "Going",
+      "maybe": "Maybe",
+      "cant_go": "Can't Go",
+      "will_attend": "Will you attend this event?",
+      "response_saved": "Your response has been saved!",
+      "view_community": "View Community",
+      "back_dashboard": "Back to Dashboard",
+      "rsvp_failed": "Failed to submit RSVP: {message}",
+      "rsvp_unknown_error": "Unknown error",
+      "rsvp_network_error": "An error occurred while submitting your RSVP"
     }
   }
 }

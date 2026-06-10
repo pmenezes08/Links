@@ -22,6 +22,7 @@ import { takePendingShareFilesOnce, takePendingShareUrlsOnce, releaseShareHandof
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
 import { preflightSteveMention } from '../utils/stevePreflight'
 import { triggerHaptic } from '../utils/haptics'
+import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 
 export default function CreatePost(){
   const [params, setSearchParams] = useSearchParams()
@@ -35,6 +36,7 @@ export default function CreatePost(){
   const [mediaFiles, setMediaFiles] = useState<File[]>([])
   const [mediaLimitMsg, setMediaLimitMsg] = useState('')
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
+  const [gifPickerInitialKeyboardLift, setGifPickerInitialKeyboardLift] = useState(0)
   const [selectedGif, setSelectedGif] = useState<GifSelection | null>(null)
   const [gifFile, setGifFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -53,6 +55,22 @@ export default function CreatePost(){
       void start()
     }
   }
+
+  const openGifPicker = () => {
+    setGifPickerInitialKeyboardLift(Math.max(keyboardLift, readCssPxVar('--keyboard-offset')))
+
+    const active = typeof document !== 'undefined' ? document.activeElement : null
+    if (active instanceof HTMLElement) {
+      active.blur()
+    }
+
+    if (Capacitor.getPlatform() !== 'web') {
+      void Keyboard.hide().catch(() => {})
+    }
+
+    requestAnimationFrame(() => setGifPickerOpen(true))
+  }
+
   const [showPraise, setShowPraise] = useState(false)
   const [detectedLinks, setDetectedLinks] = useState<DetectedLink[]>([])
   /** Shared links (e.g. share extension) — stored separately from caption, not merged into body text. */
@@ -446,6 +464,11 @@ export default function CreatePost(){
         postResult = await r.json().catch(() => null)
       }
       
+      if (handleBasicProfileRequired(postResult)) {
+        setSubmitting(false)
+        return
+      }
+
       if (postResult && postResult.success === false) {
         alert(postResult.error || t('feed.create_failed'))
         setSubmitting(false)
@@ -835,11 +858,10 @@ export default function CreatePost(){
               />
             </label>
             <NativeIconButton
-              preventBlur
               variant="muted"
               className="rounded-full px-3 py-2 h-auto w-auto text-cpoint-turquoise bg-transparent hover:bg-c-hover-bg"
               aria-label={t('feed.add_gif')}
-              onClick={() => setGifPickerOpen(true)}
+              onClick={openGifPicker}
             >
               <i className="fa-solid fa-images" />
             </NativeIconButton>
@@ -886,6 +908,7 @@ export default function CreatePost(){
 
     <GifPicker
       isOpen={gifPickerOpen}
+      initialKeyboardLift={gifPickerInitialKeyboardLift}
       onClose={()=> setGifPickerOpen(false)}
       onSelect={async (gif) => {
         try {

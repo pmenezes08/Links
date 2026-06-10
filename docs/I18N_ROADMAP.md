@@ -2,6 +2,17 @@
 
 Canonical reference for the C-Point multi-language epic.
 
+**Status (2026-06-07):** The **pt-PT finish** epic is complete — client
+catalogs (including onboarding-chat), backend catalogs (including
+`steve_welcome.*`, `feed.*`, `calendar.*`, `templates.*`), Steve system
+posts at owner locale on create, user-facing monolith API messages, auth
+HTML templates, and CI catalog checks for nested client locale dirs.
+**pt-PT pass 2** (2026-06-07) closed feed sub-pages (Key Posts / Media /
+Forum), CommunityFeed story stragglers, `calendar.errors.*` validation
+messages, and monolith wave-2 member API copy (delete reply, block/unblock,
+community update, update-email errors).
+German (`de`) remains a separate epic after QA sign-off on staging.
+
 This is a **living engineering doc**. Update it in the same PR as any
 i18n-related change (see [`AGENTS.md` § Living engineering docs](../AGENTS.md)
 and [`docs/AGENT_TASK_CHECKLIST.md`](AGENT_TASK_CHECKLIST.md)).

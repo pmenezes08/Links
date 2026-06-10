@@ -1,16 +1,16 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ locale }}">
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Error</title>
+	<title>{{ tt('error_page.page_title') }}</title>
 	<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
 	<div class="container">
-		<h1>Something went wrong</h1>
-		<p>{{ error or 'An error occurred. Please try again later.' }}</p>
-		<a href="{{ url_for('dashboard') }}" class="sleek-btn">Go to Dashboard</a>
+		<h1>{{ tt('error_page.heading') }}</h1>
+		<p>{{ error or tt('error_page.default_message') }}</p>
+		<a href="{{ url_for('dashboard') }}" class="sleek-btn">{{ tt('error_page.go_dashboard') }}</a>
 	</div>
 </body>
 </html>

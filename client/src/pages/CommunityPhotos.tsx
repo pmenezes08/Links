@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
 
@@ -13,7 +14,10 @@ type MediaItem = {
   created_at: string | number | Date
 }
 
+const UNKNOWN_DATE_KEY = '__unknown__'
+
 export default function CommunityPhotos(){
+  const { t, i18n } = useTranslation()
   const { community_id } = useParams()
   const [searchParams] = useSearchParams()
   const groupId = searchParams.get('group_id')
@@ -22,8 +26,9 @@ export default function CommunityPhotos(){
   const [items, setItems] = useState<MediaItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const dateLocale = i18n.language === 'pt-PT' ? 'pt-PT' : 'en'
 
-  useEffect(() => { setTitle('Media') }, [setTitle])
+  useEffect(() => { setTitle(t('feed.media')) }, [setTitle, t])
 
   useEffect(() => {
     let mounted = true
@@ -37,40 +42,39 @@ export default function CommunityPhotos(){
         const j = await r.json()
         if (!mounted) return
         if (j?.success){ setItems(j.photos || j.media || []); setError(null) }
-        else setError(j?.error || 'Failed to load media')
+        else setError(j?.error || t('feed.media_page.load_failed'))
       }catch{
-        if (mounted) setError('Failed to load media')
+        if (mounted) setError(t('feed.media_page.load_failed'))
       } finally {
         if (mounted) setLoading(false)
       }
     }
     load()
     return () => { mounted = false }
-  }, [community_id, groupId])
+  }, [community_id, groupId, t])
 
   const groups = useMemo(() => {
     const map: Record<string, MediaItem[]> = {}
     for (const it of items){
       const parsedDate = parseFlexibleDate(it.created_at)
-      let dateKey = 'Unknown Date'
+      let dateKey = UNKNOWN_DATE_KEY
 
       if (parsedDate && !isNaN(parsedDate.getTime())) {
-        dateKey = parsedDate.toISOString().split('T')[0] // YYYY-MM-DD format
+        dateKey = parsedDate.toISOString().split('T')[0]
       }
 
       if (!map[dateKey]) map[dateKey] = []
       map[dateKey].push(it)
     }
 
-    // Sort groups by date desc, items by time desc
     const keys = Object.keys(map).sort((a,b) => {
-      if (a === 'Unknown Date') return 1
-      if (b === 'Unknown Date') return -1
+      if (a === UNKNOWN_DATE_KEY) return 1
+      if (b === UNKNOWN_DATE_KEY) return -1
       return a < b ? 1 : -1
     })
 
     for (const k of keys){
-      if (k !== 'Unknown Date') {
+      if (k !== UNKNOWN_DATE_KEY) {
         map[k].sort((a,b) => {
           const dateA = parseFlexibleDate(a.created_at)
           const dateB = parseFlexibleDate(b.created_at)
@@ -82,23 +86,22 @@ export default function CommunityPhotos(){
       }
     }
 
-    // Format date keys to be more user-friendly
     const formattedKeys = keys.map(key => {
-      if (key === 'Unknown Date') return key
+      if (key === UNKNOWN_DATE_KEY) return t('feed.media_page.unknown_date')
 
       const date = parseFlexibleDate(key)
-      if (!date || isNaN(date.getTime())) return 'Unknown Date'
+      if (!date || isNaN(date.getTime())) return t('feed.media_page.unknown_date')
 
       const today = new Date()
       const yesterday = new Date(today)
       yesterday.setDate(yesterday.getDate() - 1)
 
       if (date.toDateString() === today.toDateString()) {
-        return 'Today'
+        return t('chat.today')
       } else if (date.toDateString() === yesterday.toDateString()) {
-        return 'Yesterday'
+        return t('chat.yesterday_cap')
       } else {
-        return date.toLocaleDateString('en-US', {
+        return date.toLocaleDateString(dateLocale, {
           year: 'numeric',
           month: 'long',
           day: 'numeric'
@@ -107,10 +110,14 @@ export default function CommunityPhotos(){
     })
 
     return { keys: formattedKeys, map, originalKeys: keys }
-  }, [items])
+  }, [items, t, dateLocale])
 
   const backToFeed = () =>
     navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)
+
+  const emptyHint = groupId
+    ? t('feed.media_page.empty_hint_group')
+    : t('feed.media_page.empty_hint_community')
 
   const photosChrome = (body: ReactNode) => (
     <div className="min-h-screen bg-c-bg-app text-c-text-primary">
@@ -119,10 +126,10 @@ export default function CommunityPhotos(){
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
       >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-c-hover-bg" onClick={backToFeed} aria-label="Back">
+          <button className="p-2 rounded-full hover:bg-c-hover-bg" onClick={backToFeed} aria-label={t('common.back')}>
             <i className="fa-solid fa-arrow-left" />
           </button>
-          <div className="flex-1 font-medium">Media</div>
+          <div className="flex-1 font-medium">{t('feed.media')}</div>
         </div>
       </div>
       <div
@@ -138,7 +145,7 @@ export default function CommunityPhotos(){
     </div>
   )
 
-  if (loading) return photosChrome(<div className="text-c-text-tertiary py-8">Loading…</div>)
+  if (loading) return photosChrome(<div className="text-c-text-tertiary py-8">{t('common.loading')}</div>)
   if (error) return photosChrome(<div className="text-red-400 py-8">{error}</div>)
 
   return photosChrome(
@@ -147,10 +154,8 @@ export default function CommunityPhotos(){
           <div className="text-center py-12">
             <div className="text-c-text-tertiary mb-4">
               <i className="fa-solid fa-photo-film text-4xl mb-3 block opacity-50"></i>
-              <p className="text-lg font-medium">No media yet</p>
-              <p className="text-sm">
-                Photos and videos from {groupId ? 'group' : 'community'} posts will appear here
-              </p>
+              <p className="text-lg font-medium">{t('feed.media_page.empty_title')}</p>
+              <p className="text-sm">{emptyHint}</p>
             </div>
           </div>
         ) : (
@@ -158,11 +163,12 @@ export default function CommunityPhotos(){
             {groups.keys.map((formattedDateKey, index) => {
               const originalDateKey = groups.originalKeys[index]
               const photosForDate = groups.map[originalDateKey] || []
+              const countLabel = t('feed.media_page.date_group', { date: formattedDateKey, count: photosForDate.length })
 
               return (
                 <div key={formattedDateKey} className="space-y-3">
                   <div className="text-sm text-c-text-tertiary font-medium border-b border-c-border pb-2">
-                    {formattedDateKey} ({photosForDate.length} item{photosForDate.length !== 1 ? 's' : ''})
+                    {countLabel}
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {photosForDate.map(p => (
@@ -186,7 +192,7 @@ export default function CommunityPhotos(){
                         ) : (
                           <img
                             src={p.image_url}
-                            alt="Community media"
+                            alt={t('feed.media_page.media_alt')}
                             className="w-full h-full object-cover rounded-lg border border-c-border cursor-pointer hover:border-white/20 transition-colors"
                             onClick={() => navigate(`/post/${p.post_id}`)}
                           />
@@ -202,7 +208,7 @@ export default function CommunityPhotos(){
                               navigate(`/post/${p.post_id}`)
                             }}
                           >
-                            View
+                            {t('feed.media_page.view')}
                           </button>
                         </div>
                       </div>

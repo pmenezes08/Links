@@ -31,10 +31,24 @@ from typing import Any, Dict, Iterable, List, Tuple
 
 
 SOURCE_LOCALE = "en"
-CATALOG_DIRS = [
-    Path("backend") / "locales",
-    Path("client") / "src" / "locales",
-]
+BACKEND_LOCALES = Path("backend") / "locales"
+CLIENT_LOCALES = Path("client") / "src" / "locales"
+
+
+def _catalog_scan_targets(root: Path) -> List[Tuple[Path, str]]:
+    """Return ``(directory, label)`` pairs — main client catalog + subdirs like onboarding-chat."""
+    targets: List[Tuple[Path, str]] = []
+    backend = root / BACKEND_LOCALES
+    if backend.is_dir():
+        targets.append((backend, backend.as_posix()))
+
+    client_root = root / CLIENT_LOCALES
+    if client_root.is_dir():
+        targets.append((client_root, client_root.as_posix()))
+        for sub in sorted(client_root.iterdir()):
+            if sub.is_dir() and (sub / f"{SOURCE_LOCALE}.json").exists():
+                targets.append((sub, sub.as_posix()))
+    return targets
 
 
 def _flatten(prefix: str, value: Any, acc: Dict[str, Any]) -> None:
@@ -144,8 +158,8 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     root = Path(args.root).resolve()
     failed = 0
-    for rel in CATALOG_DIRS:
-        failed += _scan_dir(root / rel)
+    for directory, _label in _catalog_scan_targets(root):
+        failed += _scan_dir(directory)
 
     if failed:
         print(f"\ni18n catalog check FAILED ({failed} drift)")

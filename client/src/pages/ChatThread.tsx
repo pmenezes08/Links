@@ -36,6 +36,7 @@ import {
   chatProfileDeviceCacheKey,
 } from '../utils/chatThreadsCache'
 import { sendImageMessage, sendVideoMessage, sendMultiMediaMessage, sendDocumentMessage, type UploadProgress } from '../chat/mediaSenders'
+import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 import { comparableMediaUrl, consumeDeletedMedia, mediaDeleteScopeForDm, type DeletedMediaItem } from '../chat/mediaDeletionEvents'
 import ChatThreadSearch from '../chat/ChatThreadSearch'
 import type { ChatMessage } from '../types/chat'
@@ -1272,6 +1273,10 @@ export default function ChatThread(){
       .then(r => r.json())
       .then(j => {
         clearTimeout(sendTimeout)
+        if (handleBasicProfileRequired(j)) {
+          markFailed(tempId)
+          return
+        }
         if (j?.entitlements_error && isEntitlementsError(j.entitlements_error)) {
           entitlementsHandler.showError(j.entitlements_error)
           setSteveIsTyping(false)
@@ -1377,6 +1382,10 @@ export default function ChatThread(){
       .then(r => r.json())
       .then(j => {
         clearTimeout(retryTimeout)
+        if (handleBasicProfileRequired(j)) {
+          markRetryFailed()
+          return
+        }
         if (j?.entitlements_error && isEntitlementsError(j.entitlements_error)) {
           entitlementsHandler.showError(j.entitlements_error)
           setSteveIsTyping(false)

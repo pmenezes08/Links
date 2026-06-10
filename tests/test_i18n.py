@@ -189,3 +189,58 @@ def test_catalogs_dir_is_repo_locales():
     assert i18n.LOCALES_DIR == expected
     assert (expected / "en.json").exists()
     assert (expected / "pt-PT.json").exists()
+
+
+# ── 5. Calendar validation errors (pass 2) ─────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "key, en_fragment, pt_fragment",
+    [
+        ("calendar.errors.title_start_required", "Title and start date", "obrigat"),
+        ("calendar.errors.invalid_start_date", "Invalid start date", "inválido"),
+        ("calendar.errors.invalid_end_date", "Invalid end date", "inválido"),
+        ("calendar.errors.end_before_start_date", "before start date", "anterior"),
+        ("calendar.errors.invalid_start_time_format", "start time", "início"),
+        ("calendar.errors.invalid_end_time_format", "end time", "fim"),
+        ("calendar.errors.end_before_start_time", "before start time", "anterior"),
+        ("calendar.errors.group_not_found", "Group not found", "encontrado"),
+        ("calendar.errors.forbidden", "Forbidden", "negado"),
+        ("calendar.errors.cannot_access_event", "cannot access", "aceder"),
+        ("calendar.errors.event_not_found", "Event not found", "encontrado"),
+        ("calendar.errors.group_community_mismatch", "does not belong", "pertence"),
+        ("calendar.errors.community_id_required", "Community is required", "obrigat"),
+        ("calendar.errors.edit_forbidden", "edit this event", "editar"),
+        ("calendar.errors.delete_forbidden", "delete this event", "apagar"),
+        ("calendar.errors.invalid_rsvp_response", "Invalid response", "inválida"),
+        ("calendar.errors.not_invited", "not invited", "convidado"),
+        ("calendar.errors.no_rsvp", "No RSVP", "RSVP"),
+    ],
+)
+def test_calendar_error_keys_localized(key, en_fragment, pt_fragment):
+    en_msg = i18n.t(key, "en")
+    pt_msg = i18n.t(key, "pt-PT")
+    assert en_fragment.lower() in en_msg.lower(), f"{key} EN: {en_msg}"
+    assert pt_fragment.lower() in pt_msg.lower(), f"{key} pt-PT: {pt_msg}"
+    assert pt_msg != en_msg
+
+
+@pytest.mark.parametrize(
+    "key, en_fragment, pt_fragment, params",
+    [
+        ("feed.reply_deleted", "Reply deleted", "apagada", None),
+        ("feed.user_blocked", "blocked", "bloqueado", {"username": "alice"}),
+        ("feed.user_already_blocked", "already blocked", "já bloqueado", None),
+        ("feed.user_unblocked", "unblocked", "desbloqueado", {"username": "alice"}),
+        ("communities.updated", "Community updated", "atualizada", None),
+        ("auth.email.required", "Email required", "obrigat", None),
+        ("auth.email.already_in_use", "already in use", "usado", None),
+    ],
+)
+def test_monolith_wave2_keys_localized(key, en_fragment, pt_fragment, params):
+    kwargs = params or {}
+    en_msg = i18n.t(key, "en", **kwargs)
+    pt_msg = i18n.t(key, "pt-PT", **kwargs)
+    assert en_fragment.lower() in en_msg.lower(), f"{key} EN: {en_msg}"
+    assert pt_fragment.lower() in pt_msg.lower(), f"{key} pt-PT: {pt_msg}"
+    assert pt_msg != en_msg

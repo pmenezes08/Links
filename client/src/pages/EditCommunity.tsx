@@ -76,6 +76,7 @@ export default function EditCommunity(){
   const [parentOptions, setParentOptions] = useState<Array<{ id:number; name:string; type?:string }>>([])
   const [selectedParentId, setSelectedParentId] = useState<string>('none')
   const [notifyOnNewMember, setNotifyOnNewMember] = useState(false)
+  const [recommendedProfileMode, setRecommendedProfileMode] = useState<'none' | 'personal' | 'professional' | 'both'>('none')
   const [maxMembers, setMaxMembers] = useState<string>('')
   const [currentBackgroundPath, setCurrentBackgroundPath] = useState<string | null>(null)
   const [removeBackground, setRemoveBackground] = useState(false)
@@ -115,6 +116,10 @@ export default function EditCommunity(){
           const pid = jc.community.parent_community_id
           if (pid){ setIsChild(true); setSelectedParentId(String(pid)) }
           setNotifyOnNewMember(!!jc.community.notify_on_new_member)
+          const mode = String(jc.community.recommended_profile_mode || 'none')
+          setRecommendedProfileMode(
+            mode === 'personal' || mode === 'professional' || mode === 'both' ? mode : 'none',
+          )
           if (jc.community.max_members){ setMaxMembers(String(jc.community.max_members)) }
           if (jc.community.background_path){ setCurrentBackgroundPath(jc.community.background_path) }
           setIsFrozen(!!jc.community.is_frozen)
@@ -237,6 +242,7 @@ export default function EditCommunity(){
     // Parent setting
     fd.append('parent_community_id', isChild && selectedParentId !== 'none' ? selectedParentId : 'none')
     fd.append('notify_on_new_member', notifyOnNewMember ? 'true' : 'false')
+    fd.append('recommended_profile_mode', recommendedProfileMode)
     if (maxMembers.trim()) fd.append('max_members', maxMembers.trim())
     if (imageFile) fd.append('background_file', imageFile)
     if (removeBackground) fd.append('remove_background', 'true')
@@ -371,17 +377,17 @@ export default function EditCommunity(){
             <span className="inline-flex items-center rounded-full border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1 text-[11px] font-medium text-cpoint-turquoise">
               {billing.tier_label || TIER_LABEL[billing.tier] || billing.tier}
             </span>
-            <span className="inline-flex items-center rounded-full border border-c-border bg-c-hover-bg px-3 py-1 text-[11px] font-medium text-c-text-primary/60">
+            <span className="inline-flex items-center rounded-full border border-c-border bg-c-hover-bg px-3 py-1 text-[11px] font-medium text-c-text-secondary">
               {providerBadge(billing.billing_provider || 'stripe')}
             </span>
-            <span className="text-xs text-c-text-primary/60">
+            <span className="text-xs text-c-text-secondary">
               {billing.inherited_from_root_name
                 ? t('communities.inherited_from_named', { name: billing.inherited_from_root_name })
                 : t('communities.inherited_from_parent')}
             </span>
           </div>
           {billing.inherited_from_root_id != null && billing.inherited_from_root_id > 0 && (
-            <div className="mt-3 space-y-2 text-xs text-c-text-primary/60">
+            <div className="mt-3 space-y-2 text-xs text-c-text-secondary">
               <p>
                 {t('communities.inherited_billing_on_root', {
                   name: billing.inherited_from_root_name || t('communities.inherited_from_parent'),
@@ -398,7 +404,7 @@ export default function EditCommunity(){
             </div>
           )}
           {billing.steve_package_subscription_active && billing.steve_pool_cap !== null && billing.steve_pool_cap > 0 && (
-            <div className="mt-4 rounded-lg border border-cpoint-turquoise/25 bg-cpoint-turquoise/5 p-3 text-xs text-c-text-primary/70">
+            <div className="mt-4 rounded-lg border border-cpoint-turquoise/25 bg-cpoint-turquoise/5 p-3 text-xs text-c-text-secondary">
               <div className="font-medium text-cpoint-turquoise">{t('communities.steve_community_calls')}</div>
               <div className="mt-1">
                 {t('communities.steve_pool_available', { remaining: billing.steve_pool_remaining ?? 0, cap: billing.steve_pool_cap })}
@@ -436,17 +442,17 @@ export default function EditCommunity(){
               {t('communities.community_plan')}
             </div>
             {billing.is_canceling && billing.days_remaining !== null && (
-              <div className="mt-1 text-xs font-medium text-amber-200">
+              <div className="mt-1 text-xs font-medium text-amber-800 dark:text-amber-200">
                 {t('communities.cancels_in_days', { count: billing.days_remaining })}
               </div>
             )}
             {billing.current_period_end && (
-              <div className="mt-1 text-xs text-c-text-primary/40">
+              <div className="mt-1 text-xs text-c-text-tertiary">
                 {billing.is_canceling ? t('communities.benefits_active_until') : t('communities.next_renewal')}: {formatBillingDate(billing.current_period_end)}
               </div>
             )}
             {billing.subscription_status && billing.subscription_status !== 'active' && (
-              <div className="mt-1 text-xs text-amber-300/80">
+              <div className="mt-1 text-xs text-amber-800 dark:text-amber-300/80">
                 {t('communities.status_label', { status: billing.subscription_status })}
               </div>
             )}
@@ -454,14 +460,14 @@ export default function EditCommunity(){
           <span className="inline-flex items-center rounded-full border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1 text-[11px] font-medium text-cpoint-turquoise">
             {billing.tier_label || TIER_LABEL[billing.tier] || billing.tier}
           </span>
-          <span className="inline-flex items-center rounded-full border border-c-border bg-c-hover-bg px-3 py-1 text-[11px] font-medium text-c-text-primary/60">
+          <span className="inline-flex items-center rounded-full border border-c-border bg-c-hover-bg px-3 py-1 text-[11px] font-medium text-c-text-secondary">
             {providerBadge(billing.billing_provider || 'stripe')}
           </span>
         </div>
 
         {billing.member_cap !== null && billing.member_cap > 0 && (
           <div className="space-y-1.5">
-            <div className="flex items-baseline justify-between text-xs text-c-text-primary/60">
+            <div className="flex items-baseline justify-between text-xs text-c-text-secondary">
               <span>{t('communities.members_label')}</span>
               <span>
                 {billing.member_count} / {billing.member_cap}
@@ -482,7 +488,7 @@ export default function EditCommunity(){
         )}
 
         <div className="space-y-1.5">
-          <div className="flex items-baseline justify-between text-xs text-c-text-primary/60">
+          <div className="flex items-baseline justify-between text-xs text-c-text-secondary">
             <span>{t('communities.media_storage')}</span>
             <span>
               {formatBytes(activeMediaBytes)}
@@ -495,11 +501,11 @@ export default function EditCommunity(){
               style={{ width: `${mediaLimitBytes ? mediaPercent : 0}%` }}
             />
           </div>
-          <div className="flex items-center justify-between gap-2 text-[11px] text-c-text-primary/40">
+          <div className="flex items-center justify-between gap-2 text-[11px] text-c-text-tertiary">
             <span>{mediaTone}</span>
             <span>{t('communities.tracked_media_items', { count: billing.media_usage.asset_count })}</span>
           </div>
-          <div className="text-[11px] leading-relaxed text-c-text-primary/35">
+          <div className="text-[11px] leading-relaxed text-c-text-tertiary">
             {t('communities.storage_tracking_note')}
           </div>
         </div>
@@ -523,7 +529,7 @@ export default function EditCommunity(){
                 }}
               />
             </div>
-            <div className="mt-1 text-[11px] text-c-text-primary/40">
+            <div className="mt-1 text-[11px] text-c-text-tertiary">
               {t('communities.steve_used_this_month', { used: billing.steve_pool_used })}
               {billing.steve_package_current_period_end
                 ? ` · ${t('communities.steve_renews', { date: formatBillingDate(billing.steve_package_current_period_end) })}`
@@ -547,13 +553,13 @@ export default function EditCommunity(){
         </button>
 
         {hasPaidTier && isStoreBilled && (
-          <div className="text-xs text-c-text-primary/40">
+          <div className="text-xs text-c-text-tertiary">
             {t('communities.store_billed_note', { provider: providerLabel(billingProvider) })}
           </div>
         )}
 
         {hasPaidTier && !billing.has_stripe_customer && !isStoreBilled && (
-          <div className="text-xs text-c-text-primary/40">
+          <div className="text-xs text-c-text-tertiary">
             {t('communities.no_stripe_customer_note')}
           </div>
         )}
@@ -636,6 +642,27 @@ export default function EditCommunity(){
                 </button>
               </div>
             </label>
+          </div>
+          <div>
+            <label className="block text-sm text-c-text-tertiary mb-1">Recommended profile</label>
+            <select
+              className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-cpoint-turquoise outline-none"
+              value={recommendedProfileMode}
+              onChange={e => {
+                const value = e.target.value
+                setRecommendedProfileMode(
+                  value === 'personal' || value === 'professional' || value === 'both' ? value : 'none',
+                )
+              }}
+            >
+              <option value="none">No recommendation</option>
+              <option value="personal">Personal profile</option>
+              <option value="professional">Professional profile</option>
+              <option value="both">Personal and professional profile</option>
+            </select>
+            <div className="text-xs text-c-text-tertiary mt-1">
+              This shows members a soft Steve profile-help card. It never blocks posting, replies, reactions, invites, or messages.
+            </div>
           </div>
           <div>
             <label className="block text-sm text-c-text-tertiary mb-1">{t('communities.member_limit_optional')}</label>
@@ -833,7 +860,7 @@ export default function EditCommunity(){
           </div>
           
           <div className="flex justify-end gap-2">
-            <button type="button" className="px-3 py-2 rounded-md border border-c-border hover:bg-c-hover-bg" onClick={()=> navigate(-1)}>{t('common.cancel')}</button>
+            <button type="button" className="px-3 py-2 rounded-md border border-c-border text-c-text-primary hover:bg-c-hover-bg" onClick={()=> navigate(-1)}>{t('common.cancel')}</button>
             <button type="submit" className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black hover:brightness-110">{t('communities.save_changes')}</button>
           </div>
         </form>
@@ -883,7 +910,7 @@ export default function EditCommunity(){
                   type="button"
                   onClick={onToggleFreeze}
                   disabled={freezeLoading}
-                  className="px-4 py-2 border border-amber-400/40 bg-amber-400/10 hover:bg-amber-400/15 text-amber-100 rounded-md font-medium transition-colors disabled:opacity-50"
+                  className="px-4 py-2 border border-amber-400/40 bg-amber-400/10 hover:bg-amber-400/15 text-amber-900 dark:text-amber-100 rounded-md font-medium transition-colors disabled:opacity-50"
                 >
                   {freezeLoading ? t('communities.updating') : isFrozen ? t('communities.unfreeze_community') : t('communities.freeze_community')}
                 </button>
@@ -920,7 +947,7 @@ export default function EditCommunity(){
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">{t('communities.billing_label')}</p>
                 <h3 className="mt-2 text-lg font-semibold">{t('communities.manage_subscription')}</h3>
-                <p className="mt-1 text-sm text-c-text-primary/55">
+                <p className="mt-1 text-sm text-c-text-secondary">
                   {modalStoreBilled
                     ? t('communities.manage_subscription_modal_body_store', { provider: providerLabel(modalBillingProvider) })
                     : t('communities.manage_subscription_modal_body_stripe')}
@@ -929,7 +956,7 @@ export default function EditCommunity(){
               <button
                 type="button"
                 aria-label={t('common.close')}
-                className="rounded-full p-1 text-c-text-primary/50 hover:bg-c-hover-bg hover:text-c-text-primary"
+                className="rounded-full p-1 text-c-text-tertiary hover:bg-c-hover-bg hover:text-c-text-primary"
                 onClick={() => setShowManageSubscriptionModal(false)}
               >
                 <i className="fa-solid fa-xmark" />
@@ -980,7 +1007,7 @@ export default function EditCommunity(){
               </button>
               <button
                 type="button"
-                className="mt-1 text-xs text-c-text-primary/40 hover:text-c-text-secondary"
+                className="mt-1 text-xs text-c-text-tertiary hover:text-c-text-secondary"
                 onClick={() => setShowManageSubscriptionModal(false)}
               >
                 {t('common.close')}

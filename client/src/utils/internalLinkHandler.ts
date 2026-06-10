@@ -1,6 +1,3 @@
-import { triggerDashboardServerPull } from './serverPull'
-import { refreshDashboardCommunities } from './dashboardCache'
-
 /**
  * Internal link policy (SPA vs browser)
  *
@@ -128,62 +125,11 @@ export function extractInternalPath(url: string): string | null {
   }
 }
 
-/**
- * Join a community using an invite token
- */
 export async function joinCommunityWithInvite(token: string): Promise<InviteResult> {
-  try {
-    const response = await fetch('/api/join_with_invite', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify({ invite_token: token }),
-    })
-
-    const data = await response.json()
-
-    if (response.ok && data.success) {
-      await triggerDashboardServerPull()
-      await refreshDashboardCommunities()
-      return {
-        success: true,
-        communityId: data.community_id,
-        communityName: data.community_name,
-      }
-    }
-
-    // Check if already a member
-    if (data.error?.includes('already a member')) {
-      // Try to get community info from the token
-      const infoResponse = await fetch('/api/invite_info', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ invite_token: token }),
-      })
-      const infoData = await infoResponse.json()
-      
-      return {
-        success: false,
-        alreadyMember: true,
-        communityId: infoData.community_id,
-        communityName: infoData.community_name,
-        error: 'You are already a member of this community',
-      }
-    }
-
-    return {
-      success: false,
-      error: data.error || 'Failed to join community',
-    }
-  } catch (error) {
-    console.error('Error joining community:', error)
-    return {
-      success: false,
-      error: 'Network error. Please try again.',
-    }
+  console.warn('joinCommunityWithInvite is deprecated; route users to invite preview first.', token.slice(0, 8))
+  return {
+    success: false,
+    error: 'Open the invitation preview to accept this invite.',
   }
 }
 
@@ -195,7 +141,7 @@ export async function handleInternalLink(
   url: string,
   navigate: (path: string) => void,
   showToast?: (message: string, type: 'success' | 'error' | 'info') => void,
-  showJoinModal?: (communityName: string, communityId: number) => void
+  _showJoinModal?: (communityName: string, communityId: number) => void
 ): Promise<{ handled: boolean; navigateTo?: string }> {
   if (!isInternalLink(url)) {
     return { handled: false }
@@ -204,32 +150,12 @@ export async function handleInternalLink(
   const inviteToken = extractInviteToken(url)
   
   if (inviteToken) {
-    // Handle invite link - join the community directly
-    const result = await joinCommunityWithInvite(inviteToken)
-    
-    if (result.success && result.communityId) {
-      // Show success modal/toast and navigate to community
-      if (showJoinModal && result.communityName) {
-        showJoinModal(result.communityName, result.communityId)
-      } else if (showToast) {
-        showToast(`Welcome to ${result.communityName}!`, 'success')
-      }
-      navigate(`/community_feed_react/${result.communityId}`)
-      return { handled: true, navigateTo: `/community_feed_react/${result.communityId}` }
-    } else if (result.alreadyMember && result.communityId) {
-      // Already a member - just navigate to the community
-      if (showToast) {
-        showToast('You are already a member of this community', 'info')
-      }
-      navigate(`/community_feed_react/${result.communityId}`)
-      return { handled: true, navigateTo: `/community_feed_react/${result.communityId}` }
-    } else {
-      // Error joining
-      if (showToast) {
-        showToast(result.error || 'Failed to join community', 'error')
-      }
-      return { handled: true }
+    const previewPath = `/invite-preview/${encodeURIComponent(inviteToken)}`
+    if (showToast) {
+      showToast('Opening invitation', 'info')
     }
+    navigate(previewPath)
+    return { handled: true, navigateTo: previewPath }
   }
 
   // For other internal links, just navigate to the path

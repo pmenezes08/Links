@@ -76,7 +76,7 @@ Flask blueprints are registered **without** a global URL prefix; each route decl
 | `dm_chats.py` | DM thread list, unread, clear/delete. |
 | `steve_feedback.py` | Steve feedback queue. |
 | `community_stories.py` | Community stories feature API. |
-| `community_invites.py` | Invite links / email flows. |
+| `community_invites.py` | Invite links / email / username flows, including read-only preview and explicit accept/decline routes. |
 | `media_assets.py` | Media accounting / cleanup routes. |
 | `chat_uploads.py` | Resumable multipart chat media upload sessions (R2). |
 | `community_calendar.py` | Calendar & events API. |
@@ -149,13 +149,14 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 | `community.py` | Core community model, roles, trees, invalidation. |
 | `community_lifecycle.py` | Grace/expiry and lifecycle crons support. |
 | `community_group_feed.py` | Group feed aggregation. |
-| `community_invites.py` | Invite business logic. |
+| `community_invites.py` | Invite business logic: pending-row creation, 7-day expiry, recipient checks, read-only preview, explicit acceptance before membership, and post-accept routing into Steve's pinned Introduce Yourself thread. |
 | `community_invite_emails.py` | Email sending for invites. |
 | `community_stories.py` | Stories. |
 | `community_calendar.py` | Calendar domain logic. |
 | `community_admin_notifications.py` | Admin-facing notifications. |
 | `reactions.py` | Post/reply reactions. |
 | `tasks.py` | Task list feature tables. |
+| `steve_community_welcome.py` | Steve community welcome and cold-start system content: deterministic welcome cards, icebreaker polls, pinned introduce-yourself thread, owner DM, backfill CLI, and rolling welcome summary cron service. |
 
 ### DMs & messaging
 

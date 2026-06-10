@@ -4,7 +4,7 @@
  */
 
 /** Push/pop route transition duration. */
-export const PAGE_TRANSITION_MS = 250
+export const PAGE_TRANSITION_MS = 340
 
 /** Tab cross-fade duration (Dashboard ↔ Feed ↔ About). */
 export const TAB_CROSSFADE_MS = 120

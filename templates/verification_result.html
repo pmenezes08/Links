@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ locale }}">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Email Verification</title>
+    <title>{{ tt('verification.page_title') }}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
@@ -24,19 +24,17 @@
         <div class="card">
             {% if success %}
                 <div class="icon">✅</div>
-                <div class="title">Email Verified</div>
-                <div class="msg">Your email has been successfully verified.</div>
-                <div class="hint">
-                    Please close this page and return to the <strong>C.Point app</strong> to sign in.
-                </div>
-                <button class="btn" onclick="window.close()">Close This Page</button>
+                <div class="title">{{ tt('verification.success_title') }}</div>
+                <div class="msg">{{ message or tt('verification.success_message') }}</div>
+                <div class="hint">{{ tt('verification.success_hint') | safe }}</div>
+                <button class="btn" onclick="window.close()">{{ tt('verification.close_page') }}</button>
                 <div style="margin-top:12px; color:#6b7280; font-size:11px;">
-                    If this page doesn't close, you can safely close it manually.
+                    {{ tt('verification.close_hint') }}
                 </div>
             {% else %}
                 <div class="icon">⚠️</div>
-                <div class="title err">Verification Failed</div>
-                <div class="msg">{{ message or 'The verification link is invalid or has expired.' }}</div>
+                <div class="title err">{{ tt('verification.failed_title') }}</div>
+                <div class="msg">{{ message or tt('verification.failed_default') }}</div>
             {% endif %}
         </div>
     </div>

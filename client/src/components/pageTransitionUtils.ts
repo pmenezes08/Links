@@ -11,7 +11,8 @@ export function isPilotRoute(path: string): boolean {
   return (
     isDashboardTabPath(path) ||
     path.startsWith('/community_feed_react/') ||
-    path.startsWith('/post/')
+    path.startsWith('/post/') ||
+    path.startsWith('/steve/profile-builder/')
   )
 }
 
@@ -58,6 +59,7 @@ export function isDeepDrillDownRoute(path: string): boolean {
   if (path.startsWith('/reply/')) return true
   if (path.startsWith('/group_reply/')) return true
   if (/^\/community\/[^/]+\/feed(?:\/|$)/.test(path)) return true
+  if (path.startsWith('/steve/profile-builder/')) return true
   return false
 }
 

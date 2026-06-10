@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useTheme, type Theme } from '../../contexts/ThemeContext'
 import { matchLocale, type SupportedLocale } from '../../i18n'
 import { LOCALE_OPTIONS } from '../../i18n/localeOptions'
 import { useLocale } from '../../i18n/useLocale'
-import { isAtLeast18, isValidDobIso, maxDobForPicker } from '../../lib/ageGate'
+import { isAtLeast18, isValidDobIso } from '../../lib/ageGate'
 import { clearAllUserData } from '../../utils/clearAllUserData'
 import BrandLogo from '../BrandLogo'
 
@@ -18,6 +18,7 @@ type IntroPage = 0 | 1 | 2 | 3
 type AgeGateError = 'dob_required' | 'consent_required' | 'dob_invalid' | null
 
 type DeleteStep = 'idle' | 'confirm' | 'loading'
+type DeferStep = 'idle' | 'confirm' | 'loading'
 
 const AGE_GATE_CONFIRMED_KEY = 'cpoint:age_gate_confirmed_at'
 
@@ -39,6 +40,27 @@ function persistAgeGateConfirmation(): void {
   } catch {
     // Best-effort client-only flag; gate may reappear if storage is unavailable.
   }
+}
+
+function normalizeDobInput(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (isoMatch) {
+    const [, year, month, day] = isoMatch
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+  }
+  const localMatch = trimmed.match(/^(\d{1,2})[/. -](\d{1,2})[/. -](\d{4})$/)
+  if (localMatch) {
+    const [, day, month, year] = localMatch
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+  }
+  const compactLocalMatch = trimmed.match(/^(\d{2})(\d{2})(\d{4})$/)
+  if (compactLocalMatch) {
+    const [, day, month, year] = compactLocalMatch
+    return `${year}-${month}-${day}`
+  }
+  return trimmed
 }
 
 function resolveInitialPage(hasSavedLocale: boolean, ageConfirmed: boolean): IntroPage {
@@ -76,16 +98,17 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
   const [dob, setDob] = useState('')
   const [consent18, setConsent18] = useState(false)
   const [ageGateError, setAgeGateError] = useState<AgeGateError>(null)
+  const [dobHelpOpen, setDobHelpOpen] = useState(false)
   const [underageOpen, setUnderageOpen] = useState(false)
   const [deleteStep, setDeleteStep] = useState<DeleteStep>('idle')
+  const [deferStep, setDeferStep] = useState<DeferStep>('idle')
+  const [deferError, setDeferError] = useState('')
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const [deleteFeedback, setDeleteFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(
     null,
   )
   const dobInputRef = useRef<HTMLInputElement>(null)
   const deleteInputRef = useRef<HTMLInputElement>(null)
-
-  const maxDob = useMemo(() => maxDobForPicker(), [])
 
   useEffect(() => {
     setDraftLocale(locale)
@@ -179,11 +202,12 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
   const handleAgeGateContinue = useCallback(() => {
     setAgeGateError(null)
 
-    if (!dob.trim()) {
+    const normalizedDob = normalizeDobInput(dob)
+    if (!normalizedDob) {
       setAgeGateError('dob_required')
       return
     }
-    if (!isValidDobIso(dob)) {
+    if (!isValidDobIso(normalizedDob)) {
       setAgeGateError('dob_invalid')
       return
     }
@@ -191,7 +215,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
       setAgeGateError('consent_required')
       return
     }
-    if (!isAtLeast18(dob)) {
+    if (!isAtLeast18(normalizedDob)) {
       setUnderageOpen(true)
       setDeleteStep('idle')
       setDeleteConfirmation('')
@@ -199,10 +223,38 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
       return
     }
 
+    setDob(normalizedDob)
     persistAgeGateConfirmation()
     setSkipAgeStep(true)
     setPage(2)
   }, [consent18, dob])
+
+  const handleConfirmProfileLater = useCallback(async () => {
+    if (deferStep === 'loading') return
+    setDeferStep('loading')
+    setDeferError('')
+    try {
+      const response = await fetch('/api/onboarding/defer_profile', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stage: 'intro_profile_later',
+          onboarding_auto_open_suppressed: true,
+        }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok || !data?.success) {
+        setDeferError(data?.error || t('onboarding_intro.profile_later_error'))
+        setDeferStep('confirm')
+        return
+      }
+      window.location.replace('/premium_dashboard')
+    } catch {
+      setDeferError(t('onboarding_intro.profile_later_error'))
+      setDeferStep('confirm')
+    }
+  }, [deferStep, t])
 
   const handleUnderageTryAgain = useCallback(() => {
     setUnderageOpen(false)
@@ -357,21 +409,37 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                     {t('onboarding_intro.dob_hint')}
                   </p>
 
-                  <label htmlFor="onboarding-dob" className="block">
-                    <span className="text-sm font-medium text-c-text-primary">{t('onboarding_intro.dob_label')}</span>
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="onboarding-dob" className="text-sm font-medium text-c-text-primary">
+                      {t('onboarding_intro.dob_label')}
+                    </label>
+                    <button
+                      type="button"
+                      aria-expanded={dobHelpOpen}
+                      aria-controls="onboarding-dob-help"
+                      aria-label={t('onboarding_intro.dob_help_button_label')}
+                      onClick={() => setDobHelpOpen((open) => !open)}
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-cpoint-turquoise/40 bg-cpoint-turquoise/10 text-xs font-bold text-cpoint-turquoise focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                    >
+                      ?
+                    </button>
+                  </div>
+                  <div>
                     <input
                       ref={dobInputRef}
                       id="onboarding-dob"
                       name="onboarding-dob"
-                      type="date"
+                      type="text"
+                      inputMode="numeric"
                       value={dob}
-                      min="1900-01-01"
-                      max={maxDob}
+                      placeholder={t('onboarding_intro.dob_placeholder')}
                       autoComplete="bday"
                       required
                       aria-invalid={ageGateError !== null}
                       aria-describedby={
-                        ageGateError ? 'onboarding-dob-hint onboarding-dob-error' : 'onboarding-dob-hint'
+                        ageGateError
+                          ? 'onboarding-dob-hint onboarding-dob-format onboarding-dob-error'
+                          : 'onboarding-dob-hint onboarding-dob-format'
                       }
                       onChange={(event) => {
                         setAgeGateError(null)
@@ -379,7 +447,18 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                       }}
                       className="mt-1 w-full min-h-[44px] rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-base text-c-text-primary outline-none focus:border-cpoint-turquoise focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
                     />
-                  </label>
+                  </div>
+                  <p id="onboarding-dob-format" className="mt-1 text-xs text-c-text-tertiary">
+                    {t('onboarding_intro.dob_format_hint')}
+                  </p>
+                  {dobHelpOpen ? (
+                    <div
+                      id="onboarding-dob-help"
+                      className="mt-3 rounded-xl border border-cpoint-turquoise/25 bg-cpoint-turquoise/10 px-3 py-2 text-xs leading-relaxed text-c-text-secondary"
+                    >
+                      {t('onboarding_intro.dob_help_text')}
+                    </div>
+                  ) : null}
 
                   <label className="mt-4 flex min-h-[44px] cursor-pointer items-start gap-3 rounded-lg border border-c-border bg-c-hover-bg px-3 py-3 text-left text-sm">
                     <input
@@ -447,13 +526,25 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                     {t('onboarding_intro.continue')}
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={onStart}
-                    className="w-full rounded-xl bg-cpoint-turquoise text-black font-semibold py-3 text-sm hover:brightness-110 active:scale-[0.99] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
-                  >
-                    {t('onboarding_intro.start')}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={onStart}
+                      className="w-full rounded-xl bg-cpoint-turquoise text-black font-semibold py-3 text-sm hover:brightness-110 active:scale-[0.99] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                    >
+                      {t('onboarding_intro.start')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeferStep('confirm')
+                        setDeferError('')
+                      }}
+                      className="mt-3 w-full rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 py-3 text-sm font-medium text-c-accent-ink transition hover:bg-cpoint-turquoise/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                    >
+                      {t('onboarding_intro.profile_later')}
+                    </button>
+                  </>
                 )}
                 {page === 2 ? (
                   <button
@@ -527,6 +618,59 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                 className="rounded-xl bg-cpoint-turquoise text-black font-semibold py-3 text-sm hover:brightness-110 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
               >
                 {t('onboarding_intro.start')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deferStep !== 'idle' && (
+        <div
+          className="fixed inset-0 z-[1112] flex items-center justify-center px-4"
+          style={{
+            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)',
+            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)',
+          }}
+        >
+          <div className="absolute inset-0 bg-c-bg-overlay backdrop-blur-sm" onClick={() => deferStep === 'confirm' && setDeferStep('idle')} />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="onboarding-profile-later-title"
+            className="relative w-full max-w-md rounded-2xl border border-cpoint-turquoise/45 bg-c-bg-app p-6 shadow-[0_24px_80px_rgba(0,206,200,0.18)]"
+          >
+            <h2 id="onboarding-profile-later-title" className="text-xl font-semibold text-c-text-primary">
+              {t('onboarding_intro.profile_later_confirm_title')}
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-c-text-secondary">
+              {t('onboarding_intro.profile_later_confirm_body')}
+            </p>
+            {deferError ? (
+              <p role="alert" className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                {deferError}
+              </p>
+            ) : null}
+            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                disabled={deferStep === 'loading'}
+                onClick={() => {
+                  setDeferStep('idle')
+                  setDeferError('')
+                }}
+                className="rounded-xl border border-c-border bg-c-hover-bg px-4 py-3 text-sm font-semibold text-c-text-primary disabled:opacity-50"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                disabled={deferStep === 'loading'}
+                onClick={() => void handleConfirmProfileLater()}
+                className="rounded-xl bg-cpoint-turquoise px-4 py-3 text-sm font-semibold text-black disabled:opacity-50"
+              >
+                {deferStep === 'loading'
+                  ? t('onboarding_intro.profile_later_saving')
+                  : t('onboarding_intro.profile_later_confirm_cta')}
               </button>
             </div>
           </div>

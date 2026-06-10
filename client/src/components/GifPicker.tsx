@@ -20,6 +20,7 @@ type GifPickerProps = {
   isOpen: boolean
   onClose: () => void
   onSelect: (gif: GifSelection) => void
+  initialKeyboardLift?: number
 }
 
 type GiphyItem = {
@@ -82,7 +83,18 @@ function getVisualViewportKeyboardLift(): number {
   return lift < 60 ? 0 : Math.max(0, lift)
 }
 
-export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps){
+function getGlobalKeyboardLift(): number {
+  if (typeof document === 'undefined') return 0
+  const raw = getComputedStyle(document.documentElement).getPropertyValue('--keyboard-offset').trim()
+  const lift = parseFloat(raw) || 0
+  return lift < 2 ? 0 : Math.max(0, lift)
+}
+
+function getSeedKeyboardLift(initialKeyboardLift = 0): number {
+  return Math.max(0, initialKeyboardLift, getGlobalKeyboardLift(), getVisualViewportKeyboardLift())
+}
+
+export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLift = 0 }: GifPickerProps){
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<GifSelection[]>([])
@@ -104,7 +116,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
   const [mounted, setMounted] = useState(isOpen)
   const [entered, setEntered] = useState(false)
   const [reducedMotion, setReducedMotion] = useState<boolean>(detectPrefersReducedMotion)
-  const [keyboardLift, setKeyboardLift] = useState(0)
+  const [keyboardLift, setKeyboardLift] = useState(() => getSeedKeyboardLift(initialKeyboardLift))
   const [vvHeight, setVvHeight] = useState<number>(getInitialViewportHeight)
 
   // Drag-to-dismiss state
@@ -286,6 +298,10 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
     if (isOpen) {
       previousFocusRef.current =
         typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null
+      const seedLift = getSeedKeyboardLift(initialKeyboardLift)
+      const seedHeight = Math.max(0, (window.innerHeight || getInitialViewportHeight()) - seedLift)
+      setKeyboardLift(prev => (Math.abs(prev - seedLift) < 1 ? prev : seedLift))
+      setVvHeight(prev => (Math.abs(prev - seedHeight) < 1 ? prev : seedHeight))
       setMounted(true)
       let raf1: number | null = null
       let raf2: number | null = null
@@ -311,7 +327,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
       }
     }, exitMs)
     return () => window.clearTimeout(timer)
-  }, [isOpen, reducedMotion])
+  }, [initialKeyboardLift, isOpen, reducedMotion])
 
   // Keyboard lift: native uses the Capacitor plugin plus visualViewport as a
   // secondary source. The visualViewport pass catches the "keyboard already
@@ -328,7 +344,11 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
     const isNative = platform === 'ios' || platform === 'android'
     const norm = (v: number) => (v < 60 ? 0 : Math.max(0, v))
     const setNativeViewportState = () => {
-      const lift = Math.max(pluginKeyboardLiftRef.current, visualKeyboardLiftRef.current)
+      const lift = Math.max(
+        pluginKeyboardLiftRef.current,
+        visualKeyboardLiftRef.current,
+        getGlobalKeyboardLift(),
+      )
       const nextH = Math.max(0, (window.innerHeight || getInitialViewportHeight()) - lift)
       setKeyboardLift(prev => (Math.abs(prev - lift) < 1 ? prev : lift))
       setVvHeight(prev => (Math.abs(prev - nextH) < 1 ? prev : nextH))
@@ -402,9 +422,9 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
     }
     let rafId: number | null = null
     const update = () => {
-      const lift = getVisualViewportKeyboardLift()
+      const lift = Math.max(getVisualViewportKeyboardLift(), getGlobalKeyboardLift())
       setKeyboardLift(prev => (Math.abs(prev - lift) < 1 ? prev : lift))
-      const nextH = viewport.height
+      const nextH = lift > 0 ? Math.max(0, (window.innerHeight || viewport.height) - lift) : viewport.height
       setVvHeight(prev => (Math.abs(prev - nextH) < 1 ? prev : nextH))
     }
     const schedule = () => {

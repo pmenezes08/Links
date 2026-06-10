@@ -14,7 +14,7 @@ import {
 
 describe('motion tokens', () => {
   it('matches DESIGN.md values', () => {
-    expect(PAGE_TRANSITION_MS).toBe(250)
+    expect(PAGE_TRANSITION_MS).toBe(340)
     expect(TAB_CROSSFADE_MS).toBe(120)
     expect(REDUCED_MOTION_FADE_MS).toBe(80)
     expect(CPOINT_EASE_OUT).toBe('cubic-bezier(0.32, 0.72, 0, 1)')
@@ -46,6 +46,7 @@ describe('detectTransitionType', () => {
   it('returns push between pilot drill-down routes', () => {
     expect(detectTransitionType('/premium_dashboard', '/community_feed_react/1', 'PUSH', true)).toBe('push')
     expect(detectTransitionType('/community_feed_react/1', '/post/42', 'PUSH', true)).toBe('push')
+    expect(detectTransitionType('/community_feed_react/1', '/steve/profile-builder/professional', 'PUSH', true)).toBe('push')
   })
 
   // Multi-step pop: a back-tap from a deep drill-down route may jump several
@@ -65,6 +66,10 @@ describe('detectTransitionType', () => {
 
   it('returns pop for Community feed → Dashboard (POP)', () => {
     expect(detectTransitionType('/community_feed_react/1', '/premium_dashboard', 'POP', true)).toBe('pop')
+  })
+
+  it('returns pop for scoped Steve profile builder → Community feed (POP)', () => {
+    expect(detectTransitionType('/steve/profile-builder/professional', '/community_feed_react/1', 'POP', true)).toBe('pop')
   })
 
   // Programmatic jump (PUSH) from a drill-down to a tab root is not a true
@@ -90,6 +95,7 @@ describe('isDeepDrillDownRoute', () => {
     expect(isDeepDrillDownRoute('/reply/5')).toBe(true)
     expect(isDeepDrillDownRoute('/group_reply/5')).toBe(true)
     expect(isDeepDrillDownRoute('/community/my-slug/feed')).toBe(true)
+    expect(isDeepDrillDownRoute('/steve/profile-builder/professional')).toBe(true)
   })
 
   it('excludes tab roots and chat threads', () => {
@@ -106,6 +112,7 @@ describe('isPilotRoute', () => {
     expect(isPilotRoute('/premium_dashboard')).toBe(true)
     expect(isPilotRoute('/community_feed_react/5')).toBe(true)
     expect(isPilotRoute('/post/99')).toBe(true)
+    expect(isPilotRoute('/steve/profile-builder/professional')).toBe(true)
     expect(isPilotRoute('/user_chat')).toBe(false)
   })
 })

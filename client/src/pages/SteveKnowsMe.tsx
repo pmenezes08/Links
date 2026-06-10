@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
@@ -89,6 +90,7 @@ function visibleSectionKeys(analysis: Record<string, unknown>): string[] {
 }
 
 export default function SteveKnowsMe() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { setTitle } = useHeader()
   const entitlementsHandler = useEntitlementsHandler()
@@ -118,7 +120,7 @@ export default function SteveKnowsMe() {
       })
       const d = await r.json().catch(() => null)
       if (!d?.success) {
-        setError(d?.error || 'Could not load Steve profile')
+        setError(d?.error || t('profile.steve_knows_page.load_failed'))
         setProfile(null)
         return
       }
@@ -129,7 +131,7 @@ export default function SteveKnowsMe() {
       })
       setProfile(d.profile || null)
     } catch {
-      setError('Network error')
+      setError(t('errors.network'))
       setProfile(null)
     } finally {
       setLoading(false)
@@ -137,9 +139,9 @@ export default function SteveKnowsMe() {
   }, [])
 
   useEffect(() => {
-    setTitle("Steve's view of you")
+    setTitle(t('profile.steve_knows_page.page_title'))
     return () => setTitle('')
-  }, [setTitle])
+  }, [setTitle, t])
 
   useEffect(() => {
     void load()
@@ -153,7 +155,7 @@ export default function SteveKnowsMe() {
       body: JSON.stringify(body),
     })
     const d = await r.json().catch(() => null)
-    if (!d?.success) throw new Error(d?.error || 'Save failed')
+    if (!d?.success) throw new Error(d?.error || t('profile.steve_knows_page.save_failed'))
   }
 
   const analysis = (profile?.analysis || {}) as Record<string, unknown>
@@ -161,7 +163,7 @@ export default function SteveKnowsMe() {
   async function handleApprove() {
     const keys = visibleSectionKeys(analysis)
     if (keys.length === 0) {
-      setFeedback('Nothing to approve yet.')
+      setFeedback(t('profile.steve_knows_page.nothing_to_approve'))
       return
     }
     setActionBusy(true)
@@ -172,17 +174,17 @@ export default function SteveKnowsMe() {
         acceptedSections: keys,
         edits: {},
       })
-      setFeedback('Thanks — your review was saved.')
+      setFeedback(t('profile.steve_knows_page.review_saved'))
       await load()
     } catch (e) {
-      setFeedback(e instanceof Error ? e.message : 'Could not save')
+      setFeedback(e instanceof Error ? e.message : t('profile.steve_knows_page.save_failed'))
     } finally {
       setActionBusy(false)
     }
   }
 
   async function handleDispute() {
-    if (!window.confirm('Mark this as not you? Update your profile elsewhere if needed, then use refresh when it’s available again.')) return
+    if (!window.confirm(t('profile.steve_knows_page.dispute_confirm'))) return
     setActionBusy(true)
     setFeedback(null)
     try {
@@ -191,10 +193,10 @@ export default function SteveKnowsMe() {
         acceptedSections: [],
         edits: {},
       })
-      setFeedback('Recorded. Update your profile if needed, then tap refresh when it’s available again.')
+      setFeedback(t('profile.steve_knows_page.dispute_saved'))
       await load()
     } catch (e) {
-      setFeedback(e instanceof Error ? e.message : 'Could not save')
+      setFeedback(e instanceof Error ? e.message : t('profile.steve_knows_page.save_failed'))
     } finally {
       setActionBusy(false)
     }
@@ -211,10 +213,10 @@ export default function SteveKnowsMe() {
         edits: { [editKey]: editText },
       })
       setEditKey(null)
-      setFeedback('Your changes were saved.')
+      setFeedback(t('profile.steve_knows_page.edit_saved'))
       await load()
     } catch (e) {
-      setFeedback(e instanceof Error ? e.message : 'Could not save')
+      setFeedback(e instanceof Error ? e.message : t('profile.steve_knows_page.save_failed'))
     } finally {
       setActionBusy(false)
     }
@@ -232,23 +234,23 @@ export default function SteveKnowsMe() {
       const d = await entitlementsHandler.handleResponse<{ success?: boolean; error?: string; message?: string }>(r)
       if (!d) { await load(); return } // entitlements modal already shown
       if (r.status === 429) {
-        setFeedback(d?.error || 'Please wait before asking again.')
+        setFeedback(d?.error || t('profile.steve_knows_page.wait_before_refresh'))
         await load()
         return
       }
       if (r.status === 409) {
-        setFeedback('Steve is already updating your profile. Check back shortly.')
+        setFeedback(t('profile.steve_knows_page.already_updating'))
         await load()
         return
       }
       if (!d?.success) {
-        setFeedback(d?.error || 'Could not start a refresh')
+        setFeedback(d?.error || t('profile.steve_knows_page.refresh_start_failed'))
         return
       }
-      setFeedback(d.message || 'Steve is updating your profile. Refresh this page in a minute.')
+      setFeedback(d.message || t('profile.steve_knows_page.refresh_started'))
       await load()
     } catch {
-      setFeedback('Network error')
+      setFeedback(t('errors.network'))
     } finally {
       setRefreshBusy(false)
     }
@@ -313,10 +315,10 @@ export default function SteveKnowsMe() {
   }
 
   const sectionTitle: Record<string, string> = {
-    summary: 'Summary',
-    identity: 'Identity',
-    networkingValue: 'Networking value',
-    interests: 'Interests',
+    summary: t('profile.steve_knows_page.section_summary'),
+    identity: t('profile.steve_knows_page.section_identity'),
+    networkingValue: t('profile.steve_knows_page.section_networking'),
+    interests: t('profile.steve_knows_page.section_interests'),
   }
 
   return (
@@ -327,14 +329,12 @@ export default function SteveKnowsMe() {
           onClick={() => navigate(-1)}
           className="text-sm text-c-text-tertiary hover:text-white"
         >
-          ← Back
+          {t('profile.steve_knows_page.back')}
         </button>
       </div>
 
-      <h1 className="text-xl font-semibold text-cpoint-turquoise mb-1">What Steve knows about you</h1>
-      <p className="text-sm text-c-text-tertiary mb-4">
-        This is Steve&apos;s understanding of you — not your public profile. Use it to check accuracy and suggest corrections.
-      </p>
+      <h1 className="text-xl font-semibold text-cpoint-turquoise mb-1">{t('profile.steve_knows_page.headline')}</h1>
+      <p className="text-sm text-c-text-tertiary mb-4">{t('profile.steve_knows_page.subtitle')}</p>
 
       <div className="mb-4">
         <button
@@ -342,21 +342,22 @@ export default function SteveKnowsMe() {
           onClick={() => navigate('/profile/steve')}
           className="text-sm text-cpoint-turquoise hover:underline"
         >
-          View Steve&apos;s public profile
+          {t('profile.steve_knows_page.view_public_profile')}
         </button>
       </div>
 
       {meta.analysisInProgress ? (
         <div className="mb-4 rounded-lg border border-cpoint-turquoise/40 bg-cpoint-turquoise/10 px-3 py-2 text-sm text-cpoint-turquoise">
           <i className="fa-solid fa-spinner fa-spin mr-2" />
-          Steve is updating your profile… refresh this page in a bit.
+          {t('profile.steve_knows_page.updating_banner')}
         </div>
       ) : null}
 
       {!meta.canRequestRefresh && !meta.analysisInProgress ? (
         <div className="mb-4 text-sm text-c-text-tertiary">
-          You&apos;ve recently asked Steve to take a fresh look. You can ask again in about{' '}
-          <span className="text-c-text-secondary">{cooldownHours}</span> hour{cooldownHours !== 1 ? 's' : ''}.
+          {t(cooldownHours === 1 ? 'profile.steve_knows_page.cooldown' : 'profile.steve_knows_page.cooldown_other', {
+            hours: cooldownHours,
+          })}
         </div>
       ) : null}
 
@@ -365,13 +366,15 @@ export default function SteveKnowsMe() {
           type="button"
           title={
             !meta.canRequestRefresh && !meta.analysisInProgress
-              ? `Available again in about ${cooldownHours} hour${cooldownHours !== 1 ? 's' : ''}`
-              : 'Refresh Steve’s view'
+              ? t(cooldownHours === 1 ? 'profile.steve_knows_page.refresh_title_cooldown' : 'profile.steve_knows_page.refresh_title_cooldown_other', {
+                  hours: cooldownHours,
+                })
+              : t('profile.steve_knows_page.refresh_title_available')
           }
           disabled={refreshBusy || meta.analysisInProgress || !meta.canRequestRefresh}
           onClick={() => setShowRefreshExplainer(true)}
           className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-cpoint-turquoise/20 border border-cpoint-turquoise/40 text-cpoint-turquoise hover:bg-cpoint-turquoise/30 disabled:opacity-40"
-          aria-label="Refresh Steve’s view"
+          aria-label={t('profile.steve_knows_page.refresh_aria')}
         >
           {refreshBusy ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-arrows-rotate" />}
         </button>
@@ -381,7 +384,7 @@ export default function SteveKnowsMe() {
           onClick={() => void handleApprove()}
           className="px-3 py-2 rounded-lg bg-green-500/20 border border-green-500/40 text-sm text-green-300 hover:bg-green-500/30 disabled:opacity-40"
         >
-          Approve
+          {t('profile.steve_knows_page.approve')}
         </button>
         <button
           type="button"
@@ -389,38 +392,37 @@ export default function SteveKnowsMe() {
           onClick={() => void handleDispute()}
           className="px-3 py-2 rounded-lg bg-orange-500/15 border border-orange-500/35 text-sm text-orange-300 hover:bg-orange-500/25 disabled:opacity-40"
         >
-          This is not me
+          {t('profile.steve_knows_page.not_me')}
         </button>
       </div>
 
       {reviewStatus ? (
         <p className="text-xs text-c-text-tertiary mb-4">
-          Your last review: <span className="text-c-text-secondary">{reviewStatus}</span>
+          {t('profile.steve_knows_page.last_review')} <span className="text-c-text-secondary">{reviewStatus}</span>
         </p>
       ) : null}
 
       {loading ? (
         <div className="text-center py-16 text-c-text-tertiary">
           <i className="fa-solid fa-spinner fa-spin text-2xl mb-2" />
-          <div>Loading…</div>
+          <div>{t('profile.loading')}</div>
         </div>
       ) : error ? (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>
       ) : !profile ? (
         <div className="space-y-4 text-sm text-c-text-tertiary">
-          <p>
-            Steve doesn&apos;t have an analysis for you yet. Update your profile information, then tap the{' '}
-            <strong>refresh</strong> icon above (or ask a community admin for help).
-          </p>
+          <p>{t('profile.steve_knows_page.empty_no_analysis')}</p>
         </div>
       ) : (
         <div className="space-y-6">
-          <div className="text-xs text-c-text-tertiary">Last updated: {profile.lastUpdated || '—'}</div>
+          <div className="text-xs text-c-text-tertiary">
+            {t('profile.steve_knows_page.last_updated_label')} {profile.lastUpdated || '—'}
+          </div>
 
             <section className="rounded-xl border border-c-border p-4 space-y-6">
-            <div className="font-semibold text-cpoint-turquoise">What Steve sees</div>
+            <div className="font-semibold text-cpoint-turquoise">{t('profile.steve_knows_page.what_steve_sees')}</div>
             {visibleSectionKeys(analysis).length === 0 ? (
-              <p className="text-sm text-c-text-tertiary">No sections yet. Try refreshing after updating your profile.</p>
+              <p className="text-sm text-c-text-tertiary">{t('profile.steve_knows_page.no_sections_yet')}</p>
             ) : (
               visibleSectionKeys(analysis).map(key => (
                 <div key={key} className="border-b border-c-border pb-5 last:border-0 last:pb-0">
@@ -432,7 +434,7 @@ export default function SteveKnowsMe() {
                         onClick={() => openEdit(key)}
                         className="text-[11px] text-cpoint-turquoise hover:underline"
                       >
-                        Suggest an edit
+                        {t('profile.steve_knows_page.suggest_edit')}
                       </button>
                     ) : null}
                   </div>
@@ -446,13 +448,13 @@ export default function SteveKnowsMe() {
 
           {profile.profilingExternalSources?.items && profile.profilingExternalSources.items.length > 0 ? (
             <section className="rounded-xl border border-c-border p-4 space-y-3">
-              <div className="font-semibold text-cyan-400/90 text-sm">External sources Steve consulted</div>
-              <p className="text-[11px] text-c-text-tertiary">
-                Links from your recent posts that were fetched (articles, transcripts, or audio) to build this view.
-              </p>
+              <div className="font-semibold text-cyan-400/90 text-sm">{t('profile.steve_knows_page.external_sources_title')}</div>
+              <p className="text-[11px] text-c-text-tertiary">{t('profile.steve_knows_page.external_sources_helper')}</p>
               {profile.profilingExternalSources.updatedAt ? (
                 <div className="text-[10px] text-c-text-tertiary">
-                  Updated {new Date(profile.profilingExternalSources.updatedAt).toLocaleString()}
+                  {t('profile.steve_knows_page.external_updated', {
+                    date: new Date(profile.profilingExternalSources.updatedAt).toLocaleString(),
+                  })}
                 </div>
               ) : null}
               <ul className="space-y-2 text-[11px]">
@@ -468,9 +470,9 @@ export default function SteveKnowsMe() {
                     </a>
                     <div className="flex flex-wrap gap-1.5 mt-1 items-center text-c-text-tertiary">
                       <span className="text-[9px] uppercase tracking-wide">{item.kind}</span>
-                      {item.postDate ? <span>· post {item.postDate}</span> : null}
+                      {item.postDate ? <span>· {t('profile.steve_knows_page.post_date_prefix', { date: item.postDate })}</span> : null}
                       <span className={item.success ? 'text-green-400/90' : 'text-amber-400/90'}>
-                        · {item.success ? 'used' : 'not used'}
+                        · {item.success ? t('profile.steve_knows_page.source_used') : t('profile.steve_knows_page.source_not_used')}
                       </span>
                     </div>
                     {item.detail ? <div className="text-[10px] text-c-text-tertiary mt-0.5">{item.detail}</div> : null}
@@ -481,8 +483,7 @@ export default function SteveKnowsMe() {
           ) : null}
 
           <p className="text-xs text-orange-300/90">
-            If something is completely off, tap <strong>This is not me</strong>, update your profile if needed, then use the{' '}
-            <strong>refresh</strong> icon when it becomes available again.
+            {t('profile.steve_knows_page.footer_dispute_hint')}
           </p>
         </div>
       )}
@@ -490,8 +491,10 @@ export default function SteveKnowsMe() {
       {editKey ? (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 p-4">
           <div className="w-full max-w-lg rounded-2xl border border-c-border bg-c-bg-surface p-5 space-y-3">
-            <div className="font-semibold text-c-text-primary">Suggest an edit: {sectionTitle[editKey] ?? editKey}</div>
-            <p className="text-xs text-c-text-tertiary">Your text is saved with your review so Steve can use your wording.</p>
+            <div className="font-semibold text-c-text-primary">
+              {t('profile.steve_knows_page.edit_modal_title', { section: sectionTitle[editKey] ?? editKey })}
+            </div>
+            <p className="text-xs text-c-text-tertiary">{t('profile.steve_knows_page.edit_modal_helper')}</p>
             <textarea
               className="w-full min-h-[140px] rounded-lg bg-c-bg-app border border-c-border px-3 py-2 text-sm outline-none focus:border-cpoint-turquoise"
               value={editText}
@@ -503,7 +506,7 @@ export default function SteveKnowsMe() {
                 onClick={() => setEditKey(null)}
                 className="px-3 py-2 text-sm text-c-text-tertiary hover:text-white"
               >
-                Cancel
+                {t('profile.cancel')}
               </button>
               <button
                 type="button"
@@ -511,7 +514,7 @@ export default function SteveKnowsMe() {
                 onClick={() => void handleSaveEdit()}
                 className="px-4 py-2 rounded-lg bg-cpoint-turquoise text-black text-sm font-medium disabled:opacity-50"
               >
-                Save
+                {t('profile.steve_knows_page.save')}
               </button>
             </div>
           </div>
@@ -521,18 +524,15 @@ export default function SteveKnowsMe() {
       {showRefreshExplainer ? (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 p-4">
           <div className="w-full max-w-md rounded-2xl border border-c-border bg-c-bg-surface p-5 space-y-4">
-            <div className="font-semibold text-c-text-primary">Refresh Steve&apos;s view</div>
-            <p className="text-sm text-c-text-tertiary leading-relaxed">
-              When you refresh, Steve looks for updates to his picture of you — using your profile and public sources
-              (for example the web). This can take a minute. You can only do this occasionally.
-            </p>
+            <div className="font-semibold text-c-text-primary">{t('profile.steve_knows_page.refresh_explainer_title')}</div>
+            <p className="text-sm text-c-text-tertiary leading-relaxed">{t('profile.steve_knows_page.refresh_explainer_body')}</p>
             <div className="flex gap-2 justify-end">
               <button
                 type="button"
                 onClick={() => setShowRefreshExplainer(false)}
                 className="px-3 py-2 text-sm text-c-text-tertiary hover:text-white"
               >
-                Cancel
+                {t('profile.steve_knows_page.refresh_explainer_cancel')}
               </button>
               <button
                 type="button"
@@ -543,7 +543,7 @@ export default function SteveKnowsMe() {
                 }}
                 className="px-4 py-2 rounded-lg bg-cpoint-turquoise text-black text-sm font-medium disabled:opacity-50"
               >
-                Refresh
+                {t('profile.steve_knows_page.refresh_button')}
               </button>
             </div>
           </div>

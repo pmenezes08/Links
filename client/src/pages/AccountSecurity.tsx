@@ -1,4 +1,5 @@
-﻿import { useEffect, useState, useCallback } from 'react'
+﻿import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
 
@@ -18,6 +19,7 @@ type HiddenPost = {
 }
 
 export default function AccountSecurity() {
+  const { t } = useTranslation()
   const { setTitle } = useHeader()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<'security' | 'privacy'>('security')
@@ -25,25 +27,21 @@ export default function AccountSecurity() {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordMessage, setPasswordMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-  
-  // Blocked users state
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([])
   const [blockedUsersLoading, setBlockedUsersLoading] = useState(false)
   const [unblocking, setUnblocking] = useState<string | null>(null)
-  
-  // Hidden posts state
   const [hiddenPosts, setHiddenPosts] = useState<HiddenPost[]>([])
   const [hiddenPostsLoading, setHiddenPostsLoading] = useState(false)
   const [unhiding, setUnhiding] = useState<number | null>(null)
 
   useEffect(() => {
-    setTitle('Privacy & Security')
-  }, [setTitle])
+    setTitle(t('account.security.page_title'))
+  }, [setTitle, t])
 
   const loadBlockedUsers = useCallback(async () => {
     setBlockedUsersLoading(true)
     try {
-      const res = await fetch('/api/blocked_users', { credentials: 'include', headers: { 'Accept': 'application/json' } })
+      const res = await fetch('/api/blocked_users', { credentials: 'include', headers: { Accept: 'application/json' } })
       const j = await res.json()
       if (j?.success) {
         setBlockedUsers(j.blocked_users || [])
@@ -58,7 +56,7 @@ export default function AccountSecurity() {
   const loadHiddenPosts = useCallback(async () => {
     setHiddenPostsLoading(true)
     try {
-      const res = await fetch('/api/hidden_posts', { credentials: 'include', headers: { 'Accept': 'application/json' } })
+      const res = await fetch('/api/hidden_posts', { credentials: 'include', headers: { Accept: 'application/json' } })
       const j = await res.json()
       if (j?.success) {
         setHiddenPosts(j.hidden_posts || [])
@@ -84,16 +82,16 @@ export default function AccountSecurity() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ blocked_username: username })
+        body: JSON.stringify({ blocked_username: username }),
       })
       const j = await res.json()
       if (j?.success) {
         setBlockedUsers(prev => prev.filter(u => u.username !== username))
       } else {
-        alert(j?.error || 'Failed to unblock user')
+        alert(j?.error || t('account.security.unblock_failed'))
       }
     } catch {
-      alert('Network error')
+      alert(t('errors.network'))
     } finally {
       setUnblocking(null)
     }
@@ -106,16 +104,16 @@ export default function AccountSecurity() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ post_id: postId })
+        body: JSON.stringify({ post_id: postId }),
       })
       const j = await res.json()
       if (j?.success) {
         setHiddenPosts(prev => prev.filter(p => p.post_id !== postId))
       } else {
-        alert(j?.error || 'Failed to unhide post')
+        alert(j?.error || t('account.security.unhide_failed'))
       }
     } catch {
-      alert('Network error')
+      alert(t('errors.network'))
     } finally {
       setUnhiding(null)
     }
@@ -124,15 +122,15 @@ export default function AccountSecurity() {
   const handlePasswordUpdate = async () => {
     setPasswordMessage(null)
     if (!currentPassword || !newPassword || !confirmPassword) {
-      setPasswordMessage({ type: 'error', text: 'Please fill in all password fields' })
+      setPasswordMessage({ type: 'error', text: t('account.security.fill_all_fields') })
       return
     }
     if (newPassword !== confirmPassword) {
-      setPasswordMessage({ type: 'error', text: 'New passwords do not match' })
+      setPasswordMessage({ type: 'error', text: t('account.security.passwords_mismatch') })
       return
     }
     if (newPassword.length < 6) {
-      setPasswordMessage({ type: 'error', text: 'New password must be at least 6 characters' })
+      setPasswordMessage({ type: 'error', text: t('account.security.password_too_short') })
       return
     }
     try {
@@ -142,15 +140,15 @@ export default function AccountSecurity() {
       const resp = await fetch('/update_password', { method: 'POST', credentials: 'include', body: fd })
       const json = await resp.json().catch(() => null)
       if (json?.success) {
-        setPasswordMessage({ type: 'success', text: 'Password updated successfully!' })
+        setPasswordMessage({ type: 'success', text: t('account.security.password_updated') })
         setCurrentPassword('')
         setNewPassword('')
         setConfirmPassword('')
       } else {
-        setPasswordMessage({ type: 'error', text: json?.error || 'Failed to update password' })
+        setPasswordMessage({ type: 'error', text: json?.error || t('account.security.password_update_failed') })
       }
     } catch {
-      setPasswordMessage({ type: 'error', text: 'Network error. Please try again.' })
+      setPasswordMessage({ type: 'error', text: t('account.security.network_retry') })
     }
   }
 
@@ -163,23 +161,23 @@ export default function AccountSecurity() {
           onClick={() => navigate('/account_settings')}
         >
           <i className="fa-solid fa-arrow-left" />
-          Back to Account Settings
+          {t('account.security.back_to_settings')}
         </button>
 
         <div className="rounded-xl border border-c-border bg-c-bg-app p-6 space-y-4">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8ca0a8]">Privacy &amp; Security</p>
-            <h1 className="text-xl font-semibold text-c-text-primary">Keep your data protected</h1>
-            <p className="text-sm text-c-text-primary/60">
-              Update your password and manage your privacy settings.
-            </p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8ca0a8]">{t('account.security.badge')}</p>
+            <h1 className="text-xl font-semibold text-c-text-primary">{t('account.security.headline')}</h1>
+            <p className="text-sm text-c-text-primary/60">{t('account.security.helper')}</p>
           </div>
 
           <div className="flex gap-1 rounded-full border border-c-border bg-c-hover-bg p-1 overflow-hidden">
-            {[
-              { key: 'security', label: 'Security' },
-              { key: 'privacy', label: 'Privacy' },
-            ].map(tab => {
+            {(
+              [
+                { key: 'security', label: t('account.security.tab_security') },
+                { key: 'privacy', label: t('account.security.tab_privacy') },
+              ] as const
+            ).map(tab => {
               const isActive = activeTab === tab.key
               return (
                 <button
@@ -188,7 +186,7 @@ export default function AccountSecurity() {
                   className={`flex-1 min-w-0 rounded-full px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition truncate ${
                     isActive ? 'bg-white text-black' : 'text-c-text-secondary hover:text-c-text-primary'
                   }`}
-                  onClick={() => setActiveTab(tab.key as typeof activeTab)}
+                  onClick={() => setActiveTab(tab.key)}
                 >
                   {tab.label}
                 </button>
@@ -199,7 +197,7 @@ export default function AccountSecurity() {
           <div className="space-y-4">
             {activeTab === 'security' ? (
               <>
-                {passwordMessage && (
+                {passwordMessage ? (
                   <div
                     className={`rounded-lg border p-4 ${
                       passwordMessage.type === 'success'
@@ -209,35 +207,35 @@ export default function AccountSecurity() {
                   >
                     {passwordMessage.text}
                   </div>
-                )}
+                ) : null}
                 <div className="space-y-4">
                   <div>
-                    <label className="mb-2 block text-sm font-medium">Current Password</label>
+                    <label className="mb-2 block text-sm font-medium">{t('account.security.current_password')}</label>
                     <input
                       type="password"
                       value={currentPassword}
                       onChange={e => setCurrentPassword(e.target.value)}
-                      placeholder="Enter current password"
+                      placeholder={t('account.security.current_password_placeholder')}
                       className="w-full rounded-lg border border-white/20 bg-c-hover-bg px-4 py-3 text-c-text-primary focus:border-cpoint-turquoise focus:outline-none"
                     />
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-medium">New Password</label>
+                    <label className="mb-2 block text-sm font-medium">{t('account.security.new_password')}</label>
                     <input
                       type="password"
                       value={newPassword}
                       onChange={e => setNewPassword(e.target.value)}
-                      placeholder="Enter new password"
+                      placeholder={t('account.security.new_password_placeholder')}
                       className="w-full rounded-lg border border-white/20 bg-c-hover-bg px-4 py-3 text-c-text-primary focus:border-cpoint-turquoise focus:outline-none"
                     />
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-medium">Confirm New Password</label>
+                    <label className="mb-2 block text-sm font-medium">{t('account.security.confirm_password')}</label>
                     <input
                       type="password"
                       value={confirmPassword}
                       onChange={e => setConfirmPassword(e.target.value)}
-                      placeholder="Confirm new password"
+                      placeholder={t('account.security.confirm_password_placeholder')}
                       className="w-full rounded-lg border border-white/20 bg-c-hover-bg px-4 py-3 text-c-text-primary focus:border-cpoint-turquoise focus:outline-none"
                     />
                   </div>
@@ -246,24 +244,21 @@ export default function AccountSecurity() {
                     onClick={handlePasswordUpdate}
                     className="rounded-lg bg-cpoint-turquoise px-6 py-3 font-medium text-black transition-colors hover:brightness-90"
                   >
-                    Update Password
+                    {t('account.security.update_password')}
                   </button>
                 </div>
               </>
             ) : (
               <div className="space-y-6">
-                {/* Blocked Users Section */}
                 <div className="space-y-3">
                   <div>
                     <h3 className="text-base font-semibold flex items-center gap-2">
                       <i className="fa-solid fa-ban text-red-400" />
-                      Blocked Users
+                      {t('account.security.blocked_users_title')}
                     </h3>
-                    <p className="text-xs text-c-text-primary/60 mt-1">
-                      Blocked users can't see your posts or send you messages.
-                    </p>
+                    <p className="text-xs text-c-text-primary/60 mt-1">{t('account.security.blocked_users_helper')}</p>
                   </div>
-                  
+
                   {blockedUsersLoading ? (
                     <div className="text-center py-4">
                       <i className="fa-solid fa-spinner fa-spin text-c-text-primary/60" />
@@ -271,23 +266,19 @@ export default function AccountSecurity() {
                   ) : blockedUsers.length === 0 ? (
                     <div className="text-center py-4 text-c-text-primary/50 text-sm rounded-lg bg-c-hover-bg border border-c-border">
                       <i className="fa-solid fa-check-circle mr-2 text-green-400" />
-                      You haven't blocked anyone
+                      {t('account.security.no_blocked_users')}
                     </div>
                   ) : (
                     <div className="space-y-2 max-h-60 overflow-y-auto">
                       {blockedUsers.map(user => (
-                        <div 
+                        <div
                           key={user.username}
                           className="flex items-center justify-between p-3 rounded-lg bg-c-hover-bg border border-c-border"
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-9 h-9 rounded-full bg-c-active-bg overflow-hidden flex-shrink-0">
                               {user.profile_picture ? (
-                                <img 
-                                  src={user.profile_picture} 
-                                  alt={user.username}
-                                  className="w-full h-full object-cover"
-                                />
+                                <img src={user.profile_picture} alt={user.username} className="w-full h-full object-cover" />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center text-c-text-primary/60">
                                   <i className="fa-solid fa-user text-xs" />
@@ -310,7 +301,7 @@ export default function AccountSecurity() {
                             {unblocking === user.username ? (
                               <i className="fa-solid fa-spinner fa-spin" />
                             ) : (
-                              'Unblock'
+                              t('account.security.unblock')
                             )}
                           </button>
                         </div>
@@ -319,18 +310,15 @@ export default function AccountSecurity() {
                   )}
                 </div>
 
-                {/* Hidden Posts Section */}
                 <div className="space-y-3 pt-4 border-t border-c-border">
                   <div>
                     <h3 className="text-base font-semibold flex items-center gap-2">
                       <i className="fa-solid fa-eye-slash text-orange-400" />
-                      Hidden Posts
+                      {t('account.security.hidden_posts_title')}
                     </h3>
-                    <p className="text-xs text-c-text-primary/60 mt-1">
-                      Posts you've hidden from your feed. Unhide them to see them again.
-                    </p>
+                    <p className="text-xs text-c-text-primary/60 mt-1">{t('account.security.hidden_posts_helper')}</p>
                   </div>
-                  
+
                   {hiddenPostsLoading ? (
                     <div className="text-center py-4">
                       <i className="fa-solid fa-spinner fa-spin text-c-text-primary/60" />
@@ -338,12 +326,12 @@ export default function AccountSecurity() {
                   ) : hiddenPosts.length === 0 ? (
                     <div className="text-center py-4 text-c-text-primary/50 text-sm rounded-lg bg-c-hover-bg border border-c-border">
                       <i className="fa-solid fa-check-circle mr-2 text-green-400" />
-                      You haven't hidden any posts
+                      {t('account.security.no_hidden_posts')}
                     </div>
                   ) : (
                     <div className="space-y-2 max-h-60 overflow-y-auto">
                       {hiddenPosts.map(post => (
-                        <div 
+                        <div
                           key={post.post_id}
                           className="flex items-center justify-between p-3 rounded-lg bg-c-hover-bg border border-c-border"
                         >
@@ -364,7 +352,7 @@ export default function AccountSecurity() {
                             {unhiding === post.post_id ? (
                               <i className="fa-solid fa-spinner fa-spin" />
                             ) : (
-                              'Unhide'
+                              t('account.security.unhide')
                             )}
                           </button>
                         </div>
