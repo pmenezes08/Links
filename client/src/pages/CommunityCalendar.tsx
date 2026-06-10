@@ -23,6 +23,9 @@ type EventItem = {
   start_time?: string | null
   end_time?: string | null
   timezone?: string | null
+  starts_at_utc?: string | null
+  ends_at_utc?: string | null
+  meeting_url?: string | null
   description?: string | null
   user_rsvp?: RSVPResponse | null
   rsvp_counts?: {
@@ -47,6 +50,10 @@ function eventItemToExportFields(event: EventItem): CalendarExportEventFields {
     end_time: event.end_time ?? null,
     description: event.description ?? null,
     community_name: null,
+    timezone: event.timezone ?? null,
+    starts_at_utc: event.starts_at_utc ?? null,
+    ends_at_utc: event.ends_at_utc ?? null,
+    meeting_url: event.meeting_url ?? null,
   }
 }
 
@@ -55,18 +62,112 @@ type Member = {
   profile_picture?: string | null
 }
 
-const TIMEZONE_OPTIONS = [
-  ['EST', 'EST (Eastern Time)'],
-  ['CST', 'CST (Central Time)'],
-  ['MST', 'MST (Mountain Time)'],
-  ['PST', 'PST (Pacific Time)'],
-  ['GMT', 'GMT (Greenwich Mean Time)'],
-  ['CET', 'CET (Central European Time)'],
-  ['IST', 'IST (India Standard Time)'],
-  ['JST', 'JST (Japan Standard Time)'],
-  ['AEST', 'AEST (Australian Eastern Time)'],
-  ['UTC', 'UTC (Coordinated Universal Time)'],
+const COMMON_TIMEZONE_VALUES = [
+  'Europe/Lisbon',
+  'Europe/London',
+  'Europe/Dublin',
+  'Europe/Madrid',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'Europe/Rome',
+  'Europe/Amsterdam',
+  'Europe/Athens',
+  'Europe/Helsinki',
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Phoenix',
+  'America/Los_Angeles',
+  'America/Toronto',
+  'America/Vancouver',
+  'America/Mexico_City',
+  'America/Sao_Paulo',
+  'America/Argentina/Buenos_Aires',
+  'Africa/Casablanca',
+  'Africa/Johannesburg',
+  'Africa/Cairo',
+  'Asia/Dubai',
+  'Asia/Jerusalem',
+  'Asia/Kolkata',
+  'Asia/Bangkok',
+  'Asia/Singapore',
+  'Asia/Hong_Kong',
+  'Asia/Shanghai',
+  'Asia/Tokyo',
+  'Asia/Seoul',
+  'Australia/Perth',
+  'Australia/Adelaide',
+  'Australia/Brisbane',
+  'Australia/Sydney',
+  'Pacific/Auckland',
+  'UTC',
 ] as const
+
+type TimeZoneOption = {
+  value: string
+  label: string
+  searchText: string
+}
+
+function supportedTimeZoneValues(): string[] {
+  const values = new Set<string>(['UTC'])
+  try {
+    const fn = (Intl as unknown as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf
+    if (typeof fn === 'function') {
+      fn('timeZone').forEach((tz) => values.add(tz))
+    }
+  } catch {
+    /* Fall back to the common zones below. */
+  }
+  COMMON_TIMEZONE_VALUES.forEach((tz) => values.add(tz))
+  return Array.from(values)
+}
+
+function timeZoneCity(tz: string): string {
+  const parts = tz.split('/')
+  return (parts[parts.length - 1] || tz).replace(/_/g, ' ')
+}
+
+function timeZoneRegion(tz: string): string {
+  if (tz === 'UTC') return 'UTC'
+  return (tz.split('/')[0] || 'Other').replace(/_/g, ' ')
+}
+
+function timeZoneOptionLabel(tz: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz,
+      timeZoneName: 'longOffset',
+    }).formatToParts(new Date())
+    const off = parts.find((p) => p.type === 'timeZoneName')?.value || ''
+    return `${off} - ${timeZoneCity(tz)} (${tz})`
+  } catch {
+    return tz
+  }
+}
+
+function timeZoneOption(tz: string): TimeZoneOption {
+  const label = timeZoneOptionLabel(tz)
+  return {
+    value: tz,
+    label,
+    searchText: `${label} ${tz} ${timeZoneRegion(tz)} ${timeZoneCity(tz)}`.toLowerCase(),
+  }
+}
+
+function buildTimeZoneOptions(currentTz?: string | null): TimeZoneOption[] {
+  const pinned = new Set<string>()
+  COMMON_TIMEZONE_VALUES.forEach((tz) => pinned.add(tz))
+  if (currentTz) pinned.add(currentTz)
+
+  const common = Array.from(pinned).map(timeZoneOption)
+  const supported = supportedTimeZoneValues()
+    .filter((tz) => !pinned.has(tz))
+    .map(timeZoneOption)
+    .sort((a, b) => a.label.localeCompare(b.label))
+
+  return [...common, ...supported]
+}
 
 const INPUT_CLASS = 'mt-1 w-full rounded-xl border border-c-border bg-c-bg-app/70 px-3 py-2 text-[16px] text-c-text-primary outline-none transition focus:border-cpoint-turquoise/80 focus:ring-2 focus:ring-cpoint-turquoise/20'
 const LABEL_CLASS = 'text-xs font-medium text-c-text-tertiary'
@@ -151,50 +252,35 @@ function toUtcFormFields(formData: FormData) {
     if (value) params.append(name, value)
   }
 
-  const title = String(formData.get('title') || '').trim()
-  const date = String(formData.get('date') || '')
-  const endDate = String(formData.get('end_date') || '')
-  const startTime = String(formData.get('start_time') || '')
-  const endTime = String(formData.get('end_time') || '')
-
-  append('title', title)
+  append('title', String(formData.get('title') || '').trim())
   append('description', String(formData.get('description') || '').trim())
+  append('meeting_url', String(formData.get('meeting_url') || '').trim())
   append('timezone', String(formData.get('timezone') || ''))
   append('notification_preferences', String(formData.get('notification_preferences') || 'all'))
-
-  if (date && startTime) {
-    try {
-      const utc = new Date(`${date}T${startTime}`)
-      append('date', utc.toISOString().slice(0, 10))
-      append('start_time', utc.toISOString().slice(11, 16))
-    } catch {
-      append('date', date)
-      append('start_time', startTime)
-    }
-  } else {
-    append('date', date)
-    append('start_time', startTime)
-  }
-
-  if (endDate && endTime) {
-    try {
-      const utc = new Date(`${endDate}T${endTime}`)
-      append('end_date', utc.toISOString().slice(0, 10))
-      append('end_time', utc.toISOString().slice(11, 16))
-    } catch {
-      append('end_date', endDate)
-      append('end_time', endTime)
-    }
-  } else {
-    append('end_date', endDate)
-    append('end_time', endTime)
-  }
+  append('date', String(formData.get('date') || ''))
+  append('start_time', String(formData.get('start_time') || ''))
+  append('end_date', String(formData.get('end_date') || ''))
+  append('end_time', String(formData.get('end_time') || ''))
 
   return params
 }
 
 function EventFormFields({ event }: { event?: EventItem }) {
   const { t } = useTranslation()
+  const defaultTimezone = event?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  const [timezoneSearch, setTimezoneSearch] = useState('')
+  const [selectedTimezone, setSelectedTimezone] = useState(defaultTimezone)
+  const timezoneOptions = useMemo(() => buildTimeZoneOptions(selectedTimezone), [selectedTimezone])
+  const normalizedTimezoneSearch = timezoneSearch.trim().toLowerCase()
+  const visibleTimezoneOptions = useMemo(() => {
+    if (!normalizedTimezoneSearch) {
+      return timezoneOptions.filter((option) => COMMON_TIMEZONE_VALUES.includes(option.value as typeof COMMON_TIMEZONE_VALUES[number]) || option.value === selectedTimezone)
+    }
+    return timezoneOptions
+      .filter((option) => option.value === selectedTimezone || option.searchText.includes(normalizedTimezoneSearch))
+      .slice(0, 80)
+  }, [normalizedTimezoneSearch, selectedTimezone, timezoneOptions])
+
   return (
     <div className="grid grid-cols-2 gap-2.5">
       <label className={`col-span-2 ${LABEL_CLASS}`}>{t('calendar.title_label')}
@@ -213,13 +299,30 @@ function EventFormFields({ event }: { event?: EventItem }) {
         <input name="end_time" type="time" defaultValue={normalizeTime(event?.end_time)} className={INPUT_CLASS} />
       </label>
       <label className={`col-span-2 ${LABEL_CLASS}`}>{t('calendar.timezone')}
-        <select name="timezone" defaultValue={event?.timezone || 'UTC'} className={INPUT_CLASS} required>
+        <input
+          type="search"
+          value={timezoneSearch}
+          onChange={(e) => setTimezoneSearch(e.target.value)}
+          className={INPUT_CLASS}
+          placeholder={t('calendar.search_timezone')}
+          autoComplete="off"
+        />
+        <select name="timezone" value={selectedTimezone} onChange={(e) => setSelectedTimezone(e.target.value)} className={INPUT_CLASS} required>
           <option value="">{t('calendar.select_timezone')}</option>
-          {TIMEZONE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          {visibleTimezoneOptions.map((tz) => (
+            <option key={tz.value} value={tz.value}>
+              {tz.label}
+            </option>
+          ))}
         </select>
+        <span className="mt-2 block text-[11px] font-normal normal-case tracking-normal text-c-text-tertiary">{t('calendar.timezone_search_hint')}</span>
       </label>
       <label className={`col-span-2 ${LABEL_CLASS}`}>{t('calendar.description')}
         <textarea name="description" defaultValue={event?.description || ''} rows={3} className={INPUT_CLASS} placeholder={t('calendar.description_placeholder')} />
+      </label>
+      <label className={`col-span-2 ${LABEL_CLASS}`}>{t('calendar.meeting_link')}
+        <input name="meeting_url" type="url" inputMode="url" defaultValue={event?.meeting_url || ''} className={INPUT_CLASS} placeholder={t('calendar.meeting_link_placeholder')} />
+        <span className="mt-2 block text-[11px] font-normal normal-case tracking-normal text-c-text-tertiary">{t('calendar.meeting_link_hint')}</span>
       </label>
       {!event ? (
         <label className={`col-span-2 ${LABEL_CLASS}`}>{t('calendar.reminders')}
@@ -342,6 +445,8 @@ export default function CommunityCalendar() {
   const [rsvpEvent, setRsvpEvent] = useState<EventItem | null>(null)
   const [editingEvent, setEditingEvent] = useState<EventItem | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [isCreating, setIsCreating] = useState(false)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const keyboardOffsetRef = useRef(0)
   const focusedFieldRef = useRef<HTMLElement | null>(null)
@@ -493,7 +598,26 @@ export default function CommunityCalendar() {
     setTimeout(() => setSuccessMsg(null), 2200)
   }, [t])
 
+  function continueCreateFlow() {
+    setCreateError(null)
+    const form = createFormRef.current
+    if (form && !form.reportValidity()) return
+    setCreateStep('invite')
+  }
+
   async function createEvent(formData: FormData) {
+    if (isCreating) return
+    setCreateError(null)
+    const title = String(formData.get('title') || '').trim()
+    const date = String(formData.get('date') || '').trim()
+    const timezone = String(formData.get('timezone') || '').trim()
+    if (!title || !date || !timezone) {
+      setCreateStep('details')
+      setCreateError(t('calendar.complete_event_details'))
+      requestAnimationFrame(() => createFormRef.current?.reportValidity())
+      return
+    }
+
     const params = toUtcFormFields(formData)
     if (community_id) params.append('community_id', String(community_id))
     if (groupId) params.append('group_id', groupId)
@@ -504,24 +628,31 @@ export default function CommunityCalendar() {
         .forEach(([username]) => params.append('invited_members[]', username))
     }
 
-    const response = await fetch('/add_calendar_event', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params,
-    })
-    const payload = await response.json().catch(() => null)
-    if (payload?.success) {
-      await reloadEvents()
-      setSuccessMsg(t('calendar.event_created'))
-      setCreateOpen(false)
-      setCreateStep('details')
-      setInviteAll(false)
-      setSelectedMembers({})
-      createFormRef.current?.reset()
-      setTimeout(() => setSuccessMsg(null), 2200)
-    } else {
-      alert(payload?.message || t('calendar.create_failed'))
+    setIsCreating(true)
+    try {
+      const response = await fetch('/add_calendar_event', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params,
+      })
+      const payload = await response.json().catch(() => null)
+      if (payload?.success) {
+        await reloadEvents()
+        setSuccessMsg(t('calendar.event_created'))
+        setCreateOpen(false)
+        setCreateStep('details')
+        setInviteAll(false)
+        setSelectedMembers({})
+        createFormRef.current?.reset()
+        setTimeout(() => setSuccessMsg(null), 2200)
+      } else {
+        setCreateError(payload?.message || t('calendar.create_failed'))
+      }
+    } catch {
+      setCreateError(t('calendar.create_failed'))
+    } finally {
+      setIsCreating(false)
     }
   }
 
@@ -559,7 +690,11 @@ export default function CommunityCalendar() {
               start_time: e.start_time ?? null,
               end_time: e.end_time ?? null,
               description: e.description ?? null,
+              meeting_url: e.meeting_url ?? null,
               community_name: e.community_name ?? null,
+              timezone: e.timezone ?? null,
+              starts_at_utc: e.starts_at_utc ?? null,
+              ends_at_utc: e.ends_at_utc ?? null,
             })
           }
         } catch (e) {
@@ -686,7 +821,7 @@ export default function CommunityCalendar() {
               <div className="mx-auto grid h-11 w-11 place-items-center rounded-xl bg-cpoint-turquoise/10 text-cpoint-turquoise"><i className="fa-regular fa-calendar" /></div>
               <h3 className="mt-3 text-base font-semibold">{activeTab === 'archive' ? t('calendar.no_archived_events') : t('calendar.nothing_scheduled')}</h3>
               <p className="mt-1.5 text-xs text-c-text-tertiary">{activeTab === 'archive' ? t('calendar.archive_empty_hint') : t('calendar.upcoming_empty_hint')}</p>
-              {activeTab !== 'archive' ? <button className="mt-4 rounded-full bg-cpoint-turquoise px-4 py-1.5 text-xs font-semibold text-black" onClick={() => setCreateOpen(true)}>{t('calendar.create_event')}</button> : null}
+              {activeTab !== 'archive' ? <button className="mt-4 rounded-full bg-cpoint-turquoise px-4 py-1.5 text-xs font-semibold text-black" onClick={() => { setCreateError(null); setCreateOpen(true) }}>{t('calendar.create_event')}</button> : null}
             </div>
           ) : (
             visibleEvents.map(event => (
@@ -710,7 +845,7 @@ export default function CommunityCalendar() {
         <button
           type="button"
           className="fixed bottom-[5.25rem] left-1/2 z-40 inline-flex w-[88%] max-w-sm -translate-x-1/2 items-center justify-center gap-2 rounded-full bg-cpoint-turquoise px-5 py-3 text-sm font-semibold text-c-text-on-accent shadow-[0_0_28px_rgba(0,206,200,0.45)] hover:brightness-110"
-          onClick={() => setCreateOpen(true)}
+          onClick={() => { setCreateError(null); setCreateOpen(true) }}
         >
           <i className="fa-solid fa-plus text-xs" />
           <span>{t('calendar.new_event')}</span>
@@ -727,7 +862,12 @@ export default function CommunityCalendar() {
             paddingBottom: `${keyboardOffset + 16}px`,
             transition: 'padding 180ms ease',
           } as CSSProperties}
-          onClick={event => event.currentTarget === event.target && setCreateOpen(false)}
+          onClick={event => {
+            if (event.currentTarget === event.target) {
+              setCreateError(null)
+              setCreateOpen(false)
+            }
+          }}
           onFocusCapture={trackFocusedField}
         >
           <div className="w-full max-w-2xl rounded-2xl border border-c-border bg-c-bg-elevated p-3.5 shadow-2xl">
@@ -736,13 +876,13 @@ export default function CommunityCalendar() {
                 <h2 className="text-base font-semibold">{t('calendar.create_event_title')}</h2>
                 <p className="mt-0.5 text-xs text-c-text-tertiary">{t('calendar.step_of', { current: createStep === 'details' ? 1 : 2, total: 2 })}</p>
               </div>
-              <button className="grid h-8 w-8 place-items-center rounded-full border border-c-border hover:bg-c-hover-bg" onClick={() => setCreateOpen(false)} aria-label={t('common.close')}><i className="fa-solid fa-xmark" /></button>
+              <button className="grid h-8 w-8 place-items-center rounded-full border border-c-border hover:bg-c-hover-bg" onClick={() => { setCreateError(null); setCreateOpen(false) }} aria-label={t('common.close')}><i className="fa-solid fa-xmark" /></button>
             </div>
-            <form ref={createFormRef} onSubmit={event => { event.preventDefault(); createEvent(new FormData(event.currentTarget)) }}>
+            <form ref={createFormRef} noValidate onSubmit={event => { event.preventDefault(); createEvent(new FormData(event.currentTarget)) }}>
               <div className={createStep === 'details' ? 'block' : 'hidden'}>
                 <EventFormFields />
                 <div className="mt-3 flex justify-end">
-                  <button type="button" className="rounded-full bg-cpoint-turquoise px-4 py-2 text-sm font-semibold text-black hover:brightness-110" onClick={() => setCreateStep('invite')}>{t('calendar.continue')}</button>
+                  <button type="button" className="rounded-full bg-cpoint-turquoise px-4 py-2 text-sm font-semibold text-black hover:brightness-110" onClick={continueCreateFlow}>{t('calendar.continue')}</button>
                 </div>
               </div>
               <div className={createStep === 'invite' ? 'block' : 'hidden'}>
@@ -763,12 +903,17 @@ export default function CommunityCalendar() {
                   ) : <p className="mt-2.5 text-sm text-c-text-tertiary">{t('calendar.invite_all_hint')}</p>}
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3">
-                  <button type="button" className="rounded-full border border-c-border px-4 py-2 text-sm hover:bg-c-hover-bg" onClick={() => setCreateStep('details')}>{t('common.back')}</button>
-                  <button type="submit" className="rounded-full bg-cpoint-turquoise px-4 py-2 text-sm font-semibold text-black hover:brightness-110">
-                    {inviteAll ? t('calendar.create_for_everyone') : selectedCount ? t('calendar.create_for_count', { count: selectedCount }) : t('calendar.create_event_submit')}
+                  <button type="button" className="rounded-full border border-c-border px-4 py-2 text-sm hover:bg-c-hover-bg disabled:opacity-60" onClick={() => setCreateStep('details')} disabled={isCreating}>{t('common.back')}</button>
+                  <button type="submit" className="rounded-full bg-cpoint-turquoise px-4 py-2 text-sm font-semibold text-black hover:brightness-110 disabled:cursor-wait disabled:opacity-60" disabled={isCreating}>
+                    {isCreating ? t('calendar.creating_event') : inviteAll ? t('calendar.create_for_everyone') : selectedCount ? t('calendar.create_for_count', { count: selectedCount }) : t('calendar.create_event_submit')}
                   </button>
                 </div>
               </div>
+              {createError ? (
+                <div className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                  {createError}
+                </div>
+              ) : null}
             </form>
           </div>
         </div>

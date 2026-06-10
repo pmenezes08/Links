@@ -84,7 +84,7 @@ function parseHm(t: string | null | undefined): { h: number; min: number } | nul
   return { h, min }
 }
 
-/** Local wall times for calendar event (device timezone). */
+/** Local wall times for calendar event (device timezone) or UTC instants if available. */
 export function eventToNativeRange(ev: CalendarExportEventFields): {
   startMs: number
   endMs: number
@@ -105,6 +105,14 @@ export function eventToNativeRange(ev: CalendarExportEventFields): {
     const endExclusive = new Date(e.y, e.m, e.d, 0, 0, 0, 0)
     endExclusive.setDate(endExclusive.getDate() + 1)
     return { startMs, endMs: endExclusive.getTime(), isAllDay: true }
+  }
+
+  if (ev.starts_at_utc && ev.ends_at_utc) {
+    const startMs = new Date(ev.starts_at_utc).getTime()
+    const endMs = new Date(ev.ends_at_utc).getTime()
+    if (!Number.isNaN(startMs) && !Number.isNaN(endMs)) {
+      return { startMs, endMs, isAllDay: false }
+    }
   }
 
   const s = parseYmd(startDateStr)
@@ -145,9 +153,11 @@ function buildCreateEventPayload(
   }
   const loc = snapshot.community_name?.trim()
   if (loc) payload.location = loc
-  const notes = snapshot.description?.trim()
+  const noteParts = [snapshot.description?.trim(), snapshot.meeting_url ? `Meeting link: ${snapshot.meeting_url}` : '']
+    .filter(Boolean)
+  const notes = noteParts.join('\n\n')
   if (notes) payload.notes = notes
-  payload.url = eventDeepLink(snapshot.id)
+  payload.url = snapshot.meeting_url || eventDeepLink(snapshot.id)
   if (calendarId) payload.calendarId = calendarId
   return payload
 }

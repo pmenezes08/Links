@@ -7,6 +7,87 @@ from datetime import datetime, timedelta, timezone
 import os
 import re
 from typing import Any
+from urllib.parse import urlparse
+
+try:
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+except ImportError:
+    ZoneInfo = None  # type: ignore
+    ZoneInfoNotFoundError = Exception  # type: ignore
+
+LEGACY_TZ_MAP = {
+    "EST": "America/New_York",
+    "CST": "America/Chicago",
+    "MST": "America/Denver",
+    "PST": "America/Los_Angeles",
+    "GMT": "Etc/GMT",
+    "CET": "Europe/Paris",
+    "IST": "Asia/Kolkata",
+    "JST": "Asia/Tokyo",
+    "AEST": "Australia/Sydney",
+    "UTC": "UTC",
+}
+
+def resolve_timezone_name(tz_name: str | None) -> str:
+    name = str(tz_name or "UTC").strip()
+    if not name:
+        return "UTC"
+    if name in LEGACY_TZ_MAP:
+        return LEGACY_TZ_MAP[name]
+    return name
+
+def derive_utc_instants(
+    date_str: str,
+    end_date_str: str | None,
+    start_time_str: str | None,
+    end_time_str: str | None,
+    tz_name: str | None,
+) -> tuple[datetime | None, datetime | None]:
+    if not date_str or not start_time_str:
+        return None, None
+
+    resolved_tz_name = resolve_timezone_name(tz_name)
+    try:
+        tz = ZoneInfo(resolved_tz_name)
+    except Exception:
+        tz = timezone.utc
+
+    try:
+        shh, smm = map(int, start_time_str.split(":")[:2])
+        sy, sm, sd = map(int, date_str.split("-")[:3])
+        start_local = datetime(sy, sm, sd, shh, smm, tzinfo=tz)
+        starts_at_utc = start_local.astimezone(timezone.utc)
+    except Exception:
+        return None, None
+
+    ends_at_utc = None
+    if end_time_str:
+        try:
+            ehh, emm = map(int, end_time_str.split(":")[:2])
+            ed_str = end_date_str or date_str
+            ey, em, ed = map(int, ed_str.split("-")[:3])
+            end_local = datetime(ey, em, ed, ehh, emm, tzinfo=tz)
+            ends_at_utc = end_local.astimezone(timezone.utc)
+        except Exception:
+            pass
+
+    if ends_at_utc is None:
+        ends_at_utc = starts_at_utc + timedelta(hours=1)
+
+    return starts_at_utc, ends_at_utc
+
+def format_utc_datetime(dt: Any) -> str | None:
+    if not dt:
+        return None
+    if isinstance(dt, str):
+        if dt.endswith("Z"):
+            return dt
+        if " " in dt:
+            return dt.replace(" ", "T") + "Z"
+        return dt
+    if isinstance(dt, datetime):
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return None
 
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services.group_feed_access import check_group_feed_access
@@ -15,12 +96,55 @@ GROUPS_TBL_CAL = "`groups`" if USE_MYSQL else "groups"
 GROUP_MEMBERS_TBL = "`group_members`" if USE_MYSQL else "group_members"
 from backend.services.notifications import create_notification, send_push_to_user
 
+_calendar_event_columns_ensured = False
+
 
 class CalendarError(Exception):
-    def __init__(self, message: str, status: int = 400):
+    def __init__(
+        self,
+        message: str,
+        status: int = 400,
+        *,
+        message_key: str | None = None,
+        message_params: dict[str, Any] | None = None,
+    ):
         super().__init__(message)
         self.message = message
         self.status = status
+        self.message_key = message_key
+        self.message_params = message_params or {}
+
+
+def ensure_calendar_event_columns() -> None:
+    """Ensure columns used by calendar routes exist before reads/writes."""
+    global _calendar_event_columns_ensured
+    if _calendar_event_columns_ensured:
+        return
+    required_columns = (
+        ("timezone", "VARCHAR(100) NULL"),
+        ("meeting_url", "VARCHAR(500) NULL"),
+        ("notification_preferences", "VARCHAR(50) DEFAULT 'all'"),
+        ("starts_at_utc", "DATETIME NULL"),
+        ("ends_at_utc", "DATETIME NULL"),
+    )
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        if USE_MYSQL:
+            for col_name, col_def in required_columns:
+                cursor.execute(f"SHOW COLUMNS FROM calendar_events LIKE '{col_name}'")
+                if not cursor.fetchone():
+                    cursor.execute(f"ALTER TABLE calendar_events ADD COLUMN {col_name} {col_def}")
+        else:
+            cursor.execute("PRAGMA table_info(calendar_events)")
+            existing = {
+                (row["name"] if hasattr(row, "keys") else row[1])
+                for row in (cursor.fetchall() or [])
+            }
+            for col_name, col_def in required_columns:
+                if col_name not in existing:
+                    cursor.execute(f"ALTER TABLE calendar_events ADD COLUMN {col_name} {col_def}")
+        conn.commit()
+    _calendar_event_columns_ensured = True
 
 
 @dataclass
@@ -31,6 +155,7 @@ class EventInput:
     start_time: str | None = None
     end_time: str | None = None
     timezone: str | None = None
+    meeting_url: str | None = None
     description: str | None = None
     notification_preferences: str = "all"
     community_id: int | None = None
@@ -66,30 +191,72 @@ def extract_time(value: Any) -> str | None:
 
 def validate_event_input(data: EventInput) -> None:
     if not data.title or not data.date:
-        raise CalendarError("Title and start date are required")
+        raise CalendarError(
+            "Title and start date are required",
+            message_key="calendar.errors.title_start_required",
+        )
     try:
         start_dt = datetime.strptime(data.date, "%Y-%m-%d")
     except ValueError as exc:
-        raise CalendarError("Invalid start date format") from exc
+        raise CalendarError(
+            "Invalid start date format",
+            message_key="calendar.errors.invalid_start_date",
+        ) from exc
     if data.end_date:
         try:
             end_dt = datetime.strptime(data.end_date, "%Y-%m-%d")
         except ValueError as exc:
-            raise CalendarError("Invalid end date format") from exc
+            raise CalendarError(
+                "Invalid end date format",
+                message_key="calendar.errors.invalid_end_date",
+            ) from exc
         if end_dt < start_dt:
-            raise CalendarError("End date cannot be before start date")
+            raise CalendarError(
+                "End date cannot be before start date",
+                message_key="calendar.errors.end_before_start_date",
+            )
     for label, value in (("start", data.start_time), ("end", data.end_time)):
         if value:
             try:
                 datetime.strptime(value, "%H:%M")
             except ValueError as exc:
-                raise CalendarError(f"Invalid {label} time format") from exc
+                key = (
+                    "calendar.errors.invalid_start_time_format"
+                    if label == "start"
+                    else "calendar.errors.invalid_end_time_format"
+                )
+                raise CalendarError(
+                    f"Invalid {label} time format",
+                    message_key=key,
+                ) from exc
     if data.start_time and data.end_time:
         end_date = data.end_date or data.date
         start_value = f"{data.date} {data.start_time}:00"
         end_value = f"{end_date} {data.end_time}:00"
         if end_value < start_value:
-            raise CalendarError("End time cannot be before start time")
+            raise CalendarError(
+                "End time cannot be before start time",
+                message_key="calendar.errors.end_before_start_time",
+            )
+    if data.timezone:
+        tz_name = data.timezone.strip()
+        resolved = resolve_timezone_name(tz_name)
+        try:
+            ZoneInfo(resolved)
+        except Exception as exc:
+            raise CalendarError(
+                f"Invalid timezone: {tz_name}",
+                message_key="calendar.errors.invalid_timezone",
+            ) from exc
+    if data.meeting_url:
+        meeting_url = data.meeting_url.strip()
+        parsed = urlparse(meeting_url)
+        if parsed.scheme.lower() != "https" or not parsed.netloc:
+            raise CalendarError(
+                "Meeting link must be a valid https URL",
+                message_key="calendar.errors.invalid_meeting_url",
+            )
+        data.meeting_url = meeting_url[:500]
     if data.notification_preferences not in {"none", "1_week", "1_day", "1_hour", "all"}:
         data.notification_preferences = "all"
 
@@ -161,10 +328,13 @@ def shape_event(row: Any, cursor, username: str | None, *, include_community_nam
         "start_time": extract_time(row_value(row, "start_time", 5) or row_value(row, "time", 7)),
         "end_time": extract_time(row_value(row, "end_time", 6)),
         "timezone": row_value(row, "timezone", 12),
+        "meeting_url": row_value(row, "meeting_url", 13),
         "description": row_value(row, "description", 8),
         "created_at": row_value(row, "created_at", 9),
         "community_id": row_value(row, "community_id", 10),
         "group_id": row_value(row, "group_id", 11),
+        "starts_at_utc": format_utc_datetime(row_value(row, "starts_at_utc", 16 if include_community_name else 14)),
+        "ends_at_utc": format_utc_datetime(row_value(row, "ends_at_utc", 17 if include_community_name else 15)),
         "rsvp_counts": counts,
         "user_rsvp": user_rsvp,
         "total_rsvps": counts["going"] + counts["maybe"] + counts["not_going"],
@@ -179,6 +349,7 @@ def shape_event(row: Any, cursor, username: str | None, *, include_community_nam
 def list_visible_events(username: str | None, *, upcoming_only: bool = False) -> list[dict[str, Any]]:
     if not username:
         return []
+    ensure_calendar_event_columns()
     with get_db_connection() as conn:
         cursor = conn.cursor()
         ph = get_sql_placeholder()
@@ -188,7 +359,9 @@ def list_visible_events(username: str | None, *, upcoming_only: bool = False) ->
                    COALESCE(ce.end_date, ce.date) as end_date,
                    COALESCE(ce.start_time, ce.time) as start_time,
                    ce.end_time, ce.time, ce.description, ce.created_at,
-                   ce.community_id, ce.group_id, ce.timezone
+                   ce.community_id, ce.group_id, ce.timezone,
+                   ce.meeting_url,
+                   ce.starts_at_utc, ce.ends_at_utc
             FROM calendar_events ce
             LEFT JOIN event_invitations ei ON ce.id = ei.event_id
             WHERE (ce.username = {ph} OR ei.invited_username = {ph})
@@ -229,11 +402,11 @@ def list_group_events(username: str | None, group_id: int) -> list[dict[str, Any
         cursor.execute(f"SELECT community_id FROM {GROUPS_TBL_CAL} WHERE id = {ph}", (group_id,))
         group_row = cursor.fetchone()
         if not group_row:
-            raise CalendarError("Group not found", 404)
+            raise CalendarError("Group not found", 404, message_key="calendar.errors.group_not_found")
         community_id = row_value(group_row, "community_id", 0)
         ok, err = check_group_feed_access(cursor, ph, username, group_id)
         if not ok:
-            raise CalendarError(err or "Forbidden", 403)
+            raise CalendarError(err or "Forbidden", 403, message_key="calendar.errors.forbidden")
 
     events = list_visible_events(username)
     out: list[dict[str, Any]] = []
@@ -257,7 +430,7 @@ def ensure_user_can_view_event(event_id: int, username: str | None) -> None:
     Matches the visibility rules of :func:`list_visible_events`.
     """
     if not username:
-        raise CalendarError("Forbidden", 403)
+        raise CalendarError("Forbidden", 403, message_key="calendar.errors.forbidden")
     un = str(username).strip()
     if un.lower() == "admin":
         return
@@ -280,7 +453,11 @@ def ensure_user_can_view_event(event_id: int, username: str | None) -> None:
             (event_id, un, un),
         )
         if not cursor.fetchone():
-            raise CalendarError("You cannot access this event", 403)
+            raise CalendarError(
+                "You cannot access this event",
+                403,
+                message_key="calendar.errors.cannot_access_event",
+            )
 
 
 def _ics_escape(text: str) -> str:
@@ -314,6 +491,22 @@ def _ics_parse_hm(value: Any) -> tuple[int, int] | None:
     return hh, mm
 
 
+def format_ics_utc_string(dt_val: Any) -> str | None:
+    if not dt_val:
+        return None
+    if isinstance(dt_val, datetime):
+        return dt_val.strftime("%Y%m%dT%H%M%SZ")
+    s = str(dt_val).strip()
+    s = s.replace("-", "").replace(":", "")
+    if " " in s:
+        s = s.replace(" ", "T")
+    if not s.endswith("Z"):
+        s += "Z"
+    if len(s) == 16 and s[8] == "T":
+        return s
+    return None
+
+
 def format_event_ics(event: dict[str, Any], *, public_base_url: str) -> str:
     """Build an iCalendar (RFC 5545) document for one event (METHOD:PUBLISH)."""
     event_id = int(event["id"])
@@ -322,6 +515,9 @@ def format_event_ics(event: dict[str, Any], *, public_base_url: str) -> str:
     raw_desc = event.get("description")
     if raw_desc:
         desc_parts.append(str(raw_desc).strip())
+    meeting_url = str(event.get("meeting_url") or "").strip()
+    if meeting_url:
+        desc_parts.append(f"Meeting link: {meeting_url}")
     tz_label = str(event.get("timezone") or "").strip()
     if tz_label:
         desc_parts.append(f"Timezone: {tz_label}")
@@ -361,7 +557,14 @@ def format_event_ics(event: dict[str, Any], *, public_base_url: str) -> str:
 
     d0 = datetime.strptime(start_date, "%Y-%m-%d")
     d1 = datetime.strptime(end_date, "%Y-%m-%d")
-    if start_hm:
+    
+    starts_at_utc_formatted = format_ics_utc_string(event.get("starts_at_utc"))
+    ends_at_utc_formatted = format_ics_utc_string(event.get("ends_at_utc"))
+
+    if starts_at_utc_formatted and ends_at_utc_formatted:
+        lines.append(f"DTSTART:{starts_at_utc_formatted}")
+        lines.append(f"DTEND:{ends_at_utc_formatted}")
+    elif start_hm:
         hh, mm = start_hm
         ds = start_date.replace("-", "")
         lines.append(f"DTSTART:{ds}T{hh:02d}{mm:02d}00")
@@ -379,7 +582,7 @@ def format_event_ics(event: dict[str, Any], *, public_base_url: str) -> str:
         lines.append(f"DTSTART;VALUE=DATE:{d0.strftime('%Y%m%d')}")
         end_exclusive = d1 + timedelta(days=1)
         lines.append(f"DTEND;VALUE=DATE:{end_exclusive.strftime('%Y%m%d')}")
-    lines.append(f"URL:{_ics_escape(f'{base}/event/{event_id}')}")
+    lines.append(f"URL:{_ics_escape(meeting_url or f'{base}/event/{event_id}')}")
     lines.append("END:VEVENT")
     lines.append("END:VCALENDAR")
     return "\r\n".join(lines) + "\r\n"
@@ -391,6 +594,7 @@ def public_calendar_base_url() -> str:
 
 
 def get_event(event_id: int, username: str | None, *, mark_viewed: bool = False) -> dict[str, Any]:
+    ensure_calendar_event_columns()
     with get_db_connection() as conn:
         cursor = conn.cursor()
         ph = get_sql_placeholder()
@@ -405,7 +609,7 @@ def get_event(event_id: int, username: str | None, *, mark_viewed: bool = False)
         )
         row = cursor.fetchone()
         if not row:
-            raise CalendarError("Event not found", 404)
+            raise CalendarError("Event not found", 404, message_key="calendar.errors.event_not_found")
         event = shape_event(row, cursor, username, include_community_name=True)
         event["can_edit"] = can_manage_event(cursor, username, event_id)
         if mark_viewed and username:
@@ -487,6 +691,7 @@ def _invite_users(cursor, data: EventInput, creator: str) -> list[str]:
 
 def create_event(username: str, data: EventInput) -> dict[str, Any]:
     validate_event_input(data)
+    ensure_calendar_event_columns()
     end_date = data.end_date or None
     start_datetime = _datetime_value(data.date, data.start_time)
     end_datetime = _datetime_value(end_date or data.date, data.end_time)
@@ -502,19 +707,37 @@ def create_event(username: str, data: EventInput) -> dict[str, Any]:
             )
             grow = cursor.fetchone()
             if not grow:
-                raise CalendarError("Group not found", 404)
+                raise CalendarError("Group not found", 404, message_key="calendar.errors.group_not_found")
             gcomm = row_value(grow, "community_id", 0)
             if effective_community_id and str(effective_community_id) != str(gcomm or ""):
-                raise CalendarError("Group does not belong to this community", 400)
+                raise CalendarError(
+                    "Group does not belong to this community",
+                    400,
+                    message_key="calendar.errors.group_community_mismatch",
+                )
             effective_community_id = int(gcomm) if gcomm is not None else effective_community_id
         if not effective_community_id:
-            raise CalendarError("community_id is required", 400)
+            raise CalendarError(
+                "community_id is required",
+                400,
+                message_key="calendar.errors.community_id_required",
+            )
         created_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        starts_at_utc, ends_at_utc = derive_utc_instants(
+            data.date,
+            end_date,
+            data.start_time,
+            data.end_time,
+            data.timezone,
+        )
+        starts_at_utc_str = starts_at_utc.strftime("%Y-%m-%d %H:%M:%S") if starts_at_utc else None
+        ends_at_utc_str = ends_at_utc.strftime("%Y-%m-%d %H:%M:%S") if ends_at_utc else None
+
         cursor.execute(
             f"""
             INSERT INTO calendar_events
-                (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id, timezone, notification_preferences, group_id)
-            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id, timezone, meeting_url, notification_preferences, group_id, starts_at_utc, ends_at_utc)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
             """,
             (
                 username,
@@ -528,8 +751,11 @@ def create_event(username: str, data: EventInput) -> dict[str, Any]:
                 created_at,
                 effective_community_id,
                 data.timezone or None,
+                data.meeting_url or None,
                 data.notification_preferences or "all",
                 effective_group_id,
+                starts_at_utc_str,
+                ends_at_utc_str,
             ),
         )
         event_id = int(cursor.lastrowid)
@@ -540,6 +766,7 @@ def create_event(username: str, data: EventInput) -> dict[str, Any]:
             start_time=data.start_time,
             end_time=data.end_time,
             timezone=data.timezone,
+            meeting_url=data.meeting_url,
             description=data.description,
             notification_preferences=data.notification_preferences,
             community_id=effective_community_id,
@@ -590,19 +817,35 @@ def create_event(username: str, data: EventInput) -> dict[str, Any]:
 
 def update_event(username: str, event_id: int, data: EventInput) -> None:
     validate_event_input(data)
+    ensure_calendar_event_columns()
     end_date = data.end_date or None
     start_datetime = _datetime_value(data.date, data.start_time)
     end_datetime = _datetime_value(end_date or data.date, data.end_time)
     with get_db_connection() as conn:
         cursor = conn.cursor()
         if not can_manage_event(cursor, username, event_id):
-            raise CalendarError("You do not have permission to edit this event", 403)
+            raise CalendarError(
+                "You do not have permission to edit this event",
+                403,
+                message_key="calendar.errors.edit_forbidden",
+            )
         ph = get_sql_placeholder()
+        starts_at_utc, ends_at_utc = derive_utc_instants(
+            data.date,
+            end_date,
+            data.start_time,
+            data.end_time,
+            data.timezone,
+        )
+        starts_at_utc_str = starts_at_utc.strftime("%Y-%m-%d %H:%M:%S") if starts_at_utc else None
+        ends_at_utc_str = ends_at_utc.strftime("%Y-%m-%d %H:%M:%S") if ends_at_utc else None
+
         cursor.execute(
             f"""
             UPDATE calendar_events
             SET title = {ph}, date = {ph}, end_date = {ph}, start_time = {ph}, end_time = {ph},
-                time = {ph}, description = {ph}, timezone = {ph}
+                time = {ph}, description = {ph}, timezone = {ph}, meeting_url = {ph}, notification_preferences = {ph},
+                starts_at_utc = {ph}, ends_at_utc = {ph}
             WHERE id = {ph}
             """,
             (
@@ -614,6 +857,10 @@ def update_event(username: str, event_id: int, data: EventInput) -> None:
                 data.start_time,
                 data.description or None,
                 data.timezone or None,
+                data.meeting_url or None,
+                data.notification_preferences or "all",
+                starts_at_utc_str,
+                ends_at_utc_str,
                 event_id,
             ),
         )
@@ -624,7 +871,11 @@ def delete_event(username: str, event_id: int) -> None:
     with get_db_connection() as conn:
         cursor = conn.cursor()
         if not can_manage_event(cursor, username, event_id):
-            raise CalendarError("You do not have permission to delete this event", 403)
+            raise CalendarError(
+                "You do not have permission to delete this event",
+                403,
+                message_key="calendar.errors.delete_forbidden",
+            )
         ph = get_sql_placeholder()
         cursor.execute(f"DELETE FROM event_rsvps WHERE event_id = {ph}", (event_id,))
         cursor.execute(f"DELETE FROM event_invitations WHERE event_id = {ph}", (event_id,))
@@ -639,14 +890,14 @@ def delete_event(username: str, event_id: int) -> None:
 
 def rsvp_event(username: str, event_id: int, response: str, note: str = "") -> dict[str, Any]:
     if response not in {"going", "maybe", "not_going"}:
-        raise CalendarError("Invalid response")
+        raise CalendarError("Invalid response", message_key="calendar.errors.invalid_rsvp_response")
     with get_db_connection() as conn:
         cursor = conn.cursor()
         ph = get_sql_placeholder()
         cursor.execute(f"SELECT username FROM calendar_events WHERE id = {ph}", (event_id,))
         row = cursor.fetchone()
         if not row:
-            raise CalendarError("Event not found", 404)
+            raise CalendarError("Event not found", 404, message_key="calendar.errors.event_not_found")
         creator = row_value(row, "username", 0)
         if username != creator:
             cursor.execute(
@@ -654,7 +905,11 @@ def rsvp_event(username: str, event_id: int, response: str, note: str = "") -> d
                 (event_id, username),
             )
             if not cursor.fetchone():
-                raise CalendarError("You are not invited to this event", 403)
+                raise CalendarError(
+                    "You are not invited to this event",
+                    403,
+                    message_key="calendar.errors.not_invited",
+                )
         if USE_MYSQL:
             cursor.execute(
                 f"""
@@ -688,7 +943,7 @@ def cancel_rsvp(username: str, event_id: int) -> dict[str, Any]:
             (event_id, username),
         )
         if cursor.rowcount == 0:
-            raise CalendarError("No RSVP found", 404)
+            raise CalendarError("No RSVP found", 404, message_key="calendar.errors.no_rsvp")
         counts = _rsvp_counts(cursor, event_id)
         conn.commit()
     return {"counts": counts}

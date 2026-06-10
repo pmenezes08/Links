@@ -12,7 +12,7 @@ def test_calendar_extract_time_handles_datetime_strings():
 
 
 def test_calendar_validate_event_input_rejects_backwards_end():
-    from backend.services import community_calendar
+    from backend.services import api_errors, community_calendar
 
     with pytest.raises(community_calendar.CalendarError, match="End time cannot be before start time"):
         community_calendar.validate_event_input(
@@ -23,6 +23,22 @@ def test_calendar_validate_event_input_rejects_backwards_end():
                 end_time="17:00",
             )
         )
+
+
+def test_calendar_validation_error_localized_payload():
+    from backend.services import api_errors, community_calendar
+
+    try:
+        community_calendar.validate_event_input(
+            community_calendar.EventInput(title="", date="2026-04-27")
+        )
+    except community_calendar.CalendarError as exc:
+        assert exc.message_key == "calendar.errors.title_start_required"
+        payload = api_errors.error_payload(exc.message_key, locale="pt-PT")
+        assert payload["message_key"] == "calendar.errors.title_start_required"
+        assert "obrigat" in payload["message"].lower()
+    else:
+        pytest.fail("expected CalendarError")
 
 
 def test_calendar_validate_event_input_allows_none_reminders():
@@ -37,6 +53,19 @@ def test_calendar_validate_event_input_allows_none_reminders():
 
     community_calendar.validate_event_input(data)
     assert data.notification_preferences == "none"
+
+
+def test_calendar_validate_event_input_rejects_non_https_meeting_url():
+    from backend.services import community_calendar
+
+    data = community_calendar.EventInput(
+        title="Lift",
+        date="2026-04-27",
+        meeting_url="http://meet.google.com/abc-defg-hij",
+    )
+
+    with pytest.raises(community_calendar.CalendarError, match="Meeting link"):
+        community_calendar.validate_event_input(data)
 
 
 def test_format_event_ics_all_day_and_uid():
@@ -71,6 +100,23 @@ def test_format_event_ics_escapes_summary_special_chars():
         public_base_url="https://x.test",
     )
     assert "SUMMARY:Meet\\; Greet" in body
+
+
+def test_format_event_ics_includes_meeting_url():
+    from backend.services import community_calendar
+
+    body = community_calendar.format_event_ics(
+        {
+            "id": 8,
+            "title": "Meet online",
+            "date": "2026-01-15",
+            "meeting_url": "https://meet.google.com/abc-defg-hij",
+        },
+        public_base_url="https://x.test",
+    )
+
+    assert "Meeting link: https://meet.google.com/abc-defg-hij" in body
+    assert "URL:https://meet.google.com/abc-defg-hij" in body
 
 
 def test_format_event_ics_timed_with_default_end():
@@ -161,3 +207,77 @@ def test_api_calendar_event_ics_forbidden(monkeypatch):
             sess["username"] = "alice"
         resp = client.get("/api/calendar_events/1/ics")
     assert resp.status_code == 403
+
+
+def test_calendar_timezone_validation():
+    from backend.services import community_calendar
+
+    # Valid IANA timezone
+    data_ok = community_calendar.EventInput(
+        title="Lift",
+        date="2026-06-08",
+        timezone="Europe/Lisbon",
+    )
+    community_calendar.validate_event_input(data_ok)
+
+    # Valid legacy abbreviation
+    data_legacy = community_calendar.EventInput(
+        title="Lift",
+        date="2026-06-08",
+        timezone="GMT",
+    )
+    community_calendar.validate_event_input(data_legacy)
+
+    # Invalid timezone
+    data_bad = community_calendar.EventInput(
+        title="Lift",
+        date="2026-06-08",
+        timezone="Invalid/Timezone",
+    )
+    with pytest.raises(community_calendar.CalendarError, match="Invalid timezone"):
+        community_calendar.validate_event_input(data_bad)
+
+
+def test_derive_utc_instants():
+    from backend.services import community_calendar
+    from datetime import datetime, timezone
+
+    # Lisbon is WEST (UTC+1) in June (DST active)
+    starts, ends = community_calendar.derive_utc_instants(
+        date_str="2026-06-08",
+        end_date_str=None,
+        start_time_str="10:00",
+        end_time_str="11:30",
+        tz_name="Europe/Lisbon",
+    )
+    assert starts == datetime(2026, 6, 8, 9, 0, tzinfo=timezone.utc)
+    assert ends == datetime(2026, 6, 8, 10, 30, tzinfo=timezone.utc)
+
+    # Lisbon is WET (UTC+0) in December (DST inactive)
+    starts, ends = community_calendar.derive_utc_instants(
+        date_str="2026-12-08",
+        end_date_str=None,
+        start_time_str="10:00",
+        end_time_str="11:30",
+        tz_name="Europe/Lisbon",
+    )
+    assert starts == datetime(2026, 12, 8, 10, 0, tzinfo=timezone.utc)
+    assert ends == datetime(2026, 12, 8, 11, 30, tzinfo=timezone.utc)
+
+
+def test_format_event_ics_with_utc_instants():
+    from backend.services import community_calendar
+
+    body = community_calendar.format_event_ics(
+        {
+            "id": 123,
+            "title": "Lisbon Event",
+            "date": "2026-06-08",
+            "starts_at_utc": "2026-06-08 09:00:00",
+            "ends_at_utc": "2026-06-08 10:30:00",
+            "timezone": "Europe/Lisbon",
+        },
+        public_base_url="https://x.test",
+    )
+    assert "DTSTART:20260608T090000Z" in body
+    assert "DTEND:20260608T103000Z" in body

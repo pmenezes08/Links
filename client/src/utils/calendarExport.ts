@@ -36,7 +36,11 @@ async function fetchEventSnapshot(eventId: number): Promise<CalendarExportEventF
     start_time: e.start_time ?? null,
     end_time: e.end_time ?? null,
     description: e.description ?? null,
+    meeting_url: e.meeting_url ?? null,
     community_name: e.community_name ?? null,
+    timezone: e.timezone ?? null,
+    starts_at_utc: e.starts_at_utc ?? null,
+    ends_at_utc: e.ends_at_utc ?? null,
   }
 }
 

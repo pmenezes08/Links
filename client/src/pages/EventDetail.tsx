@@ -13,6 +13,9 @@ type EventData = {
   start_time?: string|null
   end_time?: string|null
   timezone?: string|null
+  starts_at_utc?: string|null
+  ends_at_utc?: string|null
+  meeting_url?: string|null
   description?: string|null
   username: string
   community_id?: number
@@ -120,7 +123,11 @@ export default function EventDetail(){
         start_time: event.start_time,
         end_time: event.end_time,
         description: event.description,
+        meeting_url: event.meeting_url,
         community_name: event.community_name,
+        timezone: event.timezone,
+        starts_at_utc: event.starts_at_utc,
+        ends_at_utc: event.ends_at_utc,
       }
       const outcome = await exportEventToDeviceCalendar(event_id, snap)
       if (outcome.via === 'native') {
@@ -259,6 +266,23 @@ export default function EventDetail(){
                 <div className="flex-1 min-w-0">
                   <div className="text-xs text-c-text-tertiary mb-0.5">{t('calendar.description')}</div>
                   <div className="text-c-text-secondary text-sm whitespace-pre-wrap leading-relaxed">{event.description}</div>
+                </div>
+              </div>
+            )}
+
+            {event.meeting_url && (
+              <div className="flex items-start gap-3">
+                <i className="fa-solid fa-video text-cpoint-turquoise w-4 pt-0.5 text-sm shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs text-c-text-tertiary mb-0.5">{t('calendar.meeting_link')}</div>
+                  <a
+                    href={event.meeting_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-c-accent-ink text-sm break-all underline decoration-cpoint-turquoise/50 underline-offset-4"
+                  >
+                    {event.meeting_url}
+                  </a>
                 </div>
               </div>
             )}

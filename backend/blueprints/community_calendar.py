@@ -7,6 +7,7 @@ from functools import wraps
 
 from flask import Blueprint, current_app, jsonify, redirect, request, session, url_for
 
+from backend.services import api_errors
 from backend.services import community_calendar as calendar_svc
 
 
@@ -29,9 +30,16 @@ def _json(payload, status: int = 200):
 
 def _error_response(exc: Exception):
     if isinstance(exc, calendar_svc.CalendarError):
-        return _json({"success": False, "message": exc.message, "error": exc.message}, exc.status)
+        key = exc.message_key or "errors.generic"
+        if not exc.message_key and exc.message in ("Event ID is required", "Event ID required"):
+            key = "calendar.event_id_required"
+        payload = api_errors.error_payload(key, params=exc.message_params or None)
+        if key == "errors.generic":
+            payload["error"] = exc.message
+            payload["message"] = exc.message
+        return _json(payload, exc.status)
     current_app.logger.exception("calendar API error: %s", exc)
-    return _json({"success": False, "message": "Server error", "error": "Server error"}, 500)
+    return _json(api_errors.error_payload("calendar.server_error"), 500)
 
 
 def _event_input() -> calendar_svc.EventInput:
@@ -43,6 +51,7 @@ def _event_input() -> calendar_svc.EventInput:
         start_time=start_time,
         end_time=(request.form.get("end_time") or "").strip() or None,
         timezone=(request.form.get("timezone") or "").strip() or None,
+        meeting_url=(request.form.get("meeting_url") or "").strip() or None,
         description=(request.form.get("description") or "").strip() or None,
         notification_preferences=(request.form.get("notification_preferences") or "all").strip() or "all",
         community_id=request.form.get("community_id", type=int),
@@ -128,11 +137,11 @@ def api_calendar_event_ics(event_id: int):
 def add_calendar_event():
     try:
         result = calendar_svc.create_event(session["username"], _event_input())
-        return _json({
-            "success": True,
-            "message": f"Event added successfully. {result['invited_count']} members invited.",
-            "event_id": result["event_id"],
-        })
+        return _json(api_errors.success_payload(
+            "calendar.event_created",
+            params={"invited_count": result["invited_count"]},
+            extra={"event_id": result["event_id"]},
+        ))
     except Exception as exc:
         return _error_response(exc)
 
@@ -143,9 +152,12 @@ def edit_calendar_event():
     try:
         event_id = request.form.get("event_id", type=int)
         if not event_id:
-            raise calendar_svc.CalendarError("Event ID is required")
+            raise calendar_svc.CalendarError(
+                "Event ID is required",
+                message_key="calendar.event_id_required",
+            )
         calendar_svc.update_event(session["username"], event_id, _event_input())
-        return _json({"success": True, "message": "Event updated successfully"})
+        return _json(api_errors.success_payload("calendar.event_updated"))
     except Exception as exc:
         return _error_response(exc)
 
@@ -156,9 +168,12 @@ def delete_calendar_event():
     try:
         event_id = request.form.get("event_id", type=int)
         if not event_id:
-            raise calendar_svc.CalendarError("Event ID is required")
+            raise calendar_svc.CalendarError(
+                "Event ID is required",
+                message_key="calendar.event_id_required",
+            )
         calendar_svc.delete_event(session["username"], event_id)
-        return _json({"success": True, "message": "Event deleted successfully"})
+        return _json(api_errors.success_payload("calendar.event_deleted"))
     except Exception as exc:
         return _error_response(exc)
 
@@ -181,7 +196,7 @@ def rsvp_event(event_id: int):
 def cancel_rsvp(event_id: int):
     try:
         result = calendar_svc.cancel_rsvp(session["username"], event_id)
-        return _json({"success": True, "message": "RSVP cancelled", **result})
+        return _json(api_errors.success_payload("calendar.rsvp_cancelled", extra=result))
     except Exception as exc:
         return _error_response(exc)
 
