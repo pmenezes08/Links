@@ -7,6 +7,7 @@ from functools import wraps
 from flask import Blueprint, current_app, jsonify, redirect, request, session, url_for
 
 from backend.services import community_invites as invites_svc
+from backend.services.basic_profile_gate import require_basic_profile_payload
 
 
 community_invites_bp = Blueprint("community_invites", __name__)
@@ -33,6 +34,14 @@ def _json_response(result):
     return jsonify(payload), status
 
 
+def _basic_profile_required_response():
+    gated = require_basic_profile_payload(session.get("username"))
+    if gated is None:
+        return None
+    payload, status = gated
+    return jsonify(payload), status
+
+
 @community_invites_bp.route("/api/community/<int:community_id>/invite_settings", methods=["GET", "POST"])
 @_login_required
 def community_invite_settings(community_id: int):
@@ -43,6 +52,9 @@ def community_invite_settings(community_id: int):
 @community_invites_bp.route("/api/community/invite_link", methods=["POST"])
 @_login_required
 def generate_invite_link():
+    gate_resp = _basic_profile_required_response()
+    if gate_resp is not None:
+        return gate_resp
     payload = request.get_json(silent=True) or {}
     return _json_response(
         invites_svc.generate_invite_link(
@@ -63,13 +75,17 @@ def list_manageable_communities():
 @community_invites_bp.route("/api/community/invite_username", methods=["POST"])
 @_login_required
 def invite_username_to_community():
+    gate_resp = _basic_profile_required_response()
+    if gate_resp is not None:
+        return gate_resp
     return _json_response(invites_svc.invite_username(session["username"], request.get_json(silent=True) or {}))
 
 
 @community_invites_bp.route("/api/community/invites/pending", methods=["GET"])
 @_login_required
 def list_pending_username_invites():
-    return _json_response(invites_svc.list_pending_invites(session["username"]))
+    include_email = (request.args.get("include_email") or "").lower() in {"1", "true", "yes"}
+    return _json_response(invites_svc.list_pending_invites(session["username"], include_email=include_email))
 
 
 @community_invites_bp.route("/api/community/invites/<int:invite_id>/accept", methods=["POST"])
@@ -82,6 +98,24 @@ def accept_username_invite(invite_id: int):
 @_login_required
 def decline_username_invite(invite_id: int):
     return _json_response(invites_svc.decline_invite(session["username"], invite_id))
+
+
+@community_invites_bp.route("/api/invite_preview/<invite_token>", methods=["GET"])
+def invite_preview(invite_token: str):
+    username = session.get("username")
+    return _json_response(invites_svc.invite_preview((invite_token or "").strip(), username))
+
+
+@community_invites_bp.route("/api/community/invites/token/<invite_token>/accept", methods=["POST"])
+@_login_required
+def accept_token_invite(invite_token: str):
+    return _json_response(invites_svc.accept_token_invite(session["username"], (invite_token or "").strip()))
+
+
+@community_invites_bp.route("/api/community/invites/token/<invite_token>/decline", methods=["POST"])
+@_login_required
+def decline_token_invite(invite_token: str):
+    return _json_response(invites_svc.decline_token_invite(session["username"], (invite_token or "").strip()))
 
 
 @community_invites_bp.route("/api/join_with_invite", methods=["POST"])
@@ -101,6 +135,9 @@ def get_invite_info():
 @community_invites_bp.route("/api/community/invite", methods=["POST"])
 @_login_required
 def invite_to_community():
+    gate_resp = _basic_profile_required_response()
+    if gate_resp is not None:
+        return gate_resp
     return _json_response(
         invites_svc.invite_email(
             session["username"],
@@ -113,6 +150,9 @@ def invite_to_community():
 @community_invites_bp.route("/api/community/invite_bulk", methods=["POST"])
 @_login_required
 def invite_to_community_bulk():
+    gate_resp = _basic_profile_required_response()
+    if gate_resp is not None:
+        return gate_resp
     return _json_response(
         invites_svc.invite_bulk(
             session["username"],

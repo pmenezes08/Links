@@ -138,3 +138,37 @@ def test_state_payload_includes_profile_section_progress():
     assert payload["onboardingProgress"]["personalSectionComplete"] is True
     assert payload["onboardingProgress"]["professionalSectionComplete"] is False
     assert payload["onboardingProgress"]["nextStage"] == "professional_strengths"
+
+
+def test_state_payload_effective_sections_use_durable_profile_fields():
+    now = datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc)
+    row = (
+        "Paulo",
+        "User",
+        "Founder",
+        "C-Point",
+        "Portugal",
+        "Lisbon",
+        "Personal background already written",
+        "https://linkedin.com/in/paulo",
+        "Professional background already written",
+        "",
+        "",
+    )
+    doc = {
+        "stage": "section_picker",
+        "collected": {
+            "personalSectionComplete": False,
+            "professionalSectionComplete": False,
+        },
+    }
+    payload = osess.build_onboarding_state_payload(
+        username="paulo",
+        sql_row=row,
+        firestore_doc=doc,
+        now_utc=now,
+    )
+    assert payload["onboardingProgress"]["personalSectionComplete"] is False
+    assert payload["onboardingProgress"]["professionalSectionComplete"] is False
+    assert payload["onboardingProgress"]["personalSectionCompleteEffective"] is True
+    assert payload["onboardingProgress"]["professionalSectionCompleteEffective"] is True

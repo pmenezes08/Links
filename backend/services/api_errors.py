@@ -111,6 +111,41 @@ def error_response(
     return jsonify(payload), status
 
 
+def success_payload(
+    key: str,
+    *,
+    locale: Optional[str] = None,
+    params: Optional[Dict[str, Any]] = None,
+    extra: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Return a locale-aware success dict (``success=True`` + ``message_key``)."""
+    resolved = _resolve_locale_for_request(locale)
+    params = params or {}
+    message = i18n.t(key, resolved, **params)
+    payload: Dict[str, Any] = {
+        "success": True,
+        "message_key": key,
+        "message": message,
+        "message_params": params,
+    }
+    if extra:
+        payload.update(extra)
+    return payload
+
+
+def success_response(
+    key: str,
+    status: int = 200,
+    *,
+    locale: Optional[str] = None,
+    params: Optional[Dict[str, Any]] = None,
+    extra: Optional[Dict[str, Any]] = None,
+) -> Tuple[Any, int]:
+    """Return a ``(jsonify(...), status)`` tuple for a localized success message."""
+    payload = success_payload(key, locale=locale, params=params, extra=extra)
+    return jsonify(payload), status
+
+
 # ── Convenience helpers ────────────────────────────────────────────────
 
 

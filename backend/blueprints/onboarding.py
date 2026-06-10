@@ -464,7 +464,9 @@ def get_onboarding_state():
             ph = get_sql_placeholder()
             c.execute(f"""
                 SELECT u.first_name, u.last_name, u.role, u.company,
-                       u.country, u.city, p.bio
+                       u.country, u.city, p.bio, u.linkedin,
+                       u.professional_about, u.professional_company_intel,
+                       u.personal_highlight_answers
                 FROM users u LEFT JOIN user_profiles p ON u.username = p.username
                 WHERE u.username = {ph}
             """, (username,))

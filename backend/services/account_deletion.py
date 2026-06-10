@@ -143,11 +143,12 @@ def delete_user_in_connection(conn, username: str, mode: AccountDeletionMode) ->
     c = conn.cursor()
     ph = get_sql_placeholder()
 
-    c.execute(f"SELECT id FROM users WHERE username={ph}", (username,))
+    c.execute(f"SELECT id, email FROM users WHERE username={ph}", (username,))
     row = c.fetchone()
     if not row:
         raise ValueError("user_not_found")
     user_id = row["id"] if hasattr(row, "keys") else row[0]
+    user_email = (row["email"] if hasattr(row, "keys") else (row[1] if len(row) > 1 else "")) or ""
     user_id = int(user_id)
 
     former_community_ids = _former_community_ids(c, ph, user_id)
@@ -221,6 +222,17 @@ def delete_user_in_connection(conn, username: str, mode: AccountDeletionMode) ->
         logger.warning("remember_tokens.revoke_for_user failed: %s", e)
 
     c.execute(f"DELETE FROM user_communities WHERE user_id={ph}", (user_id,))
+    _exec_optional(
+        c,
+        f"""
+        UPDATE community_invitations
+        SET status='cancelled', responded_at=CURRENT_TIMESTAMP
+        WHERE used=0
+          AND COALESCE(status, 'pending')='pending'
+          AND (LOWER(invited_username)=LOWER({ph}) OR LOWER(invited_email)=LOWER({ph}))
+        """,
+        (username, user_email),
+    )
     _exec_optional(
         c,
         f"DELETE FROM community_admins WHERE username={ph}",

@@ -27,9 +27,11 @@ from flask import Blueprint, jsonify, request, session
 
 from backend.services import ai_usage, auth_session, session_identity, subscription_billing_ledger, user_billing
 from backend.services import client_ui_flags, i18n, user_locale
+from backend.services.basic_profile_gate import apply_basic_profile_updates, basic_profile_status
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.entitlements import resolve_entitlements
 from backend.services.feature_flags import entitlements_enforcement_enabled
+from backend.services.media import save_uploaded_file
 from backend.services import user_age_gate
 from redis_cache import cache
 
@@ -235,6 +237,49 @@ def me_locale_set():
         "preferred_locale": stored,
         "available_locales": list(i18n.available_locales()),
     })
+
+
+@me_bp.route("/api/me/basic_profile", methods=["GET", "POST"])
+def me_basic_profile():
+    """Return or update the user's minimum participation profile."""
+    username = _session_username()
+    if not username:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    if request.method == "GET":
+        return jsonify({"success": True, "basic_profile": basic_profile_status(username)})
+
+    first_name = (request.form.get("first_name") or "").strip()
+    last_name = (request.form.get("last_name") or "").strip()
+    picture_path = None
+    upload = request.files.get("profile_picture")
+    if upload and upload.filename:
+        picture_path = save_uploaded_file(
+            upload,
+            allowed_extensions={"png", "jpg", "jpeg", "gif", "webp", "heic", "heif"},
+            optimize_profile="avatar",
+        )
+        if not picture_path:
+            return jsonify({"success": False, "error": "Invalid profile picture"}), 400
+
+    if not first_name and not last_name and not picture_path:
+        return jsonify({"success": False, "error": "No profile fields provided"}), 400
+
+    try:
+        status = apply_basic_profile_updates(
+            username,
+            first_name=first_name if first_name else None,
+            last_name=last_name if last_name else None,
+            profile_picture=picture_path,
+        )
+        try:
+            cache.delete(f"profile:{username}")
+        except Exception:
+            pass
+        return jsonify({"success": True, "basic_profile": status})
+    except Exception:
+        logger.exception("me_basic_profile update failed for %s", username)
+        return jsonify({"success": False, "error": "Could not save basic profile"}), 500
 
 
 @me_bp.route("/api/me/ai-usage", methods=["GET"])

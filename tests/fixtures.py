@@ -48,6 +48,7 @@ def make_user(
     email: Optional[str] = None,
     is_admin: bool = False,
     trial_revoked_at: Optional[datetime] = None,
+    basic_profile_complete: bool = True,
 ) -> Dict[str, Any]:
     """Insert a minimal user row.
 
@@ -71,6 +72,36 @@ def make_user(
             conn.commit()
         except Exception:
             pass
+        if basic_profile_complete:
+            first_name = username.split("_", 1)[0].title() or "Test"
+            c.execute(
+                f"UPDATE users SET first_name = {ph}, last_name = {ph} WHERE username = {ph}",
+                (first_name, "User", username),
+            )
+            try:
+                if ph == "%s":
+                    c.execute(
+                        f"""
+                        INSERT INTO user_profiles (username, profile_picture)
+                        VALUES ({ph}, {ph})
+                        ON DUPLICATE KEY UPDATE profile_picture = VALUES(profile_picture)
+                        """,
+                        (username, f"uploads/test/{username}.jpg"),
+                    )
+                else:
+                    c.execute(
+                        f"""
+                        INSERT OR REPLACE INTO user_profiles (username, profile_picture)
+                        VALUES ({ph}, {ph})
+                        """,
+                        (username, f"uploads/test/{username}.jpg"),
+                    )
+            except Exception:
+                pass
+            try:
+                conn.commit()
+            except Exception:
+                pass
         if trial_revoked_at is not None:
             tr_s = _fmt(trial_revoked_at)
             c.execute(

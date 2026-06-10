@@ -8,7 +8,7 @@ import secrets
 import traceback
 from datetime import datetime
 from functools import wraps
-from typing import Any, List, Optional, Set
+from typing import Any
 from urllib.parse import urlencode, quote
 
 from flask import (
@@ -36,6 +36,7 @@ from backend.services.native_push import (
 )
 from backend.services import auth_session, disposable_email, remember_tokens, session_identity
 from backend.services import api_errors
+from backend.services import template_i18n
 from backend.services import session_revocation
 from backend.services.account_deletion import AccountDeletionMode, delete_user_in_connection
 from backend.services.database import get_db_connection, get_sql_placeholder
@@ -271,9 +272,6 @@ def signup():
         _send_email_via_resend,
         ensure_pending_signups_table,
         generate_pending_signup_token,
-        get_parent_chain_ids,
-        normalize_id_list,
-        notify_community_new_member,
     )
 
     logger = current_app.logger
@@ -428,109 +426,6 @@ def signup():
 
             hashed_password = generate_password_hash(password)
 
-            if invitation:
-                try:
-                    invitation_id = invitation["id"] if hasattr(invitation, "keys") else invitation[0]
-                    community_id = invitation["community_id"] if hasattr(invitation, "keys") else invitation[1]
-                    community_name = invitation["community_name"] if hasattr(invitation, "keys") else invitation[4]
-                    raw_nested_values = invitation["include_nested_ids"] if hasattr(invitation, "keys") else (
-                        invitation[6] if len(invitation) > 6 else None
-                    )
-                    raw_parent_values = invitation["include_parent_ids"] if hasattr(invitation, "keys") else (
-                        invitation[7] if len(invitation) > 7 else None
-                    )
-                    nested_ids = normalize_id_list(raw_nested_values) if raw_nested_values else []
-                    parent_ids_to_join = (
-                        normalize_id_list(raw_parent_values)
-                        if raw_parent_values is not None
-                        else get_parent_chain_ids(c, community_id)
-                    )
-
-                    c.execute(
-                        """
-                        INSERT INTO users (username, first_name, last_name, email, canonical_email, mobile, password, subscription, email_verified, email_verified_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, 'free', 1, ?)
-                        """,
-                        (username, first_name, last_name, email, canonical, mobile, hashed_password, datetime.now().isoformat()),
-                    )
-
-                    c.execute("SELECT id FROM users WHERE username = ?", (username,))
-                    user_row = c.fetchone()
-                    user_id = user_row["id"] if hasattr(user_row, "keys") else user_row[0]
-
-                    # Set display name from first/last name
-                    display_name = f"{first_name} {last_name}".strip() or username
-                    try:
-                        c.execute("INSERT INTO user_profiles (username, display_name) VALUES (?, ?)", (username, display_name))
-                    except Exception:
-                        try:
-                            c.execute("UPDATE user_profiles SET display_name = ? WHERE username = ? AND (display_name IS NULL OR display_name = '')", (display_name, username))
-                        except Exception:
-                            pass
-
-                    communities_to_join: List[int] = []
-                    seen: Set[int] = set()
-
-                    def add_community(target_id: Optional[int]):
-                        if not target_id:
-                            return
-                        if target_id not in seen:
-                            seen.add(target_id)
-                            communities_to_join.append(target_id)
-
-                    add_community(community_id)
-                    for pid in parent_ids_to_join:
-                        add_community(pid)
-                    for nid in nested_ids:
-                        add_community(nid)
-                        for ancestor_id in get_parent_chain_ids(c, nid):
-                            add_community(ancestor_id)
-
-                    for comm_id in communities_to_join:
-                        c.execute(
-                            "SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?",
-                            (user_id, comm_id),
-                        )
-                        if not c.fetchone():
-                            c.execute(
-                                """
-                                INSERT INTO user_communities (user_id, community_id, role, joined_at)
-                                VALUES (?, ?, 'member', ?)
-                                """,
-                                (user_id, comm_id, datetime.now().isoformat()),
-                            )
-
-                    c.execute(
-                        """
-                        UPDATE community_invitations
-                        SET used = 1, used_at = ?
-                        WHERE id = ?
-                        """,
-                        (datetime.now().isoformat(), invitation_id),
-                    )
-
-                    notify_community_new_member(community_id, username, conn)
-                    conn.commit()
-
-                    session["username"] = username
-                    session.permanent = True
-                    session_revocation.stamp_session(session, username)
-
-                    if _is_mobile_request():
-                        return jsonify(
-                            {
-                                "success": True,
-                                "redirect": "/premium_dashboard",
-                                "invited_to_community": community_name,
-                                "needs_email_verification": False,
-                            }
-                        )
-                    flash(f"Welcome! You have been added to {community_name}", "success")
-                    return redirect(url_for("premium_dashboard"))
-                except Exception as invite_err:
-                    logger.error("Error processing invitation signup: %s", invite_err)
-                    invitation = None
-
             try:
                 ensure_pending_signups_table(c)
             except Exception:
@@ -588,10 +483,15 @@ def signup():
 
             if _is_mobile_request():
                 return jsonify({"success": True, "needs_email_verification": True, "pending": True})
+            _tpl = template_i18n.template_ctx()
             return render_template(
                 "verification_result.html",
                 success=True,
-                message="We sent a verification link to your email. Please verify to complete sign up.",
+                message=template_i18n.localize_verification_message(
+                    "We sent a verification link to your email. Please verify to complete sign up.",
+                    _tpl["locale"],
+                ),
+                **_tpl,
             )
     except Exception as exc:
         logger.error("Error during user registration: %s", exc)
@@ -732,11 +632,6 @@ def delete_account_post():
 @auth_bp.route("/login_password", methods=["GET", "POST"], endpoint="login_password")
 def login_password():
     """Password entry stage for staged logins."""
-    from bodybuilding_app import (
-        get_parent_chain_ids,
-        normalize_id_list,
-    )
-
     logger = current_app.logger
     
     # Debug logging for iOS login issues
@@ -811,6 +706,8 @@ def login_password():
                     logger.info(f"login_password: Plain password check for '{username}', correct={password_correct}")
 
                 if password_correct:
+                    posted_invite_token = (request.form.get("invite_token") or "").strip()
+                    pending_invite_token = session.get("pending_invite_token") or posted_invite_token
                     session.clear()
                     session.permanent = False
 
@@ -846,118 +743,12 @@ def login_password():
 
                     _invalidate_profile_and_dashboard_caches(username)
 
-                    invite_token = session.pop("pending_invite_token", None)
+                    invite_token = pending_invite_token
                     if invite_token:
-                        try:
-                            with get_db_connection() as conn2:
-                                c = conn2.cursor()
-                                ph = get_sql_placeholder()
-                                c.execute(f"SELECT id, email FROM users WHERE username={ph}", (username,))
-                                user_row = c.fetchone()
-                                if user_row:
-                                    user_id = user_row["id"] if hasattr(user_row, "keys") else user_row[0]
-                                    user_email = user_row["email"] if hasattr(user_row, "keys") else user_row[1]
-
-                                    c.execute(
-                                        f"""
-                                        SELECT ci.id, ci.community_id, ci.used, ci.invited_email,
-                                               ci.include_nested_ids, ci.include_parent_ids
-                                        FROM community_invitations ci
-                                        WHERE ci.token={ph}
-                                        """,
-                                        (invite_token,),
-                                    )
-                                    invitation = c.fetchone()
-                                    if invitation:
-                                        community_id = invitation["community_id"] if hasattr(invitation, "keys") else invitation[1]
-                                        already_used = invitation["used"] if hasattr(invitation, "keys") else invitation[2]
-                                        invited_email = invitation["invited_email"] if hasattr(invitation, "keys") else invitation[3]
-                                        raw_nested_values = invitation["include_nested_ids"] if hasattr(invitation, "keys") else (
-                                            invitation[4] if len(invitation) > 4 else None
-                                        )
-                                        raw_parent_values = invitation["include_parent_ids"] if hasattr(invitation, "keys") else (
-                                            invitation[5] if len(invitation) > 5 else None
-                                        )
-
-                                        is_qr_invite = invited_email and invited_email.startswith("qr-invite-") and invited_email.endswith(
-                                            "@placeholder.local"
-                                        )
-                                        if not is_qr_invite and user_email.lower() != invited_email.lower():
-                                            resp = make_response(
-                                                redirect("/login?error=" + quote("This invitation was sent to a different email address"))
-                                            )
-                                            stale = _apply_login_persistence(resp, username)
-                                            logger.info("login_password invite_email_mismatch remember_stale_revoked=%d", stale)
-                                            auth_session.no_store(resp)
-                                            return resp
-
-                                        c.execute(
-                                            f"""
-                                            SELECT 1 FROM user_communities
-                                            WHERE user_id={ph} AND community_id={ph}
-                                            """,
-                                            (user_id, community_id),
-                                        )
-                                        already_member = c.fetchone() is not None
-
-                                        if not already_member:
-                                            nested_ids = normalize_id_list(raw_nested_values) if raw_nested_values else []
-                                            parent_ids_to_join = (
-                                                normalize_id_list(raw_parent_values)
-                                                if raw_parent_values is not None
-                                                else get_parent_chain_ids(c, community_id)
-                                            )
-
-                                            communities_to_join: List[int] = []
-                                            seen: Set[int] = set()
-
-                                            def add_community(target_id: Optional[int]):
-                                                if not target_id:
-                                                    return
-                                                if target_id not in seen:
-                                                    seen.add(target_id)
-                                                    communities_to_join.append(target_id)
-
-                                            add_community(community_id)
-                                            for pid in parent_ids_to_join:
-                                                add_community(pid)
-                                            for nid in nested_ids:
-                                                add_community(nid)
-                                                for ancestor_id in get_parent_chain_ids(c, nid):
-                                                    add_community(ancestor_id)
-
-                                            for comm_id in communities_to_join:
-                                                c.execute(
-                                                    f"SELECT 1 FROM user_communities WHERE user_id = {ph} AND community_id = {ph}",
-                                                    (user_id, comm_id),
-                                                )
-                                                if not c.fetchone():
-                                                    c.execute(
-                                                        f"""
-                                                        INSERT INTO user_communities (user_id, community_id, role, joined_at)
-                                                        VALUES ({ph}, {ph}, 'member', {ph})
-                                                        """,
-                                                        (user_id, comm_id, datetime.now().isoformat()),
-                                                    )
-
-                                            if not already_used:
-                                                c.execute(
-                                                    f"""
-                                                    UPDATE community_invitations
-                                                    SET used = 1, used_at = {ph}
-                                                    WHERE token = {ph}
-                                                    """,
-                                                    (datetime.now().isoformat(), invite_token),
-                                                )
-
-                                            conn2.commit()
-
-                                        resp = make_response(redirect(f"/community_feed_react/{community_id}"))
-                                        _finalize_session_response(resp, username)
-                                        logger.info("login_password invite_ok username=%s", username)
-                                        return resp
-                        except Exception as exc:
-                            logger.error("Error auto-joining via invite token: %s", exc)
+                        resp = make_response(redirect(f"/invite-preview/{quote(invite_token)}"))
+                        _finalize_session_response(resp, username)
+                        logger.info("login_password invite_preview username=%s", username)
+                        return resp
 
                     resp = make_response(redirect("/premium_dashboard"))
                     _finalize_session_response(resp, username)
@@ -1176,6 +967,8 @@ def google_sign_in():
                 apply_oauth_email_verified(c, ph, username, bool(email_verified))
                 conn.commit()
                 session['username'] = username
+                if invite_token:
+                    session['pending_invite_token'] = invite_token
                 session.permanent = True
                 session_revocation.stamp_session(session, username)
                 _invalidate_profile_and_dashboard_caches(username)
@@ -1201,6 +994,8 @@ def google_sign_in():
                 apply_oauth_email_verified(c, ph, username, bool(email_verified))
                 conn.commit()
                 session['username'] = username
+                if invite_token:
+                    session['pending_invite_token'] = invite_token
                 session.permanent = True
                 session_revocation.stamp_session(session, username)
                 # Display name is intentionally NOT touched on link: established users keep
@@ -1329,6 +1124,8 @@ def apple_sign_in():
                 apply_oauth_email_verified(c, ph, username, email_verified)
                 conn.commit()
                 session['username'] = username
+                if invite_token:
+                    session['pending_invite_token'] = invite_token
                 session.permanent = True
                 session_revocation.stamp_session(session, username)
                 _invalidate_profile_and_dashboard_caches(username)
@@ -1355,6 +1152,8 @@ def apple_sign_in():
                     apply_oauth_email_verified(c, ph, username, email_verified)
                     conn.commit()
                     session['username'] = username
+                    if invite_token:
+                        session['pending_invite_token'] = invite_token
                     session.permanent = True
                     session_revocation.stamp_session(session, username)
                     _invalidate_profile_and_dashboard_caches(username)
@@ -1455,24 +1254,28 @@ def reset_password(token: str):
     from backend.services import password_reset as pw_reset
 
     if request.method == "GET":
-        ctx = pw_reset.get_token_context(token)
-        if not ctx:
-            flash("Invalid or expired reset link.", "error")
+        ctx = template_i18n.template_ctx()
+        token_ctx = pw_reset.get_token_context(token)
+        if not token_ctx:
+            flash(ctx["tt"]("reset_password.invalid_link"), "error")
             return redirect(url_for("public.index"))
         return render_template(
             "reset_password.html",
-            token=ctx["token"],
-            username=ctx["username"],
+            token=token_ctx["token"],
+            username=token_ctx["username"],
+            **ctx,
         )
 
     new_password = request.form.get("password") or ""
     confirm_password = request.form.get("confirm_password") or ""
     ok, message = pw_reset.complete_reset(token, new_password, confirm_password)
+    ctx = template_i18n.template_ctx()
     if not ok:
-        flash(message, "error")
+        flash(template_i18n.localize_reset_message(message, ctx["locale"]), "error")
         return redirect(url_for("auth.reset_password", token=token))
     return render_template(
         "verification_result.html",
         success=True,
-        message=message,
+        message=template_i18n.localize_reset_message(message, ctx["locale"]),
+        **ctx,
     )

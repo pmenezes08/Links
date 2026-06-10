@@ -1100,7 +1100,8 @@ def check_single_event_notifications(event_id, conn=None):
         c.execute(
             f"""
             SELECT ce.id, ce.title, ce.date, ce.start_time, ce.end_time, ce.created_at,
-                   ce.community_id, ce.notification_preferences, ce.username as created_by
+                   ce.community_id, ce.notification_preferences, ce.username as created_by,
+                   ce.starts_at_utc
             FROM calendar_events ce
             WHERE ce.id = {ph}
             """,
@@ -1118,9 +1119,16 @@ def check_single_event_notifications(event_id, conn=None):
         community_id = event_row["community_id"] if hasattr(event_row, "keys") else event_row[6]
         notification_prefs = event_row["notification_preferences"] if hasattr(event_row, "keys") else event_row[7]
         created_by = event_row["created_by"] if hasattr(event_row, "keys") else event_row[8]
+        starts_at_utc_val = event_row.get("starts_at_utc") if hasattr(event_row, "keys") else event_row[9]
 
         try:
-            if isinstance(start_time_str, datetime):
+            if starts_at_utc_val:
+                if isinstance(starts_at_utc_val, datetime):
+                    event_start = starts_at_utc_val.replace(tzinfo=None)
+                else:
+                    s = str(starts_at_utc_val).replace("T", " ").replace("Z", "")
+                    event_start = datetime.strptime(s.split(".")[0], "%Y-%m-%d %H:%M:%S")
+            elif isinstance(start_time_str, datetime):
                 event_start = start_time_str
             elif start_time_str:
                 event_start = datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")

@@ -1,6 +1,14 @@
 import { useEffect, useState, useRef } from 'react'
 import { apiJson, apiPost } from '../utils/api'
 
+function formatInviteExpiry(value?: string) {
+  if (!value) return ''
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T')
+  const date = new Date(normalized.endsWith('Z') ? normalized : `${normalized}Z`)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
 export default function Invites() {
   const [communities, setCommunities] = useState<{ id: number; name: string }[]>([])
   const [commLoading, setCommLoading] = useState(true)
@@ -26,11 +34,12 @@ export default function Invites() {
     if (!selectedCommunity) return
     setEmailMsg('')
     try {
-      await apiPost('/api/community/invite', {
+      const res = await apiPost('/api/community/invite', {
         email,
         community_id: selectedCommunity,
-      })
-      setEmailMsg('Invite sent successfully')
+      }) as { expires_at?: string; message?: string }
+      const expiry = formatInviteExpiry(res.expires_at)
+      setEmailMsg(expiry ? `Invite sent successfully. Valid until ${expiry}.` : (res.message || 'Invite sent successfully'))
       setEmail('')
     } catch {
       setEmailMsg('Failed to send invite')
@@ -46,11 +55,12 @@ export default function Invites() {
     try {
       const res = await apiPost('/api/community/invite_link', {
         community_id: selectedCommunity,
-      }) as { invite_url?: string; url?: string; link?: string }
+      }) as { invite_url?: string; url?: string; link?: string; expires_at?: string }
       const url = res.invite_url || res.url || res.link || ''
       if (url) {
         setGeneratedUrl(url)
-        setLinkMsg('Link generated')
+        const expiry = formatInviteExpiry(res.expires_at)
+        setLinkMsg(expiry ? `Link generated. Valid until ${expiry}.` : 'Link generated')
       } else {
         setLinkMsg('No URL returned')
       }
@@ -71,8 +81,9 @@ export default function Invites() {
     try {
       const emailList = emails.split(/[,\n]+/).map(e => e.trim()).filter(Boolean)
       if (emailList.length === 0) { setBulkMsg('No valid emails provided'); setBulkLoading(false); return }
-      await apiPost('/api/community/invite_bulk', { emails: emailList, community_id: selectedCommunity })
-      setBulkMsg(`Bulk invite sent to ${emailList.length} email(s)`)
+      const res = await apiPost('/api/community/invite_bulk', { emails: emailList, community_id: selectedCommunity }) as { message?: string; expires_in_days?: number }
+      const ttl = res.expires_in_days || 7
+      setBulkMsg(`${res.message || `Bulk invite sent to ${emailList.length} email(s)`} Valid for ${ttl} days.`)
       setBulkEmails('')
     } catch {
       setBulkMsg('Failed to send bulk invites')

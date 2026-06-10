@@ -139,7 +139,7 @@ export default function Signup(){
           const j = await r.json()
 
           if (j?.success) {
-            const dest = j.redirect || '/premium_dashboard'
+            const dest = inviteToken ? '/premium_dashboard?invite_prompt=1' : (j.redirect || '/premium_dashboard')
             if (j.needs_email_verification) {
               setPendingEmail(formData.email)
               setShowVerify(true)
@@ -405,7 +405,7 @@ export default function Signup(){
                       const j = await r.json().catch(()=>null)
                       if (j?.success && j?.verified){
                         alert(t('auth.signup.verify.verified_alert'))
-                        navigate('/login', { replace: true })
+                        navigate(inviteToken ? `/login?invite=${encodeURIComponent(inviteToken)}` : '/login', { replace: true })
                       } else {
                         alert(t('auth.signup.verify.not_verified'))
                       }

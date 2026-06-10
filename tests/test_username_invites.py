@@ -66,7 +66,10 @@ def test_username_invite_accepts_into_community(mysql_dsn, monkeypatch):
 
     accept_resp = client.post(f"/api/community/invites/{pending[0]['id']}/accept")
     assert accept_resp.status_code == 200
-    assert accept_resp.get_json()["success"] is True
+    accept_json = accept_resp.get_json()
+    assert accept_json["success"] is True
+    assert accept_json["introduce_thread_post_id"]
+    assert accept_json["next_url"] == f"/community_feed_react/{community_id}?joined=1"
     assert _member_exists("target_username_invite", community_id)
 
     with get_db_connection() as conn:
@@ -80,6 +83,18 @@ def test_username_invite_accepts_into_community(mysql_dsn, monkeypatch):
         assert row
         assert (row["status"] if hasattr(row, "keys") else row[0]) == "accepted"
         assert int(row["used"] if hasattr(row, "keys") else row[1]) == 1
+        c.execute(
+            f"""
+            SELECT welcome_card_key, is_system_post
+            FROM posts
+            WHERE id = {ph} AND community_id = {ph}
+            """,
+            (accept_json["introduce_thread_post_id"], community_id),
+        )
+        intro_row = c.fetchone()
+        assert intro_row
+        assert (intro_row["welcome_card_key"] if hasattr(intro_row, "keys") else intro_row[0]) == "cold_start.introduce_yourself.v1"
+        assert int(intro_row["is_system_post"] if hasattr(intro_row, "keys") else intro_row[1]) == 1
 
 
 def test_username_invite_decline_does_not_add_member(mysql_dsn, monkeypatch):
@@ -123,6 +138,178 @@ def test_username_invite_decline_does_not_add_member(mysql_dsn, monkeypatch):
         assert row
         assert (row["status"] if hasattr(row, "keys") else row[0]) == "declined"
         assert int(row["used"] if hasattr(row, "keys") else row[1]) == 0
+
+
+def test_email_invite_existing_user_requires_explicit_accept(mysql_dsn, monkeypatch):
+    import bodybuilding_app
+    from backend.services import community_invites as invites_svc
+
+    monkeypatch.setattr(bodybuilding_app, "_send_email_via_resend", lambda *args, **kwargs: True)
+    invites_svc._legacy_helpers.cache_clear()
+
+    make_user("owner_email_invite", subscription="premium", email="owner-email-invite@example.com")
+    make_user("target_email_invite", subscription="free", email="target-email-invite@example.com")
+    community_id = make_community(
+        "email-invite-explicit-accept",
+        tier="free",
+        creator_username="owner_email_invite",
+    )
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "owner_email_invite")
+    create_resp = client.post(
+        "/api/community/invite",
+        json={"community_id": community_id, "email": "target-email-invite@example.com"},
+    )
+    assert create_resp.status_code == 200
+    assert create_resp.get_json()["success"] is True
+    assert not _member_exists("target_email_invite", community_id)
+
+    _login(client, "target_email_invite")
+    pending_resp = client.get("/api/community/invites/pending?include_email=true")
+    assert pending_resp.status_code == 200
+    pending = pending_resp.get_json()["invites"]
+    assert len(pending) == 1
+    assert pending[0]["community_name"] == "email-invite-explicit-accept"
+    assert pending[0]["expires_at"]
+
+    accept_resp = client.post(f"/api/community/invites/{pending[0]['id']}/accept")
+    assert accept_resp.status_code == 200
+    assert accept_resp.get_json()["success"] is True
+    assert _member_exists("target_email_invite", community_id)
+
+
+def test_expired_token_invite_cannot_add_member(mysql_dsn, monkeypatch):
+    import bodybuilding_app
+    from backend.services import community_invites as invites_svc
+
+    monkeypatch.setattr(bodybuilding_app, "_send_email_via_resend", lambda *args, **kwargs: True)
+    invites_svc._legacy_helpers.cache_clear()
+
+    make_user("owner_expired_token", subscription="premium", email="owner-expired-token@example.com")
+    make_user("target_expired_token", subscription="free", email="target-expired-token@example.com")
+    community_id = make_community(
+        "expired-token-invite",
+        tier="free",
+        creator_username="owner_expired_token",
+    )
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "owner_expired_token")
+    create_resp = client.post(
+        "/api/community/invite",
+        json={"community_id": community_id, "email": "target-expired-token@example.com"},
+    )
+    assert create_resp.status_code == 200
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        ph = get_sql_placeholder()
+        c.execute(
+            f"SELECT id, token FROM community_invitations WHERE community_id = {ph} AND invited_email = {ph}",
+            (community_id, "target-expired-token@example.com"),
+        )
+        row = c.fetchone()
+        assert row
+        invite_id = row["id"] if hasattr(row, "keys") else row[0]
+        token = row["token"] if hasattr(row, "keys") else row[1]
+        c.execute(
+            f"UPDATE community_invitations SET expires_at = '2000-01-01 00:00:00' WHERE id = {ph}",
+            (invite_id,),
+        )
+        conn.commit()
+
+    _login(client, "target_expired_token")
+    accept_resp = client.post(f"/api/community/invites/token/{token}/accept")
+    assert accept_resp.status_code == 410
+    body = accept_resp.get_json()
+    assert body["success"] is False
+    assert body["error_code"] == "invite_expired"
+    assert not _member_exists("target_expired_token", community_id)
+
+
+def test_email_invite_matches_canonical_email_on_accept(mysql_dsn, monkeypatch):
+    import bodybuilding_app
+    from backend.services import community_invites as invites_svc
+    from backend.services.email_normalization import canonicalize_with_policy
+
+    monkeypatch.setattr(bodybuilding_app, "_send_email_via_resend", lambda *args, **kwargs: True)
+    invites_svc._legacy_helpers.cache_clear()
+
+    make_user("owner_canonical_invite", subscription="premium", email="owner-canonical@example.com")
+    make_user("target_canonical_invite", subscription="free", email="targetcanonical@gmail.com")
+    community_id = make_community(
+        "canonical-email-invite",
+        tier="free",
+        creator_username="owner_canonical_invite",
+    )
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        ph = get_sql_placeholder()
+        c.execute(
+            f"UPDATE users SET canonical_email = {ph} WHERE username = {ph}",
+            (canonicalize_with_policy("targetcanonical@gmail.com"), "target_canonical_invite"),
+        )
+        conn.commit()
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "owner_canonical_invite")
+    create_resp = client.post(
+        "/api/community/invite",
+        json={"community_id": community_id, "email": "target.canonical+tag@gmail.com"},
+    )
+    assert create_resp.status_code == 200
+    assert not _member_exists("target_canonical_invite", community_id)
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        ph = get_sql_placeholder()
+        c.execute(
+            f"SELECT token FROM community_invitations WHERE community_id = {ph} AND invited_email = {ph}",
+            (community_id, "target.canonical+tag@gmail.com"),
+        )
+        row = c.fetchone()
+        assert row
+        token = row["token"] if hasattr(row, "keys") else row[0]
+
+    _login(client, "target_canonical_invite")
+    accept_resp = client.post(f"/api/community/invites/token/{token}/accept")
+    assert accept_resp.status_code == 200
+    assert accept_resp.get_json()["success"] is True
+    assert _member_exists("target_canonical_invite", community_id)
+
+
+def test_declining_qr_invite_does_not_invalidate_shared_link(mysql_dsn):
+    import bodybuilding_app
+
+    make_user("owner_qr_decline", subscription="premium", email="owner-qr-decline@example.com")
+    make_user("first_qr_viewer", subscription="free", email="first-qr-viewer@example.com")
+    make_user("second_qr_viewer", subscription="free", email="second-qr-viewer@example.com")
+    community_id = make_community(
+        "qr-decline-shared-link",
+        tier="free",
+        creator_username="owner_qr_decline",
+    )
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "owner_qr_decline")
+    create_resp = client.post("/api/community/invite_link", json={"community_id": community_id})
+    assert create_resp.status_code == 200
+    invite_url = create_resp.get_json()["invite_url"]
+    token = invite_url.rsplit("/", 1)[-1]
+
+    _login(client, "first_qr_viewer")
+    decline_resp = client.post(f"/api/community/invites/token/{token}/decline")
+    assert decline_resp.status_code == 200
+    assert decline_resp.get_json()["success"] is True
+    assert not _member_exists("first_qr_viewer", community_id)
+
+    _login(client, "second_qr_viewer")
+    accept_resp = client.post(f"/api/community/invites/token/{token}/accept")
+    assert accept_resp.status_code == 200
+    assert accept_resp.get_json()["success"] is True
+    assert _member_exists("second_qr_viewer", community_id)
 
 
 def test_non_admin_cannot_create_username_invite(mysql_dsn):
@@ -261,3 +448,18 @@ def test_hierarchical_communities_include_creator_owned_without_membership(mysql
     assert body["username"] == "JohnDoe"
     community_ids = {community["id"] for community in body["communities"]}
     assert root_id in community_ids
+
+
+def test_invite_preview_invalid_token_localized_pt_pt(mysql_dsn):
+    import bodybuilding_app
+
+    client = bodybuilding_app.app.test_client()
+    resp = client.get(
+        "/api/invite_preview/not-a-real-token",
+        headers={"Accept-Language": "pt-PT"},
+    )
+    assert resp.status_code == 404
+    body = resp.get_json()
+    assert body["success"] is False
+    assert body["message_key"] == "communities.invite.invalid_invitation"
+    assert body["error"] == "Convite inválido."

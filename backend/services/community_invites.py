@@ -7,7 +7,7 @@ import logging
 import os
 import re
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -24,7 +24,12 @@ from backend.services.community import (
     render_member_cap_error,
 )
 from backend.services.database import get_db_connection, get_sql_placeholder
+from backend.services.email_normalization import canonicalize_with_policy
 from backend.services.notifications import create_notification, send_push_to_user
+from backend.services.steve_community_welcome import (
+    ensure_introduce_yourself_thread,
+    mirror_introduce_yourself_thread,
+)
 
 
 def _err(key: str, status: int, **params: Any) -> Tuple[Dict[str, Any], int]:
@@ -55,7 +60,7 @@ def _err(key: str, status: int, **params: Any) -> Tuple[Dict[str, Any], int]:
 
 logger = logging.getLogger(__name__)
 EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
-USERNAME_INVITE_GENERIC_MESSAGE = "If that user exists, we will send an invite."
+INVITE_EXPIRY_DAYS = 7
 
 
 @lru_cache(maxsize=1)
@@ -107,6 +112,63 @@ def _invite_logo_url(base_url: str) -> str:
 
 def _ensure_tables(cursor) -> None:
     _legacy_helpers()["ensure_community_invitations_table"](cursor)
+
+
+def _invite_expires_at() -> str:
+    return (datetime.utcnow() + timedelta(days=INVITE_EXPIRY_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _is_expired(value: Any) -> bool:
+    if not value:
+        return False
+    if isinstance(value, datetime):
+        return value < datetime.utcnow()
+    text = str(value).replace("T", " ").replace("Z", "").split(".")[0]
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt) < datetime.utcnow()
+        except ValueError:
+            continue
+    return False
+
+
+def _expired_payload() -> Tuple[Dict[str, Any], int]:
+    message = i18n.t("communities.invite.expired", i18n.DEFAULT_LOCALE)
+    if message == "communities.invite.expired":
+        message = "This invitation has expired. Ask the sender to send a new one."
+    return {
+        "success": False,
+        "error": message,
+        "error_code": "invite_expired",
+        "message_key": "invite_expired",
+    }, 410
+
+
+def _request_locale(username: Optional[str] = None) -> str:
+    try:
+        from flask import request
+
+        return user_locale.resolve_request_locale(request, username)
+    except Exception:
+        return i18n.DEFAULT_LOCALE
+
+
+def _is_qr_invite(invited_email: Optional[str]) -> bool:
+    return bool(
+        invited_email
+        and str(invited_email).startswith("qr-invite-")
+        and str(invited_email).endswith("@placeholder.local")
+    )
+
+
+def _canonical_email(value: Optional[str]) -> str:
+    return canonicalize_with_policy(value or "") if value else ""
+
+
+def _emails_match(left: Optional[str], right: Optional[str]) -> bool:
+    left_canonical = _canonical_email(left)
+    right_canonical = _canonical_email(right)
+    return bool(left_canonical and right_canonical and left_canonical == right_canonical)
 
 
 def _single_use_column(cursor) -> None:
@@ -228,11 +290,13 @@ def generate_invite_link(username: str, community_id_raw: Any, host_url: str) ->
             if cap_payload:
                 return cap_payload
             token = secrets.token_urlsafe(32)
+            expires_at = _invite_expires_at()
             _ensure_tables(c)
             c.execute(
                 f"""
-                INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token, include_nested_ids, include_parent_ids)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                INSERT INTO community_invitations
+                    (community_id, invited_email, invited_by_username, token, include_nested_ids, include_parent_ids, expires_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
                 """,
                 (
                     community_id,
@@ -241,6 +305,7 @@ def generate_invite_link(username: str, community_id_raw: Any, host_url: str) ->
                     token,
                     json.dumps([]),
                     json.dumps([]),
+                    expires_at,
                 ),
             )
             conn.commit()
@@ -248,6 +313,7 @@ def generate_invite_link(username: str, community_id_raw: Any, host_url: str) ->
                 "success": True,
                 "invite_url": f"{_public_base_url(host_url)}/invite/{token}",
                 "community_name": _row_value(community, "name", 0),
+                "expires_at": expires_at,
             }, 200
     except Exception as exc:
         logger.error("Error generating invite link: %s", exc, exc_info=True)
@@ -348,10 +414,12 @@ def invite_username(username: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any]
             cap_payload = _member_cap_payload(c, community_id, username, target_username)
             if cap_payload:
                 return cap_payload
+            expires_at = _invite_expires_at()
             generic_payload = {
                 "success": True,
                 "community_name": community_name,
-                "message": USERNAME_INVITE_GENERIC_MESSAGE,
+                "message": i18n.t("communities.invite.if_exists", _request_locale(username)),
+                "expires_at": expires_at,
             }
             c.execute(f"SELECT id, username FROM users WHERE LOWER(username) = LOWER({ph})", (target_username,))
             target_row = c.fetchone()
@@ -383,17 +451,18 @@ def invite_username(username: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any]
                     f"""
                     UPDATE community_invitations
                     SET invited_by_username = {ph}, invited_email = {ph}, token = {ph}, invited_at = CURRENT_TIMESTAMP,
-                        include_nested_ids = {ph}, include_parent_ids = {ph}, status = 'pending', responded_at = NULL
+                        include_nested_ids = {ph}, include_parent_ids = {ph}, status = 'pending', responded_at = NULL,
+                        expires_at = {ph}
                     WHERE id = {ph}
                     """,
-                    (username, placeholder_email, token, json.dumps([]), json.dumps([]), invite_id),
+                    (username, placeholder_email, token, json.dumps([]), json.dumps([]), expires_at, invite_id),
                 )
             else:
                 c.execute(
                     f"""
                     INSERT INTO community_invitations
-                        (community_id, invited_email, invited_username, invited_by_username, token, include_nested_ids, include_parent_ids, status, used)
-                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, 'pending', 0)
+                        (community_id, invited_email, invited_username, invited_by_username, token, include_nested_ids, include_parent_ids, status, used, expires_at)
+                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, 'pending', 0, {ph})
                     """,
                     (
                         community_id,
@@ -403,25 +472,26 @@ def invite_username(username: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any]
                         token,
                         json.dumps([]),
                         json.dumps([]),
+                        expires_at,
                     ),
                 )
                 invite_id = c.lastrowid
-            message = f"You've been invited to community {community_name} by username {username}"
+            message = f"{username} invited you to {community_name}"
             create_notification(
                 resolved_target_username,
                 username,
                 "community_invite",
                 community_id=community_id,
                 message=message,
-                link="/notifications",
+                link="/notifications?tab=invites",
             )
             try:
                 send_push_to_user(
                     resolved_target_username,
                     {
-                        "title": "Community invite",
+                        "title": "Community invitation",
                         "body": message,
-                        "url": "/notifications",
+                        "url": "/notifications?tab=invites",
                         "tag": f"community-invite-{community_id}-{resolved_target_username}",
                     },
                 )
@@ -434,22 +504,37 @@ def invite_username(username: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any]
         return {"success": False, "error": "Server error"}, 500
 
 
-def list_pending_invites(username: str) -> Tuple[Dict[str, Any], int]:
+def list_pending_invites(username: str, *, include_email: bool = False) -> Tuple[Dict[str, Any], int]:
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             _ensure_tables(c)
             ph = get_sql_placeholder()
+            c.execute(f"SELECT email, canonical_email FROM users WHERE LOWER(username) = LOWER({ph})", (username,))
+            user_row = c.fetchone()
+            user_email = (_row_value(user_row, "email", 0, "") or "").strip().lower()
+            user_canonical = (_row_value(user_row, "canonical_email", 1, "") or _canonical_email(user_email)).strip().lower()
+            email_clause = ""
+            params: List[Any] = [username]
+            if include_email and user_email:
+                email_clause = (
+                    f" OR (ci.invited_username IS NULL AND (LOWER(ci.invited_email) = LOWER({ph})"
+                    f" OR LOWER(ci.invited_email) = LOWER({ph})))"
+                )
+                params.extend([user_email, user_canonical])
             c.execute(
                 f"""
                 SELECT ci.id, ci.community_id, ci.invited_by_username, ci.invited_at,
-                       ci.include_nested_ids, ci.include_parent_ids, c.name as community_name
+                       ci.include_nested_ids, ci.include_parent_ids, c.name as community_name,
+                       ci.expires_at, ci.token, ci.invited_email
                 FROM community_invitations ci
                 JOIN communities c ON c.id = ci.community_id
-                WHERE LOWER(ci.invited_username) = LOWER({ph}) AND ci.used = 0 AND COALESCE(ci.status, 'pending') = 'pending'
+                WHERE (LOWER(ci.invited_username) = LOWER({ph}){email_clause})
+                  AND ci.used = 0
+                  AND COALESCE(ci.status, 'pending') = 'pending'
                 ORDER BY ci.invited_at DESC
                 """,
-                (username,),
+                tuple(params),
             )
             invites = []
             for row in c.fetchall() or []:
@@ -464,6 +549,10 @@ def list_pending_invites(username: str) -> Tuple[Dict[str, Any], int]:
                         "community_name": _row_value(row, "community_name", 6),
                         "include_nested_ids": _normalize_id_list(raw_nested) if raw_nested else [],
                         "include_parent_ids": _normalize_id_list(raw_parent) if raw_parent else [],
+                        "expires_at": str(_row_value(row, "expires_at", 7) or ""),
+                        "expired": _is_expired(_row_value(row, "expires_at", 7)),
+                        "token": _row_value(row, "token", 8),
+                        "invite_type": "email" if _row_value(row, "invited_email", 9) else "username",
                     }
                 )
             return {"success": True, "invites": invites}, 200
@@ -478,16 +567,18 @@ def accept_invite(username: str, invite_id: int) -> Tuple[Dict[str, Any], int]:
             c = conn.cursor()
             _ensure_tables(c)
             ph = get_sql_placeholder()
-            c.execute(f"SELECT id, email FROM users WHERE username = {ph}", (username,))
+            c.execute(f"SELECT id, email, canonical_email FROM users WHERE username = {ph}", (username,))
             user_row = c.fetchone()
             if not user_row:
                 return {"success": False, "error": "User not found"}, 404
             user_id = _row_value(user_row, "id", 0)
+            user_email = (_row_value(user_row, "email", 1, "") or "").strip().lower()
+            user_canonical = (_row_value(user_row, "canonical_email", 2, "") or _canonical_email(user_email)).strip().lower()
             c.execute(
                 f"""
                 SELECT ci.id, ci.community_id, ci.invited_username, ci.used, ci.status,
                        ci.include_nested_ids, ci.include_parent_ids, c.name as community_name,
-                       ci.invited_by_username
+                       ci.invited_by_username, ci.invited_email, ci.expires_at
                 FROM community_invitations ci
                 JOIN communities c ON c.id = ci.community_id
                 WHERE ci.id = {ph}
@@ -500,11 +591,23 @@ def accept_invite(username: str, invite_id: int) -> Tuple[Dict[str, Any], int]:
             invited_username = _row_value(invite, "invited_username", 2)
             used = _row_value(invite, "used", 3)
             status = _row_value(invite, "status", 4)
-            if not invited_username or str(invited_username).lower() != username.lower():
+            invited_email = (_row_value(invite, "invited_email", 9, "") or "").strip().lower()
+            username_matches = bool(invited_username and str(invited_username).lower() == username.lower())
+            email_matches = bool(
+                invited_email
+                and not _is_qr_invite(invited_email)
+                and (_emails_match(user_email, invited_email) or _emails_match(user_canonical, invited_email))
+            )
+            if not username_matches and not email_matches:
                 return {"success": False, "error": "Invite not found"}, 404
             if used or (status and status != "pending"):
                 return {"success": False, "error": "Invite is no longer pending"}, 400
+            if _is_expired(_row_value(invite, "expires_at", 10)):
+                return _expired_payload()
             community_id = int(_row_value(invite, "community_id", 1))
+            c.execute(f"SELECT 1 FROM user_communities WHERE user_id = {ph} AND community_id = {ph}", (user_id, community_id))
+            if c.fetchone():
+                return {"success": False, "error": "You are already a member of this community"}, 400
             for comm_id in _community_invite_join_ids(
                 community_id,
                 _row_value(invite, "include_nested_ids", 5),
@@ -530,14 +633,23 @@ def accept_invite(username: str, invite_id: int) -> Tuple[Dict[str, Any], int]:
                 """,
                 (username, community_id),
             )
-            notify_community_new_member(community_id, username, conn)
+            introduce_thread_post_id = ensure_introduce_yourself_thread(c, community_id)
+            notify_community_new_member(
+                community_id,
+                username,
+                conn,
+                introduce_thread_post_id=introduce_thread_post_id,
+            )
             conn.commit()
+            mirror_introduce_yourself_thread(introduce_thread_post_id, community_id)
             invalidate_user_cache(username)
             community_name = _row_value(invite, "community_name", 7)
             return {
                 "success": True,
                 "community_id": community_id,
                 "community_name": community_name,
+                "introduce_thread_post_id": introduce_thread_post_id,
+                "next_url": f"/community_feed_react/{community_id}?joined=1",
                 "message": f"Joined {community_name}",
             }, 200
     except Exception as exc:
@@ -551,9 +663,13 @@ def decline_invite(username: str, invite_id: int) -> Tuple[Dict[str, Any], int]:
             c = conn.cursor()
             _ensure_tables(c)
             ph = get_sql_placeholder()
+            c.execute(f"SELECT email, canonical_email FROM users WHERE LOWER(username) = LOWER({ph})", (username,))
+            user_row = c.fetchone()
+            user_email = (_row_value(user_row, "email", 0, "") or "").strip().lower()
+            user_canonical = (_row_value(user_row, "canonical_email", 1, "") or _canonical_email(user_email)).strip().lower()
             c.execute(
                 f"""
-                SELECT id, community_id, invited_username, used, status
+                SELECT id, community_id, invited_username, used, status, invited_email
                 FROM community_invitations
                 WHERE id = {ph}
                 """,
@@ -566,7 +682,14 @@ def decline_invite(username: str, invite_id: int) -> Tuple[Dict[str, Any], int]:
             used = _row_value(invite, "used", 3)
             status = _row_value(invite, "status", 4)
             community_id = _row_value(invite, "community_id", 1)
-            if not invited_username or str(invited_username).lower() != username.lower():
+            invited_email = (_row_value(invite, "invited_email", 5, "") or "").strip().lower()
+            username_matches = bool(invited_username and str(invited_username).lower() == username.lower())
+            email_matches = bool(
+                invited_email
+                and not _is_qr_invite(invited_email)
+                and (_emails_match(user_email, invited_email) or _emails_match(user_canonical, invited_email))
+            )
+            if not username_matches and not email_matches:
                 return {"success": False, "error": "Invite not found"}, 404
             if used or (status and status != "pending"):
                 return {"success": False, "error": "Invite is no longer pending"}, 400
@@ -590,7 +713,55 @@ def decline_invite(username: str, invite_id: int) -> Tuple[Dict[str, Any], int]:
         return {"success": False, "error": "Server error"}, 500
 
 
-def notify_community_new_member(community_id: int, new_username: str, conn) -> None:
+def decline_token_invite(username: str, invite_token: str) -> Tuple[Dict[str, Any], int]:
+    if not invite_token:
+        return {"success": False, "error": "Invitation token required"}, 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            _ensure_tables(c)
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT email, canonical_email FROM users WHERE LOWER(username) = LOWER({ph})", (username,))
+            user_row = c.fetchone()
+            user_email = (_row_value(user_row, "email", 0, "") or "").strip().lower()
+            user_canonical = (_row_value(user_row, "canonical_email", 1, "") or _canonical_email(user_email)).strip().lower()
+            c.execute(
+                f"""
+                SELECT id, community_id, invited_email, used, status
+                FROM community_invitations
+                WHERE token = {ph}
+                """,
+                (invite_token,),
+            )
+            invite = c.fetchone()
+            if not invite:
+                return {"success": False, "error": "Invite not found"}, 404
+            invited_email = (_row_value(invite, "invited_email", 2, "") or "").strip().lower()
+            if _is_qr_invite(invited_email):
+                return {"success": True, "message": "Invitation left pending"}, 200
+            if not (_emails_match(user_email, invited_email) or _emails_match(user_canonical, invited_email)):
+                return {"success": False, "error": "Invite not found"}, 404
+            if _row_value(invite, "used", 3) or (_row_value(invite, "status", 4) and _row_value(invite, "status", 4) != "pending"):
+                return {"success": False, "error": "Invite is no longer pending"}, 400
+            now_value = datetime.now().isoformat()
+            c.execute(
+                f"UPDATE community_invitations SET status = 'declined', responded_at = {ph} WHERE token = {ph}",
+                (now_value, invite_token),
+            )
+            conn.commit()
+            return {"success": True}, 200
+    except Exception as exc:
+        logger.error("Error declining token invite: %s", exc, exc_info=True)
+        return {"success": False, "error": "Server error"}, 500
+
+
+def notify_community_new_member(
+    community_id: int,
+    new_username: str,
+    conn,
+    *,
+    introduce_thread_post_id: Optional[int] = None,
+) -> None:
     try:
         c = conn.cursor()
         ph = get_sql_placeholder()
@@ -608,8 +779,12 @@ def notify_community_new_member(community_id: int, new_username: str, conn) -> N
             """,
             (community_id, new_username),
         )
-        message = f'{new_username} just joined "{community_name}". Say hi! 👋'
-        link = f"/community_feed/{community_id}"
+        message = f"{new_username} just joined {community_name}"
+        link = (
+            f"/post/{introduce_thread_post_id}?prompt=welcome"
+            if introduce_thread_post_id
+            else f"/community_feed/{community_id}"
+        )
         for member in c.fetchall() or []:
             member_username = _row_value(member, "username", 0)
             try:
@@ -637,22 +812,27 @@ def notify_community_new_member(community_id: int, new_username: str, conn) -> N
 
 
 def join_with_invite(username: str, invite_token: str) -> Tuple[Dict[str, Any], int]:
+    return accept_token_invite(username, invite_token)
+
+
+def accept_token_invite(username: str, invite_token: str) -> Tuple[Dict[str, Any], int]:
     if not invite_token:
-        return {"success": False, "error": "Invitation token required"}, 400
+        return _err("communities.invite.token_required", 400)
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
-            c.execute(f"SELECT id, email FROM users WHERE username = {ph}", (username,))
+            c.execute(f"SELECT id, email, canonical_email FROM users WHERE username = {ph}", (username,))
             user_row = c.fetchone()
             if not user_row:
-                return {"success": False, "error": "User not found"}, 404
+                return _err("communities.invite.user_not_found", 404)
             user_id = _row_value(user_row, "id", 0)
             user_email = _row_value(user_row, "email", 1)
+            user_canonical = _row_value(user_row, "canonical_email", 2) or _canonical_email(user_email)
             c.execute(
                 f"""
                 SELECT ci.id, ci.community_id, ci.used, ci.invited_email, c.name as community_name,
-                       ci.include_nested_ids, ci.include_parent_ids
+                       ci.include_nested_ids, ci.include_parent_ids, ci.status, ci.expires_at
                 FROM community_invitations ci
                 JOIN communities c ON ci.community_id = c.id
                 WHERE ci.token = {ph}
@@ -661,18 +841,23 @@ def join_with_invite(username: str, invite_token: str) -> Tuple[Dict[str, Any], 
             )
             invitation = c.fetchone()
             if not invitation:
-                return {"success": False, "error": "Invalid invitation"}, 404
+                return _err("communities.invite.invalid_invitation", 404)
             if _row_value(invitation, "used", 2):
-                return {"success": False, "error": "Invitation already used"}, 400
+                return _err("communities.join.used_invite", 400)
+            status = _row_value(invitation, "status", 7)
+            if status and status != "pending":
+                return _err("communities.invite.not_pending", 400)
+            if _is_expired(_row_value(invitation, "expires_at", 8)):
+                return _expired_payload()
             invitation_id = _row_value(invitation, "id", 0)
             community_id = int(_row_value(invitation, "community_id", 1))
             invited_email = _row_value(invitation, "invited_email", 3)
-            is_qr_invite = invited_email and str(invited_email).startswith("qr-invite-") and str(invited_email).endswith("@placeholder.local")
-            if not is_qr_invite and str(user_email).lower() != str(invited_email).lower():
-                return {"success": False, "error": "This invitation was sent to a different email address"}, 403
+            is_qr_invite = _is_qr_invite(invited_email)
+            if not is_qr_invite and not (_emails_match(user_email, invited_email) or _emails_match(user_canonical, invited_email)):
+                return _err("communities.invite.email_mismatch", 403)
             c.execute(f"SELECT 1 FROM user_communities WHERE user_id = {ph} AND community_id = {ph}", (user_id, community_id))
             if c.fetchone():
-                return {"success": False, "error": "You are already a member of this community"}, 400
+                return _err("communities.invite.already_member", 400)
             join_ids = [community_id]
             for comm_id in join_ids:
                 c.execute(f"SELECT 1 FROM user_communities WHERE user_id = {ph} AND community_id = {ph}", (user_id, comm_id))
@@ -682,27 +867,45 @@ def join_with_invite(username: str, invite_token: str) -> Tuple[Dict[str, Any], 
                     except CommunityMembershipLimitError as exc:
                         conn.rollback()
                         return render_member_cap_error(exc, session_username=username)
-            _single_use_column(c)
-            c.execute(f"SELECT invite_single_use FROM communities WHERE id = {ph}", (community_id,))
-            single_use = bool(_row_value(c.fetchone(), "invite_single_use", 0))
-            if single_use:
-                c.execute(
-                    f"UPDATE community_invitations SET used = 1, used_at = {ph} WHERE id = {ph}",
-                    (datetime.now().isoformat(), invitation_id),
-                )
-            notify_community_new_member(community_id, username, conn)
+            now_value = datetime.now().isoformat()
+            c.execute(
+                f"""
+                UPDATE community_invitations
+                SET used = 1, used_at = {ph}, status = 'accepted', responded_at = {ph}
+                WHERE id = {ph}
+                """,
+                (now_value, now_value, invitation_id),
+            )
+            introduce_thread_post_id = ensure_introduce_yourself_thread(c, community_id)
+            notify_community_new_member(
+                community_id,
+                username,
+                conn,
+                introduce_thread_post_id=introduce_thread_post_id,
+            )
             conn.commit()
+            mirror_introduce_yourself_thread(introduce_thread_post_id, community_id)
             invalidate_user_cache(username)
             community_name = _row_value(invitation, "community_name", 4)
+            try:
+                from flask import request, session as _session
+
+                locale = user_locale.resolve_request_locale(request, _session.get("username"))
+            except Exception:
+                locale = i18n.DEFAULT_LOCALE
+            joined_message = i18n.t("communities.join.joined", locale, community_name=community_name)
             return {
                 "success": True,
                 "community_id": community_id,
                 "community_name": community_name,
-                "message": f"Successfully joined {community_name}",
+                "introduce_thread_post_id": introduce_thread_post_id,
+                "next_url": f"/community_feed_react/{community_id}?joined=1",
+                "message": joined_message,
+                "message_key": "communities.join.joined",
             }, 200
     except Exception as exc:
         logger.error("Error joining with invite: %s", exc, exc_info=True)
-        return {"success": False, "error": "Server error"}, 500
+        return _err("errors.server", 500)
 
 
 def invite_info(invite_token: str) -> Tuple[Dict[str, Any], int]:
@@ -714,7 +917,7 @@ def invite_info(invite_token: str) -> Tuple[Dict[str, Any], int]:
             ph = get_sql_placeholder()
             c.execute(
                 f"""
-                SELECT ci.community_id, c.name as community_name, ci.used
+                SELECT ci.community_id, c.name as community_name, ci.used, ci.expires_at
                 FROM community_invitations ci
                 JOIN communities c ON ci.community_id = c.id
                 WHERE ci.token = {ph}
@@ -724,14 +927,95 @@ def invite_info(invite_token: str) -> Tuple[Dict[str, Any], int]:
             invitation = c.fetchone()
             if not invitation:
                 return {"success": False, "error": "Invalid invitation"}, 404
+            if _is_expired(_row_value(invitation, "expires_at", 3)):
+                payload, status = _expired_payload()
+                payload.update({
+                    "community_id": _row_value(invitation, "community_id", 0),
+                    "community_name": _row_value(invitation, "community_name", 1),
+                })
+                return payload, status
             return {
                 "success": True,
                 "community_id": _row_value(invitation, "community_id", 0),
                 "community_name": _row_value(invitation, "community_name", 1),
+                "expires_at": str(_row_value(invitation, "expires_at", 3) or ""),
             }, 200
     except Exception as exc:
         logger.error("Error getting invite info: %s", exc, exc_info=True)
         return {"success": False, "error": "Server error"}, 500
+
+
+def invite_preview(invite_token: str, username: Optional[str] = None) -> Tuple[Dict[str, Any], int]:
+    if not invite_token:
+        return _err("communities.invite.token_required", 400)
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            _ensure_tables(c)
+            ph = get_sql_placeholder()
+            c.execute(
+                f"""
+                SELECT ci.id, ci.community_id, ci.invited_email, ci.invited_username,
+                       ci.invited_by_username, ci.invited_at, ci.used, ci.status,
+                       ci.expires_at, c.name as community_name
+                FROM community_invitations ci
+                JOIN communities c ON ci.community_id = c.id
+                WHERE ci.token = {ph}
+                """,
+                (invite_token,),
+            )
+            invite = c.fetchone()
+            if not invite:
+                return _err("communities.invite.invalid_invitation", 404)
+            invited_email = _row_value(invite, "invited_email", 2)
+            invited_username = _row_value(invite, "invited_username", 3)
+            expired = _is_expired(_row_value(invite, "expires_at", 8))
+            used = bool(_row_value(invite, "used", 6))
+            status_value = _row_value(invite, "status", 7) or "pending"
+            already_member = False
+            can_view_recipient = False
+            if username:
+                c.execute(f"SELECT email, canonical_email FROM users WHERE LOWER(username) = LOWER({ph})", (username,))
+                user_row = c.fetchone()
+                user_email = _row_value(user_row, "email", 0, "") if user_row else ""
+                user_canonical = _row_value(user_row, "canonical_email", 1, "") if user_row else ""
+                can_view_recipient = bool(
+                    (invited_username and str(invited_username).lower() == str(username).lower())
+                    or (
+                        invited_email
+                        and not _is_qr_invite(invited_email)
+                        and (_emails_match(user_email, invited_email) or _emails_match(user_canonical, invited_email))
+                    )
+                )
+                c.execute(
+                    f"""
+                    SELECT 1
+                    FROM user_communities uc
+                    JOIN users u ON u.id = uc.user_id
+                    WHERE LOWER(u.username) = LOWER({ph}) AND uc.community_id = {ph}
+                    """,
+                    (username, _row_value(invite, "community_id", 1)),
+                )
+                already_member = c.fetchone() is not None
+            return {
+                "success": True,
+                "invite_id": _row_value(invite, "id", 0),
+                "community_id": _row_value(invite, "community_id", 1),
+                "community_name": _row_value(invite, "community_name", 9),
+                "invited_email": invited_email if can_view_recipient else None,
+                "invited_username": invited_username if can_view_recipient else None,
+                "invited_by_username": _row_value(invite, "invited_by_username", 4),
+                "invited_at": str(_row_value(invite, "invited_at", 5) or ""),
+                "expires_at": str(_row_value(invite, "expires_at", 8) or ""),
+                "used": used,
+                "status": status_value,
+                "expired": expired,
+                "already_member": already_member,
+                "recipient_bound": not _is_qr_invite(_row_value(invite, "invited_email", 2)),
+            }, 200
+    except Exception as exc:
+        logger.error("Error previewing invite: %s", exc, exc_info=True)
+        return _err("errors.server", 500)
 
 
 def invite_email(username: str, data: Dict[str, Any], host_url: str) -> Tuple[Dict[str, Any], int]:
@@ -762,52 +1046,36 @@ def invite_email(username: str, data: Dict[str, Any], host_url: str) -> Tuple[Di
             if cap_payload:
                 return cap_payload
             _ensure_tables(c)
-            c.execute(f"SELECT id, username FROM users WHERE email = {ph}", (invited_email,))
+            invited_canonical = _canonical_email(invited_email)
+            c.execute(
+                f"SELECT id, username FROM users WHERE LOWER(email) = LOWER({ph}) OR canonical_email = {ph}",
+                (invited_email, invited_canonical),
+            )
             existing_user = c.fetchone()
             base_url = _public_base_url(host_url)
             logo_url = _invite_logo_url(base_url)
+            existing_username = _row_value(existing_user, "username", 1) if existing_user else None
             if existing_user:
                 existing_user_id = _row_value(existing_user, "id", 0)
-                existing_username = _row_value(existing_user, "username", 1)
                 c.execute(
                     f"SELECT 1 FROM user_communities WHERE community_id = {ph} AND user_id = {ph}",
                     (community_id, existing_user_id),
                 )
                 if c.fetchone():
                     return {"success": False, "error": "User is already a member of this community"}, 400
-                try:
-                    _add_user_to_community(c, int(existing_user_id), community_id, username=existing_username)
-                except CommunityMembershipLimitError as exc:
-                    conn.rollback()
-                    return render_member_cap_error(exc, session_username=existing_username)
-                conn.commit()
-                notify_community_new_member(community_id, existing_username, conn)
-                html, text = community_invite_emails.render_existing_user_added_email(
-                    inviter_username=username,
-                    community_name=community_name,
-                    nested_names=fetch_community_names(c, []),
-                    logo_url=logo_url,
-                )
-                success = _legacy_helpers()["_send_email_via_resend"](
-                    to_email=invited_email,
-                    subject=f"You've been added to {community_name} on C-Point",
-                    html=html,
-                    text=text,
-                )
-                if not success:
-                    return {"success": False, "error": "Failed to send notification email"}, 500
-                return {"success": True, "message": f"User added to {community_name} and notified"}, 200
             c.execute(
                 f"DELETE FROM community_invitations WHERE community_id = {ph} AND invited_email = {ph} AND used = 0",
                 (community_id, invited_email),
             )
             token = secrets.token_urlsafe(32)
+            expires_at = _invite_expires_at()
             c.execute(
                 f"""
-                INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token, include_nested_ids, include_parent_ids)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                INSERT INTO community_invitations
+                    (community_id, invited_email, invited_username, invited_by_username, token, include_nested_ids, include_parent_ids, expires_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
                 """,
-                (community_id, invited_email, username, token, json.dumps([]), json.dumps([])),
+                (community_id, invited_email, existing_username, username, token, json.dumps([]), json.dumps([]), expires_at),
             )
             conn.commit()
             invite_url = f"{base_url}/invite/{token}"
@@ -817,16 +1085,34 @@ def invite_email(username: str, data: Dict[str, Any], host_url: str) -> Tuple[Di
                 invite_url=invite_url,
                 nested_names=fetch_community_names(c, []),
                 logo_url=logo_url,
+                expires_at=expires_at,
             )
+            if existing_username:
+                create_notification(
+                    existing_username,
+                    username,
+                    "community_invite",
+                    community_id=community_id,
+                    message=f"{username} invited you to {community_name}",
+                    link="/notifications?tab=invites",
+                )
             success = _legacy_helpers()["_send_email_via_resend"](
                 to_email=invited_email,
-                subject=f"You're invited to join {community_name} on C-Point",
+                subject=community_invite_emails.invite_subject(
+                    kind="new",
+                    inviter_username=username,
+                    community_name=community_name,
+                ),
                 html=html,
                 text=text,
             )
             if not success:
                 return {"success": False, "error": "Failed to send invitation email"}, 500
-            return {"success": True, "message": "Invitation sent successfully"}, 200
+            return {
+                "success": True,
+                "message": "Invitation sent successfully. This invitation is valid for 7 days.",
+                "expires_at": expires_at,
+            }, 200
     except Exception as exc:
         logger.error("Error sending invitation: %s", exc, exc_info=True)
         return {"success": False, "error": "Server error"}, 500
@@ -854,6 +1140,7 @@ def invite_bulk(username: str, data: Dict[str, Any], host_url: str) -> Tuple[Dic
     for email in valid_emails:
         try:
             token = secrets.token_urlsafe(32)
+            expires_at = _invite_expires_at()
             ph = get_sql_placeholder()
             with get_db_connection() as conn:
                 c = conn.cursor()
@@ -869,17 +1156,40 @@ def invite_bulk(username: str, data: Dict[str, Any], host_url: str) -> Tuple[Dic
                 c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
                 community_name = _row_value(c.fetchone(), "name", 0, "Community")
                 c.execute(
-                    f"INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token) VALUES ({ph},{ph},{ph},{ph})",
-                    (community_id, email, username, token),
+                    f"SELECT username FROM users WHERE LOWER(email) = LOWER({ph}) OR canonical_email = {ph}",
+                    (email, _canonical_email(email)),
+                )
+                existing_user = c.fetchone()
+                existing_username = _row_value(existing_user, "username", 0) if existing_user else None
+                c.execute(
+                    f"""
+                    INSERT INTO community_invitations
+                        (community_id, invited_email, invited_username, invited_by_username, token, include_nested_ids, include_parent_ids, expires_at)
+                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                    """,
+                    (community_id, email, existing_username, username, token, json.dumps([]), json.dumps([]), expires_at),
                 )
                 conn.commit()
                 invite_url = f"{base_url}/invite/{token}"
-                html = f'<p>You have been invited to join <strong>{community_name}</strong> on C-Point.</p><p><a href="{invite_url}">Join now</a></p>'
+                logo_url = _invite_logo_url(base_url)
+                html, text = community_invite_emails.render_new_user_invite_email(
+                    inviter_username=username,
+                    community_name=community_name,
+                    invite_url=invite_url,
+                    nested_names=fetch_community_names(c, []),
+                    logo_url=logo_url,
+                    expires_at=expires_at,
+                )
                 try:
                     _legacy_helpers()["_send_email_via_resend"](
-                        email,
-                        f"You're invited to join {community_name} on C-Point",
-                        html,
+                        to_email=email,
+                        subject=community_invite_emails.invite_subject(
+                            kind="new",
+                            inviter_username=username,
+                            community_name=community_name,
+                        ),
+                        html=html,
+                        text=text,
                     )
                 except Exception:
                     pass
@@ -887,4 +1197,11 @@ def invite_bulk(username: str, data: Dict[str, Any], host_url: str) -> Tuple[Dic
         except Exception as exc:
             errors.append({"email": email, "error": str(exc)})
             failed += 1
-    return {"success": True, "sent": sent, "failed": failed, "errors": errors if errors else None}, 200
+    return {
+        "success": True,
+        "sent": sent,
+        "failed": failed,
+        "errors": errors if errors else None,
+        "message": "Invitations sent. Each invitation is valid for 7 days.",
+        "expires_in_days": INVITE_EXPIRY_DAYS,
+    }, 200

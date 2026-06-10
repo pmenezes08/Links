@@ -20,6 +20,20 @@ def test_new_user_invite_email_contains_invite_link_and_nested_names():
     assert "owner" in text
 
 
+def test_new_user_invite_email_contains_expiry_when_provided():
+    html, text = community_invite_emails.render_new_user_invite_email(
+        inviter_username="owner",
+        community_name="Founders",
+        invite_url="https://app.test/invite/token",
+        nested_names=[],
+        logo_url="https://cdn.test/logo.svg",
+        expires_at="2026-06-10 12:00:00",
+    )
+
+    assert "valid until 2026-06-10 12:00:00" in html
+    assert "valid until 2026-06-10 12:00:00" in text
+
+
 def test_existing_user_added_email_contains_go_to_cpoint_cta():
     html, text = community_invite_emails.render_existing_user_added_email(
         inviter_username="owner",

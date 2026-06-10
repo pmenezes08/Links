@@ -67,6 +67,63 @@ def sql_profile_complete_from_row(row: Optional[Any]) -> bool:
     return filled >= 4
 
 
+def _row_get(row: Optional[Any], key: str, index: Optional[int] = None) -> Any:
+    if not row:
+        return None
+    try:
+        if hasattr(row, "keys"):
+            return row[key]
+    except Exception:
+        pass
+    if index is None:
+        return None
+    try:
+        return row[index]
+    except Exception:
+        return None
+
+
+def _filled(value: Any) -> bool:
+    return bool(value and str(value).strip())
+
+
+def durable_personal_section_complete_from_row(row: Optional[Any]) -> bool:
+    """True when durable profile data already contains the personal background section."""
+    return _filled(_row_get(row, "bio", 6)) or _filled(_row_get(row, "personal_highlight_answers", 10))
+
+
+def durable_professional_section_complete_from_row(row: Optional[Any]) -> bool:
+    """True when durable profile data already contains a usable professional background."""
+    if _filled(_row_get(row, "professional_about", 8)):
+        return True
+    role = _row_get(row, "role", 2)
+    company = _row_get(row, "company", 3)
+    linkedin = _row_get(row, "linkedin", 7)
+    return (_filled(role) and _filled(company)) or (_filled(role) and _filled(linkedin))
+
+
+def collected_personal_section_complete(collected: Optional[Dict[str, Any]]) -> bool:
+    data = collected or {}
+    if data.get("personalSectionComplete"):
+        return True
+    return _filled(data.get("bio")) or any(
+        _filled(data.get(key))
+        for key in ("talkAllDay", "reachOut", "journey", "recommend")
+    )
+
+
+def collected_professional_section_complete(collected: Optional[Dict[str, Any]]) -> bool:
+    data = collected or {}
+    if data.get("professionalSectionComplete"):
+        return True
+    if _filled(data.get("professionalBio")):
+        return True
+    role = data.get("role")
+    company = data.get("company")
+    linkedin = data.get("linkedin")
+    return (_filled(role) and _filled(company)) or (_filled(role) and _filled(linkedin))
+
+
 def firestore_onboarding_complete(doc: Optional[Dict[str, Any]]) -> bool:
     if not doc:
         return False
@@ -290,11 +347,30 @@ def build_onboarding_state_payload(
     }
     collected = (firestore_doc or {}).get("collected") or {}
     if isinstance(collected, dict):
+        personal_effective = (
+            durable_personal_section_complete_from_row(sql_row)
+            or collected_personal_section_complete(collected)
+        )
+        professional_effective = (
+            durable_professional_section_complete_from_row(sql_row)
+            or collected_professional_section_complete(collected)
+        )
         payload["onboardingProgress"] = {
             "personalSectionComplete": bool(collected.get("personalSectionComplete")),
             "professionalSectionComplete": bool(collected.get("professionalSectionComplete")),
+            "personalSectionCompleteEffective": bool(personal_effective),
+            "professionalSectionCompleteEffective": bool(professional_effective),
             "activeProfileSection": collected.get("activeProfileSection"),
             "nextStage": next_unanswered_profile_stage((firestore_doc or {}).get("stage"), collected),
+        }
+    else:
+        payload["onboardingProgress"] = {
+            "personalSectionComplete": False,
+            "professionalSectionComplete": False,
+            "personalSectionCompleteEffective": bool(durable_personal_section_complete_from_row(sql_row)),
+            "professionalSectionCompleteEffective": bool(durable_professional_section_complete_from_row(sql_row)),
+            "activeProfileSection": None,
+            "nextStage": "section_picker",
         }
     if firestore_doc and firestore_doc.get("onboarding_intent"):
         payload["onboardingIntent"] = firestore_doc.get("onboarding_intent")

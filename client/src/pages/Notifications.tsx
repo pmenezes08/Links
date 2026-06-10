@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { useHeader } from '../contexts/HeaderContext'
@@ -62,9 +62,18 @@ type PendingCommunityInvite = {
   community_name: string
   invited_by_username: string
   invited_at?: string
+  expires_at?: string
+  expired?: boolean
 }
 
 type TabType = 'notifications' | 'invites' | 'calendar' | 'polls' | 'tasks'
+
+function tabFromSearch(search: string): TabType {
+  const tab = new URLSearchParams(search).get('tab')
+  return tab === 'invites' || tab === 'calendar' || tab === 'polls' || tab === 'tasks'
+    ? tab
+    : 'notifications'
+}
 
 const INVITE_NOTIFICATION_TYPES = new Set(['community_invite', 'dm_invite'])
 
@@ -156,7 +165,8 @@ export default function Notifications(){
   const { setTitle } = useHeader()
   const { unreadNotifs, refreshBadges, adjustBadges } = useBadges()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<TabType>('notifications')
+  const location = useLocation()
+  const [activeTab, setActiveTab] = useState<TabType>(() => tabFromSearch(location.search))
   const [items, setItems] = useState<Notif[]|null>(null)
   const [loading, setLoading] = useState(true)
   const [clearing, setClearing] = useState(false)
@@ -185,6 +195,9 @@ export default function Notifications(){
   const visibleRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => { setTitle(t('notifications_page.page_title')) }, [setTitle, t])
+  useEffect(() => {
+    setActiveTab(tabFromSearch(location.search))
+  }, [location.search])
 
   // ``load`` accepts ``{ silent: true }`` so background refreshes (badge
   // poll, focus / visibility, foreground push) repopulate ``items``
@@ -237,7 +250,7 @@ export default function Notifications(){
 
   const loadPendingInvites = useCallback(async function loadPendingInvites(){
     try {
-      const r = await fetch('/api/community/invites/pending', {
+      const r = await fetch('/api/community/invites/pending?include_email=true', {
         credentials: 'include',
         headers: { 'Accept': 'application/json' },
       })
@@ -459,6 +472,9 @@ export default function Notifications(){
         setPendingInvites(prev => prev.filter(x => x.id !== invite.id))
         await load({ silent: true })
         refreshBadges()
+        if (action === 'accept') {
+          navigate(j.next_url || `/community_feed_react/${j.community_id || invite.community_id}`)
+        }
       } else {
         setInviteActionError(j?.error || t('notifications_page.invite_action_failed', { action }))
       }
@@ -739,7 +755,7 @@ export default function Notifications(){
               <div className="space-y-2">
                 <div className="text-xs font-semibold uppercase tracking-wide text-c-text-tertiary">{t('notifications_page.community_invites_heading')}</div>
                 {pendingInvites.map(invite => (
-                  <div key={`community-${invite.id}`} className="rounded-xl border border-cpoint-turquoise/35 bg-cpoint-turquoise/10 p-3">
+                  <div key={`community-${invite.id}`} className={`rounded-xl border p-3 ${invite.expired ? 'border-c-border bg-c-hover-bg/40 opacity-75' : 'border-cpoint-turquoise/35 bg-cpoint-turquoise/10'}`}>
                     <div className="flex items-start gap-3">
                       <div className="w-10 h-10 rounded-full bg-cpoint-turquoise/20 flex items-center justify-center text-cpoint-turquoise">
                         <i className="fa-solid fa-user-plus" />
@@ -754,13 +770,18 @@ export default function Notifications(){
                         {invite.invited_at ? (
                           <div className="text-[11px] text-c-text-tertiary mt-0.5">{formatTimeAgo(invite.invited_at, t)}</div>
                         ) : null}
+                        {invite.expires_at ? (
+                          <div className="text-[11px] text-c-text-tertiary mt-0.5">
+                            {invite.expired ? 'Expired' : 'Valid until'} {new Date(String(invite.expires_at).replace(' ', 'T')).toLocaleString()}
+                          </div>
+                        ) : null}
                         <div className="mt-3 flex gap-2">
                           <button
                             className="flex-1 rounded-lg bg-cpoint-turquoise px-3 py-2 text-sm font-semibold text-black disabled:opacity-50"
-                            disabled={inviteActionLoading === invite.id}
+                            disabled={invite.expired || inviteActionLoading === invite.id}
                             onClick={() => respondToCommunityInvite(invite, 'accept')}
                           >
-                            {inviteActionLoading === invite.id ? t('notifications_page.working') : t('notifications_page.accept')}
+                            {invite.expired ? 'Expired' : inviteActionLoading === invite.id ? t('notifications_page.working') : t('notifications_page.accept')}
                           </button>
                           <button
                             className="flex-1 rounded-lg border border-c-border bg-c-hover-bg px-3 py-2 text-sm text-c-text-primary disabled:opacity-50"
