@@ -464,7 +464,7 @@ export default function Members(){
       {/* Invite Modal */}
       {showInviteModal && (
         <div
-          className="fixed inset-0 z-[9990] flex items-start justify-center bg-[radial-gradient(circle_at_top,_rgba(0,206,200,0.18),_rgba(0,0,0,0.92)_42%)] px-3 backdrop-blur-md sm:px-4"
+          className="theme-always-dark fixed inset-0 z-[9990] flex items-start justify-center bg-[radial-gradient(circle_at_top,_rgba(0,206,200,0.18),_rgba(0,0,0,0.92)_42%)] px-3 backdrop-blur-md sm:px-4"
           style={{
             paddingTop: 'calc(var(--app-header-height, 56px) + env(safe-area-inset-top, 0px) + 14px)',
             paddingBottom: 'max(18px, env(safe-area-inset-bottom, 0px))',

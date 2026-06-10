@@ -635,7 +635,7 @@ export default function EditCommunity(){
               <div className="ml-3">
                 <button
                   type="button"
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${notifyOnNewMember ? 'bg-cpoint-turquoise' : 'bg-white/20'}`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${notifyOnNewMember ? 'bg-cpoint-turquoise' : 'bg-c-border-strong'}`}
                   onClick={() => setNotifyOnNewMember(!notifyOnNewMember)}
                 >
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${notifyOnNewMember ? 'translate-x-6' : 'translate-x-1'}`} />

@@ -96,8 +96,11 @@
          data-theme before paint, so the pre-React shell (body, #root, and
          the initial loader) must not flash the dark canvas for light users.
          !important is required to win over the loader's inline styles. */
-      :root[data-theme='light'] html,
-      :root[data-theme='light'] body {
+      /* :root IS the html element, so target it directly — the previous
+         ":root[data-theme='light'] html" descendant selector never matched
+         and left html with the dark base color in light mode. */
+      html[data-theme='light'],
+      html[data-theme='light'] body {
         background: #FAFBFC;
         color: #1a1a1a;
         color-scheme: light;

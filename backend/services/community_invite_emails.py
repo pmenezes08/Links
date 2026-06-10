@@ -28,7 +28,7 @@ def _nested_sections(names: Iterable[str], heading: str) -> Tuple[str, str]:
         "border: 1px solid rgba(0, 206, 200, 0.35); border-radius: 12px;\">"
         "<div style=\"font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; "
         f"color: #00CEC8; margin-bottom: 10px;\">{heading}</div>"
-        f"<ul style=\"margin: 0; padding-left: 20px; color: #d0d0d0; font-size: 14px; line-height: 1.55;\">{items}</ul>"
+        f"<ul style=\"margin: 0; padding-left: 20px; color: #0F1419; font-size: 14px; line-height: 1.55;\">{items}</ul>"
         "</div>"
     )
     text = f"\n{heading}:\n" + "".join(f"- {name}\n" for name in names)
@@ -73,19 +73,24 @@ def render_existing_user_added_email(
 
     html = f"""
     <!DOCTYPE html>
-    <html><body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background-color:#000;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#000;">
+    <html>
+    <head>
+      <meta name="color-scheme" content="light only">
+      <meta name="supported-color-schemes" content="light only">
+    </head>
+    <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background-color:#ECEEF2;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#ECEEF2;">
         <tr><td align="center" style="padding:40px 20px;">
-          <table width="600" cellpadding="0" cellspacing="0" style="background-color:#1a1a1a;border-radius:12px;overflow:hidden;max-width:100%;">
-            <tr><td style="background:#ffffff;padding:30px;text-align:center;">
+          <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;max-width:100%;">
+            <tr><td style="background:#ffffff;padding:30px 30px 22px;text-align:center;border-bottom:1px solid #E5E9EF;">
               <img src="{logo_url}" alt="C-Point" style="max-width:160px;max-height:60px;margin-bottom:12px;" />
-              <h1 style="margin:0;color:#0F1419;font-size:28px;font-weight:700;">{heading}</h1>
+              <h1 style="margin:0;color:#0F1419;font-size:26px;font-weight:700;">{heading}</h1>
             </td></tr>
-            <tr><td style="padding:40px 30px;color:#fff;">
-              <p style="margin:0 0 20px;font-size:16px;line-height:1.6;">{lead_html}</p>
+            <tr><td style="padding:34px 30px;color:#0F1419;">
+              <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#0F1419;">{lead_html}</p>
               {nested_html}
-              <p style="margin:0 0 30px;font-size:16px;line-height:1.6;color:#b0b0b0;">{secondary}</p>
-              <p style="text-align:center;"><a href="https://www.c-point.co/login" style="display:inline-block;padding:16px 40px;background-color:#00CEC8;color:#000;text-decoration:none;font-weight:600;border-radius:8px;">{cta}</a></p>
+              <p style="margin:0 0 30px;font-size:16px;line-height:1.6;color:#536471;">{secondary}</p>
+              <p style="text-align:center;"><a href="https://www.c-point.co/login" style="display:inline-block;padding:16px 40px;background-color:#00CEC8;border:2px solid #00CEC8;color:#000000;text-decoration:none;font-weight:600;border-radius:8px;">{cta}</a></p>
             </td></tr>
           </table>
         </td></tr>
@@ -127,27 +132,32 @@ def render_new_user_invite_email(
     )
     cta = i18n.t("email.invite_new_user.cta", loc, community=community_name)
     expiry_html = (
-        f'<p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#b0b0b0;">This invitation is valid until {expires_at}.</p>'
+        f'<p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#536471;">This invitation is valid until {expires_at}.</p>'
         if expires_at else ""
     )
     expiry_text = f"\nThis invitation is valid until {expires_at}.\n" if expires_at else ""
 
     html = f"""
     <!DOCTYPE html>
-    <html><body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background-color:#000;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#000;">
+    <html>
+    <head>
+      <meta name="color-scheme" content="light only">
+      <meta name="supported-color-schemes" content="light only">
+    </head>
+    <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background-color:#ECEEF2;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#ECEEF2;">
         <tr><td align="center" style="padding:40px 20px;">
-          <table width="600" cellpadding="0" cellspacing="0" style="background-color:#1a1a1a;border-radius:12px;overflow:hidden;max-width:100%;">
-            <tr><td style="background:#ffffff;padding:30px;text-align:center;">
+          <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;max-width:100%;">
+            <tr><td style="background:#ffffff;padding:30px 30px 22px;text-align:center;border-bottom:1px solid #E5E9EF;">
               <img src="{logo_url}" alt="C-Point" style="max-width:160px;max-height:60px;margin-bottom:12px;" />
-              <h1 style="margin:0;color:#0F1419;font-size:28px;font-weight:700;">{heading}</h1>
+              <h1 style="margin:0;color:#0F1419;font-size:26px;font-weight:700;">{heading}</h1>
             </td></tr>
-            <tr><td style="padding:40px 30px;color:#fff;">
-              <p style="margin:0 0 20px;font-size:16px;line-height:1.6;">{lead_html}</p>
+            <tr><td style="padding:34px 30px;color:#0F1419;">
+              <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#0F1419;">{lead_html}</p>
               {nested_html}
               {expiry_html}
-              <p style="text-align:center;"><a href="{invite_url}" style="display:inline-block;padding:16px 40px;background-color:#00CEC8;color:#000;text-decoration:none;font-weight:600;border-radius:8px;">{cta}</a></p>
-              <p style="font-size:13px;word-break:break-all;color:#00CEC8;">{invite_url}</p>
+              <p style="text-align:center;"><a href="{invite_url}" style="display:inline-block;padding:16px 40px;background-color:#00CEC8;border:2px solid #00CEC8;color:#000000;text-decoration:none;font-weight:600;border-radius:8px;">{cta}</a></p>
+              <p style="font-size:13px;word-break:break-all;color:#536471;">{invite_url}</p>
             </td></tr>
           </table>
         </td></tr>

@@ -314,6 +314,21 @@
   color-scheme: light;
 }
 
+/* Form controls must follow the theme tokens, never the UA color-scheme
+   defaults: with no explicit color, iOS WebKit renders input/select text
+   from the resolved color-scheme, which produced white values on light
+   surfaces (e.g. Manage Community selects). Utility classes still win
+   over these element-level rules where a surface needs something else. */
+input,
+select,
+textarea {
+  color: var(--c-text-primary);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--c-text-disabled);
+}
+
 /* Force-dark utility for surfaces that remain dark regardless of theme */
 .theme-always-dark {
   --c-bg-app: #000000;
