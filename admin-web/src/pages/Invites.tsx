@@ -19,6 +19,7 @@ export default function Invites() {
   const [linkMsg, setLinkMsg] = useState('')
   const [bulkEmails, setBulkEmails] = useState('')
   const [bulkMsg, setBulkMsg] = useState('')
+  const [bulkErrors, setBulkErrors] = useState<{ email: string; error: string }[]>([])
   const [bulkLoading, setBulkLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -75,20 +76,56 @@ export default function Invites() {
     setTimeout(() => setLinkMsg(''), 2000)
   }
 
+  // Server enforces a per-request cap; send big campaigns as sequential
+  // chunks so no single request runs long enough to hit the Cloud Run
+  // timeout, and aggregate honest sent/failed numbers across chunks.
+  const BULK_CHUNK_SIZE = 25
+
   const handleBulkInvite = async (emails: string) => {
     if (!selectedCommunity || !emails.trim()) return
-    setBulkLoading(true); setBulkMsg('')
+    setBulkLoading(true); setBulkMsg(''); setBulkErrors([])
     try {
-      const emailList = emails.split(/[,\n]+/).map(e => e.trim()).filter(Boolean)
-      if (emailList.length === 0) { setBulkMsg('No valid emails provided'); setBulkLoading(false); return }
-      const res = await apiPost('/api/community/invite_bulk', { emails: emailList, community_id: selectedCommunity }) as { message?: string; expires_in_days?: number }
-      const ttl = res.expires_in_days || 7
-      setBulkMsg(`${res.message || `Bulk invite sent to ${emailList.length} email(s)`} Valid for ${ttl} days.`)
-      setBulkEmails('')
-    } catch {
-      setBulkMsg('Failed to send bulk invites')
+      const emailList = Array.from(new Set(
+        emails.split(/[\s,;]+/).map(e => e.trim().toLowerCase()).filter(Boolean)
+      ))
+      if (emailList.length === 0) { setBulkMsg('No valid emails provided'); return }
+      let sent = 0
+      let failed = 0
+      let ttl = 7
+      const errors: { email: string; error: string }[] = []
+      for (let i = 0; i < emailList.length; i += BULK_CHUNK_SIZE) {
+        const chunk = emailList.slice(i, i + BULK_CHUNK_SIZE)
+        setBulkMsg(`Sending ${Math.min(i + chunk.length, emailList.length)} of ${emailList.length}…`)
+        try {
+          const res = await apiPost('/api/community/invite_bulk', { emails: chunk, community_id: selectedCommunity }) as {
+            success?: boolean
+            sent?: number
+            failed?: number
+            errors?: { email: string; error: string }[] | null
+            expires_in_days?: number
+            error?: string
+          }
+          if (res.success === false) {
+            failed += chunk.length
+            errors.push(...chunk.map(email => ({ email, error: res.error || 'Request rejected' })))
+            // Capacity errors apply to the whole campaign — stop sending.
+            break
+          }
+          sent += res.sent || 0
+          failed += res.failed || 0
+          if (res.errors) errors.push(...res.errors)
+          if (res.expires_in_days) ttl = res.expires_in_days
+        } catch (err) {
+          failed += chunk.length
+          errors.push(...chunk.map(email => ({ email, error: err instanceof Error ? err.message : 'Request failed' })))
+        }
+      }
+      setBulkMsg(failed
+        ? `Sent ${sent} invite(s); ${failed} failed — see details below. Valid for ${ttl} days.`
+        : `Sent ${sent} invite(s). Valid for ${ttl} days.`)
+      setBulkErrors(errors)
+      if (!failed) setBulkEmails('')
     } finally { setBulkLoading(false) }
-    setTimeout(() => setBulkMsg(''), 5000)
   }
 
   const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -190,6 +227,18 @@ export default function Invites() {
 
             {bulkMsg && (
               <div className="mb-3 p-3 bg-accent/10 border border-accent/30 rounded-lg text-accent text-sm">{bulkMsg}</div>
+            )}
+            {bulkErrors.length > 0 && (
+              <div className="mb-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm max-h-48 overflow-y-auto">
+                <div className="font-semibold text-red-400 mb-1.5">{bulkErrors.length} issue(s)</div>
+                <ul className="space-y-1">
+                  {bulkErrors.map((e, i) => (
+                    <li key={i} className="text-xs text-red-300">
+                      <span className="font-mono">{e.email}</span> — {e.error}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
 
             <div className="space-y-3">

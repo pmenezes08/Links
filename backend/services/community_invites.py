@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import secrets
+import time
 from datetime import datetime, timedelta
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
@@ -61,6 +62,14 @@ def _err(key: str, status: int, **params: Any) -> Tuple[Dict[str, Any], int]:
 logger = logging.getLogger(__name__)
 EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 INVITE_EXPIRY_DAYS = 7
+# Bulk invite guardrails: each request handles at most this many emails so a
+# big campaign (e.g. a 300-person pilot wave) is sent as several short
+# requests instead of one multi-minute request that can hit the Cloud Run
+# timeout mid-batch. The admin UI chunks client-side to this size.
+MAX_BULK_INVITES_PER_REQUEST = 50
+# Resend rate-limits at roughly 2 requests/second; pace sequential sends so
+# a full chunk never trips 429s (which would otherwise surface as failures).
+BULK_SEND_DELAY_SECONDS = 0.4
 
 
 @lru_cache(maxsize=1)
@@ -197,16 +206,25 @@ def _add_user_to_community(cursor, user_id: int, community_id: int, *, username:
     )
 
 
-def _member_cap_payload(cursor, community_id: int, inviter_username: Optional[str], target_username: Optional[str] = None) -> Optional[Tuple[Dict[str, Any], int]]:
+def _member_cap_payload(
+    cursor,
+    community_id: int,
+    inviter_username: Optional[str],
+    target_username: Optional[str] = None,
+    *,
+    extra_members: int = 1,
+) -> Optional[Tuple[Dict[str, Any], int]]:
     try:
         ensure_free_parent_member_capacity(
             cursor,
             community_id,
+            extra_members,
             attempted_username=target_username or inviter_username,
         )
         ensure_community_tier_member_capacity(
             cursor,
             community_id,
+            extra_members,
             attempted_username=target_username or inviter_username,
         )
         return None
@@ -1118,6 +1136,28 @@ def invite_email(username: str, data: Dict[str, Any], host_url: str) -> Tuple[Di
         return {"success": False, "error": "Server error"}, 500
 
 
+def _count_pending_invites(cursor, community_id: int) -> int:
+    """Live (unused, unexpired) invitations for capacity accounting."""
+    ph = get_sql_placeholder()
+    try:
+        cursor.execute(
+            f"""
+            SELECT COUNT(*) FROM community_invitations
+            WHERE community_id = {ph} AND used = 0
+              AND COALESCE(status, 'pending') = 'pending'
+              AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
+            """,
+            (community_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return 0
+        value = list(row.values())[0] if hasattr(row, "keys") else row[0]
+        return int(value or 0)
+    except Exception:
+        return 0
+
+
 def invite_bulk(username: str, data: Dict[str, Any], host_url: str) -> Tuple[Dict[str, Any], int]:
     community_id = data.get("community_id")
     emails_raw = data.get("emails", "")
@@ -1129,74 +1169,173 @@ def invite_bulk(username: str, data: Dict[str, Any], host_url: str) -> Tuple[Dic
         return {"success": False, "error": "Invalid community_id"}, 400
     if not _has_manage_permission(username, community_id):
         return {"success": False, "error": "Only community admins can send invitations"}, 403
-    emails = [item.strip().lower() for item in re.split(r"[,;\n\r]+", str(emails_raw)) if item.strip()]
-    valid_emails = [email for email in emails if "@" in email and "." in email.split("@")[-1]]
-    if not valid_emails:
+
+    if isinstance(emails_raw, (list, tuple)):
+        raw_items = [str(item) for item in emails_raw]
+    else:
+        raw_items = re.split(r"[\s,;]+", str(emails_raw))
+    emails: List[str] = []
+    errors: List[Dict[str, str]] = []
+    seen = set()
+    for item in raw_items:
+        email = item.strip().lower()
+        if not email or email in seen:
+            continue
+        seen.add(email)
+        if EMAIL_RE.match(email):
+            emails.append(email)
+        else:
+            errors.append({"email": email, "error": "Invalid email format"})
+    if not emails:
         return {"success": False, "error": "No valid emails provided"}, 400
+    if len(emails) > MAX_BULK_INVITES_PER_REQUEST:
+        return {
+            "success": False,
+            "error": (
+                f"Too many emails in one request (max {MAX_BULK_INVITES_PER_REQUEST}). "
+                "Send the list in batches."
+            ),
+            "max_per_request": MAX_BULK_INVITES_PER_REQUEST,
+        }, 400
+
     sent = 0
-    failed = 0
-    errors = []
+    failed = len(errors)
     base_url = _public_base_url(host_url)
-    for email in valid_emails:
-        try:
-            token = secrets.token_urlsafe(32)
-            expires_at = _invite_expires_at()
-            ph = get_sql_placeholder()
-            with get_db_connection() as conn:
-                c = conn.cursor()
-                _ensure_tables(c)
-                c.execute(
-                    f"SELECT id FROM community_invitations WHERE community_id = {ph} AND invited_email = {ph} AND used = 0",
-                    (community_id, email),
-                )
-                if c.fetchone():
-                    errors.append({"email": email, "error": "Already invited"})
-                    failed += 1
-                    continue
-                c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
-                community_name = _row_value(c.fetchone(), "name", 0, "Community")
-                c.execute(
-                    f"SELECT username FROM users WHERE LOWER(email) = LOWER({ph}) OR canonical_email = {ph}",
-                    (email, _canonical_email(email)),
-                )
-                existing_user = c.fetchone()
-                existing_username = _row_value(existing_user, "username", 0) if existing_user else None
-                c.execute(
-                    f"""
-                    INSERT INTO community_invitations
-                        (community_id, invited_email, invited_username, invited_by_username, token, include_nested_ids, include_parent_ids, expires_at)
-                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-                    """,
-                    (community_id, email, existing_username, username, token, json.dumps([]), json.dumps([]), expires_at),
-                )
-                conn.commit()
-                invite_url = f"{base_url}/invite/{token}"
-                logo_url = _invite_logo_url(base_url)
-                html, text = community_invite_emails.render_new_user_invite_email(
-                    inviter_username=username,
-                    community_name=community_name,
-                    invite_url=invite_url,
-                    nested_names=fetch_community_names(c, []),
-                    logo_url=logo_url,
-                    expires_at=expires_at,
-                )
+    logo_url = _invite_logo_url(base_url)
+    send_email = _legacy_helpers()["_send_email_via_resend"]
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            _ensure_tables(c)
+            c.execute(
+                f"SELECT name, parent_community_id FROM communities WHERE id = {ph}",
+                (community_id,),
+            )
+            community = c.fetchone()
+            if not community:
+                return {"success": False, "error": "Community not found"}, 404
+            community_name = _row_value(community, "name", 0, "Community")
+            if _row_value(community, "parent_community_id", 1):
+                return {"success": False, "error": "Invites can only be created from root communities"}, 400
+
+            # Honest capacity pre-check: members + live pending invites + this
+            # batch must fit the community cap, otherwise invitees would only
+            # discover the limit when their accept fails days later.
+            pending = _count_pending_invites(c, community_id)
+            cap_payload = _member_cap_payload(
+                c,
+                community_id,
+                username,
+                extra_members=pending + len(emails),
+            )
+            if cap_payload:
+                payload, status_code = cap_payload
+                payload["pending_invites"] = pending
+                payload["requested_invites"] = len(emails)
+                return payload, status_code
+
+            for email in emails:
                 try:
-                    _legacy_helpers()["_send_email_via_resend"](
-                        to_email=email,
-                        subject=community_invite_emails.invite_subject(
-                            kind="new",
-                            inviter_username=username,
-                            community_name=community_name,
-                        ),
-                        html=html,
-                        text=text,
+                    c.execute(
+                        f"SELECT id FROM community_invitations WHERE community_id = {ph} AND invited_email = {ph} AND used = 0",
+                        (community_id, email),
                     )
-                except Exception:
-                    pass
-                sent += 1
-        except Exception as exc:
-            errors.append({"email": email, "error": str(exc)})
-            failed += 1
+                    if c.fetchone():
+                        errors.append({"email": email, "error": "Already invited"})
+                        failed += 1
+                        continue
+                    c.execute(
+                        f"SELECT id, username FROM users WHERE LOWER(email) = LOWER({ph}) OR canonical_email = {ph}",
+                        (email, _canonical_email(email)),
+                    )
+                    existing_user = c.fetchone()
+                    existing_username = _row_value(existing_user, "username", 1) if existing_user else None
+                    if existing_user:
+                        existing_user_id = _row_value(existing_user, "id", 0)
+                        c.execute(
+                            f"SELECT 1 FROM user_communities WHERE community_id = {ph} AND user_id = {ph}",
+                            (community_id, existing_user_id),
+                        )
+                        if c.fetchone():
+                            errors.append({"email": email, "error": "Already a member"})
+                            failed += 1
+                            continue
+                    token = secrets.token_urlsafe(32)
+                    expires_at = _invite_expires_at()
+                    c.execute(
+                        f"""
+                        INSERT INTO community_invitations
+                            (community_id, invited_email, invited_username, invited_by_username, token, include_nested_ids, include_parent_ids, expires_at)
+                        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                        """,
+                        (community_id, email, existing_username, username, token, json.dumps([]), json.dumps([]), expires_at),
+                    )
+                    conn.commit()
+                    invite_url = f"{base_url}/invite/{token}"
+                    html, text = community_invite_emails.render_new_user_invite_email(
+                        inviter_username=username,
+                        community_name=community_name,
+                        invite_url=invite_url,
+                        nested_names=fetch_community_names(c, []),
+                        logo_url=logo_url,
+                        expires_at=expires_at,
+                    )
+                    delivered = False
+                    send_error = "Email send failed"
+                    try:
+                        delivered = bool(
+                            send_email(
+                                to_email=email,
+                                subject=community_invite_emails.invite_subject(
+                                    kind="new",
+                                    inviter_username=username,
+                                    community_name=community_name,
+                                ),
+                                html=html,
+                                text=text,
+                            )
+                        )
+                    except Exception as send_exc:  # Resend errors must not abort the batch
+                        send_error = str(send_exc) or send_error
+                    if existing_username:
+                        # Existing accounts also get the in-app invite, which
+                        # delivers even when the email bounces — keep the row.
+                        try:
+                            create_notification(
+                                existing_username,
+                                username,
+                                "community_invite",
+                                community_id=community_id,
+                                message=f"{username} invited you to {community_name}",
+                                link="/notifications?tab=invites",
+                            )
+                        except Exception:
+                            logger.warning("invite_bulk: in-app notification failed for %s", existing_username)
+                        sent += 1
+                        if not delivered:
+                            errors.append({"email": email, "error": "Invited in-app; email delivery failed"})
+                    elif delivered:
+                        sent += 1
+                    else:
+                        # No account and no email: the invitee can never see
+                        # the token. Drop the row so a retry can re-create it.
+                        c.execute(
+                            f"DELETE FROM community_invitations WHERE community_id = {ph} AND invited_email = {ph} AND token = {ph}",
+                            (community_id, email, token),
+                        )
+                        conn.commit()
+                        errors.append({"email": email, "error": send_error})
+                        failed += 1
+                    if BULK_SEND_DELAY_SECONDS:
+                        time.sleep(BULK_SEND_DELAY_SECONDS)
+                except Exception as exc:
+                    logger.error("invite_bulk: failed for %s: %s", email, exc, exc_info=True)
+                    errors.append({"email": email, "error": str(exc)})
+                    failed += 1
+    except Exception as exc:
+        logger.error("Error in bulk invite: %s", exc, exc_info=True)
+        return {"success": False, "error": "Server error"}, 500
     return {
         "success": True,
         "sent": sent,

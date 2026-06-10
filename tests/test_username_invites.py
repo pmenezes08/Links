@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from backend.services.database import get_db_connection, get_sql_placeholder
-from tests.fixtures import make_community, make_user
+from tests.fixtures import fill_community_members, make_community, make_user
 
 
 def _login(client, username: str) -> None:
@@ -463,3 +463,139 @@ def test_invite_preview_invalid_token_localized_pt_pt(mysql_dsn):
     assert body["success"] is False
     assert body["message_key"] == "communities.invite.invalid_invitation"
     assert body["error"] == "Convite inválido."
+
+
+def test_bulk_invite_reports_send_failures_honestly(mysql_dsn, monkeypatch):
+    import bodybuilding_app
+    from backend.services import community_invites as invites_svc
+
+    def fake_send(to_email, subject, html, text):
+        return not to_email.startswith("bounce")
+
+    monkeypatch.setattr(bodybuilding_app, "_send_email_via_resend", fake_send)
+    invites_svc._legacy_helpers.cache_clear()
+    monkeypatch.setattr(invites_svc, "BULK_SEND_DELAY_SECONDS", 0)
+
+    make_user("owner_bulk_invite", subscription="premium")
+    community_id = make_community(
+        "bulk-invite-failures",
+        tier="free",
+        creator_username="owner_bulk_invite",
+    )
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "owner_bulk_invite")
+
+    resp = client.post(
+        "/api/community/invite_bulk",
+        json={
+            "community_id": community_id,
+            "emails": [
+                "new1@example.com",
+                "bounce@example.com",
+                "not-an-email",
+                "new1@example.com",  # duplicate, deduped silently
+            ],
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["success"] is True
+    assert data["sent"] == 1
+    assert data["failed"] == 2
+    errors = {e["email"]: e["error"] for e in data["errors"]}
+    assert "bounce@example.com" in errors
+    assert "not-an-email" in errors
+
+    # The bounced row must be dropped so a retry can re-create it; the
+    # delivered one stays pending.
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"SELECT invited_email FROM community_invitations WHERE community_id = {ph} AND used = 0",
+            (community_id,),
+        )
+        rows = sorted(
+            (r["invited_email"] if hasattr(r, "keys") else r[0]) for r in c.fetchall()
+        )
+    assert rows == ["new1@example.com"]
+
+
+def test_bulk_invite_refuses_batch_exceeding_capacity(mysql_dsn, monkeypatch):
+    import bodybuilding_app
+    from backend.services import community_invites as invites_svc
+    from backend.services import entitlements as entitlements_svc
+
+    monkeypatch.setattr(bodybuilding_app, "_send_email_via_resend", lambda *a, **k: True)
+    invites_svc._legacy_helpers.cache_clear()
+    monkeypatch.setattr(invites_svc, "BULK_SEND_DELAY_SECONDS", 0)
+    monkeypatch.setattr(
+        entitlements_svc,
+        "resolve_entitlements",
+        lambda username: {"members_per_owned_community": 3},
+    )
+
+    make_user("owner_bulk_cap", subscription="free")
+    community_id = make_community(
+        "bulk-invite-cap",
+        tier="free",
+        creator_username="owner_bulk_cap",
+    )
+    fill_community_members(community_id, 2, prefix="bulkcap")
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "owner_bulk_cap")
+
+    resp = client.post(
+        "/api/community/invite_bulk",
+        json={
+            "community_id": community_id,
+            "emails": ["cap1@example.com", "cap2@example.com"],
+        },
+    )
+    assert resp.status_code == 403
+    data = resp.get_json()
+    assert data["success"] is False
+    assert data["reason_code"] == "community_member_limit"
+    assert data["requested_invites"] == 2
+
+    # Nothing was created: the whole batch is refused up front.
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"SELECT COUNT(*) AS n FROM community_invitations WHERE community_id = {ph}",
+            (community_id,),
+        )
+        row = c.fetchone()
+        count = row["n"] if hasattr(row, "keys") else row[0]
+    assert int(count) == 0
+
+
+def test_bulk_invite_enforces_per_request_maximum(mysql_dsn, monkeypatch):
+    import bodybuilding_app
+    from backend.services import community_invites as invites_svc
+
+    monkeypatch.setattr(bodybuilding_app, "_send_email_via_resend", lambda *a, **k: True)
+    invites_svc._legacy_helpers.cache_clear()
+
+    make_user("owner_bulk_max", subscription="premium")
+    community_id = make_community(
+        "bulk-invite-max",
+        tier="free",
+        creator_username="owner_bulk_max",
+    )
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "owner_bulk_max")
+
+    too_many = [f"user{i}@example.com" for i in range(invites_svc.MAX_BULK_INVITES_PER_REQUEST + 1)]
+    resp = client.post(
+        "/api/community/invite_bulk",
+        json={"community_id": community_id, "emails": too_many},
+    )
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert data["success"] is False
+    assert data["max_per_request"] == invites_svc.MAX_BULK_INVITES_PER_REQUEST
