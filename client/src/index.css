@@ -323,6 +323,13 @@ input,
 select,
 textarea {
   color: var(--c-text-primary);
+  caret-color: var(--c-text-primary);
+}
+/* iOS WebKit renders the collapsed <select> text with UA colors derived
+   from color-scheme on some versions, ignoring `color`. text-fill-color
+   wins over that UA painting unconditionally. */
+select {
+  -webkit-text-fill-color: var(--c-text-primary);
 }
 input::placeholder,
 textarea::placeholder {
