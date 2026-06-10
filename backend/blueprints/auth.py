@@ -113,6 +113,13 @@ def _is_mobile_request() -> bool:
     return any(token in ua for token in MOBILE_UA_KEYWORDS)
 
 
+def _wants_json() -> bool:
+    """True when the caller is a fetch client expecting JSON (the React app
+    sends Accept: application/json). Desktop browsers submitting the legacy
+    HTML form send text/html and keep getting templates."""
+    return "application/json" in (request.headers.get("Accept") or "")
+
+
 @auth_bp.before_app_request
 def auto_login_from_remember_token():
     """Restore sessions from remember_token cookies when possible."""
@@ -307,8 +314,8 @@ def signup():
                            ci.include_nested_ids, ci.include_parent_ids
                     FROM community_invitations ci
                     JOIN communities c ON ci.community_id = c.id
-                    WHERE ci.token = ? AND ci.used = 0
-                    """,
+                    WHERE ci.token = {} AND ci.used = 0
+                    """.format(get_sql_placeholder()),
                     (invite_token,),
                 )
                 invitation = c.fetchone()
@@ -317,7 +324,7 @@ def signup():
                     is_qr_invite = invited_email.startswith("qr-invite-") and invited_email.endswith("@placeholder.local")
                     if not is_qr_invite:
                         if email and email.lower() != invited_email.lower():
-                            if _is_mobile_request():
+                            if _is_mobile_request() or _wants_json():
                                 return api_errors.error_response(
                                     "auth.signup.email_does_not_match_invitation", 400
                                 )
@@ -343,9 +350,7 @@ def signup():
         the English string rendered into the HTML signup template (which
         still expects raw text) until that template is migrated.
         """
-        if _is_mobile_request() or (
-            request.headers.get("Content-Type") == "application/x-www-form-urlencoded" and _is_mobile_request()
-        ):
+        if _is_mobile_request() or _wants_json():
             return api_errors.error_response(key, 400)
         return render_template(
             "signup.html",
@@ -481,7 +486,7 @@ def signup():
             except Exception as exc:
                 logger.warning("Could not send verification email (pending): %s", exc)
 
-            if _is_mobile_request():
+            if _is_mobile_request() or _wants_json():
                 return jsonify({"success": True, "needs_email_verification": True, "pending": True})
             _tpl = template_i18n.template_ctx()
             return render_template(
@@ -496,7 +501,7 @@ def signup():
     except Exception as exc:
         logger.error("Error during user registration: %s", exc)
         logger.error("Registration error traceback: %s", traceback.format_exc())
-        if _is_mobile_request():
+        if _is_mobile_request() or _wants_json():
             return api_errors.error_response("auth.signup.registration_failed", 500)
         return render_template(
             "signup.html",

@@ -10869,13 +10869,15 @@ def verify_email():
                 except Exception:
                     pend_canonical = (pend_email or '').strip().lower()
                 c.execute(
-                    f"SELECT id FROM users WHERE canonical_email={ph} OR email={ph}",
+                    f"SELECT id, username FROM users WHERE canonical_email={ph} OR email={ph}",
                     (pend_canonical, pend_email),
                 )
                 exists = c.fetchone()
                 user_id = None
+                login_username = username
                 if exists:
                     user_id = exists['id'] if hasattr(exists, 'keys') else exists[0]
+                    login_username = (exists['username'] if hasattr(exists, 'keys') else exists[1]) or username
                     c.execute(
                         f"UPDATE users SET email_verified=1, email_verified_at=COALESCE(email_verified_at, {ph}), canonical_email=COALESCE(canonical_email, {ph}) WHERE id={ph}",
                         (datetime.now().isoformat(), pend_canonical, user_id),
@@ -10905,6 +10907,39 @@ def verify_email():
                 except Exception:
                     pass
                 conn.commit()
+
+            # The verification link proves mailbox ownership (standard
+            # magic-link semantics), so establish the session here instead
+            # of bouncing the brand-new user to /login to retype the
+            # password they created a minute ago. If a live invite is
+            # waiting on this email, land them on the dashboard invite
+            # prompt so the join is one tap away.
+            try:
+                from backend.blueprints.auth import _finalize_session_response
+
+                has_pending_invite = False
+                try:
+                    with get_db_connection() as conn2:
+                        c2 = conn2.cursor()
+                        c2.execute(
+                            f"""
+                            SELECT 1 FROM community_invitations
+                            WHERE used = 0 AND COALESCE(status, 'pending') = 'pending'
+                              AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
+                              AND LOWER(invited_email) = LOWER({ph})
+                            LIMIT 1
+                            """,
+                            (pend_email,),
+                        )
+                        has_pending_invite = bool(c2.fetchone())
+                except Exception:
+                    pass
+                dest = '/premium_dashboard?invite_prompt=1' if has_pending_invite else '/premium_dashboard'
+                resp = redirect(dest)
+                _finalize_session_response(resp, login_username)
+                return resp
+            except Exception as auto_login_err:
+                logger.warning(f"verify_email auto-login failed (non-fatal): {auto_login_err}")
             return _verification_result_template(success=True, message='Your email has been verified successfully.')
         except Exception as e:
             logger.error(f"verify_email finalize error: {e}")
@@ -23855,25 +23890,44 @@ def invite_landing(token):
     logo_url = get_invite_logo_url()
     base_url = PUBLIC_BASE_URL or request.host_url.rstrip('/')
     
-    # Verify the invitation exists
+    # Verify the invitation exists and is still usable. NOTE: the old code
+    # used a literal '?' placeholder, which raises on PyMySQL and was
+    # swallowed by the except — so the community name never resolved on
+    # MySQL and used/expired invites still rendered "You're Invited!".
     community_name = "a community"
     invited_by = "a member"
+    invite_valid = False
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("""
-                SELECT c.name as community_name, ci.invited_by_username, ci.used
+            ph = get_sql_placeholder()
+            c.execute(f"""
+                SELECT c.name as community_name, ci.invited_by_username, ci.used,
+                       ci.expires_at, COALESCE(ci.status, 'pending') as status
                 FROM community_invitations ci
                 JOIN communities c ON ci.community_id = c.id
-                WHERE ci.token = ?
+                WHERE ci.token = {ph}
             """, (token,))
             invitation = c.fetchone()
             if invitation:
                 community_name = invitation['community_name'] if hasattr(invitation, 'keys') else invitation[0]
                 invited_by = invitation['invited_by_username'] if hasattr(invitation, 'keys') else invitation[1]
                 used = invitation['used'] if hasattr(invitation, 'keys') else invitation[2]
+                expires_at = invitation['expires_at'] if hasattr(invitation, 'keys') else invitation[3]
+                status = invitation['status'] if hasattr(invitation, 'keys') else invitation[4]
+                expired = False
+                if expires_at:
+                    try:
+                        exp_dt = expires_at if isinstance(expires_at, datetime) else datetime.fromisoformat(str(expires_at).replace(' ', 'T'))
+                        expired = exp_dt <= datetime.utcnow()
+                    except Exception:
+                        expired = False
+                invite_valid = (not used) and (not expired) and str(status) == 'pending'
     except Exception as e:
         logger.error(f"Error in invite_landing: {e}")
+        # Fail-open on read errors so a transient DB issue doesn't block a
+        # potentially valid invite; the accept API re-validates anyway.
+        invite_valid = True
     
     app_store_url = APP_STORE_URL if 'APP_STORE_URL' in dir() else "https://apps.apple.com/app/id6755534074"
     play_store_url = f"https://play.google.com/store/apps/details?id=co.cpoint.app"
@@ -23897,11 +23951,54 @@ def invite_landing(token):
     store_label = "Download from App Store" if is_ios else ("Download from Google Play" if is_android else "Download the App")
     store_btn = f'<a href="{store_href}" class="btn btn-secondary" id="storeDownloadBtn">{store_label}</a>'
     invite_https_url = f"{base_url}/invite/{token}"
+    browser_url = f"{base_url}/invite-preview/{token}"
     token_js = json.dumps(token)
     invite_https_js = json.dumps(invite_https_url)
     store_href_js = json.dumps(store_href)
     is_android_js = 'true' if is_android else 'false'
     is_ios_js = 'true' if is_ios else 'false'
+    is_mobile = is_ios or is_android
+
+    if not invite_valid:
+        return f"""<!DOCTYPE html>
+<html><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invitation no longer valid — C-Point</title>
+    <style>
+        * {{ margin:0; padding:0; box-sizing:border-box; }}
+        body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#000; color:#fff; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }}
+        .container {{ max-width:400px; text-align:center; }}
+        .logo {{ width:80px; height:80px; margin:0 auto 20px; }}
+        .logo img {{ width:100%; height:100%; object-fit:contain; border-radius:16px; }}
+        h1 {{ font-size:22px; margin-bottom:10px; }}
+        p {{ color:#888; font-size:14px; line-height:1.6; margin-bottom:24px; }}
+        .btn {{ display:block; width:100%; padding:14px 24px; border-radius:12px; text-decoration:none; font-weight:600; font-size:15px; background:#00CEC8; color:#000; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo"><img src="{logo_url}" alt="C-Point" /></div>
+        <h1>This invitation is no longer valid</h1>
+        <p>The invite link may have expired or already been used. Ask the person who invited you to <strong>{community_name}</strong> for a new invitation.</p>
+        <a href="{base_url}/login" class="btn">Open C-Point</a>
+    </div>
+</body></html>"""
+
+    # Desktop browsers have no app to deep-link into — the primary action is
+    # continuing in the browser (the React invite preview / signup flow).
+    # The previous page only offered "Open in App" + an App Store redirect,
+    # which dead-ended every laptop user.
+    if is_mobile:
+        primary_btn = f'<a href="{app_url}" class="btn btn-primary" id="openAppBtn">Open in C-Point App</a>'
+        store_block = f'<p style="color:#555; font-size:12px; margin:14px 0 10px;">Don&apos;t have the app yet?</p>{store_btn}'
+        browser_btn = f'<a href="{browser_url}" class="btn btn-tertiary">Continue in browser instead</a>'
+        hint_html = '<p class="hint">After you install, open the app from your home screen &mdash; we save your invite automatically when you tap Download above. If you don&apos;t land in the right community, open this page again and tap &quot;Open in C-Point App&quot;, or on Sign in use &quot;Use invite from clipboard&quot;.</p>'
+    else:
+        primary_btn = f'<a href="{browser_url}" class="btn btn-primary">Continue in browser</a>'
+        store_block = ''
+        browser_btn = f'<a href="{app_url}" class="btn btn-tertiary">I have the C-Point app installed</a>'
+        hint_html = ''
 
     return f"""<!DOCTYPE html>
 <html><head>
@@ -23916,11 +24013,11 @@ def invite_landing(token):
         .logo {{ width:80px; height:80px; margin:0 auto 20px; }}
         .logo img {{ width:100%; height:100%; object-fit:contain; border-radius:16px; }}
         h1 {{ font-size:22px; margin-bottom:10px; }}
-        .invite-info {{ color:#4db6ac; font-size:17px; margin-bottom:6px; }}
+        .invite-info {{ color:#00CEC8; font-size:17px; margin-bottom:6px; }}
         .invited-by {{ color:#888; font-size:13px; margin-bottom:28px; }}
         .btn {{ display:block; width:100%; padding:14px 24px; border-radius:12px; text-decoration:none; font-weight:600; font-size:15px; margin-bottom:10px; border:none; cursor:pointer; }}
         .btn:active {{ opacity:0.8; }}
-        .btn-primary {{ background:#4db6ac; color:#000; }}
+        .btn-primary {{ background:#00CEC8; color:#000; }}
         .btn-secondary {{ background:#1a1a1a; color:#fff; border:1px solid #333; }}
         .hint {{ color:#666; font-size:12px; margin-top:16px; line-height:1.5; }}
         .btn-tertiary {{ background:transparent; color:#888; font-size:13px; padding:10px; margin-top:4px; }}
@@ -23932,11 +24029,11 @@ def invite_landing(token):
         <h1>You're Invited!</h1>
         <p class="invite-info">Join <strong>{community_name}</strong></p>
         <p class="invited-by">Invited by {invited_by}</p>
-        <a href="{app_url}" class="btn btn-primary" id="openAppBtn">Open in C-Point App</a>
-        <p style="color:#555; font-size:12px; margin:14px 0 10px;">Don't have the app yet?</p>
-        {store_btn}
+        {primary_btn}
+        {store_block}
+        {browser_btn}
         <button type="button" class="btn btn-tertiary" id="copyInviteLinkBtn">Copy invite link</button>
-        <p class="hint">After you install, open the app from your home screen — we save your invite automatically when you tap Download above. If you don&apos;t land in the right community, open this page again and tap &quot;Open in C-Point App&quot;, or on Sign in use &quot;Use invite from clipboard&quot;.</p>
+        {hint_html}
     </div>
     <script>
 (function() {{

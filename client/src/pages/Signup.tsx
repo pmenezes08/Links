@@ -131,6 +131,10 @@ export default function Signup(){
     fetch('/signup', {
       method: 'POST',
       credentials: 'include',
+      // Accept header makes the backend answer JSON for every outcome —
+      // without it desktop UAs got HTML error pages with HTTP 200, which
+      // this client misread as "verification email sent".
+      headers: { Accept: 'application/json' },
       body: submitData
     })
     .then(async r => {
@@ -157,7 +161,10 @@ export default function Signup(){
             setError(j?.error || t('auth.signup.registration_failed'))
           }
         } catch {
-          setShowVerify(true)
+          // Non-JSON 200 should never happen now that we send Accept:
+          // application/json — treat it as a failure instead of faking
+          // the "verification sent" modal.
+          setError(t('auth.signup.registration_failed'))
         }
       } else {
         try {
