@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+﻿import { useEffect, useState, type CSSProperties } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import Avatar from '../components/Avatar'
@@ -89,11 +89,11 @@ export default function KeyPosts(){
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="flex-1 h-full flex">
-            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='community' ? 'text-c-text-secondary' : 'text-c-text-tertiary hover:text-white/90'}`} onClick={()=> setActiveTab('community')}>
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='community' ? 'text-c-text-secondary' : 'text-c-text-tertiary hover:text-c-text-primary'}`} onClick={()=> setActiveTab('community')}>
               <div className="pt-2">{communityTabLabel}</div>
               <div className={`h-0.5 rounded-full w-20 mx-auto mt-1 ${activeTab==='community' ? 'bg-[#ffd54f]' : 'bg-transparent'}`} />
             </button>
-            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='yours' ? 'text-c-text-secondary' : 'text-c-text-tertiary hover:text-white/90'}`} onClick={()=> setActiveTab('yours')}>
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='yours' ? 'text-c-text-secondary' : 'text-c-text-tertiary hover:text-c-text-primary'}`} onClick={()=> setActiveTab('yours')}>
               <div className="pt-2">{t('feed.key_posts_page.tab_yours')}</div>
               <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='yours' ? 'bg-cpoint-turquoise' : 'bg-transparent'}`} />
             </button>

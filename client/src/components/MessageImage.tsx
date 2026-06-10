@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+﻿import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { optimizeMessagePhoto } from '../utils/imageOptimizer'
 
@@ -59,7 +59,7 @@ export default function MessageImage({ src, alt, onClick, className = '', tile =
         <div
           className={`absolute inset-0 flex items-center justify-center bg-white/5 p-4 z-10 ${tile ? '' : 'min-h-[100px] min-w-[100px]'}`}
         >
-          <div className="flex flex-col items-center gap-1 text-white/40">
+          <div className="flex flex-col items-center gap-1 text-c-text-tertiary">
             <i className="fa-solid fa-image text-lg"></i>
             <div className="text-[10px]">{t('chat.media_deleted')}</div>
           </div>

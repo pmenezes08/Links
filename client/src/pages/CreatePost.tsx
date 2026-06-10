@@ -530,10 +530,10 @@ export default function CreatePost(){
       {/* Full-screen loading overlay when submitting */}
       {submitting && (
         <div className="fixed inset-0 z-[200] bg-c-bg-overlay backdrop-blur-sm flex flex-col items-center justify-center">
-          <div className="w-16 h-16 border-4 border-white/20 border-t-cpoint-turquoise rounded-full animate-spin mb-4" />
-          <div className="text-white font-medium">{t('feed.posting_overlay')}</div>
+          <div className="w-16 h-16 border-4 border-c-border border-t-cpoint-turquoise rounded-full animate-spin mb-4" />
+          <div className="text-c-text-primary font-medium">{t('feed.posting_overlay')}</div>
           {mediaFiles.length > 0 && (
-            <div className="text-white/60 text-sm mt-2">{t('feed.uploading_files', { count: mediaFiles.length })}</div>
+            <div className="text-c-text-secondary text-sm mt-2">{t('feed.uploading_files', { count: mediaFiles.length })}</div>
           )}
         </div>
       )}

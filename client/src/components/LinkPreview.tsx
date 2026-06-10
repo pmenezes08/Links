@@ -388,7 +388,7 @@ function LinkPreviewCard({ url, sent, deferFetch = false }: Props) {
           <span className="text-[11px] text-c-text-tertiary truncate">{displayDomain}</span>
         </div>
         {data.title && (
-          <div className={`text-[13px] font-medium leading-snug line-clamp-2 ${sent ? 'text-white/90' : 'text-white/85'}`}>
+          <div className={`text-[13px] font-medium leading-snug line-clamp-2 ${sent ? 'text-white/90' : 'text-c-text-primary'}`}>
             {data.title}
           </div>
         )}

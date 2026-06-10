@@ -1,9 +1,9 @@
-import { useEffect } from 'react'
+﻿import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { loadShareIntoStore } from '../services/shareImport'
 
-/** Universal-link / bookmark entry for `/share/incoming` — hydrates native share inbox then opens Messages pick flow. */
+/** Universal-link / bookmark entry for `/share/incoming` â€” hydrates native share inbox then opens Messages pick flow. */
 export default function ShareIncomingRouteRedirect() {
   const navigate = useNavigate()
 
@@ -26,6 +26,6 @@ export default function ShareIncomingRouteRedirect() {
   }, [navigate])
 
   return (
-    <div className="min-h-[40vh] flex items-center justify-center text-white/60 text-sm">Opening Messages…</div>
+    <div className="min-h-[40vh] flex items-center justify-center text-c-text-secondary text-sm">Opening Messagesâ€¦</div>
   )
 }

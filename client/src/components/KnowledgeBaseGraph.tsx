@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -67,11 +67,11 @@ const DIMENSION_COLORS: Record<string, string> = {
 }
 
 function renderValue(val: unknown, depth = 0): React.ReactNode {
-  if (val === null || val === undefined) return '—'
+  if (val === null || val === undefined) return 'â€”'
   if (typeof val === 'string') return val
   if (typeof val === 'number' || typeof val === 'boolean') return String(val)
   if (Array.isArray(val)) {
-    if (val.length === 0) return '—'
+    if (val.length === 0) return 'â€”'
     if (val.every(v => typeof v === 'string' || typeof v === 'number')) {
       return val.join(', ')
     }
@@ -87,7 +87,7 @@ function renderValue(val: unknown, depth = 0): React.ReactNode {
   }
   if (typeof val === 'object') {
     const entries = Object.entries(val as Record<string, unknown>)
-    if (entries.length === 0) return '—'
+    if (entries.length === 0) return 'â€”'
     return (
       <div className={depth > 0 ? 'pl-3 border-l border-c-border space-y-1' : 'space-y-2'}>
         {entries.map(([k, v]) => (
@@ -126,9 +126,9 @@ function humanizeFieldLabel(key: string): string {
 }
 
 function formatCompanyIntelField(val: unknown): React.ReactNode {
-  if (val === null || val === undefined || val === '') return '—'
+  if (val === null || val === undefined || val === '') return 'â€”'
   if (Array.isArray(val)) {
-    if (val.length === 0) return '—'
+    if (val.length === 0) return 'â€”'
     if (val.every(x => typeof x === 'string')) {
       return (
         <ul className="list-disc list-inside space-y-0.5 text-c-text-secondary">
@@ -360,7 +360,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
         <div className="flex items-center justify-between px-5 py-3 border-b border-c-border flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-7 h-7 bg-[#6366f1] rounded-full flex items-center justify-center text-[11px] font-bold text-white">
-              {isNetwork ? '🌐' : (username?.[0]?.toUpperCase() || '?')}
+              {isNetwork ? 'ðŸŒ' : (username?.[0]?.toUpperCase() || '?')}
             </div>
             <div>
               <h2 className="text-sm font-semibold text-c-text-primary">{isNetwork ? 'Network Knowledge Base' : 'Knowledge Base'}</h2>
@@ -374,20 +374,20 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                 <button
                   onClick={() => setActiveView('analytics')}
                   className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                    activeView === 'analytics' ? 'bg-c-active-bg text-c-text-primary' : 'text-c-text-tertiary hover:text-white/60'
+                    activeView === 'analytics' ? 'bg-c-active-bg text-c-text-primary' : 'text-c-text-tertiary hover:text-c-text-secondary'
                   }`}
                 >Analytics</button>
               )}
               <button
                 onClick={() => setActiveView('graph')}
                 className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                  activeView === 'graph' ? 'bg-c-active-bg text-c-text-primary' : 'text-c-text-tertiary hover:text-white/60'
+                  activeView === 'graph' ? 'bg-c-active-bg text-c-text-primary' : 'text-c-text-tertiary hover:text-c-text-secondary'
                 }`}
               >Graph</button>
               <button
                 onClick={() => setActiveView('notes')}
                 className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                  activeView === 'notes' ? 'bg-c-active-bg text-c-text-primary' : 'text-c-text-tertiary hover:text-white/60'
+                  activeView === 'notes' ? 'bg-c-active-bg text-c-text-primary' : 'text-c-text-tertiary hover:text-c-text-secondary'
                 }`}
               >Notes</button>
             </div>
@@ -426,10 +426,10 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
           {!loading && !hasKnowledge && (
             <div className="h-full flex flex-col items-center justify-center text-center px-6">
               <div className="w-12 h-12 rounded-full bg-c-hover-bg border border-c-border flex items-center justify-center mb-4">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 11.5a.75.75 0 110-1.5.75.75 0 010 1.5zM10.75 9a.75.75 0 01-1.5 0V6.5a.75.75 0 011.5 0V9z" fill="currentColor" className="text-white/30"/></svg>
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 11.5a.75.75 0 110-1.5.75.75 0 010 1.5zM10.75 9a.75.75 0 01-1.5 0V6.5a.75.75 0 011.5 0V9z" fill="currentColor" className="text-c-text-tertiary"/></svg>
               </div>
               <p className="text-sm text-c-text-tertiary">No knowledge base data yet</p>
-              <p className="text-xs text-white/30 mt-1">Click Synthesize to generate from existing profile data</p>
+              <p className="text-xs text-c-text-tertiary mt-1">Click Synthesize to generate from existing profile data</p>
             </div>
           )}
 
@@ -510,11 +510,11 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                     <div className="text-[11px] text-c-text-tertiary mt-1">With Knowledge Base</div>
                   </div>
                   <div className="bg-c-hover-bg rounded-xl border border-c-border p-4">
-                    <div className="text-2xl font-bold text-[#f59e0b]">{ci.totalCompanies || '—'}</div>
+                    <div className="text-2xl font-bold text-[#f59e0b]">{ci.totalCompanies || 'â€”'}</div>
                     <div className="text-[11px] text-c-text-tertiary mt-1">Companies Tracked</div>
                   </div>
                   <div className="bg-c-hover-bg rounded-xl border border-c-border p-4">
-                    <div className="text-2xl font-bold text-[#10b981]">{ci.avgSize != null ? `~${ci.avgSize}` : '—'}</div>
+                    <div className="text-2xl font-bold text-[#10b981]">{ci.avgSize != null ? `~${ci.avgSize}` : 'â€”'}</div>
                     <div className="text-[11px] text-c-text-tertiary mt-1">Avg Company Size</div>
                   </div>
                 </div>
@@ -522,7 +522,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                 {/* Synthesis narrative */}
                 {idx.currentSynthesis && (
                   <div className="bg-white/[0.03] rounded-xl border border-c-border p-4">
-                    <div className="text-[10px] uppercase tracking-wider text-white/30 font-medium mb-2">Network Overview</div>
+                    <div className="text-[10px] uppercase tracking-wider text-c-text-tertiary font-medium mb-2">Network Overview</div>
                     <p className="text-sm text-c-text-secondary leading-relaxed">{String(idx.currentSynthesis)}</p>
                   </div>
                 )}
@@ -722,7 +722,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                     <div className="flex flex-wrap gap-2">
                       {Object.entries(comp.topCompanies as Record<string, number>).slice(0, 12).map(([name, count]) => (
                         <span key={name} className="px-2.5 py-1 bg-c-hover-bg border border-c-border rounded-lg text-xs text-c-text-tertiary">
-                          {name} <span className="text-white/30">({count})</span>
+                          {name} <span className="text-c-text-tertiary">({count})</span>
                         </span>
                       ))}
                     </div>
@@ -790,7 +790,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
             <div className="flex h-full">
               {/* Sidebar */}
               <div className="w-48 flex-shrink-0 border-r border-c-border p-3 overflow-y-auto">
-                <p className="text-[10px] uppercase tracking-wider text-white/30 font-medium mb-2 px-1">Dimensions</p>
+                <p className="text-[10px] uppercase tracking-wider text-c-text-tertiary font-medium mb-2 px-1">Dimensions</p>
                 {noteKeys.map(key => {
                   const data = knowledge[key]
                   const nt = data?.noteType || key
@@ -807,7 +807,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                       <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: color }} />
                       {nt}
                       {data?.version && data.version > 1 && (
-                        <span className="text-[10px] text-white/30 ml-auto">v{data.version}</span>
+                        <span className="text-[10px] text-c-text-tertiary ml-auto">v{data.version}</span>
                       )}
                     </button>
                   )
@@ -824,7 +824,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                         {selected.noteType}
                       </h3>
                     </div>
-                    <p className="text-[11px] text-white/30 mb-4">
+                    <p className="text-[11px] text-c-text-tertiary mb-4">
                       Updated {selected.updatedAt ? new Date(selected.updatedAt).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A'}
                     </p>
 
@@ -848,13 +848,13 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                             : 'Approved'}
                         </span>
                         {selected.adminFeedback.note && (
-                          <p className="text-white/60 mt-1">{String(selected.adminFeedback.note)}</p>
+                          <p className="text-c-text-secondary mt-1">{String(selected.adminFeedback.note)}</p>
                         )}
                       </div>
                     )}
 
                     <div className="mt-4 border-t border-c-border pt-3">
-                      <p className="text-[10px] uppercase tracking-wider text-white/30 font-medium mb-2">Feedback</p>
+                      <p className="text-[10px] uppercase tracking-wider text-c-text-tertiary font-medium mb-2">Feedback</p>
                       <div className="flex gap-1.5 mb-2">
                         <button
                           onClick={() => setFeedbackStatus('approved')}
@@ -912,14 +912,14 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                         disabled={feedbackSubmitting || ((feedbackStatus === 'needs_correction' || feedbackStatus === 'missing_info') && !feedbackNote.trim())}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                           feedbackSubmitting || ((feedbackStatus === 'needs_correction' || feedbackStatus === 'missing_info') && !feedbackNote.trim())
-                            ? 'bg-c-hover-bg text-white/20 cursor-not-allowed'
+                            ? 'bg-c-hover-bg text-c-text-tertiary cursor-not-allowed'
                             : 'bg-[#6366f1]/20 text-[#a5b4fc] border border-[#6366f1]/30 hover:bg-[#6366f1]/30'
                         }`}
                       >{feedbackSubmitting ? 'Saving...' : 'Submit Feedback'}</button>
                     </div>
                   </div>
                 ) : (
-                  <div className="h-full flex items-center justify-center text-white/30 text-xs">
+                  <div className="h-full flex items-center justify-center text-c-text-tertiary text-xs">
                     Select a dimension to view
                   </div>
                 )}

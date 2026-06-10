@@ -168,7 +168,7 @@ export default function AccountSecurity() {
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8ca0a8]">{t('account.security.badge')}</p>
             <h1 className="text-xl font-semibold text-c-text-primary">{t('account.security.headline')}</h1>
-            <p className="text-sm text-c-text-primary/60">{t('account.security.helper')}</p>
+            <p className="text-sm text-c-text-secondary">{t('account.security.helper')}</p>
           </div>
 
           <div className="flex gap-1 rounded-full border border-c-border bg-c-hover-bg p-1 overflow-hidden">
@@ -256,15 +256,15 @@ export default function AccountSecurity() {
                       <i className="fa-solid fa-ban text-red-400" />
                       {t('account.security.blocked_users_title')}
                     </h3>
-                    <p className="text-xs text-c-text-primary/60 mt-1">{t('account.security.blocked_users_helper')}</p>
+                    <p className="text-xs text-c-text-secondary mt-1">{t('account.security.blocked_users_helper')}</p>
                   </div>
 
                   {blockedUsersLoading ? (
                     <div className="text-center py-4">
-                      <i className="fa-solid fa-spinner fa-spin text-c-text-primary/60" />
+                      <i className="fa-solid fa-spinner fa-spin text-c-text-secondary" />
                     </div>
                   ) : blockedUsers.length === 0 ? (
-                    <div className="text-center py-4 text-c-text-primary/50 text-sm rounded-lg bg-c-hover-bg border border-c-border">
+                    <div className="text-center py-4 text-c-text-tertiary text-sm rounded-lg bg-c-hover-bg border border-c-border">
                       <i className="fa-solid fa-check-circle mr-2 text-green-400" />
                       {t('account.security.no_blocked_users')}
                     </div>
@@ -280,14 +280,14 @@ export default function AccountSecurity() {
                               {user.profile_picture ? (
                                 <img src={user.profile_picture} alt={user.username} className="w-full h-full object-cover" />
                               ) : (
-                                <div className="w-full h-full flex items-center justify-center text-c-text-primary/60">
+                                <div className="w-full h-full flex items-center justify-center text-c-text-secondary">
                                   <i className="fa-solid fa-user text-xs" />
                                 </div>
                               )}
                             </div>
                             <div className="min-w-0">
                               <div className="font-medium text-sm truncate">@{user.username}</div>
-                              <div className="text-xs text-c-text-primary/40 truncate">
+                              <div className="text-xs text-c-text-tertiary truncate">
                                 {user.reason && `${user.reason} \u2022 `}
                                 {new Date(user.blocked_at).toLocaleDateString()}
                               </div>
@@ -316,15 +316,15 @@ export default function AccountSecurity() {
                       <i className="fa-solid fa-eye-slash text-orange-400" />
                       {t('account.security.hidden_posts_title')}
                     </h3>
-                    <p className="text-xs text-c-text-primary/60 mt-1">{t('account.security.hidden_posts_helper')}</p>
+                    <p className="text-xs text-c-text-secondary mt-1">{t('account.security.hidden_posts_helper')}</p>
                   </div>
 
                   {hiddenPostsLoading ? (
                     <div className="text-center py-4">
-                      <i className="fa-solid fa-spinner fa-spin text-c-text-primary/60" />
+                      <i className="fa-solid fa-spinner fa-spin text-c-text-secondary" />
                     </div>
                   ) : hiddenPosts.length === 0 ? (
-                    <div className="text-center py-4 text-c-text-primary/50 text-sm rounded-lg bg-c-hover-bg border border-c-border">
+                    <div className="text-center py-4 text-c-text-tertiary text-sm rounded-lg bg-c-hover-bg border border-c-border">
                       <i className="fa-solid fa-check-circle mr-2 text-green-400" />
                       {t('account.security.no_hidden_posts')}
                     </div>
@@ -338,11 +338,11 @@ export default function AccountSecurity() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               <span className="text-xs font-medium text-cpoint-turquoise">@{post.author}</span>
-                              <span className="text-xs text-c-text-primary/40">
+                              <span className="text-xs text-c-text-tertiary">
                                 {new Date(post.hidden_at).toLocaleDateString()}
                               </span>
                             </div>
-                            <div className="text-xs text-c-text-primary/60 truncate">{post.preview}</div>
+                            <div className="text-xs text-c-text-secondary truncate">{post.preview}</div>
                           </div>
                           <button
                             onClick={() => handleUnhide(post.post_id)}

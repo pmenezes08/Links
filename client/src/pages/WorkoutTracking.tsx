@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { Line } from 'react-chartjs-2'
 import {
@@ -309,7 +309,7 @@ export default function WorkoutTracking(){
                     <div key={group} className="rounded-xl border border-c-border bg-c-hover-bg">
                       <button className="w-full p-3 flex items-center justify-between" onClick={()=> setExpandedGroups(prev=> ({...prev, [group]: !isOpen}))}>
                         <div className="font-semibold text-left">{group}</div>
-                        <div className="text-xs text-c-text-tertiary">{list.length} exercises • Max {maxWeight>0? `${maxWeight} kg` : 'No data'}</div>
+                        <div className="text-xs text-c-text-tertiary">{list.length} exercises â€¢ Max {maxWeight>0? `${maxWeight} kg` : 'No data'}</div>
                       </button>
                       {isOpen && (
                         <div className="px-3 pb-3 space-y-2">
@@ -324,7 +324,7 @@ export default function WorkoutTracking(){
                             return (
                               <div key={ex.id} className="flex items-center justify-between rounded-lg border border-c-border bg-c-hover-bg px-3 py-2">
                                 <div className="font-medium">{ex.name}</div>
-                                <div className="text-xs text-c-text-tertiary">{max>0? `${max} kg` : 'No data'}{maxDate ? ` • ${formatMonthDay(maxDate)}` : ''}</div>
+                                <div className="text-xs text-c-text-tertiary">{max>0? `${max} kg` : 'No data'}{maxDate ? ` â€¢ ${formatMonthDay(maxDate)}` : ''}</div>
                               </div>
                             )
                           })}
@@ -452,7 +452,7 @@ export default function WorkoutTracking(){
                 <div key={w.id} className="px-3 py-2 flex items-center justify-between">
                   <div>
                     <div className="font-medium leading-tight">{w.name}</div>
-                    <div className="text-xs text-c-text-tertiary">{formatDate(w.date)} • Exercises {w.exercise_count ?? 0}</div>
+                    <div className="text-xs text-c-text-tertiary">{formatDate(w.date)} â€¢ Exercises {w.exercise_count ?? 0}</div>
                   </div>
                   <button className="p-2 rounded-md hover:bg-c-hover-bg" title="Share"><i className="fa-solid fa-share-nodes"/></button>
                 </div>
@@ -631,7 +631,7 @@ export default function WorkoutTracking(){
                               <div key={idx} className="py-0.5 flex items-center justify-between text-xs">
                                 <div>{formatMonthDay(e.date)}</div>
                                 <div className="flex items-center gap-2">
-                                  <div className="text-c-text-tertiary">{e.weight} kg × {e.reps}</div>
+                                  <div className="text-c-text-tertiary">{e.weight} kg Ã— {e.reps}</div>
                                   <button className="p-0.5 rounded hover:bg-c-hover-bg" title="Edit" onClick={async()=>{
                                     const newW = prompt('New weight (kg):', String(e.weight))
                                     if (!newW || !logsExerciseId) return
@@ -724,7 +724,7 @@ export default function WorkoutTracking(){
 
 function TabButton({ active, onClick, icon, label }:{ active:boolean; onClick:()=>void; icon:string; label:string }){
   return (
-    <button onClick={onClick} className={`px-2.5 py-1.5 rounded-t-md text-[13px] whitespace-nowrap ${active ? 'text-c-text-primary border-b-2 border-cpoint-turquoise bg-c-hover-bg' : 'text-c-text-tertiary hover:text-white/90'}`}>
+    <button onClick={onClick} className={`px-2.5 py-1.5 rounded-t-md text-[13px] whitespace-nowrap ${active ? 'text-c-text-primary border-b-2 border-cpoint-turquoise bg-c-hover-bg' : 'text-c-text-tertiary hover:text-c-text-primary'}`}>
       <i className={`fa-solid ${icon} mr-2`} />{label}
     </button>
   )

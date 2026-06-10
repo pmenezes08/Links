@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+﻿import { useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 
@@ -80,7 +80,7 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
       <ModalBackdrop onClose={onClose} zClass="z-[200]">
         <div className="flex justify-between items-start gap-2 mb-2">
           <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-wider text-c-text-tertiary/70 mb-0.5">
+            <div className="text-[10px] uppercase tracking-wider text-c-text-tertiary mb-0.5">
               {t('dashboard.about_header', { current: step + 1, total: STEP_TITLE_KEYS.length })}
             </div>
             <h2 id="about-cpoint-modal-title" className="text-base font-semibold text-c-text-primary">
@@ -146,7 +146,7 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
           <div className="space-y-3 mb-4">
             <p className="text-sm text-c-text-tertiary leading-relaxed">{t('dashboard.about_steve_para_1')}</p>
             <p className="text-sm text-c-text-tertiary leading-relaxed">{t('dashboard.about_steve_para_2')}</p>
-            {/* B2B pivot (June 2026): Steve DM prefill CTA removed — Steve lives in community surfaces. */}
+            {/* B2B pivot (June 2026): Steve DM prefill CTA removed â€” Steve lives in community surfaces. */}
           </div>
         ) : null}
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+﻿import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
@@ -48,14 +48,14 @@ function sectionHasContent(key: string, val: unknown): boolean {
 function formatInterestsHuman(val: unknown): string {
   if (val == null) return ''
   if (typeof val === 'string') return val.trim()
-  if (Array.isArray(val)) return val.map(String).filter(Boolean).join(' · ')
+  if (Array.isArray(val)) return val.map(String).filter(Boolean).join(' Â· ')
   if (typeof val === 'object') {
     const entries = Object.entries(val as Record<string, { score?: number }>)
     if (entries.length === 0) return ''
     return entries
       .sort((a, b) => (b[1]?.score ?? 0) - (a[1]?.score ?? 0))
       .map(([name]) => name)
-      .join(' · ')
+      .join(' Â· ')
   }
   return ''
 }
@@ -299,7 +299,7 @@ export default function SteveKnowsMe() {
       case 'summary':
       case 'networkingValue':
         return (
-          <p className="text-sm text-white/85 leading-relaxed whitespace-pre-wrap">
+          <p className="text-sm text-c-text-primary leading-relaxed whitespace-pre-wrap">
             {typeof val === 'string' ? val : ''}
           </p>
         )
@@ -307,7 +307,7 @@ export default function SteveKnowsMe() {
         return renderIdentityBlock(val)
       case 'interests':
         return (
-          <p className="text-sm text-white/85 leading-relaxed">{formatInterestsHuman(val)}</p>
+          <p className="text-sm text-c-text-primary leading-relaxed">{formatInterestsHuman(val)}</p>
         )
       default:
         return null
@@ -416,7 +416,7 @@ export default function SteveKnowsMe() {
       ) : (
         <div className="space-y-6">
           <div className="text-xs text-c-text-tertiary">
-            {t('profile.steve_knows_page.last_updated_label')} {profile.lastUpdated || '—'}
+            {t('profile.steve_knows_page.last_updated_label')} {profile.lastUpdated || 'â€”'}
           </div>
 
             <section className="rounded-xl border border-c-border p-4 space-y-6">
@@ -470,9 +470,9 @@ export default function SteveKnowsMe() {
                     </a>
                     <div className="flex flex-wrap gap-1.5 mt-1 items-center text-c-text-tertiary">
                       <span className="text-[9px] uppercase tracking-wide">{item.kind}</span>
-                      {item.postDate ? <span>· {t('profile.steve_knows_page.post_date_prefix', { date: item.postDate })}</span> : null}
+                      {item.postDate ? <span>Â· {t('profile.steve_knows_page.post_date_prefix', { date: item.postDate })}</span> : null}
                       <span className={item.success ? 'text-green-400/90' : 'text-amber-400/90'}>
-                        · {item.success ? t('profile.steve_knows_page.source_used') : t('profile.steve_knows_page.source_not_used')}
+                        Â· {item.success ? t('profile.steve_knows_page.source_used') : t('profile.steve_knows_page.source_not_used')}
                       </span>
                     </div>
                     {item.detail ? <div className="text-[10px] text-c-text-tertiary mt-0.5">{item.detail}</div> : null}

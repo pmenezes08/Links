@@ -1876,7 +1876,7 @@ export default function AdminDashboard() {
                 <i className="fa-solid fa-spinner fa-spin text-3xl text-cpoint-turquoise" aria-hidden />
                 <div className="text-center max-w-md">
                   <p className="text-base font-semibold text-white">Calculating usage metrics</p>
-                  <p className="text-sm text-white/65 mt-2 leading-relaxed">
+                  <p className="text-sm text-c-text-secondary mt-2 leading-relaxed">
                     DAU, MAU, cohorts, and leaderboards are computed on the server. On large databases this can take up
                     to a minute {'\u2014'} please wait.
                   </p>
@@ -1901,13 +1901,13 @@ export default function AdminDashboard() {
                 role="region"
                 aria-label="DAU and MAU definitions"
               >
-                <p className="font-medium text-white/85">How DAU and MAU are counted</p>
+                <p className="font-medium text-c-text-primary">How DAU and MAU are counted</p>
                 <p>
                   Both use <span className="text-c-text-secondary">distinct usernames</span> with at least one qualifying{' '}
                   <span className="text-c-text-secondary">in-app activity</span> in the time window {'\u2014'} not login history alone,
                   and not simply opening the app unless that visit produces an event below.
                 </p>
-                <ul className="list-disc pl-5 space-y-1 text-white/65">
+                <ul className="list-disc pl-5 space-y-1 text-c-text-secondary">
                   <li>
                     <span className="text-c-text-secondary">DAU:</span> any qualifying activity from{' '}
                     <span className="text-c-text-secondary">midnight today</span> (server date) through now.
@@ -1917,7 +1917,7 @@ export default function AdminDashboard() {
                     <span className="text-c-text-secondary">rolling 30 days</span> ending at the start of today.
                   </li>
                 </ul>
-                <p className="text-white/65">
+                <p className="text-c-text-secondary">
                   <span className="text-c-text-secondary">Activity includes</span> (union {'\u2014'} one is enough): posts, reactions,
                   poll votes, opening a community feed (visit row), and sending DMs/messages.{' '}
                   <span className="text-c-text-secondary">Login history alone does not count.</span>
@@ -2093,7 +2093,7 @@ export default function AdminDashboard() {
                           )}
                         </div>
                         {user.created_at && (
-                          <div className="text-[10px] text-white/30 mt-0.5">
+                          <div className="text-[10px] text-c-text-tertiary mt-0.5">
                             Joined {new Date(user.created_at).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}
                           </div>
                         )}
@@ -2602,7 +2602,7 @@ export default function AdminDashboard() {
                         </div>
                         <div>
                           <div className="text-xs uppercase tracking-wide text-c-text-tertiary mb-1">Raw message</div>
-                          <div className="text-sm text-white/65 whitespace-pre-wrap">{selectedFeedbackItem.raw_user_message || 'No raw message'}</div>
+                          <div className="text-sm text-c-text-secondary whitespace-pre-wrap">{selectedFeedbackItem.raw_user_message || 'No raw message'}</div>
                         </div>
                         {selectedFeedbackItem.admin_notes && (
                           <div>
@@ -2846,7 +2846,7 @@ export default function AdminDashboard() {
                 </div>
               ) : steveProfiles.length === 0 ? (
                 <div className="text-center py-8 text-c-text-tertiary">
-                  <i className="fa-solid fa-user text-2xl mb-2 text-white/30" />
+                  <i className="fa-solid fa-user text-2xl mb-2 text-c-text-tertiary" />
                   <div className="text-sm mb-1">No profiles yet</div>
                   <div className="text-xs">Click refresh to generate interest vectors</div>
                 </div>
@@ -2874,7 +2874,7 @@ export default function AdminDashboard() {
                       placeholder="Filter..."
                       className="mt-1.5 w-full bg-c-hover-bg border border-c-border rounded-md px-3 py-1.5 text-xs text-white placeholder-white/40 focus:outline-none focus:border-cpoint-turquoise"
                     />
-                    <div className="text-[10px] text-white/30 mt-1 mb-2">{steveProfiles.length} users</div>
+                    <div className="text-[10px] text-c-text-tertiary mt-1 mb-2">{steveProfiles.length} users</div>
 
                     <div className="max-h-[480px] overflow-y-auto space-y-0.5">
                       {steveProfiles
@@ -2896,9 +2896,9 @@ export default function AdminDashboard() {
                             >
                               <span className="font-medium">@{profile.username}</span>
                               {hasAnalysis && topInterest ? (
-                                <span className="ml-1.5 text-white/30">{topInterest[0]} {Math.round(((topInterest[1] as any)?.score ?? 0) * 100)}%</span>
+                                <span className="ml-1.5 text-c-text-tertiary">{topInterest[0]} {Math.round(((topInterest[1] as any)?.score ?? 0) * 100)}%</span>
                               ) : null}
-                              <span className={`ml-1 text-[9px] ${hasAnalysis ? 'text-green-400/50' : 'text-white/20'}`}>
+                              <span className={`ml-1 text-[9px] ${hasAnalysis ? 'text-green-400/50' : 'text-c-text-tertiary'}`}>
                                 {hasAnalysis ? 'â—' : 'â—‹'}
                               </span>
                               {(() => {
@@ -2938,10 +2938,10 @@ export default function AdminDashboard() {
                           return (
                             <span className="inline-flex items-center gap-0.5 ml-auto">
                               <button onClick={() => submitFeedback(profile.username, s, 'approved')}
-                                className={`p-0.5 rounded transition-colors ${st === 'approved' ? 'text-green-400' : 'text-white/15 hover:text-green-400/60'}`}
+                                className={`p-0.5 rounded transition-colors ${st === 'approved' ? 'text-green-400' : 'text-c-text-tertiary hover:text-green-400/60'}`}
                                 title="Approve"><i className="fa-solid fa-thumbs-up text-[9px]" /></button>
                               <button onClick={() => submitFeedback(profile.username, s, 'rejected')}
-                                className={`p-0.5 rounded transition-colors ${st === 'rejected' ? 'text-red-400' : 'text-white/15 hover:text-red-400/60'}`}
+                                className={`p-0.5 rounded transition-colors ${st === 'rejected' ? 'text-red-400' : 'text-c-text-tertiary hover:text-red-400/60'}`}
                                 title="Reject"><i className="fa-solid fa-thumbs-down text-[9px]" /></button>
                             </span>
                           );
@@ -2962,7 +2962,7 @@ export default function AdminDashboard() {
                                 <div className="text-[10px] text-c-text-tertiary flex items-center gap-2 mt-0.5">
                                   {hasAnalysis && (
                                     <>
-                                      <span className={`${quality === 'rich' ? 'text-green-400' : quality === 'moderate' ? 'text-yellow-400' : 'text-white/30'}`}>{quality} data</span>
+                                      <span className={`${quality === 'rich' ? 'text-green-400' : quality === 'moderate' ? 'text-yellow-400' : 'text-c-text-tertiary'}`}>{quality} data</span>
                                       <span>{'\u00B7'}</span>
                                       <span>{profile.lastUpdated ? new Date(profile.lastUpdated).toLocaleDateString() : '\u2014'}</span>
                                       <span>{'\u00B7'}</span>
@@ -2971,7 +2971,7 @@ export default function AdminDashboard() {
                                         if (rs === 'confirmed') return <span className="text-green-400">User confirmed</span>;
                                         if (rs === 'edited') return <span className="text-green-400">User edited</span>;
                                         if (rs === 'disputed') return <span className="text-orange-400">User disputed</span>;
-                                        return <span className="text-white/30">Pending review</span>;
+                                        return <span className="text-c-text-tertiary">Pending review</span>;
                                       })()}
                                       <span>{'\u00B7'}</span>
                                     </>
@@ -3067,7 +3067,7 @@ export default function AdminDashboard() {
                             )}
 
                             {!isAnalyzing && !hasAnalysis && (
-                              <div className="text-center py-8 text-white/30">
+                              <div className="text-center py-8 text-c-text-tertiary">
                                 {a._feedback?.wrongPerson ? (
                                   <>
                                     <i className="fa-solid fa-user-xmark text-2xl mb-2 text-orange-400" />
@@ -3137,7 +3137,7 @@ export default function AdminDashboard() {
                                       <i className="fa-solid fa-link" />
                                       External sources
                                     </div>
-                                    <div className="text-[11px] text-white/65 space-y-1.5 bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-c-border">
+                                    <div className="text-[11px] text-c-text-secondary space-y-1.5 bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-c-border">
                                       {profile.profilingExternalSources.updatedAt && (
                                         <div className="text-[10px] text-c-text-tertiary mb-1">
                                           Last enriched: {new Date(profile.profilingExternalSources.updatedAt).toLocaleString()}
@@ -3157,7 +3157,7 @@ export default function AdminDashboard() {
                                             <div className="flex flex-wrap gap-1.5 mt-1 items-center">
                                               <span className="text-[9px] px-1.5 py-0.5 rounded bg-c-hover-bg text-c-text-tertiary">{item.kind}</span>
                                               {item.postDate ? (
-                                                <span className="text-[9px] text-white/30">Post {item.postDate}</span>
+                                                <span className="text-[9px] text-c-text-tertiary">Post {item.postDate}</span>
                                               ) : null}
                                               <span
                                                 className={`text-[9px] px-1.5 py-0.5 rounded ${
@@ -3245,7 +3245,7 @@ export default function AdminDashboard() {
                                                 <div>
                                                   <span className="text-c-text-secondary font-medium">{ch.role}</span>
                                                   {ch.company && <span className="text-c-text-tertiary"> at {ch.company}</span>}
-                                                  {(ch.duration || ch.period) && <span className="text-white/30 ml-1">({ch.duration || ch.period})</span>}
+                                                  {(ch.duration || ch.period) && <span className="text-c-text-tertiary ml-1">({ch.duration || ch.period})</span>}
                                                   {ch.highlight && <div className="text-[10px] text-c-text-tertiary leading-relaxed">{ch.highlight}</div>}
                                                 </div>
                                               </div>
@@ -3268,7 +3268,7 @@ export default function AdminDashboard() {
                                         )}
                                       </div>
                                     ) : (
-                                      <div className="text-xs text-white/20 text-center py-4 bg-white/[0.02] rounded-lg border border-dashed border-c-border">
+                                      <div className="text-xs text-c-text-tertiary text-center py-4 bg-white/[0.02] rounded-lg border border-dashed border-c-border">
                                         No professional data found
                                       </div>
                                     )}
@@ -3329,7 +3329,7 @@ export default function AdminDashboard() {
                                         )}
                                       </div>
                                     ) : (
-                                      <div className="text-xs text-white/20 text-center py-4 bg-white/[0.02] rounded-lg border border-dashed border-c-border">
+                                      <div className="text-xs text-c-text-tertiary text-center py-4 bg-white/[0.02] rounded-lg border border-dashed border-c-border">
                                         {depthLabel === 'deep' ? 'No personal data found' : 'Run a Deep analysis to discover personal data'}
                                       </div>
                                     )}
@@ -3437,7 +3437,7 @@ export default function AdminDashboard() {
                         );
                       })()
                     ) : (
-                      <div className="h-48 flex items-center justify-center text-white/30 text-sm">
+                      <div className="h-48 flex items-center justify-center text-c-text-tertiary text-sm">
                         Select a user
                       </div>
                     )}
@@ -3504,7 +3504,7 @@ export default function AdminDashboard() {
                     placeholder="Search communities..."
                     className="w-full bg-c-hover-bg border border-c-border rounded-md px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:border-cpoint-turquoise"
                   />
-                  <div className="text-[10px] text-white/30 mt-1 mb-2">{flatCommunities.length} communities</div>
+                  <div className="text-[10px] text-c-text-tertiary mt-1 mb-2">{flatCommunities.length} communities</div>
 
                   <div className="max-h-[520px] overflow-y-auto space-y-0.5 pr-1">
                     {flatCommunities
@@ -3564,7 +3564,7 @@ export default function AdminDashboard() {
                                   <h4 className="text-xl font-semibold text-white">{community.name}</h4>
                                   <div className="flex items-center gap-4 text-sm text-c-text-tertiary mt-1">
                                     <span>{community.member_count || 0} members</span>
-                                    <span className="text-white/30">{'\u2022'}</span>
+                                    <span className="text-c-text-tertiary">{'\u2022'}</span>
                                     <span>ID: {community.id}</span>
                                     {community.parent_community_id && (
                                       <span className="text-purple-400">Sub-community of #{community.parent_community_id}</span>
@@ -3599,7 +3599,7 @@ export default function AdminDashboard() {
 
                         <div className="bg-white/[0.03] border border-c-border rounded-2xl p-8 text-center">
                           <div className="mx-auto w-16 h-16 bg-c-hover-bg rounded-2xl flex items-center justify-center mb-6">
-                            <i className="fa-solid fa-chart-pie text-4xl text-white/30" />
+                            <i className="fa-solid fa-chart-pie text-4xl text-c-text-tertiary" />
                           </div>
                           <div className="text-c-text-secondary text-lg font-medium mb-2">Network Analytics</div>
                           <p className="text-c-text-tertiary max-w-md mx-auto text-sm">
@@ -3616,9 +3616,9 @@ export default function AdminDashboard() {
                   })() : (
                     <div className="h-[420px] flex items-center justify-center border border-dashed border-c-border rounded-3xl">
                       <div className="text-center">
-                        <div className="text-white/30 text-6xl mb-4">ðŸŒ</div>
+                        <div className="text-c-text-tertiary text-6xl mb-4">ðŸŒ</div>
                         <div className="text-c-text-tertiary">Select a community from the list</div>
-                        <div className="text-white/30 text-xs mt-2">to view analytics or synthesize its Network Knowledge Base</div>
+                        <div className="text-c-text-tertiary text-xs mt-2">to view analytics or synthesize its Network Knowledge Base</div>
                       </div>
                     </div>
                   )}
@@ -4247,7 +4247,7 @@ export default function AdminDashboard() {
                     <div key={idx} className="bg-white/[0.03] border border-c-border rounded-xl p-4 space-y-3 relative group">
                       <button
                         onClick={() => setEditExperiences(prev => prev.filter((_, i) => i !== idx))}
-                        className="absolute top-3 right-3 text-white/20 hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-3 right-3 text-c-text-tertiary hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
                         title="Remove position"
                       >
                         âœ•
@@ -4298,7 +4298,7 @@ export default function AdminDashboard() {
                   ))}
 
                   {editExperiences.length === 0 && (
-                    <div className="text-center py-10 text-white/30 text-sm">
+                    <div className="text-center py-10 text-c-text-tertiary text-sm">
                       No positions yet. Click "+ Add Position" to start.
                     </div>
                   )}
@@ -4322,7 +4322,7 @@ export default function AdminDashboard() {
                     <div key={idx} className="bg-white/[0.03] border border-c-border rounded-xl p-4 space-y-3 relative group">
                       <button
                         onClick={() => setEditVerifiedLinks(prev => prev.filter((_, i) => i !== idx))}
-                        className="absolute top-3 right-3 text-white/20 hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-3 right-3 text-c-text-tertiary hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
                         title="Remove link"
                       >
                         âœ•
@@ -4369,7 +4369,7 @@ export default function AdminDashboard() {
                   ))}
 
                   {editVerifiedLinks.length === 0 && (
-                    <div className="text-center py-10 text-white/30 text-sm border border-dashed border-white/20 rounded-2xl">
+                    <div className="text-center py-10 text-c-text-tertiary text-sm border border-dashed border-white/20 rounded-2xl">
                       No verified links yet. Add your LinkedIn, personal site, key articles, or social profiles.
                       <br />
                       <span className="text-cpoint-turquoise">Steve will use these as the primary source before any web search.</span>

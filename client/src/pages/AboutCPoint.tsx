@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+﻿import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -150,7 +150,7 @@ function TutorialSlotBody({
         <p className="text-sm text-c-text-tertiary mb-3">{cardDescription}</p>
         <video src={videoUrl} controls className="w-full rounded-lg bg-black max-h-[50vh]" playsInline />
         {isAppAdmin ? (
-          <p className="text-xs text-c-text-tertiary/80 mt-3">Admin: replace by uploading again from this card on About.</p>
+          <p className="text-xs text-c-text-tertiary mt-3">Admin: replace by uploading again from this card on About.</p>
         ) : null}
       </>
     )
@@ -186,7 +186,7 @@ function TutorialSlotBody({
           type="url"
           value={pasteUrl}
           onChange={(e) => setPasteUrl(e.target.value)}
-          placeholder="https://…"
+          placeholder="https://â€¦"
           className="w-full rounded-lg border border-white/15 bg-c-hover-bg px-3 py-2 text-sm text-c-text-primary mb-2"
         />
         <button
@@ -286,7 +286,7 @@ export default function AboutCPoint() {
         </div>
 
         <section>
-          <div className="text-[10px] uppercase tracking-wider text-c-text-tertiary/70 mb-1.5">{t('about_page.manifesto_section')}</div>
+          <div className="text-[10px] uppercase tracking-wider text-c-text-tertiary mb-1.5">{t('about_page.manifesto_section')}</div>
           <div className="rounded-xl border border-c-border bg-white/[0.02] p-3 space-y-2">
             {Array.isArray(manifestoSummary) && manifestoSummary.map((p, i) => (
               <p key={i} className="text-sm text-c-text-tertiary leading-relaxed">
