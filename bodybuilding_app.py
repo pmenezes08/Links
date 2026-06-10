@@ -50,6 +50,7 @@ from backend.services.admin_metrics import compute_admin_metrics
 from backend.services.dm_chats_tables import ensure_archived_chats_table
 from backend.services import ai_usage as _ai_usage
 from backend.services import api_errors as _api_errors
+from backend.services import template_i18n as _template_i18n
 from backend.services import community_lifecycle as _community_lifecycle
 from backend.services import profile_privacy
 from backend.services import remember_tokens as remember_tokens_service
@@ -147,6 +148,21 @@ XAI_SDK_AVAILABLE = False
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
 init_app(app)
+
+
+def _render_i18n_template(template_name: str, **kwargs):
+    ctx = _template_i18n.template_ctx()
+    return render_template(template_name, **ctx, **kwargs)
+
+
+def _verification_result_template(*, success: bool, message: str):
+    ctx = _template_i18n.template_ctx()
+    return render_template(
+        "verification_result.html",
+        success=success,
+        message=_template_i18n.localize_verification_message(message, ctx["locale"]),
+        **ctx,
+    )
 
 # Enable gzip/brotli compression for all responses (JS, CSS, HTML, JSON)
 from flask_compress import Compress
@@ -783,7 +799,7 @@ def _block_unverified_users():
         if path.startswith('/reset_password/'):
             return None
         # Allow login flow API endpoints (no auth required)
-        if path in ('/api/check_pending_login', '/api/invitation/verify', '/api/clear_stale_session'):
+        if path in ('/api/check_pending_login', '/api/invitation/verify', '/api/clear_stale_session') or path.startswith('/api/invite_preview/'):
             return None
         # Health and misc
         if path in ('/health', '/vite.svg', '/favicon.svg', '/manifest.webmanifest') or path.startswith('/icons/'):
@@ -858,9 +874,9 @@ def _block_unverified_users():
 def verify_required():
     # Always serve the simple HTML page to avoid client-side routing confusion
     try:
-        return render_template('verify_required.html')
+        return _render_i18n_template('verify_required.html')
     except Exception:
-        return render_template('verify_required.html')
+        return _render_i18n_template('verify_required.html')
 
 def generate_email_token(email: str) -> str:
     s = _get_serializer()
@@ -971,6 +987,7 @@ def ensure_community_invitations_table(c):
                           invited_username VARCHAR(191) NULL,
                           status VARCHAR(20) DEFAULT 'pending',
                           responded_at TIMESTAMP NULL,
+                          expires_at TIMESTAMP NULL,
                           INDEX idx_community_id (community_id),
                           INDEX idx_invited_email (invited_email),
                           INDEX idx_invited_username_status (invited_username, status),
@@ -992,6 +1009,7 @@ def ensure_community_invitations_table(c):
                           invited_username TEXT,
                           status TEXT DEFAULT 'pending',
                           responded_at TEXT,
+                          expires_at TEXT,
                           FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE,
                           FOREIGN KEY (invited_by_username) REFERENCES users(username) ON DELETE CASCADE
                         )''')
@@ -1014,6 +1032,10 @@ def ensure_community_invitations_table(c):
             pass
         try:
             c.execute("ALTER TABLE community_invitations ADD COLUMN responded_at TIMESTAMP NULL")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE community_invitations ADD COLUMN expires_at TIMESTAMP NULL")
         except Exception:
             pass
         try:
@@ -1127,7 +1149,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Load secret keys from environment variables
 # IMPORTANT: Must be consistent across all workers/processes
-# On PythonAnywhere, set this in your web app's environment variables
+# On Cloud Run, set this in your web app's environment variables
 FLASK_SECRET_KEY = os.getenv('FLASK_SECRET_KEY')
 if not FLASK_SECRET_KEY:
     if os.environ.get('K_SERVICE') or os.environ.get('FLASK_ENV') == 'production':
@@ -2836,6 +2858,11 @@ def add_missing_tables():
                     ("useful_docs", "details", "TEXT"),
                     ("posts", "group_id", "INTEGER NULL"),
                     ("calendar_events", "group_id", "INTEGER NULL"),
+                    ("calendar_events", "timezone", "VARCHAR(100) NULL"),
+                    ("calendar_events", "meeting_url", "VARCHAR(500) NULL"),
+                    ("calendar_events", "notification_preferences", "VARCHAR(50) DEFAULT 'all'"),
+                    ("calendar_events", "starts_at_utc", "DATETIME NULL"),
+                    ("calendar_events", "ends_at_utc", "DATETIME NULL"),
                     ("tasks", "group_id", "INTEGER NULL"),
                 ):
                     try:
@@ -3975,6 +4002,9 @@ def init_db():
                     created_at DATETIME NOT NULL,
                     community_id INTEGER,
                     timezone VARCHAR(100),
+                    meeting_url VARCHAR(500),
+                    starts_at_utc DATETIME,
+                    ends_at_utc DATETIME,
                     FOREIGN KEY (username) REFERENCES users(username)
                 )
             """)
@@ -3989,7 +4019,10 @@ def init_db():
                 'community_id': 'INTEGER',
                 'group_id': 'INTEGER',
                 'timezone': 'VARCHAR(100)',
-                'notification_preferences': "VARCHAR(50) DEFAULT 'all'"
+                'meeting_url': 'VARCHAR(500)',
+                'notification_preferences': "VARCHAR(50) DEFAULT 'all'",
+                'starts_at_utc': 'DATETIME',
+                'ends_at_utc': 'DATETIME'
             }
             
             for col_name, col_def in required_columns.items():
@@ -10796,7 +10829,7 @@ def public_profile(username):
 def verify_email():
     token = request.args.get('token', '')
     if not token:
-        return render_template('verification_result.html', success=False, message='Invalid verification link')
+        return _verification_result_template(success=False, message='Invalid verification link')
     # New flow: finalize pending signup if token matches pending
     pending = verify_pending_signup_token(token)
     if pending:
@@ -10807,12 +10840,12 @@ def verify_email():
                 c.execute(f"SELECT id, username, email, password, first_name, last_name, mobile FROM pending_signups WHERE id={ph}", (pending['pending_id'],))
                 row = c.fetchone()
                 if not row:
-                    return render_template('verification_result.html', success=False, message='Pending registration not found or expired')
+                    return _verification_result_template(success=False, message='Pending registration not found or expired')
                 def _val(r, key, idx):
                     return (r[key] if hasattr(r,'keys') else r[idx])
                 pend_email = _val(row, 'email', 2) or ''
                 if pend_email.lower() != str(pending.get('email','')).lower():
-                    return render_template('verification_result.html', success=False, message='Verification link mismatch')
+                    return _verification_result_template(success=False, message='Verification link mismatch')
                 # ensure username unique
                 base_username = (_val(row, 'username', 1) or pend_email.split('@')[0] or 'user')
                 import re as _re
@@ -10863,53 +10896,8 @@ def verify_email():
                     user_row = c.fetchone()
                     user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0] if user_row else None
                 
-                # Auto-join communities the user was invited to via email
-                if user_id:
-                    try:
-                        c.execute(f"""
-                            SELECT ci.id, ci.community_id, ci.include_nested_ids, ci.include_parent_ids, c.name
-                            FROM community_invitations ci
-                            JOIN communities c ON ci.community_id = c.id
-                            WHERE ci.invited_email = {ph} AND ci.used = 0
-                        """, (pend_email.lower(),))
-                        pending_invites = c.fetchall()
-                        
-                        for invite in pending_invites:
-                            inv_id = invite['id'] if hasattr(invite, 'keys') else invite[0]
-                            community_id = invite['community_id'] if hasattr(invite, 'keys') else invite[1]
-                            raw_nested = invite['include_nested_ids'] if hasattr(invite, 'keys') else invite[2]
-                            raw_parent = invite['include_parent_ids'] if hasattr(invite, 'keys') else invite[3]
-                            community_name = invite['name'] if hasattr(invite, 'keys') else invite[4]
-                            
-                            # Build list of communities to join
-                            nested_ids = normalize_id_list(raw_nested) if raw_nested else []
-                            parent_ids = normalize_id_list(raw_parent) if raw_parent is not None else get_parent_chain_ids(c, community_id)
-                            
-                            communities_to_join = [community_id]
-                            for pid in parent_ids:
-                                if pid not in communities_to_join:
-                                    communities_to_join.append(pid)
-                            for nid in nested_ids:
-                                if nid not in communities_to_join:
-                                    communities_to_join.append(nid)
-                            
-                            # Join each community
-                            for comm_id in communities_to_join:
-                                c.execute(f"SELECT 1 FROM user_communities WHERE user_id={ph} AND community_id={ph}", (user_id, comm_id))
-                                if not c.fetchone():
-                                    try:
-                                        add_user_to_community(c, user_id, int(comm_id), role='member', username=username)
-                                    except CommunityMembershipLimitError:
-                                        logger.warning(f"Could not add user {user_id} to community {comm_id} due to member limit")
-                            
-                            # Mark invitation as used
-                            c.execute(f"UPDATE community_invitations SET used=1, used_at={ph} WHERE id={ph}", (datetime.now().isoformat(), inv_id))
-                            
-                            # Send notification to community members
-                            notify_community_new_member(community_id, username, conn)
-                            logger.info(f"Auto-joined user {username} to community {community_name} (ID: {community_id}) via email invitation")
-                    except Exception as auto_join_err:
-                        logger.warning(f"Error auto-joining user to invited communities: {auto_join_err}")
+                # Email verification never grants community membership. Pending
+                # invitations remain pending until the user explicitly accepts.
                 
                 # cleanup pending
                 try:
@@ -10917,13 +10905,13 @@ def verify_email():
                 except Exception:
                     pass
                 conn.commit()
-            return render_template('verification_result.html', success=True, message='Your email has been verified successfully.')
+            return _verification_result_template(success=True, message='Your email has been verified successfully.')
         except Exception as e:
             logger.error(f"verify_email finalize error: {e}")
-            return render_template('verification_result.html', success=False, message='Server error while finalizing registration')
+            return _verification_result_template(success=False, message='Server error while finalizing registration')
     email = verify_email_token(token)
     if not email:
-        return render_template('verification_result.html', success=False, message='Verification link is invalid or expired')
+        return _verification_result_template(success=False, message='Verification link is invalid or expired')
     try:
         ph = get_sql_placeholder()
         with get_db_connection() as conn:
@@ -10932,65 +10920,11 @@ def verify_email():
             # This ensures the timestamp always represents the first time they verified
             c.execute(f"UPDATE users SET email_verified=1, email_verified_at=COALESCE(email_verified_at, {ph}) WHERE email={ph}", (datetime.now().isoformat(), email))
             
-            # Get user ID and username for auto-joining communities
-            c.execute(f"SELECT id, username FROM users WHERE email={ph}", (email,))
-            user_row = c.fetchone()
-            if user_row:
-                user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
-                username = user_row['username'] if hasattr(user_row, 'keys') else user_row[1]
-                
-                # Auto-join communities the user was invited to via email
-                try:
-                    c.execute(f"""
-                        SELECT ci.id, ci.community_id, ci.include_nested_ids, ci.include_parent_ids, c.name
-                        FROM community_invitations ci
-                        JOIN communities c ON ci.community_id = c.id
-                        WHERE ci.invited_email = {ph} AND ci.used = 0
-                    """, (email.lower(),))
-                    pending_invites = c.fetchall()
-                    
-                    for invite in pending_invites:
-                        inv_id = invite['id'] if hasattr(invite, 'keys') else invite[0]
-                        community_id = invite['community_id'] if hasattr(invite, 'keys') else invite[1]
-                        raw_nested = invite['include_nested_ids'] if hasattr(invite, 'keys') else invite[2]
-                        raw_parent = invite['include_parent_ids'] if hasattr(invite, 'keys') else invite[3]
-                        community_name = invite['name'] if hasattr(invite, 'keys') else invite[4]
-                        
-                        # Build list of communities to join
-                        nested_ids = normalize_id_list(raw_nested) if raw_nested else []
-                        parent_ids = normalize_id_list(raw_parent) if raw_parent is not None else get_parent_chain_ids(c, community_id)
-                        
-                        communities_to_join = [community_id]
-                        for pid in parent_ids:
-                            if pid not in communities_to_join:
-                                communities_to_join.append(pid)
-                        for nid in nested_ids:
-                            if nid not in communities_to_join:
-                                communities_to_join.append(nid)
-                        
-                        # Join each community
-                        for comm_id in communities_to_join:
-                            c.execute(f"SELECT 1 FROM user_communities WHERE user_id={ph} AND community_id={ph}", (user_id, comm_id))
-                            if not c.fetchone():
-                                try:
-                                    add_user_to_community(c, user_id, int(comm_id), role='member', username=username)
-                                except CommunityMembershipLimitError:
-                                    logger.warning(f"Could not add user {user_id} to community {comm_id} due to member limit")
-                        
-                        # Mark invitation as used
-                        c.execute(f"UPDATE community_invitations SET used=1, used_at={ph} WHERE id={ph}", (datetime.now().isoformat(), inv_id))
-                        
-                        # Send notification to community members
-                        notify_community_new_member(community_id, username, conn)
-                        logger.info(f"Auto-joined user {username} to community {community_name} (ID: {community_id}) via email invitation")
-                except Exception as auto_join_err:
-                    logger.warning(f"Error auto-joining user to invited communities: {auto_join_err}")
-            
             conn.commit()
-        return render_template('verification_result.html', success=True, message='Your email has been verified successfully.')
+        return _verification_result_template(success=True, message='Your email has been verified successfully.')
     except Exception as e:
         logger.error(f"verify_email error: {e}")
-        return render_template('verification_result.html', success=False, message='Server error while verifying email')
+        return _verification_result_template(success=False, message='Server error while verifying email')
 
 @app.route('/resend_verification', methods=['POST'])
 @login_required
@@ -11961,7 +11895,7 @@ def update_password():
             user = c.fetchone()
             
             if not user:
-                return jsonify({'success': False, 'error': 'User not found'})
+                return jsonify(_api_errors.error_payload('auth.user_not_found'))
             
             stored_password = user['password']
             
@@ -11969,11 +11903,11 @@ def update_password():
             if stored_password and (stored_password.startswith('$') or stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:')):
                 # Password is hashed
                 if not check_password_hash(stored_password, current_password):
-                    return jsonify({'success': False, 'error': 'Current password is incorrect'})
+                    return jsonify(_api_errors.error_payload('auth.password.current_incorrect'))
             else:
                 # Password is plain text (legacy)
                 if stored_password != current_password:
-                    return jsonify({'success': False, 'error': 'Current password is incorrect'})
+                    return jsonify(_api_errors.error_payload('auth.password.current_incorrect'))
             
             # Hash the new password before storing
             hashed_password = generate_password_hash(new_password)
@@ -11983,7 +11917,7 @@ def update_password():
             return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error updating password for {username}: {str(e)}")
-        return jsonify({'success': False, 'error': 'Server error'})
+        return jsonify(_api_errors.error_payload('auth.password.server_error'))
 
 @app.route('/update_email', methods=['POST'])
 @login_required
@@ -11995,14 +11929,14 @@ def update_email():
         with get_db_connection() as conn:
             c = conn.cursor()
             if not new_email:
-                return jsonify({'success': False, 'error': 'Email required'}), 400
+                return jsonify(_api_errors.error_payload('auth.email.required')), 400
 
             # Check if email is already taken
             ph = get_sql_placeholder()
             c.execute(f"SELECT username FROM users WHERE email={ph} AND username!={ph}", (new_email, username))
             existing_user = c.fetchone()
             if existing_user:
-                return jsonify({'success': False, 'error': 'Email is already in use'})
+                return jsonify(_api_errors.error_payload('auth.email.already_in_use'))
             
             # Update email and mark as unverified
             c.execute(f"UPDATE users SET email={ph}, email_verified=0 WHERE username={ph}", (new_email, username))
@@ -12034,7 +11968,7 @@ def update_email():
             return jsonify({'success': True, 'verification_sent': bool(sent_ok)})
     except Exception as e:
         logger.error(f"Error updating email for {username}: {str(e)}")
-        return jsonify({'success': False, 'error': 'Server error'})
+        return jsonify(_api_errors.error_payload('auth.email.server_error'))
 
 @app.route('/update_professional', methods=['POST'])
 @login_required
@@ -12042,6 +11976,7 @@ def update_professional():
     """Update professional information"""
     username = session['username']
     try:
+        clear_cv = str(request.form.get('clear_cv') or '').strip().lower() in ('1', 'true', 'yes')
         role = request.form.get('role', '').strip()
         company = request.form.get('company', '').strip()
         industry = request.form.get('industry', '').strip()
@@ -12101,6 +12036,20 @@ def update_professional():
                 interests_payload, professional_company_intel, professional_share_community_id,
                 current_role_start_ym or None, work_json, edu_json, username
             ))
+            if clear_cv:
+                try:
+                    c.execute(
+                        f"""
+                        UPDATE users
+                        SET professional_cv_r2_key = NULL,
+                            professional_cv_uploaded_at = NULL,
+                            professional_cv_original_filename = NULL
+                        WHERE username = {ph}
+                        """,
+                        (username,),
+                    )
+                except Exception as cv_clear_err:
+                    logger.warning(f"Failed to clear CV metadata for {username}: {cv_clear_err}")
             conn.commit()
         
         try:
@@ -12118,6 +12067,7 @@ def update_professional():
 @login_required
 def update_personal_info():
     username = session['username']
+    clear_personal = str(request.form.get('clear_personal') or '').strip().lower() in ('1', 'true', 'yes')
     first_name = (request.form.get('first_name') or '').strip() or None
     last_name = (request.form.get('last_name') or '').strip() or None
     display_name = (request.form.get('display_name') or '').strip()
@@ -12201,7 +12151,7 @@ def update_personal_info():
                 location_value = city
             elif country:
                 location_value = country
-            if location_value is not None:
+            if location_value is not None or clear_personal:
                 try:
                     if USE_MYSQL:
                         c.execute(
@@ -14266,10 +14216,28 @@ def update_user_password():
 def feed():
     """Old feed route - redirect to home timeline React page"""
     return redirect('/home')
+
+
+def _basic_profile_gate_response(username):
+    try:
+        from backend.services.basic_profile_gate import require_basic_profile_payload
+        gated = require_basic_profile_payload(username)
+        if gated is None:
+            return None
+        payload, status = gated
+        return jsonify(payload), status
+    except Exception as exc:
+        logger.warning("basic profile gate failed open for %s: %s", username, exc)
+        return None
+
+
 @app.route('/add_reaction', methods=['POST'])
 @login_required
 def add_reaction():
     username = session['username']
+    gate_resp = _basic_profile_gate_response(username)
+    if gate_resp is not None:
+        return gate_resp
     post_id = request.form.get('post_id', type=int)
     reaction_type = request.form.get('reaction')
 
@@ -15445,6 +15413,9 @@ def _steve_preflight_response(username, text, community_id):
 @login_required
 def post_status():
     username = session['username']
+    gate_resp = _basic_profile_gate_response(username)
+    if gate_resp is not None:
+        return gate_resp
     content = request.form.get('content', '').strip()
     link_urls_raw = (request.form.get('link_urls') or '').strip()
     link_urls_list = _parse_link_urls_from_request(link_urls_raw) if link_urls_raw else []
@@ -15901,6 +15872,9 @@ def _reply_upload_is_video(saved_path: str, file_storage) -> bool:
 @login_required
 def post_reply():
     username = session['username']
+    gate_resp = _basic_profile_gate_response(username)
+    if gate_resp is not None:
+        return gate_resp
     
     # Debug CSRF token
     logger.info(f"CSRF validation for user {username}")
@@ -16159,6 +16133,9 @@ def post_reply():
 def create_poll():
     """Create a new poll"""
     username = session['username']
+    gate_resp = _basic_profile_gate_response(username)
+    if gate_resp is not None:
+        return gate_resp
     content = request.form.get('content', '').strip()
     question = request.form.get('question', '').strip()
     options = request.form.getlist('options[]')
@@ -16337,11 +16314,11 @@ def create_poll():
                     import traceback
                     logger.error(traceback.format_exc())
             
-            return jsonify({'success': True, 'message': 'Poll created successfully!', 'post_id': post_id})
+            return jsonify(_api_errors.success_payload('feed.poll_created', extra={'post_id': post_id}))
             
     except Exception as e:
         logger.error(f"Error creating poll: {str(e)}")
-        return jsonify({'success': False, 'error': 'Error creating poll'})
+        return jsonify(_api_errors.error_payload('feed.poll_create_failed'))
 
 @app.route('/close_poll', methods=['POST'])
 @login_required
@@ -16356,7 +16333,7 @@ def close_poll():
         poll_id = request.form.get('poll_id', type=int)
     
     if not poll_id:
-        return jsonify({'success': False, 'error': 'Invalid poll ID'})
+        return jsonify(_api_errors.error_payload('feed.poll_invalid_id'))
     
     try:
         with get_db_connection() as conn:
@@ -16367,7 +16344,7 @@ def close_poll():
             poll_data = c.fetchone()
             
             if not poll_data:
-                return jsonify({'success': False, 'error': 'Poll not found or already closed'})
+                return jsonify(_api_errors.error_payload('feed.poll_not_found_or_closed'))
             
             # Only poll creator, community admin/owner, or global admin can close
             allowed = False
@@ -16459,7 +16436,7 @@ def close_poll():
             except Exception as close_notify_err:
                 logger.error(f"Error sending poll closed notifications: {close_notify_err}")
             
-            return jsonify({'success': True, 'message': 'Poll closed successfully'})
+            return jsonify(_api_errors.success_payload('feed.poll_closed'))
             
     except Exception as e:
         logger.error(f"Error closing poll: {str(e)}")
@@ -16503,7 +16480,7 @@ def edit_poll():
             poll_data = c.fetchone()
             
             if not poll_data:
-                return jsonify({'success': False, 'error': 'Poll not found or already closed'})
+                return jsonify(_api_errors.error_payload('feed.poll_not_found_or_closed'))
             
             # Only poll creator, community admin/owner, or global admin can edit
             allowed = False
@@ -16573,7 +16550,7 @@ def edit_poll():
                     c.execute("DELETE FROM poll_options WHERE id = ?", (option_id,))
             
             conn.commit()
-            return jsonify({'success': True, 'message': 'Poll updated successfully'})
+            return jsonify(_api_errors.success_payload('feed.poll_updated'))
             
     except Exception as e:
         logger.error(f"Error editing poll: {str(e)}")
@@ -16584,6 +16561,9 @@ def edit_poll():
 def vote_poll():
     """Vote on a poll"""
     username = session['username']
+    gate_resp = _basic_profile_gate_response(username)
+    if gate_resp is not None:
+        return gate_resp
     
     # Handle both JSON and form data
     if request.is_json:
@@ -16997,7 +16977,7 @@ def delete_poll():
     data = request.get_json(silent=True) or {}
     poll_id = data.get('poll_id') or request.form.get('poll_id', type=int)
     if not poll_id:
-        return jsonify({'success': False, 'error': 'Invalid poll ID'})
+        return jsonify(_api_errors.error_payload('feed.poll_invalid_id'))
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -17075,7 +17055,7 @@ def remove_poll_option():
             
             conn.commit()
             
-            return jsonify({'success': True, 'message': 'Option removed successfully'})
+            return jsonify(_api_errors.success_payload('feed.poll_option_removed'))
             
     except Exception as e:
         logger.error(f"Error removing poll option: {str(e)}")
@@ -17173,7 +17153,7 @@ def report_issue():
             
             conn.commit()
             
-            return jsonify({'success': True, 'message': 'Issue reported successfully'})
+            return jsonify(_api_errors.success_payload('feed.issue_reported'))
             
     except Exception as e:
         logger.error(f"Error reporting issue: {str(e)}")
@@ -17325,7 +17305,7 @@ def resolve_issue():
             
             conn.commit()
             
-            return jsonify({'success': True, 'message': 'Issue marked as resolved'})
+            return jsonify(_api_errors.success_payload('feed.issue_resolved'))
             
     except Exception as e:
         logger.error(f"Error resolving issue: {str(e)}")
@@ -17338,7 +17318,7 @@ def get_university_ads():
         community_id = request.args.get('community_id', type=int)
         
         if not community_id:
-            return jsonify({'success': False, 'message': 'Community ID is required'}), 400
+            return jsonify(_api_errors.error_payload('feed.community_id_required')), 400
         
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -17502,7 +17482,7 @@ def add_ad(community_id):
             community = c.fetchone()
             
             if not community or (not is_app_admin(username) and username != community['creator_username']):
-                return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+                return jsonify(_api_errors.error_payload('errors.forbidden')), 403
             
             # Get form data
             title = request.form.get('title')
@@ -17550,7 +17530,7 @@ def toggle_ad(ad_id):
             ad = c.fetchone()
             
             if not ad or (not is_app_admin(username) and username != ad['creator_username']):
-                return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+                return jsonify(_api_errors.error_payload('errors.forbidden')), 403
             
             # Toggle status
             new_status = 0 if ad['is_active'] else 1
@@ -17593,7 +17573,7 @@ def update_ad(ad_id):
             ad = c.fetchone()
             
             if not ad or (not is_app_admin(username) and username != ad['creator_username']):
-                return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+                return jsonify(_api_errors.error_payload('errors.forbidden')), 403
             
             # Update ad
             c.execute("""
@@ -17629,7 +17609,7 @@ def delete_ad(ad_id):
             ad = c.fetchone()
             
             if not ad or (not is_app_admin(username) and username != ad['creator_username']):
-                return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+                return jsonify(_api_errors.error_payload('errors.forbidden')), 403
             
             # Delete ad
             c.execute("DELETE FROM university_ads WHERE id = ?", (ad_id,))
@@ -17808,17 +17788,17 @@ def delete_resource_post(post_id):
             post = c.fetchone()
             
             if not post:
-                return jsonify({'success': False, 'message': 'Post not found'}), 404
+                return jsonify(_api_errors.error_payload('feed.post_not_found')), 404
             
             # Check permissions (post creator, admin, or community creator)
             if username != post['username'] and not is_app_admin(username) and username != post['creator_username']:
-                return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+                return jsonify(_api_errors.error_payload('errors.forbidden')), 403
             
             # Delete the post (cascade will handle comments and upvotes)
             c.execute("DELETE FROM resource_posts WHERE id = ?", (post_id,))
             conn.commit()
             
-            return jsonify({'success': True, 'message': 'Post deleted successfully'})
+            return jsonify(_api_errors.success_payload('feed.post_deleted'))
             
     except Exception as e:
         logger.error(f"Error deleting post: {e}")
@@ -17839,17 +17819,17 @@ def delete_community_post(post_id):
             post = c.fetchone()
             
             if not post:
-                return jsonify({'success': False, 'message': 'Post not found'}), 404
+                return jsonify(_api_errors.error_payload('feed.post_not_found')), 404
             
             # Check permissions using the new permission system
             if not has_post_delete_permission(username, post['username'], post['community_id']):
-                return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+                return jsonify(_api_errors.error_payload('errors.forbidden')), 403
             
             # Delete the post
             c.execute("DELETE FROM posts WHERE id = ?", (post_id,))
             conn.commit()
             
-            return jsonify({'success': True, 'message': 'Post deleted successfully'})
+            return jsonify(_api_errors.success_payload('feed.post_deleted'))
             
     except Exception as e:
         logger.error(f"Error deleting community post: {e}")
@@ -17864,13 +17844,13 @@ def appoint_community_admin(community_id):
     try:
         # Check if user has permission to appoint admins
         if not is_app_admin(username) and not is_community_owner(username, community_id):
-            return jsonify({'success': False, 'message': 'Only community owner or app admin can appoint admins'}), 403
+            return jsonify(_api_errors.error_payload('feed.appoint_admin_only')), 403
         
         data = request.get_json()
         new_admin = data.get('username', '').strip()
         
         if not new_admin:
-            return jsonify({'success': False, 'message': 'Username is required'}), 400
+            return jsonify(_api_errors.error_payload('feed.username_required')), 400
             
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -17879,7 +17859,7 @@ def appoint_community_admin(community_id):
             ph = get_sql_placeholder()
             c.execute(f"SELECT username FROM users WHERE username = {ph}", (new_admin,))
             if not c.fetchone():
-                return jsonify({'success': False, 'message': 'User not found'}), 404
+                return jsonify(_api_errors.error_payload('feed.user_not_found')), 404
             
             # Check if already an admin
             c.execute("""
@@ -17888,7 +17868,7 @@ def appoint_community_admin(community_id):
             """, (new_admin, community_id))
             existing_role = c.fetchone()
             if existing_role and (existing_role['role'] == 'admin' if hasattr(existing_role, 'keys') else existing_role[0] == 'admin'):
-                return jsonify({'success': False, 'message': 'User is already an admin'}), 400
+                return jsonify(_api_errors.error_payload('feed.already_admin')), 400
 
             # Appoint as admin using user_communities table
             c.execute("""
@@ -17899,7 +17879,7 @@ def appoint_community_admin(community_id):
             
             conn.commit()
             
-            return jsonify({'success': True, 'message': f'{new_admin} appointed as community admin'})
+            return jsonify(_api_errors.success_payload('feed.admin_appointed', params={'username': new_admin}))
             
     except Exception as e:
         logger.error(f"Error appointing admin: {e}")
@@ -17914,13 +17894,13 @@ def remove_community_admin(community_id):
     try:
         # Check if user has permission to remove admins
         if not is_app_admin(username) and not is_community_owner(username, community_id):
-            return jsonify({'success': False, 'message': 'Only community owner or app admin can remove admins'}), 403
+            return jsonify(_api_errors.error_payload('feed.remove_admin_only')), 403
         
         data = request.get_json()
         admin_to_remove = data.get('username', '').strip()
         
         if not admin_to_remove:
-            return jsonify({'success': False, 'message': 'Username is required'}), 400
+            return jsonify(_api_errors.error_payload('feed.username_required')), 400
             
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -17933,11 +17913,11 @@ def remove_community_admin(community_id):
             """, (admin_to_remove, community_id))
 
             if c.rowcount == 0:
-                return jsonify({'success': False, 'message': 'User is not an admin'}), 404
+                return jsonify(_api_errors.error_payload('feed.not_admin')), 404
             
             conn.commit()
             
-            return jsonify({'success': True, 'message': f'{admin_to_remove} removed as community admin'})
+            return jsonify(_api_errors.success_payload('feed.admin_removed', params={'username': admin_to_remove}))
             
     except Exception as e:
         logger.error(f"Error removing admin: {e}")
@@ -18128,7 +18108,7 @@ def submit_feedback(community_id):
         priority = data.get('priority', 'normal')
         
         if not feedback_text:
-            return jsonify({'success': False, 'message': 'Feedback text is required'}), 400
+            return jsonify(_api_errors.error_payload('feed.feedback_required')), 400
             
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -18142,7 +18122,7 @@ def submit_feedback(community_id):
             
             conn.commit()
             
-            return jsonify({'success': True, 'message': 'Feedback submitted successfully'})
+            return jsonify(_api_errors.success_payload('feed.feedback_submitted'))
             
     except Exception as e:
         logger.error(f"Error submitting feedback: {e}")
@@ -18164,13 +18144,13 @@ def get_community_members_list(community_id):
             community = c.fetchone()
             if not community:
                 logger.warning(f"Community {community_id} not found")
-                return jsonify({'success': False, 'message': 'Community not found'}), 404
+                return jsonify(_api_errors.error_payload('feed.community_not_found')), 404
 
             # Ensure the requester is a member of the community
             c.execute("SELECT id FROM users WHERE username = ?", (username,))
             user_row = c.fetchone()
             if not user_row:
-                return jsonify({'success': False, 'message': 'User not found'}), 404
+                return jsonify(_api_errors.error_payload('feed.user_not_found')), 404
             requester_user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
             c.execute("""
                 SELECT 1 FROM user_communities 
@@ -18179,7 +18159,7 @@ def get_community_members_list(community_id):
             is_member = c.fetchone() is not None
             if not is_member:
                 logger.info(f"User {username} attempted to view members of community {community_id} without membership")
-                return jsonify({'success': False, 'message': 'Forbidden: not a member of this community'}), 403
+                return jsonify(_api_errors.error_payload('feed.not_community_member')), 403
             
             # Get community members with profile pictures and roles
             # Check if role column exists first
@@ -18335,7 +18315,7 @@ def event_rsvp_page(community_id, event_id):
                 """, (event_id, username))
                 conn.commit()
             
-            return render_template('event_rsvp.html',
+            return _render_i18n_template('event_rsvp.html',
                                    event=event,
                                    community_id=community_id,
                                    invitation=invitation,
@@ -18364,7 +18344,7 @@ def view_feedback(community_id):
             community = c.fetchone()
             
             if not community or (not is_app_admin(username) and username != community['creator_username']):
-                return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+                return jsonify(_api_errors.error_payload('errors.forbidden')), 403
             
             # Get feedback
             c.execute("""
@@ -18404,7 +18384,7 @@ def deactivate_user(username):
             user = c.fetchone()
             
             if not user:
-                return jsonify({'success': False, 'message': 'User not found'}), 404
+                return jsonify(_api_errors.error_payload('feed.user_not_found')), 404
             
             new_status = 0 if user['is_active'] else 1
             c.execute("UPDATE users SET is_active = ? WHERE username = ?", (new_status, username))
@@ -18435,7 +18415,7 @@ def deactivate_community(community_id):
             community = c.fetchone()
             
             if not community:
-                return jsonify({'success': False, 'message': 'Community not found'}), 404
+                return jsonify(_api_errors.error_payload('feed.community_not_found')), 404
             
             new_status = 0 if community['is_active'] else 1
             c.execute("UPDATE communities SET is_active = ? WHERE id = ?", (new_status, community_id))
@@ -18886,7 +18866,7 @@ def delete_post():
             logger.warning(f"Post detail cache invalidate after delete failed: {cache_err}")
         
         logger.info(f"Post {post_id} deleted successfully by {username}")
-        return jsonify({'success': True, 'message': 'Post deleted!'}), 200
+        return jsonify(_api_errors.success_payload('feed.post_deleted')), 200
     except Exception as e:
         logger.error(f"Error deleting post {post_id} for {username}: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
@@ -18962,7 +18942,7 @@ def report_post():
             existing_report = c.fetchone()
             if existing_report:
                 logger.info(f"User {username} already reported post {post_id}")
-                return jsonify({'success': True, 'message': 'You have already reported this post'})
+                return jsonify(_api_errors.success_payload('feed.post_already_reported'))
             
             # Insert new report
             c.execute(f"""
@@ -18998,7 +18978,7 @@ def report_post():
                 logger.warning(f"Failed to notify admins about reported post: {admin_err}")
             
             logger.info(f"Post {post_id} reported by {username} for: {reason}")
-            return jsonify({'success': True, 'message': 'Post reported successfully. Our team will review it.'})
+            return jsonify(_api_errors.success_payload('feed.post_reported'))
     
     except Exception as e:
         logger.error(f"Error reporting post: {e}")
@@ -19035,10 +19015,10 @@ def hide_post():
                 conn.commit()
             except Exception:
                 # Already hidden
-                return jsonify({'success': True, 'message': 'Post already hidden'})
+                return jsonify(_api_errors.success_payload('feed.post_already_hidden'))
             
             logger.info(f"Post {post_id} hidden by {username}")
-            return jsonify({'success': True, 'message': 'Post hidden'})
+            return jsonify(_api_errors.success_payload('feed.post_hidden'))
     
     except Exception as e:
         logger.error(f"Error hiding post: {e}")
@@ -19104,7 +19084,7 @@ def unhide_post():
             conn.commit()
             
             logger.info(f"Post {post_id} unhidden by {username}")
-            return jsonify({'success': True, 'message': 'Post unhidden'})
+            return jsonify(_api_errors.success_payload('feed.post_unhidden'))
     
     except Exception as e:
         logger.error(f"Error unhiding post: {e}")
@@ -19266,7 +19246,7 @@ def admin_delete_reported_post():
                     logger.warning(f"Failed to invalidate cache: {cache_err}")
             
             logger.info(f"Reported post {post_id} deleted by admin {username}")
-            return jsonify({'success': True, 'message': 'Post deleted successfully'})
+            return jsonify(_api_errors.success_payload('feed.post_deleted'))
     
     except Exception as e:
         logger.error(f"Error deleting reported post: {e}")
@@ -19309,7 +19289,7 @@ def block_user():
                 """, (username, blocked_username, reason))
             except Exception:
                 # Already blocked
-                return jsonify({'success': True, 'message': 'User already blocked'})
+                return jsonify(_api_errors.success_payload('feed.user_already_blocked'))
             
             conn.commit()
             
@@ -19354,7 +19334,10 @@ def block_user():
                     logger.warning(f"Failed to report blocked user's posts: {report_err}")
             
             logger.info(f"User {username} blocked {blocked_username}")
-            return jsonify({'success': True, 'message': f'@{blocked_username} has been blocked'})
+            return jsonify(_api_errors.success_payload(
+                'feed.user_blocked',
+                params={'username': blocked_username},
+            ))
     
     except Exception as e:
         logger.error(f"Error blocking user: {e}")
@@ -19382,7 +19365,10 @@ def unblock_user():
             conn.commit()
             
             logger.info(f"User {username} unblocked {blocked_username}")
-            return jsonify({'success': True, 'message': f'@{blocked_username} has been unblocked'})
+            return jsonify(_api_errors.success_payload(
+                'feed.user_unblocked',
+                params={'username': blocked_username},
+            ))
     
     except Exception as e:
         logger.error(f"Error unblocking user: {e}")
@@ -20241,7 +20227,7 @@ def delete_reply():
                 logger.warning(f"Cache invalidation after reply delete failed: {cache_err}")
 
         logger.info(f"Reply {reply_id} deleted successfully by {username}")
-        return jsonify({'success': True, 'message': 'Reply deleted!'}), 200
+        return jsonify(_api_errors.success_payload('feed.reply_deleted')), 200
     except Exception as e:
         logger.error(f"Error deleting reply {reply_id} for {username}: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
@@ -22255,6 +22241,9 @@ def ai_steve_reply():
 @login_required
 def add_reply_reaction():
     username = session['username']
+    gate_resp = _basic_profile_gate_response(username)
+    if gate_resp is not None:
+        return gate_resp
     # Temporarily disable CSRF validation
     # if not validate_csrf():
     #     return jsonify({'success': False, 'error': 'Invalid CSRF token'}), 400
@@ -23319,7 +23308,7 @@ def edit_community():
             c.execute("UPDATE communities SET name = ? WHERE id = ?", (new_name, community_id))
             conn.commit()
             
-            return jsonify({'success': True, 'message': 'Community updated successfully'})
+            return jsonify(_api_errors.success_payload('communities.updated'))
             
     except Exception as e:
         logger.error(f"Error editing community: {str(e)}")
@@ -23342,6 +23331,9 @@ def update_community():
     parent_community_id = request.form.get('parent_community_id', None)
     notify_raw = (request.form.get('notify_on_new_member') or '').strip().lower()
     notify_on_new_member = 1 if notify_raw in ('true','1','on','yes') else 0
+    recommended_profile_mode = (request.form.get('recommended_profile_mode') or 'none').strip().lower()
+    if recommended_profile_mode not in ('none', 'personal', 'professional', 'both'):
+        recommended_profile_mode = 'none'
     allow_nsfw_raw = (request.form.get('allow_nsfw_imagine') or '').strip().lower()
     allow_nsfw_imagine = 1 if allow_nsfw_raw in ('true', '1', 'on', 'yes') else 0
     max_members = request.form.get('max_members', type=int)
@@ -23367,6 +23359,10 @@ def update_community():
                     if not c.fetchone():
                         c.execute("ALTER TABLE communities ADD COLUMN allow_nsfw_imagine TINYINT(1) DEFAULT 0")
                         conn.commit()
+                    c.execute("SHOW COLUMNS FROM communities LIKE 'recommended_profile_mode'")
+                    if not c.fetchone():
+                        c.execute("ALTER TABLE communities ADD COLUMN recommended_profile_mode VARCHAR(32) DEFAULT 'none'")
+                        conn.commit()
                 else:
                     c.execute("PRAGMA table_info(communities)")
                     cols = [row[1] if isinstance(row, (list, tuple)) else row['name'] for row in c.fetchall()]
@@ -23378,6 +23374,9 @@ def update_community():
                         conn.commit()
                     if 'allow_nsfw_imagine' not in cols:
                         c.execute("ALTER TABLE communities ADD COLUMN allow_nsfw_imagine INTEGER DEFAULT 0")
+                        conn.commit()
+                    if 'recommended_profile_mode' not in cols:
+                        c.execute("ALTER TABLE communities ADD COLUMN recommended_profile_mode TEXT DEFAULT 'none'")
                         conn.commit()
             except Exception as mig_e:
                 logger.warning(f"notify_on_new_member migration check failed: {mig_e}")
@@ -23458,7 +23457,7 @@ def update_community():
                     SET name = {ph}, description = {ph}, type = {ph}, network_type = {ph}, background_path = NULL, template = {ph},
                         background_color = {ph}, card_color = {ph}, accent_color = {ph}, text_color = {ph},
                         parent_community_id = {ph}, notify_on_new_member = {ph}, max_members = {ph},
-                        allow_nsfw_imagine = {ph}
+                        allow_nsfw_imagine = {ph}, recommended_profile_mode = {ph}
                     WHERE id = {ph}
                     """,
                     (
@@ -23468,6 +23467,7 @@ def update_community():
                         notify_on_new_member,
                         (max_members if (isinstance(max_members, int) and max_members > 0) else None),
                         allow_nsfw_imagine,
+                        recommended_profile_mode,
                         community_id,
                     ),
                 )
@@ -23478,7 +23478,7 @@ def update_community():
                     SET name = {ph}, description = {ph}, type = {ph}, network_type = {ph}, background_path = {ph}, template = {ph},
                         background_color = {ph}, card_color = {ph}, accent_color = {ph}, text_color = {ph},
                         parent_community_id = {ph}, notify_on_new_member = {ph}, max_members = {ph},
-                        allow_nsfw_imagine = {ph}
+                        allow_nsfw_imagine = {ph}, recommended_profile_mode = {ph}
                     WHERE id = {ph}
                     """,
                     (
@@ -23488,6 +23488,7 @@ def update_community():
                         notify_on_new_member,
                         (max_members if (isinstance(max_members, int) and max_members > 0) else None),
                         allow_nsfw_imagine,
+                        recommended_profile_mode,
                         community_id,
                     ),
                 )
@@ -23498,7 +23499,7 @@ def update_community():
                     SET name = {ph}, description = {ph}, type = {ph}, network_type = {ph}, template = {ph},
                         background_color = {ph}, card_color = {ph}, accent_color = {ph}, text_color = {ph},
                         parent_community_id = {ph}, notify_on_new_member = {ph}, max_members = {ph},
-                        allow_nsfw_imagine = {ph}
+                        allow_nsfw_imagine = {ph}, recommended_profile_mode = {ph}
                     WHERE id = {ph}
                     """,
                     (
@@ -23508,6 +23509,7 @@ def update_community():
                         notify_on_new_member,
                         (max_members if (isinstance(max_members, int) and max_members > 0) else None),
                         allow_nsfw_imagine,
+                        recommended_profile_mode,
                         community_id,
                     ),
                 )
@@ -23552,7 +23554,7 @@ def update_community():
                     "Dashboard subtree invalidate after community update: %s", dash_err
                 )
 
-            return jsonify({'success': True, 'message': 'Community updated successfully'})
+            return jsonify(_api_errors.success_payload('communities.updated'))
             
     except Exception as e:
         logger.error(f"Error updating community: {str(e)}")
@@ -24013,7 +24015,8 @@ def verify_invitation():
             c = conn.cursor()
             c.execute("""
                 SELECT ci.id, ci.community_id, ci.invited_email, ci.used,
-                       c.name as community_name, ci.invited_by_username
+                       c.name as community_name, ci.invited_by_username,
+                       ci.expires_at, ci.status
                 FROM community_invitations ci
                 JOIN communities c ON ci.community_id = c.id
                 WHERE ci.token = ?
@@ -24027,6 +24030,23 @@ def verify_invitation():
             used = invitation['used'] if hasattr(invitation, 'keys') else invitation[3]
             if used:
                 return jsonify({'success': False, 'error': 'Invitation already used'}), 400
+            status_value = invitation['status'] if hasattr(invitation, 'keys') else (invitation[7] if len(invitation) > 7 else None)
+            if status_value and status_value != 'pending':
+                return jsonify({'success': False, 'error': 'Invitation is no longer pending'}), 400
+            expires_at = invitation['expires_at'] if hasattr(invitation, 'keys') else (invitation[6] if len(invitation) > 6 else None)
+            if expires_at:
+                try:
+                    expiry_dt = expires_at if isinstance(expires_at, datetime) else datetime.fromisoformat(str(expires_at).replace('Z', '').replace(' ', 'T'))
+                    if expiry_dt < datetime.utcnow():
+                        return jsonify({
+                            'success': False,
+                            'error': 'This invitation has expired. Ask the community owner to send a new one.',
+                            'error_code': 'invite_expired',
+                            'expired': True,
+                            'expires_at': str(expires_at),
+                        }), 410
+                except Exception:
+                    pass
             
             return jsonify({
                 'success': True,
@@ -24034,6 +24054,7 @@ def verify_invitation():
                 'community_name': invitation['community_name'] if hasattr(invitation, 'keys') else invitation[4],
                 'invited_by': invitation['invited_by_username'] if hasattr(invitation, 'keys') else invitation[5],
                 'community_id': invitation['community_id'] if hasattr(invitation, 'keys') else invitation[1],
+                'expires_at': str(expires_at or ''),
             })
             
     except Exception as e:
@@ -24199,7 +24220,7 @@ def leave_community():
         except Exception:
             logger.warning("[FREEZE] auto-unfreeze hook failed (non-fatal)", exc_info=True)
 
-        return jsonify({'success': True, 'message': 'Successfully left the community', 'winback_offer': winback_offer})
+        return jsonify(_api_errors.success_payload('feed.leave_community_success', extra={'winback_offer': winback_offer}))
         
     except Exception as e:
         logger.error(f"Error leaving community: {str(e)}")
@@ -24217,12 +24238,24 @@ def community_feed(community_id):
 @app.errorhandler(500)
 def internal_server_error(e):
     logger.error(f"Internal server error: {str(e)}")
-    return render_template('error.html', error="An internal server error occurred. Please try again later."), 500
+    ctx = _template_i18n.template_ctx()
+    from backend.services import i18n
+    return render_template(
+        'error.html',
+        error=i18n.t("templates.error_page.internal_error", ctx["locale"]),
+        **ctx,
+    ), 500
 
 @app.errorhandler(404)
 def not_found_error(e):
     logger.error(f"404 Not Found error: {str(e)}")
-    return render_template('error.html', error="Page not found. Please check the URL or return to the homepage."), 404
+    ctx = _template_i18n.template_ctx()
+    from backend.services import i18n
+    return render_template(
+        'error.html',
+        error=i18n.t("templates.error_page.not_found", ctx["locale"]),
+        **ctx,
+    ), 404
 
 # Add this after the existing routes, before the error handlers
 
@@ -24376,9 +24409,23 @@ def api_community_feed(community_id):
             # Community info
             c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
             community_row = c.fetchone()
+            if community_row is not None and 'recommended_profile_mode' not in community_row.keys():
+                try:
+                    if 'USE_MYSQL' in globals() and USE_MYSQL:
+                        c.execute("ALTER TABLE communities ADD COLUMN recommended_profile_mode VARCHAR(32) DEFAULT 'none'")
+                    else:
+                        c.execute("ALTER TABLE communities ADD COLUMN recommended_profile_mode TEXT DEFAULT 'none'")
+                    conn.commit()
+                    c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
+                    community_row = c.fetchone()
+                except Exception:
+                    pass
             if not community_row:
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
             community = dict(community_row)
+            community['recommended_profile_mode'] = (
+                community.get('recommended_profile_mode') or 'none'
+            )
             community['allow_nsfw_imagine'] = bool(community.get('allow_nsfw_imagine')) if community.get('allow_nsfw_imagine') is not None else False
             community['owner_feed_setup_intro_seen'] = bool(
                 int(community.get('owner_feed_setup_intro_seen') or 0)
@@ -27134,6 +27181,9 @@ def api_group_post():
 @login_required
 def api_group_posts_create():
     username = session.get('username')
+    gate_resp = _basic_profile_gate_response(username)
+    if gate_resp is not None:
+        return gate_resp
     group_id_raw = request.form.get('group_id', '').strip()
     content = (request.form.get('content', '') or '').strip()
     dedupe_token = (request.form.get('dedupe_token') or '').strip()
@@ -27418,6 +27468,9 @@ def api_group_posts_create():
 @login_required
 def api_group_posts_react():
     username = session.get('username')
+    gate_resp = _basic_profile_gate_response(username)
+    if gate_resp is not None:
+        return gate_resp
     post_id_raw = request.form.get('post_id', '').strip()
     reaction = (request.form.get('reaction', '') or '').strip()
     try:
@@ -27483,6 +27536,9 @@ def api_group_posts_react():
 @login_required
 def api_group_posts_edit():
     username = session.get('username')
+    gate_resp = _basic_profile_gate_response(username)
+    if gate_resp is not None:
+        return gate_resp
     post_id_raw = request.form.get('post_id', '').strip()
     content = (request.form.get('content') or '').strip()
     try:
@@ -27589,6 +27645,9 @@ def api_group_posts_delete():
 @login_required
 def api_group_replies_create():
     username = session.get('username')
+    gate_resp = _basic_profile_gate_response(username)
+    if gate_resp is not None:
+        return gate_resp
     post_id_raw = request.form.get('group_post_id', '').strip()
     parent_id_raw = request.form.get('parent_reply_id', '').strip()
     content = (request.form.get('content', '') or '').strip()
@@ -27813,6 +27872,9 @@ def api_group_replies_create():
 @login_required
 def api_group_replies_react():
     username = session.get('username')
+    gate_resp = _basic_profile_gate_response(username)
+    if gate_resp is not None:
+        return gate_resp
     reply_id_raw = request.form.get('reply_id', '').strip()
     reaction = (request.form.get('reaction', '') or '').strip()
     try:

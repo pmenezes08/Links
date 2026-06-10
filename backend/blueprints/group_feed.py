@@ -11,6 +11,7 @@ from functools import wraps
 from flask import Blueprint, jsonify, request, session
 
 from backend.services import auth_session, session_identity
+from backend.services.basic_profile_gate import require_basic_profile_payload
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services.group_feed_access import (
     check_group_feed_access,
@@ -49,6 +50,14 @@ def _login_required(view_func):
         return view_func(*args, **kwargs)
 
     return wrapper
+
+
+def _basic_profile_required_response(username: str | None):
+    gated = require_basic_profile_payload(username)
+    if gated is None:
+        return None
+    payload, status = gated
+    return jsonify(payload), status
 
 
 def _ensure_group_key_post_tables(cursor):
@@ -268,6 +277,9 @@ def api_group_announcements_list(group_id: int):
 @_login_required
 def api_group_announcements_create(group_id: int):
     username = session["username"]
+    gate_resp = _basic_profile_required_response(username)
+    if gate_resp is not None:
+        return gate_resp
     ph = get_sql_placeholder()
     data = request.get_json(silent=True) or {}
     content = (data.get("content") or request.form.get("content") or "").strip()
@@ -614,6 +626,9 @@ def api_group_key_posts(group_id: int):
 @_login_required
 def api_toggle_group_key_post():
     username = session.get("username")
+    gate_resp = _basic_profile_required_response(username)
+    if gate_resp is not None:
+        return gate_resp
     group_id = request.form.get("group_id", type=int)
     group_post_id = request.form.get("group_post_id", type=int)
     if not group_id or not group_post_id:
@@ -671,6 +686,9 @@ def api_toggle_group_key_post():
 @_login_required
 def api_toggle_group_community_key_post():
     username = session.get("username")
+    gate_resp = _basic_profile_required_response(username)
+    if gate_resp is not None:
+        return gate_resp
     group_id = request.form.get("group_id", type=int)
     group_post_id = request.form.get("group_post_id", type=int)
     if not group_id or not group_post_id:
@@ -739,6 +757,9 @@ def api_toggle_group_community_key_post():
 @_login_required
 def api_group_poll_vote():
     username = session["username"]
+    gate_resp = _basic_profile_required_response(username)
+    if gate_resp is not None:
+        return gate_resp
     data = request.get_json(silent=True) or {}
     group_poll_id = data.get("group_poll_id")
     option_id = data.get("option_id")
@@ -774,6 +795,9 @@ def api_group_poll_vote():
 @_login_required
 def api_group_polls_create():
     username = session["username"]
+    gate_resp = _basic_profile_required_response(username)
+    if gate_resp is not None:
+        return gate_resp
     data = request.get_json(silent=True) or {}
     try:
         group_id = int(data.get("group_id") or request.form.get("group_id") or 0)
@@ -1029,6 +1053,9 @@ def api_group_reply_reactors(reply_id: int):
 @_login_required
 def api_group_replies_edit():
     username = session["username"]
+    gate_resp = _basic_profile_required_response(username)
+    if gate_resp is not None:
+        return gate_resp
     reply_id = request.form.get("reply_id", type=int)
     new_content = (request.form.get("content") or "").strip()
     if not reply_id:

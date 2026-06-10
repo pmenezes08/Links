@@ -10,7 +10,9 @@ Hard invariants (see ``docs/STEVE_COMMUNITY_WELCOME.md`` for the full list):
 - Welcome posts are deterministic card renders, not LLM generations.
 - Posts are flagged ``is_system_post = 1`` and auto-pinned to the *Key Posts*
   tab via ``community_key_posts``.
-- The skip list (``paulo``, ``admin``, ``steve``) suppresses the entire flow.
+- The skip list (``paulo``, ``admin``, ``steve``) suppresses owner DMs only.
+  In-feed activation content still renders so staging/operator communities can
+  exercise the same cold-start loop as real users.
 - Steve is never referred to as an assistant. See ``docs/STEVE_PERSONA.md``.
 """
 
@@ -23,16 +25,22 @@ from typing import Iterable, Optional
 from backend.services.content_generation.delivery import ensure_steve_user, send_steve_dm
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.firestore_writes import write_post
+from backend.services import i18n
+from backend.services.user_locale import get_preferred_locale
 from redis_cache import invalidate_community_cache
 
 logger = logging.getLogger(__name__)
 
 
 WELCOME_CARD_VERSION = 1
+COLD_START_CARD_VERSION = 1
 
 CARD_KEY_ROOT = "welcome.root"
 CARD_KEY_SUB = "welcome.sub"
 CARD_KEY_BUSINESS = "welcome.business"
+CARD_KEY_COLD_START_POLL = "cold_start.poll.v1"
+CARD_KEY_INTRODUCE_YOURSELF = "cold_start.introduce_yourself.v1"
+CARD_KEY_ROLLING_WELCOME = "cold_start.rolling_welcome.v1"
 
 SYSTEM_AUTHOR = "steve"
 
@@ -62,6 +70,8 @@ def ensure_welcome_columns(cursor) -> None:
         "ALTER TABLE posts ADD COLUMN welcome_card_key VARCHAR(64)",
         "ALTER TABLE posts ADD COLUMN welcome_card_version INTEGER",
         "ALTER TABLE communities ADD COLUMN welcome_post_id INTEGER",
+        "ALTER TABLE communities ADD COLUMN cold_start_poll_post_id INTEGER",
+        "ALTER TABLE communities ADD COLUMN introduce_thread_post_id INTEGER",
     )
     for stmt in statements:
         try:
@@ -76,24 +86,75 @@ def ensure_welcome_columns(cursor) -> None:
 # Card rendering
 # ---------------------------------------------------------------------------
 
-_BULLETS_BASE = (
-    "- **Posts** — share text, photos, videos, audio, links, or polls.\n"
-    "- **Stories** — quick photo/video moments that disappear in 24h.\n"
-    "- **Reactions & replies** — long-press any post to react or reply.\n"
-    "- **Summarise** — tap the **Summarise** button on long threads to get the gist.\n"
-    "- **Key Posts** — pinned highlights live in the *Key Posts* tab so people can find them later.\n"
-    "- **Links & Docs** — every link or document shared here, in one tab.\n"
-    "- **Media** — every photo and video shared here, in one gallery.\n"
-)
+def _owner_locale(creator_username: Optional[str], *, fallback: str = "en") -> str:
+    """Resolve the community owner's preferred locale for system copy."""
+    uname = (creator_username or "").strip()
+    if not uname:
+        return fallback
+    return get_preferred_locale(uname) or fallback
 
-_BULLETS_TAIL = (
-    "- **Hide or report** — see something off? Hide it just for you, or report it.\n"
-    "- **Tag me in** — tag **@steve** in any post or reply if you want my take.\n"
-)
 
-_BULLETS_BUSINESS_EXTRA = "- **Member directory** — see who's in the community.\n"
+def _poll_copy(category: str, locale: str) -> tuple[str, list[str]]:
+    prefix = f"steve_welcome.poll.{category}"
+    question = i18n.t(f"{prefix}.question", locale)
+    options = [
+        i18n.t(f"{prefix}.option_{idx}", locale)
+        for idx in range(1, 5)
+    ]
+    return question, options
 
-_CLOSER = "I'm also pinned at the top of your chats — **DM me anytime** for anything."
+
+def render_welcome_post(
+    *,
+    card_key: str,
+    community_name: str,
+    parent_community_name: Optional[str] = None,
+    locale: str = "en",
+) -> str:
+    """Render the welcome-post body for a given card variant.
+
+    Pure function. No DB access. The output is the markdown shipped to the
+    feed. Don't add LLM rewriting here — see persona / drift guarantees.
+    """
+    name = (community_name or "").strip() or i18n.t(
+        "steve_welcome.welcome.community_fallback", locale,
+    )
+    header = (
+        f"{i18n.t('steve_welcome.welcome.header', locale, name=name)}\n"
+        f"{i18n.t('steve_welcome.posted_by', locale)}\n"
+    )
+
+    bullets = i18n.t("steve_welcome.welcome.bullets_base", locale)
+    if card_key == CARD_KEY_BUSINESS:
+        bullets = bullets + i18n.t("steve_welcome.welcome.bullet_business_extra", locale)
+    bullets = bullets + i18n.t("steve_welcome.welcome.bullets_tail", locale)
+
+    sub_intro = ""
+    if card_key == CARD_KEY_SUB and parent_community_name:
+        parent = parent_community_name.strip()
+        sub_intro = i18n.t("steve_welcome.welcome.sub_intro", locale, parent=parent)
+
+    tour = i18n.t("steve_welcome.welcome.tour_intro", locale)
+    closer = i18n.t("steve_welcome.welcome.closer", locale)
+    return f"{header}{sub_intro}\n{tour}\n\n{bullets}\n{closer}"
+
+
+def render_owner_dm(
+    *,
+    community_name: str,
+    owner_first_name: str,
+    variant: str,
+    locale: str = "en",
+) -> str:
+    """Render the owner DM body. ``variant`` is 'standard' or 'late'."""
+    name = (community_name or "").strip() or i18n.t(
+        "steve_welcome.welcome.community_fallback", locale,
+    )
+    who = (owner_first_name or "").strip() or i18n.t(
+        "steve_welcome.owner_dm.who_fallback", locale,
+    )
+    key = "steve_welcome.owner_dm.late" if variant == "late" else "steve_welcome.owner_dm.standard"
+    return i18n.t(key, locale, who=who, name=name)
 
 
 def _pick_card_key(community_type: Optional[str], parent_community_id) -> str:
@@ -105,66 +166,88 @@ def _pick_card_key(community_type: Optional[str], parent_community_id) -> str:
     return CARD_KEY_ROOT
 
 
-def render_welcome_post(
+def _community_category(community_type: Optional[str], community_name: Optional[str] = None) -> str:
+    raw = f"{community_type or ''} {community_name or ''}".strip().lower()
+    if any(token in raw for token in ("gym", "fitness", "sport", "sports", "crossfit", "training", "bodybuilding")):
+        return "fitness"
+    if any(token in raw for token in ("business", "professional", "founder", "investor", "alumni", "work", "company")):
+        return "professional"
+    return "generic"
+
+
+def render_cold_start_poll(
     *,
-    card_key: str,
-    community_name: str,
-    parent_community_name: Optional[str] = None,
-) -> str:
-    """Render the welcome-post body for a given card variant.
+    community_type: Optional[str],
+    community_name: Optional[str] = None,
+    locale: str = "en",
+) -> tuple[str, list[str]]:
+    """Return Steve's deterministic first poll question and options."""
+    category = _community_category(community_type, community_name)
+    return _poll_copy(category, locale)
 
-    Pure function. No DB access. The output is the markdown shipped to the
-    feed. Don't add LLM rewriting here — see persona / drift guarantees.
-    """
-    name = (community_name or "").strip() or "your community"
-    header = f"**Welcome to {name} \U0001F44B**\n*Posted by Steve.*\n"
 
-    bullets = _BULLETS_BASE
-    if card_key == CARD_KEY_BUSINESS:
-        # Insert the business-only bullet right before the privacy/tag-me tail.
-        bullets = bullets + _BULLETS_BUSINESS_EXTRA
-    bullets = bullets + _BULLETS_TAIL
-
-    sub_intro = ""
-    if card_key == CARD_KEY_SUB and parent_community_name:
-        parent = parent_community_name.strip()
-        sub_intro = (
-            f"\nThis is a sub-space inside **{parent}** — members of "
-            f"{parent} can find their way here.\n"
-        )
-
-    return (
-        f"{header}{sub_intro}\nA quick tour of what's inside:\n\n"
-        f"{bullets}\n{_CLOSER}"
+def render_introduce_yourself_thread(*, community_name: str, locale: str = "en") -> str:
+    name = (community_name or "").strip() or i18n.t(
+        "steve_welcome.introduce.community_fallback", locale,
     )
+    parts = [
+        i18n.t("steve_welcome.introduce.title", locale),
+        i18n.t("steve_welcome.posted_by", locale),
+        "",
+        i18n.t("steve_welcome.introduce.lead", locale),
+        "",
+        i18n.t("steve_welcome.introduce.prompt_intro", locale),
+        "",
+        i18n.t("steve_welcome.introduce.bullet_name", locale),
+        i18n.t("steve_welcome.introduce.bullet_why", locale, name=name),
+        i18n.t("steve_welcome.introduce.bullet_working", locale),
+        "",
+        i18n.t("steve_welcome.introduce.no_bio", locale),
+        "",
+        i18n.t("steve_welcome.introduce.pinned_closer", locale),
+    ]
+    return "\n".join(parts)
 
 
-def render_owner_dm(
+def render_rolling_welcome_post(
     *,
     community_name: str,
-    owner_first_name: str,
-    variant: str,
+    member_names: list[str],
+    locale: str = "en",
 ) -> str:
-    """Render the owner DM body. ``variant`` is 'standard' or 'late'."""
-    name = (community_name or "").strip() or "your community"
-    who = (owner_first_name or "").strip() or "there"
-
-    if variant == "late":
-        return (
-            f"Hey {who} — quick one about **{name}**.\n\n"
-            "I should have done this when you launched, better late than never: "
-            "I just published a welcome post in your feed so people landing here "
-            "for the first time get the lay of the land. It'll stay in *Key Posts*.\n\n"
-            "If you want a hand with cover, description, or first invites, just DM me."
+    name = (community_name or "").strip() or i18n.t(
+        "steve_welcome.rolling.community_fallback", locale,
+    )
+    clean_names = [n.strip() for n in member_names if n and n.strip()]
+    visible = clean_names[:5]
+    if not visible:
+        names_text = i18n.t("steve_welcome.rolling.names_few", locale)
+    elif len(clean_names) > 5:
+        names_text = i18n.t(
+            "steve_welcome.rolling.names_overflow",
+            locale,
+            names=", ".join(visible),
+            count=len(clean_names) - 5,
         )
-
-    # Default = standard
+    elif len(visible) == 1:
+        names_text = visible[0]
+    else:
+        names_text = i18n.t(
+            "steve_welcome.rolling.names_and_last",
+            locale,
+            prefix=", ".join(visible[:-1]),
+            last=visible[-1],
+        )
+    header = i18n.t("steve_welcome.rolling.header", locale, name=name)
+    joined = i18n.t("steve_welcome.rolling.joined_line", locale, names=names_text)
+    new_members = i18n.t("steve_welcome.rolling.new_members", locale)
+    existing = i18n.t("steve_welcome.rolling.existing_members", locale)
     return (
-        f"Hey {who} — congrats on **{name}**.\n\n"
-        "I just published a quick welcome post in your feed so people landing here "
-        "for the first time get the lay of the land. It'll stay in *Key Posts*.\n\n"
-        "Want a hand getting started? Just tell me — I can help you invite people, "
-        "set a cover image, write the description, or draft your first post."
+        f"{header}\n"
+        f"{i18n.t('steve_welcome.posted_by', locale)}\n\n"
+        f"{joined}\n\n"
+        f"{new_members}\n\n"
+        f"{existing}"
     )
 
 
@@ -172,7 +255,7 @@ def render_owner_dm(
 # Eligibility helpers
 # ---------------------------------------------------------------------------
 
-def _should_skip_welcome(creator_username: Optional[str]) -> bool:
+def _should_skip_owner_dm(creator_username: Optional[str]) -> bool:
     return (creator_username or "").strip().lower() in SKIP_OWNERS
 
 
@@ -309,6 +392,60 @@ def _existing_welcome_post_id(cursor, community_id: int) -> Optional[int]:
     return candidate if cursor.fetchone() else None
 
 
+def _existing_system_post_id(
+    cursor,
+    community_id: int,
+    *,
+    column_name: str,
+    card_key: str,
+) -> Optional[int]:
+    """Return a live system post id tracked by a community column or card key."""
+    ph = get_sql_placeholder()
+    candidate = None
+    try:
+        cursor.execute(
+            f"SELECT {column_name} FROM communities WHERE id = {ph}",
+            (community_id,),
+        )
+        row = cursor.fetchone()
+        if row:
+            candidate = row[column_name] if hasattr(row, "keys") else row[0]
+    except Exception:
+        candidate = None
+    if candidate:
+        cursor.execute(f"SELECT id FROM posts WHERE id = {ph}", (candidate,))
+        if cursor.fetchone():
+            return int(candidate)
+
+    try:
+        cursor.execute(
+            f"""
+            SELECT id FROM posts
+            WHERE community_id = {ph}
+              AND is_system_post = 1
+              AND author_kind = {ph}
+              AND welcome_card_key = {ph}
+            ORDER BY id ASC
+            LIMIT 1
+            """,
+            (community_id, "system", card_key),
+        )
+        row = cursor.fetchone()
+        if row:
+            found = row["id"] if hasattr(row, "keys") else row[0]
+            try:
+                cursor.execute(
+                    f"UPDATE communities SET {column_name} = {ph} WHERE id = {ph}",
+                    (found, community_id),
+                )
+            except Exception:
+                pass
+            return int(found)
+    except Exception:
+        return None
+    return None
+
+
 def _ensure_community_starred(cursor, community_id: int, post_id: int) -> None:
     """Mark the welcome post as community-starred (Key Posts pin)."""
     ph = get_sql_placeholder()
@@ -337,6 +474,58 @@ def _ensure_community_starred(cursor, community_id: int, post_id: int) -> None:
         )
 
 
+def _insert_system_post(
+    cursor,
+    *,
+    community_id: int,
+    content: str,
+    timestamp_str: str,
+    card_key: str,
+) -> int:
+    ph = get_sql_placeholder()
+    cursor.execute(
+        f"""
+        INSERT INTO posts (
+            username, content, timestamp, community_id,
+            is_system_post, author_kind,
+            welcome_card_key, welcome_card_version
+        )
+        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+        """,
+        (
+            SYSTEM_AUTHOR, content, timestamp_str, community_id,
+            1, "system", card_key, COLD_START_CARD_VERSION,
+        ),
+    )
+    return int(cursor.lastrowid)
+
+
+def _mirror_system_post(
+    *,
+    post_id: int,
+    content: str,
+    community_id: int,
+    timestamp: datetime,
+) -> None:
+    try:
+        write_post(
+            post_id=post_id,
+            username=SYSTEM_AUTHOR,
+            content=content,
+            community_id=community_id,
+            timestamp=timestamp,
+        )
+    except Exception as exc:
+        logger.warning(
+            "[STEVE WELCOME] Firestore mirror failed for system post %s: %s",
+            post_id, exc,
+        )
+    try:
+        invalidate_community_cache(community_id)
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -362,13 +551,6 @@ def publish_welcome_post(community_id: int) -> Optional[int]:
                 logger.info("[STEVE WELCOME] community %s not found", community_id)
                 return None
 
-            if _should_skip_welcome(community.get("creator_username")):
-                logger.info(
-                    "[STEVE WELCOME] skipping community %s — owner '%s' is in skip list",
-                    community_id, community.get("creator_username"),
-                )
-                return None
-
             existing = _existing_welcome_post_id(cursor, community_id)
             if existing:
                 logger.info(
@@ -383,10 +565,12 @@ def publish_welcome_post(community_id: int) -> Optional[int]:
             parent_name = _fetch_parent_name(
                 cursor, community.get("parent_community_id"),
             )
+            owner_locale = _owner_locale(community.get("creator_username"))
             content = render_welcome_post(
                 card_key=card_key,
                 community_name=community.get("name") or "",
                 parent_community_name=parent_name,
+                locale=owner_locale,
             )
 
             ph = get_sql_placeholder()
@@ -450,6 +634,347 @@ def publish_welcome_post(community_id: int) -> Optional[int]:
     return post_id
 
 
+def publish_cold_start_poll(community_id: int) -> Optional[int]:
+    """Publish Steve's deterministic first poll for a community.
+
+    The write is notification-silent and idempotent. Poll voting still uses the
+    normal poll APIs once the post is visible in the feed.
+    """
+    if not community_id:
+        return None
+    timestamp = datetime.utcnow()
+    timestamp_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+    content = ""
+    post_id: Optional[int] = None
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            ensure_welcome_columns(cursor)
+            ensure_steve_user(cursor)
+
+            community = _fetch_community(cursor, community_id)
+            if not community:
+                return None
+            existing = _existing_system_post_id(
+                cursor,
+                community_id,
+                column_name="cold_start_poll_post_id",
+                card_key=CARD_KEY_COLD_START_POLL,
+            )
+            if existing:
+                try:
+                    conn.commit()
+                except Exception:
+                    pass
+                return existing
+
+            owner_locale = _owner_locale(community.get("creator_username"))
+            question, options = render_cold_start_poll(
+                community_type=community.get("type"),
+                community_name=community.get("name"),
+                locale=owner_locale,
+            )
+            content = f"**{question}**\n{i18n.t('steve_welcome.posted_by', owner_locale)}"
+            post_id = _insert_system_post(
+                cursor,
+                community_id=community_id,
+                content=content,
+                timestamp_str=timestamp_str,
+                card_key=CARD_KEY_COLD_START_POLL,
+            )
+            ph = get_sql_placeholder()
+            try:
+                cursor.execute(
+                    f"""
+                    INSERT INTO polls (post_id, question, created_by, created_at, single_vote, expires_at)
+                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                    """,
+                    (post_id, question, SYSTEM_AUTHOR, timestamp_str, 1, None),
+                )
+            except Exception:
+                cursor.execute(
+                    f"""
+                    INSERT INTO polls (post_id, question, created_by, created_at, single_vote)
+                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
+                    """,
+                    (post_id, question, SYSTEM_AUTHOR, timestamp_str, 1),
+                )
+            poll_id = int(cursor.lastrowid)
+            for option in options:
+                try:
+                    cursor.execute(
+                        f"INSERT INTO poll_options (poll_id, option_text, votes) VALUES ({ph}, {ph}, {ph})",
+                        (poll_id, option, 0),
+                    )
+                except Exception:
+                    cursor.execute(
+                        f"INSERT INTO poll_options (poll_id, option_text) VALUES ({ph}, {ph})",
+                        (poll_id, option),
+                    )
+            cursor.execute(
+                f"UPDATE communities SET cold_start_poll_post_id = {ph} WHERE id = {ph}",
+                (post_id, community_id),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.warning(
+            "[STEVE WELCOME] failed to publish cold-start poll for community %s: %s",
+            community_id, exc, exc_info=True,
+        )
+        return None
+
+    if post_id is not None:
+        _mirror_system_post(
+            post_id=post_id,
+            content=content,
+            community_id=community_id,
+            timestamp=timestamp,
+        )
+    return post_id
+
+
+def ensure_introduce_yourself_thread(cursor, community_id: int) -> Optional[int]:
+    """Create or return the pinned intro thread for a community.
+
+    This helper is designed to run inside invite-acceptance transactions. It
+    performs only database work; callers may mirror/invalidate after commit.
+    """
+    if not community_id:
+        return None
+    ensure_welcome_columns(cursor)
+    ensure_steve_user(cursor)
+    community = _fetch_community(cursor, community_id)
+    if not community:
+        return None
+    existing = _existing_system_post_id(
+        cursor,
+        community_id,
+        column_name="introduce_thread_post_id",
+        card_key=CARD_KEY_INTRODUCE_YOURSELF,
+    )
+    if existing:
+        _ensure_community_starred(cursor, community_id, existing)
+        return existing
+    owner_locale = _owner_locale(community.get("creator_username"))
+    timestamp_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    content = render_introduce_yourself_thread(
+        community_name=community.get("name") or "",
+        locale=owner_locale,
+    )
+    post_id = _insert_system_post(
+        cursor,
+        community_id=community_id,
+        content=content,
+        timestamp_str=timestamp_str,
+        card_key=CARD_KEY_INTRODUCE_YOURSELF,
+    )
+    ph = get_sql_placeholder()
+    cursor.execute(
+        f"UPDATE communities SET introduce_thread_post_id = {ph} WHERE id = {ph}",
+        (post_id, community_id),
+    )
+    _ensure_community_starred(cursor, community_id, post_id)
+    return post_id
+
+
+def mirror_introduce_yourself_thread(post_id: Optional[int], community_id: int) -> None:
+    """Best-effort Firestore/cache follow-up after invite acceptance commits."""
+    if not post_id or not community_id:
+        return
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            ph = get_sql_placeholder()
+            cursor.execute(
+                f"SELECT content, timestamp FROM posts WHERE id = {ph}",
+                (post_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return
+            content = row["content"] if hasattr(row, "keys") else row[0]
+            raw_timestamp = row["timestamp"] if hasattr(row, "keys") else row[1]
+            timestamp = _parse_created_at(raw_timestamp) or datetime.now(timezone.utc)
+            _mirror_system_post(
+                post_id=int(post_id),
+                content=content or "",
+                community_id=community_id,
+                timestamp=timestamp,
+            )
+    except Exception as exc:
+        logger.warning(
+            "[STEVE WELCOME] intro thread mirror failed for post %s: %s",
+            post_id, exc,
+        )
+
+
+def ensure_rolling_welcome_tables(cursor) -> None:
+    ph_indexes = (
+        "CREATE INDEX idx_uc_community_joined_at ON user_communities (community_id, joined_at)",
+        "CREATE INDEX idx_posts_community_system_card ON posts (community_id, is_system_post, welcome_card_key)",
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS community_rolling_welcome_log (
+            community_id INTEGER NOT NULL,
+            window_start TEXT NOT NULL,
+            window_end TEXT NOT NULL,
+            post_id INTEGER,
+            member_count INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            UNIQUE(community_id, window_start, window_end)
+        )
+        """
+    )
+    for stmt in ph_indexes:
+        try:
+            cursor.execute(stmt)
+        except Exception:
+            pass
+
+
+def dispatch_rolling_welcome_summaries(
+    *,
+    window_days: int = 7,
+    dry_run: bool = False,
+    limit: int = 50,
+    minimum_members: int = 1,
+) -> dict:
+    """Publish one weekly Steve welcome summary per community/window."""
+    now = datetime.utcnow()
+    window_end = now.replace(microsecond=0)
+    window_start = window_end - timedelta(days=max(1, int(window_days or 7)))
+    start_str = window_start.strftime("%Y-%m-%d %H:%M:%S")
+    end_str = window_end.strftime("%Y-%m-%d %H:%M:%S")
+    created_at = now.strftime("%Y-%m-%d %H:%M:%S")
+    summary = {
+        "window_start": start_str,
+        "window_end": end_str,
+        "dry_run": dry_run,
+        "communities_scanned": 0,
+        "posted": 0,
+        "skipped": 0,
+        "items": [],
+    }
+    posts_to_mirror: list[tuple[int, str, int, datetime]] = []
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            ensure_welcome_columns(cursor)
+            ensure_rolling_welcome_tables(cursor)
+            ensure_steve_user(cursor)
+            ph = get_sql_placeholder()
+            cursor.execute(
+                f"""
+                SELECT
+                    uc.community_id,
+                    c.name AS community_name,
+                    c.creator_username,
+                    u.username,
+                    u.first_name
+                FROM user_communities uc
+                JOIN users u ON u.id = uc.user_id
+                JOIN communities c ON c.id = uc.community_id
+                WHERE uc.joined_at >= {ph}
+                  AND uc.joined_at <= {ph}
+                  AND LOWER(u.username) NOT IN ({ph}, {ph}, {ph})
+                ORDER BY uc.community_id ASC, uc.joined_at ASC
+                LIMIT {int(limit) * 50}
+                """,
+                (start_str, end_str, "steve", "admin", "paulo"),
+            )
+            grouped: dict[int, dict] = {}
+            for row in cursor.fetchall() or []:
+                community_id = int(row["community_id"] if hasattr(row, "keys") else row[0])
+                item = grouped.setdefault(
+                    community_id,
+                    {
+                        "community_id": community_id,
+                        "community_name": row["community_name"] if hasattr(row, "keys") else row[1],
+                        "creator_username": row["creator_username"] if hasattr(row, "keys") else row[2],
+                        "members": [],
+                    },
+                )
+                username = row["username"] if hasattr(row, "keys") else row[3]
+                first_name = row["first_name"] if hasattr(row, "keys") else row[4]
+                item["members"].append((first_name or username or "").strip())
+
+            for community in list(grouped.values())[: int(limit)]:
+                summary["communities_scanned"] += 1
+                community_id = community["community_id"]
+                members = [m for m in community["members"] if m]
+                if len(members) < max(1, int(minimum_members or 1)):
+                    summary["skipped"] += 1
+                    continue
+                cursor.execute(
+                    f"""
+                    SELECT post_id FROM community_rolling_welcome_log
+                    WHERE community_id = {ph} AND window_start = {ph} AND window_end = {ph}
+                    """,
+                    (community_id, start_str, end_str),
+                )
+                if cursor.fetchone():
+                    summary["skipped"] += 1
+                    continue
+                owner_locale = _owner_locale(community.get("creator_username"))
+                content = render_rolling_welcome_post(
+                    community_name=community.get("community_name") or "",
+                    member_names=members,
+                    locale=owner_locale,
+                )
+                if dry_run:
+                    summary["items"].append(
+                        {
+                            "community_id": community_id,
+                            "community_name": community.get("community_name"),
+                            "member_count": len(members),
+                            "would_post": True,
+                        }
+                    )
+                    continue
+                post_id = _insert_system_post(
+                    cursor,
+                    community_id=community_id,
+                    content=content,
+                    timestamp_str=created_at,
+                    card_key=CARD_KEY_ROLLING_WELCOME,
+                )
+                ensure_introduce_yourself_thread(cursor, community_id)
+                cursor.execute(
+                    f"""
+                    INSERT INTO community_rolling_welcome_log (
+                        community_id, window_start, window_end, post_id, member_count, created_at
+                    )
+                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                    """,
+                    (community_id, start_str, end_str, post_id, len(members), created_at),
+                )
+                posts_to_mirror.append((post_id, content, community_id, now))
+                summary["posted"] += 1
+                summary["items"].append(
+                    {
+                        "community_id": community_id,
+                        "community_name": community.get("community_name"),
+                        "member_count": len(members),
+                        "post_id": post_id,
+                    }
+                )
+            conn.commit()
+    except Exception as exc:
+        logger.warning("[STEVE WELCOME] rolling welcome dispatch failed: %s", exc, exc_info=True)
+        summary["error"] = "dispatch_failed"
+        return summary
+
+    for post_id, content, community_id, timestamp in posts_to_mirror:
+        _mirror_system_post(
+            post_id=post_id,
+            content=content,
+            community_id=community_id,
+            timestamp=timestamp,
+        )
+    return summary
+
+
 def send_owner_welcome_dm(
     community_id: int,
     *,
@@ -468,7 +993,7 @@ def send_owner_welcome_dm(
             if not community:
                 return None
             owner = community.get("creator_username")
-            if _should_skip_welcome(owner):
+            if _should_skip_owner_dm(owner):
                 return None
             variant = _owner_dm_variant(
                 is_brand_new=is_brand_new,
@@ -476,11 +1001,13 @@ def send_owner_welcome_dm(
             )
             if variant is None:
                 return None
+            owner_locale = _owner_locale(owner)
             first_name = _fetch_owner_first_name(cursor, owner)
             body = render_owner_dm(
                 community_name=community.get("name") or "",
                 owner_first_name=first_name,
                 variant=variant,
+                locale=owner_locale,
             )
     except Exception as exc:
         logger.warning(
@@ -512,6 +1039,7 @@ def welcome_for_new_community(
     summary = {
         "community_id": community_id,
         "post_id": None,
+        "poll_post_id": None,
         "dm_message_id": None,
         "skipped": False,
     }
@@ -520,6 +1048,7 @@ def welcome_for_new_community(
     if post_id is None:
         summary["skipped"] = True
         return summary
+    summary["poll_post_id"] = publish_cold_start_poll(community_id)
     dm_id = send_owner_welcome_dm(community_id, is_brand_new=is_brand_new)
     summary["dm_message_id"] = dm_id
     return summary
@@ -532,17 +1061,15 @@ def welcome_for_new_community(
 def iter_communities_missing_welcome(cursor) -> Iterable[dict]:
     """Yield communities that need a welcome post, oldest-first.
 
-    Skip-list owners are filtered out at SQL level when MySQL is in use,
-    otherwise filtered in Python. Sub-communities and root communities are
-    both included; the publisher picks the right card.
+    Sub-communities and root communities are both included; the publisher
+    picks the right card. Owner-DM skip-list handling happens later and does
+    not suppress in-feed activation content.
     """
     ensure_welcome_columns(cursor)
-    skip_owners_sql = ", ".join([f"'{u}'" for u in sorted(SKIP_OWNERS)])
     query = (
         "SELECT id, name, type, creator_username, parent_community_id, created_at "
         "FROM communities "
         "WHERE welcome_post_id IS NULL "
-        f"AND (creator_username IS NULL OR LOWER(creator_username) NOT IN ({skip_owners_sql})) "
         "ORDER BY created_at ASC"
     )
     cursor.execute(query)
@@ -603,7 +1130,7 @@ def backfill_welcome_posts(*, dry_run: bool = False) -> dict:
             is_brand_new=False,
             created_at=community.get("created_at"),
         )
-        will_dm = variant is not None
+        will_dm = variant is not None and not _should_skip_owner_dm(community.get("creator_username"))
         action = "post+dm" if will_dm else "post"
         entry = {
             "id": cid,
@@ -708,17 +1235,29 @@ def register_cli(app) -> None:
 
 __all__ = [
     "WELCOME_CARD_VERSION",
+    "COLD_START_CARD_VERSION",
     "WELCOME_POST_DELETE_LOCK_DAYS",
     "CARD_KEY_ROOT",
     "CARD_KEY_SUB",
     "CARD_KEY_BUSINESS",
+    "CARD_KEY_COLD_START_POLL",
+    "CARD_KEY_INTRODUCE_YOURSELF",
+    "CARD_KEY_ROLLING_WELCOME",
     "SKIP_OWNERS",
     "ensure_welcome_columns",
+    "ensure_rolling_welcome_tables",
     "render_welcome_post",
     "render_owner_dm",
+    "render_cold_start_poll",
+    "render_introduce_yourself_thread",
+    "render_rolling_welcome_post",
     "publish_welcome_post",
+    "publish_cold_start_poll",
+    "ensure_introduce_yourself_thread",
+    "mirror_introduce_yourself_thread",
     "send_owner_welcome_dm",
     "welcome_for_new_community",
+    "dispatch_rolling_welcome_summaries",
     "backfill_welcome_posts",
     "iter_communities_missing_welcome",
     "is_within_delete_lock",

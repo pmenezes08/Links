@@ -2,7 +2,7 @@
 
 **Status:** Canonical. Read before changing the welcome service, the
 welcome cards, or the create-community hook.
-**Last updated:** 2026-04-25
+**Last updated:** 2026-06-07
 
 When a community is created on c-point, Steve publishes a welcome post in
 its feed and (when relevant) DMs the owner. This document is the single
@@ -20,6 +20,8 @@ Implementation:
 - Backfill command: `flask backfill-steve-welcome [--dry-run]`.
 - Republish endpoint: `POST /api/communities/<id>/republish_welcome_post`
   (community owner / admin only) in `backend/blueprints/communities.py`.
+- Rolling welcome cron: `POST /api/cron/communities/rolling-welcome`
+  (`X-Cron-Secret`) in `backend/blueprints/communities.py`.
 
 ---
 
@@ -35,6 +37,9 @@ Implementation:
   `is_system_post = 1`, `author_kind = 'system'`.
 - **Every welcome post is auto-pinned to the *Key Posts* tab** via
   `community_key_posts` so it stays discoverable as the feed grows.
+- **Cold-start system content is deterministic.** The companion icebreaker
+  poll, Introduce Yourself thread, and rolling welcome summaries are rendered
+  in `backend/services/steve_community_welcome.py`; no LLM call is made.
 - **Owner cannot delete it for the first 7 days.** Server-enforced in
   `/delete_post`. After 7 days, owner / admin can delete with a confirmation.
 - **Re-publish is idempotent.** If the existing welcome post is tombstoned
@@ -45,6 +50,10 @@ Implementation:
   bypasses `fanout_community_post_notifications`.
 - **Steve never refers to himself as an assistant.** See
   `docs/STEVE_PERSONA.md`. Welcome cards are reviewed against that file.
+- **Card language is fixed at creation.** Welcome posts, cold-start polls,
+  intro threads, rolling summaries, and owner DMs render in the community
+  owner's preferred locale (`users.preferred_locale`) at write time. Existing
+  stored posts are not backfilled or re-rendered for viewers.
 
 ---
 
@@ -52,29 +61,43 @@ Implementation:
 
 ### On community creation
 Hook fires from inside `/create_community` after the DB commit. Always
-publishes the welcome post; DM follows the cohort rules below. Failure of
-either is logged but never breaks the create-community response.
+publishes the welcome post and a notification-silent icebreaker poll; DM
+follows the cohort rules below. Failure of any part is logged but never breaks
+the create-community response.
+
+### On invite acceptance
+Username and token invite acceptance create or reuse a pinned
+`cold_start.introduce_yourself.v1` thread and return
+`next_url=/community_feed_react/<community_id>?joined=1`. New members land on
+the feed with a calm orientation card; the intro thread is optional via Key
+Posts or the card link. The reply composer does not auto-open.
+
+### On rolling welcome cron
+`POST /api/cron/communities/rolling-welcome` batches recent joins by community
+and posts one `cold_start.rolling_welcome.v1` summary per community/window. A
+dedupe table prevents repeat posts for the same window.
 
 ### On backfill
 `flask backfill-steve-welcome` selects every community where
-`welcome_post_id IS NULL` (after the skip-list is applied), publishes the
-welcome post at `NOW()`, and conditionally DMs the owner based on
-`created_at`.
+`welcome_post_id IS NULL`, publishes the welcome post at `NOW()`, and
+conditionally DMs the owner based on `created_at`.
 
 ### On owner-triggered republish
 Endpoint `POST /api/communities/<id>/republish_welcome_post`. Republishes
 the welcome post (idempotent — no-op if a live one already exists). Does
 not DM the owner — the owner is the one who pressed the button.
 
-### Skip list
-The welcome flow is suppressed for these owners (because they're test /
-operator accounts and the post is annoying noise):
+### Owner DM skip list
+Owner DMs are suppressed for these owners (because they're test / operator
+accounts and the DM is annoying noise). In-feed activation content still
+publishes so staging/operator-created communities exercise the same cold-start
+loop as real user communities:
 
 - `paulo`
 - `admin`
 - `steve`
 
-This is hardcoded in `_should_skip_welcome(creator_username)`.
+This is hardcoded in `_should_skip_owner_dm(creator_username)`.
 
 ---
 
@@ -87,7 +110,7 @@ This is hardcoded in `_should_skip_welcome(creator_username)`.
 | Created 48h–7d ago, missing post (backfill) | `created_at` 48h–7d | yes | yes — late-acknowledgement variant |
 | Created > 7d ago, missing post (backfill) | `created_at` older than 7d | yes | no |
 | Republish (owner clicks the button) | manual trigger | yes (idempotent) | no |
-| Skip-list owner | `creator_username` ∈ skip-list | no | no |
+| Skip-list owner | `creator_username` ∈ skip-list | yes | no |
 
 Anywhere we need a "now" boundary for the owner-DM eligibility, we use UTC.
 
@@ -203,6 +226,77 @@ profile has no first name.
 
 ---
 
+## Cold-start cards — content
+
+### Icebreaker poll: `cold_start.poll.v1`
+
+Professional:
+
+```
+Quick one: what should this space be useful for first?
+
+- Finding the right people
+- Sharing useful work
+- Asking sharp questions
+- Spotting new opportunities
+```
+
+Fitness:
+
+```
+Quick one: what are you training for right now?
+
+- Building strength
+- Getting consistent
+- Feeling better day to day
+- A specific goal or event
+```
+
+Generic:
+
+```
+Quick one: what brought you here?
+
+- People I already know
+- A topic I care about
+- A fresh start
+- Just looking around
+```
+
+### Introduce Yourself thread: `cold_start.introduce_yourself.v1`
+
+```
+**👋 Introduce Yourself!**
+*Posted by Steve.*
+
+New here? Start with a short note.
+
+You can keep it simple:
+
+- Your name
+- What brought you to **{community_name}**
+- One thing you are working on, curious about, or looking for
+
+No long bio needed. A few lines is enough.
+
+I'll keep this thread pinned in *Key Posts* so new members have one clear place to land.
+```
+
+### Rolling welcome summary: `cold_start.rolling_welcome.v1`
+
+```
+**New faces in {community_name}**
+*Posted by Steve.*
+
+A few people joined this week: {new_member_names}.
+
+If you are new, drop a note in the **Introduce Yourself** thread when you are ready. Name, reason you joined, and one thing you are looking for is plenty.
+
+If you have been here a while, say hello. Good spaces get built in small replies.
+```
+
+---
+
 ## Versioning & drift control
 
 Each welcome post is stamped with:
@@ -229,16 +323,20 @@ When you edit the body of a card here:
 Add a new section `§13 — Steve Community Welcome` covering:
 
 1. Create a fresh community → welcome post appears, pinned in Key Posts.
-2. Create a fresh community → owner gets the standard DM.
-3. Skip-list owner (`paulo`) creates a community → no welcome post, no DM.
-4. Owner tries to delete the welcome post within 7 days → blocked with
+2. Create a fresh community → cold-start poll appears directly after the welcome post and voting works without a creation-time notification fanout.
+3. Create a fresh community → owner gets the standard DM.
+4. Skip-list owner (`paulo`) creates a community → welcome post and poll appear, but no owner DM.
+5. Accept an invite → `Introduce Yourself` thread is created/pinned, the client lands on `/community_feed_react/<id>?joined=1` with the orientation card, and the intro thread opens only when the member taps the optional link.
+6. Run `/api/cron/communities/rolling-welcome?dry_run=1` with `X-Cron-Secret` → reports candidate communities without posting.
+7. Run rolling welcome live for a test window → one summary post is created per community/window and duplicate runs skip via `community_rolling_welcome_log`.
+8. Owner tries to delete the welcome post within 7 days → blocked with
    friendly error.
-5. Owner deletes the welcome post after 7 days → succeeds.
-6. Owner clicks "Republish welcome post" with a live post present → no-op.
-7. Owner clicks "Republish welcome post" with a tombstoned post → fresh
+9. Owner deletes the welcome post after 7 days → succeeds.
+10. Owner clicks "Republish welcome post" with a live post present → no-op.
+11. Owner clicks "Republish welcome post" with a tombstoned post → fresh
    post created, FK repaired.
-8. Run `flask backfill-steve-welcome --dry-run` against staging → reports
+12. Run `flask backfill-steve-welcome --dry-run` against staging → reports
    the cohort split (post-only / post + DM) without changing anything.
-9. Run `flask backfill-steve-welcome` for real → posts created, owners in
+13. Run `flask backfill-steve-welcome` for real → posts created, owners in
    the right cohort get DMs.
-10. Steve is **never** referred to as an assistant in any of the above.
+14. Steve is **never** referred to as an assistant in any of the above.

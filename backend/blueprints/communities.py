@@ -1577,6 +1577,37 @@ def cron_community_lifecycle_dispatch():
         return jsonify({"success": False, "error": "dispatch_failed"}), 500
 
 
+@communities_bp.route("/api/cron/communities/rolling-welcome", methods=["POST"])
+def cron_community_rolling_welcome():
+    """Publish weekly Steve summaries of newly joined community members."""
+    if not _cron_authed():
+        return jsonify({"success": False, "error": "forbidden"}), 403
+
+    raw_dry_run = (request.args.get("dry_run") or "").strip().lower()
+    dry_run = raw_dry_run in {"1", "true", "yes", "on"}
+    try:
+        window_days = int(request.args.get("window_days") or 7)
+    except Exception:
+        window_days = 7
+    try:
+        limit = int(request.args.get("limit") or 50)
+    except Exception:
+        limit = 50
+
+    from backend.services.steve_community_welcome import dispatch_rolling_welcome_summaries
+
+    try:
+        result = dispatch_rolling_welcome_summaries(
+            window_days=window_days,
+            dry_run=dry_run,
+            limit=limit,
+        )
+        return jsonify({"success": True, **result})
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.exception("rolling welcome dispatch failed: %s", exc)
+        return jsonify({"success": False, "error": "dispatch_failed"}), 500
+
+
 @communities_bp.route(
     "/api/communities/<int:community_id>/republish_welcome_post",
     methods=["POST"],
@@ -1591,7 +1622,7 @@ def republish_welcome_post(community_id: int):
     username = session["username"]
 
     from backend.services.community import is_community_admin, is_community_owner
-    from backend.services.steve_community_welcome import publish_welcome_post
+    from backend.services.steve_community_welcome import publish_cold_start_poll, publish_welcome_post
 
     _, _, is_app_admin = _legacy_community_helpers()
     if not (
@@ -1603,6 +1634,7 @@ def republish_welcome_post(community_id: int):
 
     try:
         post_id = publish_welcome_post(community_id)
+        poll_post_id = publish_cold_start_poll(community_id) if post_id else None
     except Exception as exc:
         logger.exception(
             "republish_welcome_post failed for community %s: %s",
@@ -1611,11 +1643,11 @@ def republish_welcome_post(community_id: int):
         return jsonify({"success": False, "error": "republish_failed"}), 500
 
     if post_id is None:
-        # Either community not found, owner is in skip-list, or insert hit a
-        # benign error (already logged inside the service).
+        # Either community not found or insert hit a benign error (already
+        # logged inside the service).
         return jsonify({"success": False, "error": "not_published"}), 200
 
-    return jsonify({"success": True, "post_id": post_id})
+    return jsonify({"success": True, "post_id": post_id, "poll_post_id": poll_post_id})
 
 
 @communities_bp.route(

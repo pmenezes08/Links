@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
 import { formatSmartTime } from '../utils/time'
@@ -8,6 +9,7 @@ import { clearDeviceCache } from '../utils/deviceCache'
 type Post = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null; is_starred?: boolean }
 
 export default function KeyPosts(){
+  const { t } = useTranslation()
   const { community_id } = useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -40,7 +42,7 @@ export default function KeyPosts(){
             if (tab === 'community') setCommunityPosts(j.posts || [])
             else setYourPosts(j.posts || [])
           } else {
-            setError(j?.error || 'Error')
+            setError(j?.error || t('common.error'))
           }
           return
         }
@@ -55,19 +57,26 @@ export default function KeyPosts(){
         if (!ok) return
         if (jc?.success) setCommunityPosts(jc.posts || [])
         if (jy?.success) setYourPosts(jy.posts || [])
-        if (!jc?.success && !jy?.success) setError(jc?.error || jy?.error || 'Error')
+        if (!jc?.success && !jy?.success) setError(jc?.error || jy?.error || t('feed.key_posts_page.load_error'))
       }catch{
-        if (ok) setError('Error loading key posts')
+        if (ok) setError(t('feed.key_posts_page.load_error'))
       } finally {
         if (ok) setLoading(false)
       }
     }
     load()
     return ()=> { ok = false }
-  }, [community_id, groupId, activeTab])
+  }, [community_id, groupId, activeTab, t])
 
-  if (loading) return <div className="p-4 text-c-text-tertiary">Loading…</div>
+  if (loading) return <div className="p-4 text-c-text-tertiary">{t('common.loading')}</div>
   if (error) return <div className="p-4 text-red-400">{error}</div>
+
+  const communityTabLabel = groupScope
+    ? t('feed.key_posts_page.tab_group')
+    : t('feed.key_posts_page.tab_community')
+  const emptyCommunity = groupScope
+    ? t('feed.key_posts_page.empty_group')
+    : t('feed.key_posts_page.empty_community')
 
   return (
     <div className="min-h-screen bg-c-bg-app text-c-text-primary">
@@ -76,16 +85,16 @@ export default function KeyPosts(){
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
       >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-c-hover-bg" onClick={goBack} aria-label="Back">
+          <button className="p-2 rounded-full hover:bg-c-hover-bg" onClick={goBack} aria-label={t('common.back')}>
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="flex-1 h-full flex">
             <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='community' ? 'text-c-text-secondary' : 'text-c-text-tertiary hover:text-white/90'}`} onClick={()=> setActiveTab('community')}>
-              <div className="pt-2">{groupScope ? 'Group' : 'Community'}</div>
+              <div className="pt-2">{communityTabLabel}</div>
               <div className={`h-0.5 rounded-full w-20 mx-auto mt-1 ${activeTab==='community' ? 'bg-[#ffd54f]' : 'bg-transparent'}`} />
             </button>
             <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='yours' ? 'text-c-text-secondary' : 'text-c-text-tertiary hover:text-white/90'}`} onClick={()=> setActiveTab('yours')}>
-              <div className="pt-2">Yours</div>
+              <div className="pt-2">{t('feed.key_posts_page.tab_yours')}</div>
               <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='yours' ? 'bg-cpoint-turquoise' : 'bg-transparent'}`} />
             </button>
           </div>
@@ -100,11 +109,11 @@ export default function KeyPosts(){
         } as CSSProperties}
       >
         <div className="mb-3 flex items-center">
-          <div className="font-semibold">Key Posts</div>
+          <div className="font-semibold">{t('feed.key_posts')}</div>
         </div>
         {activeTab === 'community' ? (
           communityPosts.length === 0 ? (
-            <div className="text-sm text-c-text-tertiary">{groupScope ? 'No group key posts yet.' : 'No community key posts yet.'}</div>
+            <div className="text-sm text-c-text-tertiary">{emptyCommunity}</div>
           ) : (
             <div className="space-y-3">
               {communityPosts.map(p => (
@@ -126,7 +135,7 @@ export default function KeyPosts(){
                           if (ip.startsWith('/uploads') || ip.startsWith('/static')) return ip
                           return ip.startsWith('uploads') || ip.startsWith('static') ? `/${ip}` : `/uploads/${ip}`
                         })()}
-                        alt="Post image"
+                        alt={t('feed.post_image_alt')}
                         className="block mx-auto max-w-full max-h-[360px] rounded border border-c-border"
                       />
                     ) : null}
@@ -137,7 +146,7 @@ export default function KeyPosts(){
           )
         ) : (
           yourPosts.length === 0 ? (
-            <div className="text-sm text-c-text-tertiary">No starred posts yet. Tap the turquoise star on posts to add them here.</div>
+            <div className="text-sm text-c-text-tertiary">{t('feed.key_posts_page.empty_yours')}</div>
           ) : (
             <div className="space-y-3">
               {yourPosts.map(p => (
@@ -159,7 +168,7 @@ export default function KeyPosts(){
                           if (ip.startsWith('/uploads') || ip.startsWith('/static')) return ip
                           return ip.startsWith('uploads') || ip.startsWith('static') ? `/${ip}` : `/uploads/${ip}`
                         })()}
-                        alt="Post image"
+                        alt={t('feed.post_image_alt')}
                         className="block mx-auto max-w-full max-h-[360px] rounded border border-c-border"
                       />
                     ) : null}
@@ -173,4 +182,3 @@ export default function KeyPosts(){
     </div>
   )
 }
-

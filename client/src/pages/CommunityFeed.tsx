@@ -15,6 +15,10 @@ import CommunityOwnerSetupIntro, {
   communityOwnerSetupStorageKey,
   type CommunityOwnerSetupSnapshot,
 } from '../components/community/CommunityOwnerSetupIntro'
+import OwnerFirstPostBanner from '../components/community/OwnerFirstPostBanner'
+import AIDraftFirstPostModal from '../components/community/AIDraftFirstPostModal'
+import CommunityJoinedOrientationCard from '../components/community/CommunityJoinedOrientationCard'
+import { buildFeedDisplayPosts, isSteveWelcomePost } from '../utils/communityFeedDisplay'
 import MentionTextarea from '../components/MentionTextarea'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import ImageLoader from '../components/ImageLoader'
@@ -54,6 +58,7 @@ import {
 } from '../utils/steveClientGate'
 import { preflightSteveMention } from '../utils/stevePreflight'
 import { triggerHaptic, hapticImpactLight } from '../utils/haptics'
+import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
@@ -98,6 +103,10 @@ type Story = {
   text_overlays?: TextOverlay[] | null
   story_group_id?: string | null
   description?: string | null
+}
+
+export function buildScopedProfileBuilderPath(section: 'personal' | 'professional', communityId: string | number) {
+  return `/steve/profile-builder/${section}?community_id=${encodeURIComponent(String(communityId))}&source=community_profile_card`
 }
 type StoryGroup = {
   username: string
@@ -226,6 +235,15 @@ export default function CommunityFeed() {
     return true
   })
   const [error, setError] = useState<string| null>(null)
+  const firstPostDismissKey = community_id ? `owner-first-post-banner:${community_id}` : ''
+  const [firstPostBannerDismissed, setFirstPostBannerDismissed] = useState(() => {
+    if (!firstPostDismissKey) return false
+    try { return localStorage.getItem(firstPostDismissKey) === '1' } catch { return false }
+  })
+  const [joinedOrientationDismissed, setJoinedOrientationDismissed] = useState(false)
+  const [firstPostDraftOpen, setFirstPostDraftOpen] = useState(false)
+  const [firstPostPublishing, setFirstPostPublishing] = useState(false)
+  const [firstPostPublishError, setFirstPostPublishError] = useState<string | null>(null)
   const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
   const [hasUnansweredPolls, setHasUnansweredPolls] = useState(false)
   const [hasUnseenDocs, setHasUnseenDocs] = useState(false)
@@ -280,6 +298,18 @@ export default function CommunityFeed() {
       moreMenuCloseTimerRef.current = null
     }, 220)
   }, [])
+
+  useEffect(() => {
+    if (!firstPostDismissKey) {
+      setFirstPostBannerDismissed(false)
+      return
+    }
+    try {
+      setFirstPostBannerDismissed(localStorage.getItem(firstPostDismissKey) === '1')
+    } catch {
+      setFirstPostBannerDismissed(false)
+    }
+  }, [firstPostDismissKey])
 
   useEffect(() => {
     return () => {
@@ -372,6 +402,48 @@ export default function CommunityFeed() {
   }, [userProfile])
   const currentUsername = (userProfile as any)?.username || ''
   const currentDisplayName = (userProfile as any)?.display_name || currentUsername
+  const joinedOrientationKey = community_id && currentUsername
+    ? `cpoint:oriented:${community_id}:${currentUsername}`
+    : ''
+  const recommendedProfileMode = String(data?.community?.recommended_profile_mode || 'none')
+  const profileRecommendationKey = community_id && currentUsername
+    ? `cpoint:profile-recommendation:${community_id}:${currentUsername}:${recommendedProfileMode}`
+    : ''
+  const [profileRecommendationDismissed, setProfileRecommendationDismissed] = useState(false)
+  const [effectiveProfileSections, setEffectiveProfileSections] = useState<{
+    personal: boolean | null
+    professional: boolean | null
+  }>({ personal: null, professional: null })
+  const [joinedLandingActive, setJoinedLandingActive] = useState(false)
+
+  useEffect(() => {
+    if (!joinedOrientationKey) {
+      setJoinedOrientationDismissed(false)
+      return
+    }
+    try {
+      setJoinedOrientationDismissed(localStorage.getItem(joinedOrientationKey) === '1')
+    } catch {
+      setJoinedOrientationDismissed(false)
+    }
+  }, [joinedOrientationKey])
+
+  useEffect(() => {
+    if (!community_id) return
+    try {
+      const params = new URLSearchParams(routerLocation.search || '')
+      if (params.get('joined') !== '1') return
+      setJoinedLandingActive(true)
+      params.delete('joined')
+      const nextSearch = params.toString()
+      navigate(
+        `/community_feed_react/${community_id}${nextSearch ? `?${nextSearch}` : ''}`,
+        { replace: true },
+      )
+    } catch {
+      /* noop */
+    }
+  }, [community_id, navigate, routerLocation.search])
 
   // Unread counts for header icons
   const [unreadMsgs, setUnreadMsgs] = useState(0)
@@ -395,6 +467,21 @@ export default function CommunityFeed() {
     data?.community?.creator_username &&
     currentUsername &&
     String(data.community.creator_username).toLowerCase() === String(currentUsername).toLowerCase(),
+  )
+  const recommendedTargetSection = recommendedProfileMode === 'personal' ? 'personal' : 'professional'
+  const recommendedSectionComplete =
+    recommendedProfileMode === 'personal'
+      ? effectiveProfileSections.personal === true
+      : recommendedProfileMode === 'professional' || recommendedProfileMode === 'both'
+        ? effectiveProfileSections.professional === true
+        : false
+  const showProfileRecommendationCard = Boolean(
+    community_id &&
+    recommendedProfileMode !== 'none' &&
+    recommendedProfileMode !== '' &&
+    !isCommunityOwner &&
+    !profileRecommendationDismissed &&
+    !recommendedSectionComplete,
   )
   const showFrozenOwnerModal = isFrozenForSubscription && isCommunityOwner
 
@@ -906,6 +993,47 @@ export default function CommunityFeed() {
       el.removeEventListener('touchend', onTE as any)
     }
   }, [isRefreshing, refreshFeed])
+
+  useEffect(() => {
+    if (!profileRecommendationKey) {
+      setProfileRecommendationDismissed(false)
+      return
+    }
+    try {
+      setProfileRecommendationDismissed(localStorage.getItem(profileRecommendationKey) === '1')
+    } catch {
+      setProfileRecommendationDismissed(false)
+    }
+  }, [profileRecommendationKey])
+
+  useEffect(() => {
+    if (!currentUsername || recommendedProfileMode === 'none' || recommendedProfileMode === '') {
+      setEffectiveProfileSections({ personal: null, professional: null })
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/onboarding/state', {
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+        })
+        const json = await res.json().catch(() => null)
+        const progress = json?.onboardingProgress || {}
+        if (!cancelled) {
+          setEffectiveProfileSections({
+            personal: progress.personalSectionCompleteEffective ?? progress.personalSectionComplete ?? null,
+            professional: progress.professionalSectionCompleteEffective ?? progress.professionalSectionComplete ?? null,
+          })
+        }
+      } catch {
+        if (!cancelled) setEffectiveProfileSections({ personal: null, professional: null })
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [currentUsername, recommendedProfileMode])
 
   useEffect(() => {
     // Ensure legacy css is attached once to avoid flashes between pages
@@ -2300,6 +2428,10 @@ export default function CommunityFeed() {
       const form = new URLSearchParams({ post_id: String(postId), reaction })
       const r = await fetch('/add_reaction', { method: 'POST', credentials: 'include', headers: { 'Content-Type':'application/x-www-form-urlencoded' }, body: form })
       const j = await r.json().catch(()=>null)
+      if (handleBasicProfileRequired(j)) {
+        setRefreshKey(key => key + 1)
+        return
+      }
       if (!j?.success) return
       // Reconcile with server counts
       setData((prev:any) => {
@@ -2362,6 +2494,10 @@ export default function CommunityFeed() {
     try{
       const res = await fetch('/vote_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ poll_id: pollId, option_id: optionId }) })
       const j = await res.json().catch(()=>null)
+      if (handleBasicProfileRequired(j)) {
+        setRefreshKey(key => key + 1)
+        return
+      }
       if (!j?.success) return
       invalidateLocalFeedCache()
       if (Array.isArray(j.poll_results)){
@@ -2386,6 +2522,52 @@ export default function CommunityFeed() {
   }
 
   const postsOnly = useMemo(() => Array.isArray(data?.posts) ? data.posts : [], [data])
+  const feedDisplay = useMemo(
+    () => buildFeedDisplayPosts(
+      postsOnly as Post[],
+      data?.community?.creator_username,
+    ),
+    [postsOnly, data?.community?.creator_username],
+  )
+  const feedPosts = feedDisplay.posts as Post[]
+  const userPosts = useMemo(
+    () => feedPosts.filter((post: Post) => !post.is_system_post && String(post.username || '').toLowerCase() !== 'steve'),
+    [feedPosts],
+  )
+  const isViewerCommunityAdmin = Boolean(
+    data?.is_community_admin ||
+    data?.community?.creator_username === data?.username ||
+    data?.username === 'admin',
+  )
+  const showJoinedOrientationCard = Boolean(
+    joinedLandingActive &&
+    !joinedOrientationDismissed &&
+    !isViewerCommunityAdmin &&
+    data,
+  )
+  const introduceThreadPostId = Number(data?.community?.introduce_thread_post_id || 0) || null
+
+  function dismissJoinedOrientationCard() {
+    setJoinedLandingActive(false)
+    setJoinedOrientationDismissed(true)
+    if (joinedOrientationKey) {
+      try { localStorage.setItem(joinedOrientationKey, '1') } catch {}
+    }
+  }
+
+  function dismissProfileRecommendationCard() {
+    setProfileRecommendationDismissed(true)
+    if (profileRecommendationKey) {
+      try { localStorage.setItem(profileRecommendationKey, '1') } catch {}
+    }
+  }
+  const showOwnerFirstPostBanner = Boolean(
+    !loading &&
+    data &&
+    isViewerCommunityAdmin &&
+    userPosts.length === 0 &&
+    !firstPostBannerDismissed,
+  )
   const INITIAL_POST_LIMIT = 40
   const LOAD_MORE_STEP = 20
   const [visiblePostCount, setVisiblePostCount] = useState(INITIAL_POST_LIMIT)
@@ -2393,7 +2575,7 @@ export default function CommunityFeed() {
     setVisiblePostCount(INITIAL_POST_LIMIT)
     recordedViewsRef.current.clear()
   }, [data?.posts])
-  const visiblePosts = useMemo(() => postsOnly.slice(0, visiblePostCount), [postsOnly, visiblePostCount])
+  const visiblePosts = useMemo(() => feedPosts.slice(0, visiblePostCount), [feedPosts, visiblePostCount])
 
   const feedBackButton = (
     <div style={{ paddingTop: 'var(--sat-px, 0px)', background: 'var(--c-bg-app)' }}>
@@ -2465,6 +2647,47 @@ export default function CommunityFeed() {
     }catch{}
   }
 
+  function dismissFirstPostBanner() {
+    setFirstPostBannerDismissed(true)
+    if (firstPostDismissKey) {
+      try { localStorage.setItem(firstPostDismissKey, '1') } catch {}
+    }
+  }
+
+  async function publishFirstPostDraft(content: string) {
+    if (!community_id || firstPostPublishing) return
+    setFirstPostPublishing(true)
+    setFirstPostPublishError(null)
+    try {
+      const fd = new FormData()
+      fd.append('content', content)
+      fd.append('community_id', String(community_id))
+      fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
+      const response = await fetch('/post_status', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: fd,
+      })
+      const json = await response.json().catch(() => null)
+      if (!response.ok || !json?.success) {
+        if (handleBasicProfileRequired(json)) {
+          setFirstPostDraftOpen(false)
+          return
+        }
+        setFirstPostPublishError(json?.error || 'Could not publish this post.')
+        return
+      }
+      setFirstPostDraftOpen(false)
+      dismissFirstPostBanner()
+      setRefreshKey(key => key + 1)
+    } catch {
+      setFirstPostPublishError('Could not publish this post.')
+    } finally {
+      setFirstPostPublishing(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-c-bg-app text-c-text-primary">
       {/* Subscription-expired auto-freeze owner modal. Non-owners are
@@ -2478,6 +2701,18 @@ export default function CommunityFeed() {
         freeMemberCap={Number(frozenBilling?.free_member_cap || 25)}
         frozenAt={frozenBilling?.frozen_at || data?.community?.frozen_at || null}
         onManageMembers={() => navigate(`/community/${community_id}/edit`)}
+      />
+      <AIDraftFirstPostModal
+        open={firstPostDraftOpen}
+        communityName={String(data?.community?.name || '')}
+        communityType={String(data?.community?.type || '')}
+        ownerName={currentDisplayName}
+        publishing={firstPostPublishing}
+        error={firstPostPublishError}
+        onClose={() => {
+          if (!firstPostPublishing) setFirstPostDraftOpen(false)
+        }}
+        onPublish={publishFirstPostDraft}
       />
       {showOwnerIntro &&
         currentUsername &&
@@ -2748,8 +2983,72 @@ export default function CommunityFeed() {
           </div>
           </div>
 
+          {showJoinedOrientationCard && (
+            <CommunityJoinedOrientationCard
+              communityName={String(data?.community?.name || '')}
+              inviterName={data?.community?.creator_username || null}
+              introduceThreadPostId={introduceThreadPostId}
+              onDismiss={dismissJoinedOrientationCard}
+              onIntroduce={() => {
+                if (introduceThreadPostId) {
+                  dismissJoinedOrientationCard()
+                  navigate(`/post/${introduceThreadPostId}?prompt=introduce`)
+                }
+              }}
+            />
+          )}
+
+          {showProfileRecommendationCard && (
+            <section className="rounded-3xl border border-cpoint-turquoise/20 bg-c-bg-surface p-4 shadow-c-card shadow-black/20">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cpoint-turquoise/80">
+                    Optional profile help
+                  </div>
+                  <h2 className="mt-1 text-base font-semibold text-c-text-primary">
+                    This community works best with a {recommendedProfileMode === 'both' ? 'personal and professional' : recommendedProfileMode} profile
+                  </h2>
+                  <p className="mt-1 text-sm leading-relaxed text-c-text-secondary">
+                    You can keep participating. Steve can help you add the details when you are ready.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-c-border bg-c-hover-bg text-c-text-tertiary hover:border-cpoint-turquoise/50 hover:text-cpoint-turquoise"
+                  aria-label="Dismiss profile recommendation"
+                  onClick={dismissProfileRecommendationCard}
+                >
+                  <i className="fa-solid fa-xmark text-xs" />
+                </button>
+              </div>
+              <button
+                type="button"
+                className="mt-3 text-sm font-medium text-cpoint-turquoise hover:brightness-110"
+                onClick={() => {
+                  if (!community_id) return
+                  navigate(buildScopedProfileBuilderPath(recommendedTargetSection, community_id))
+                }}
+              >
+                Build with Steve
+              </button>
+            </section>
+          )}
+
+          {showOwnerFirstPostBanner && (
+            <OwnerFirstPostBanner
+              communityName={String(data?.community?.name || '')}
+              dismissed={firstPostBannerDismissed}
+              onDraftWithSteve={() => {
+                setFirstPostPublishError(null)
+                setFirstPostDraftOpen(true)
+              }}
+              onWriteSelf={() => navigate(`/compose?community_id=${community_id}&first_post=true`)}
+              onDismiss={dismissFirstPostBanner}
+            />
+          )}
+
             {/* Feed items */}
-            {postsOnly.length === 0 ? (
+            {feedPosts.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 px-4">
                 <div className="w-20 h-20 rounded-full bg-c-hover-bg border border-c-border flex items-center justify-center mb-4">
                   <i className="fa-regular fa-comment-dots text-3xl text-c-text-tertiary" />
@@ -2777,6 +3076,8 @@ export default function CommunityFeed() {
                   idx={idx}
                   currentUser={data.username}
                   isAdmin={!!(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin')}
+                  collapseSteveWelcome={isSteveWelcomePost(p)}
+                  useCompactPoll={Boolean(p.is_system_post && p.poll)}
                   highlightStep={highlightStep}
                   entitlements={feedEntitlements}
                   enforcement_enabled={feedEnforcementEnabled}
@@ -2820,11 +3121,11 @@ export default function CommunityFeed() {
                 )}
               </div>
             ))}
-            {visiblePostCount < postsOnly.length && (
+            {visiblePostCount < feedPosts.length && (
               <div className="flex justify-center py-6">
                 <button
                   className="px-4 py-2 rounded-full border border-c-border text-sm hover:bg-c-hover-bg"
-                  onClick={() => setVisiblePostCount(count => Math.min(count + LOAD_MORE_STEP, postsOnly.length))}
+                  onClick={() => setVisiblePostCount(count => Math.min(count + LOAD_MORE_STEP, feedPosts.length))}
                 >
                   Load older posts
                 </button>
@@ -2905,7 +3206,7 @@ export default function CommunityFeed() {
               <img
                 key={currentStory.id}
                 src={resolveStoryMediaSrc(currentStory)}
-                alt="Story media"
+                alt={t('feed.story_media_alt')}
                 className="w-full h-full object-contain"
                 loading="eager"
               />
@@ -2991,7 +3292,7 @@ export default function CommunityFeed() {
                     style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={() => openStoryViewers(currentStory.id)}
-                    aria-label="View story viewers"
+                    aria-label={t('feed.view_story_viewers_aria')}
                   >
                     <i className="fa-regular fa-eye" />
                     <span>{currentStory.view_count ?? 0}</span>
@@ -3009,7 +3310,7 @@ export default function CommunityFeed() {
                           }
                         }}
                         disabled={deletingStory}
-                        aria-label="Delete story"
+                        aria-label={t('feed.delete_story_aria')}
                       >
                         <i className={`fa-solid ${deletingStory ? 'fa-spinner fa-spin' : 'fa-trash-can'} text-sm`} />
                       </button>
@@ -3041,7 +3342,7 @@ export default function CommunityFeed() {
                   <button
                     className="flex h-10 w-10 items-center justify-center rounded-full border border-c-border bg-black/55 text-white/80 backdrop-blur-md transition hover:border-cpoint-turquoise/50 hover:text-cpoint-turquoise"
                     onClick={closeStoryViewer}
-                    aria-label="Close story viewer"
+                    aria-label={t('feed.close_story_viewer_aria')}
                   >
                     <i className="fa-solid fa-xmark text-sm" />
                   </button>
@@ -3067,9 +3368,9 @@ export default function CommunityFeed() {
               </div>
               <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3">
                 {storyCommentsLoading ? (
-                  <div className="text-center text-c-text-tertiary text-sm py-6">Loading...</div>
+                  <div className="text-center text-c-text-tertiary text-sm py-6">{t('common.loading')}</div>
                 ) : storyComments.length === 0 ? (
-                  <div className="text-center text-c-text-tertiary text-sm py-6">No comments yet. Be the first!</div>
+                  <div className="text-center text-c-text-tertiary text-sm py-6">{t('feed.no_comments_yet')}</div>
                 ) : storyComments.map(c => (
                   <div key={c.id} className="flex gap-2.5">
                     <Avatar username={c.username} url={c.profile_picture || undefined} size={28} linkToProfile />
@@ -3097,7 +3398,7 @@ export default function CommunityFeed() {
                     el.style.height = `${Math.min(el.scrollHeight, 120)}px`
                   }}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && storyCommentText.trim()) { e.preventDefault(); handleSubmitStoryComment(currentStory.id) } }}
-                  placeholder="Add a comment..."
+                  placeholder={t('feed.add_comment')}
                   className="flex-1 min-h-9 bg-c-active-bg border border-white/20 rounded-2xl px-4 py-1 text-sm text-white placeholder:text-c-text-tertiary focus:outline-none focus:border-cpoint-turquoise resize-none overflow-y-auto"
                   style={{ maxHeight: '120px' }}
                   rows={1}
@@ -3207,7 +3508,7 @@ export default function CommunityFeed() {
                         }}
                         onFocus={() => setStoryCommentFocused(true)}
                         onBlur={() => { setTimeout(() => { if (!storyCommentText.trim()) setStoryCommentFocused(false) }, 150) }}
-                        placeholder="Comment..."
+                        placeholder={t('feed.comment_placeholder')}
                         className={`w-full min-h-9 bg-c-active-bg border border-white/20 px-4 py-1 text-sm text-white placeholder:text-c-text-tertiary focus:outline-none focus:border-cpoint-turquoise resize-none overflow-y-auto transition-all duration-200 ${
                           storyCommentFocused || storyCommentText.trim() ? 'rounded-2xl' : 'rounded-full'
                         }`}
@@ -3238,7 +3539,7 @@ export default function CommunityFeed() {
                           style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
                           onPointerDown={(e) => e.stopPropagation()}
                           onClick={() => { setStoryPrivateReplyOpen(true); setTimeout(() => storyPrivateReplyInputRef.current?.focus(), 100) }}
-                          title="Send private message"
+                          title={t('feed.send_private_message_aria')}
                         >
                           <i className="fa-regular fa-paper-plane text-lg" />
                         </button>
@@ -3536,7 +3837,7 @@ export default function CommunityFeed() {
           <div className="w-[92%] max-w-[560px] rounded-2xl border border-c-border bg-c-bg-app p-3">
             <div className="flex items-center gap-2 mb-2">
               <i className="fa-solid fa-hashtag text-cpoint-turquoise" />
-              <input id="hashtag-input" value={q} onChange={(e)=> setQ(e.target.value)} placeholder="#hashtag" className="flex-1 rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm focus:border-cpoint-turquoise/70 outline-none" />
+              <input id="hashtag-input" value={q} onChange={(e)=> setQ(e.target.value)} placeholder={t('feed.hashtag_placeholder')} className="flex-1 rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm focus:border-cpoint-turquoise/70 outline-none" />
               <NativeActionButton haptic="selection" className="px-3 py-2 rounded-md text-sm" onClick={runSearch}>
                 {t('common.search')}
               </NativeActionButton>
@@ -4045,7 +4346,7 @@ export default function CommunityFeed() {
 
 // Ad components removed
 
-const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highlightStep, entitlements, enforcement_enabled, entitlementsLoading, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, onSummaryUpdate, onMarkViewed, onDeletePost, onDeletePoll, onHidePost, onReportPost, onBlockUser }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, entitlements: EntitlementsSnapshot | null, enforcement_enabled: boolean, entitlementsLoading: boolean, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, onSummaryUpdate?: (postId: number, summary: string) => void, onMarkViewed?: (postId: number, alreadyViewed?: boolean) => void | Promise<boolean>, onDeletePost?: (postId: number) => void, onDeletePoll?: (postId: number, pollId: number) => void, onHidePost?: (post: Post) => void, onReportPost?: (post: Post) => void, onBlockUser?: (data: { username: string; postId?: number }) => void }) {
+const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, collapseSteveWelcome = false, useCompactPoll = false, highlightStep, entitlements, enforcement_enabled, entitlementsLoading, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, onSummaryUpdate, onMarkViewed, onDeletePost, onDeletePoll, onHidePost, onReportPost, onBlockUser }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, collapseSteveWelcome?: boolean, useCompactPoll?: boolean, highlightStep: 'reaction' | 'post' | null, entitlements: EntitlementsSnapshot | null, enforcement_enabled: boolean, entitlementsLoading: boolean, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, onSummaryUpdate?: (postId: number, summary: string) => void, onMarkViewed?: (postId: number, alreadyViewed?: boolean) => void | Promise<boolean>, onDeletePost?: (postId: number) => void, onDeletePoll?: (postId: number, pollId: number) => void, onHidePost?: (post: Post) => void, onReportPost?: (post: Post) => void, onBlockUser?: (data: { username: string; postId?: number }) => void }) {
   const { t } = useTranslation()
   const mentionToProfile = useCallback((u: string) => {
     navigate?.(`/profile/${encodeURIComponent(u)}`)
@@ -4091,6 +4392,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [summaryText, setSummaryText] = useState<string | null>(null)
   const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [steveWelcomeExpanded, setSteveWelcomeExpanded] = useState(false)
   
   const parsedMediaPaths = useMemo((): MediaItem[] => {
     if (!post.media_paths) return []
@@ -4260,6 +4562,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
       }
       const resp = await fetch('/post_reply', { method: 'POST', credentials: 'include', body: fd })
       const j = await resp.json().catch(() => null)
+      if (handleBasicProfileRequired(j)) return
       if (j?.success && j.reply) {
         if (onAddReply) {
           onAddReply(post.id, j.reply as any)
@@ -4505,8 +4808,42 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
       return false
     }
   })()
+  const isSystemPoll = Boolean(post.is_system_post && post.poll)
+  const welcomeKey = post.welcome_card_key || ''
+  const isCollapsedSteveWelcome = collapseSteveWelcome && Boolean(
+    post.is_system_post && welcomeKey.startsWith('welcome.'),
+  )
+
+  if (isCollapsedSteveWelcome && !steveWelcomeExpanded) {
+    return (
+      <div
+        id={`post-${post.id}`}
+        className="rounded-2xl border border-c-border bg-c-bg-app px-3 py-2 text-xs text-c-text-tertiary"
+      >
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-2 text-left"
+          aria-expanded={false}
+          onClick={() => setSteveWelcomeExpanded(true)}
+        >
+          <span>Steve posted a community guide — find it in Key Posts.</span>
+          <i className="fa-solid fa-chevron-down text-[10px]" />
+        </button>
+      </div>
+    )
+  }
+
   return (
-    <div ref={cardRef} id={`post-${post.id}`} className={`rounded-2xl border border-c-border bg-c-bg-app shadow-sm shadow-black/20 ${isRecentPost ? 'border-l-2 border-l-cpoint-turquoise' : ''}`} onClick={post.poll ? undefined : onOpen}>
+    <div
+      ref={cardRef}
+      id={`post-${post.id}`}
+      className={`rounded-2xl border bg-c-bg-app shadow-sm shadow-black/20 ${
+        isSystemPoll && !useCompactPoll
+          ? 'border-cpoint-turquoise/25 border-l-2 border-l-cpoint-turquoise bg-c-bg-surface'
+          : `border-c-border ${isRecentPost && !post.is_system_post ? 'border-l-2 border-l-cpoint-turquoise' : ''}`
+      }`}
+      onClick={post.poll ? undefined : onOpen}
+    >
       {!post.poll && (
         <div className="px-3 py-2 border-b border-c-border flex items-center gap-2">
           <Avatar username={post.username} url={post.profile_picture || undefined} size={32} linkToProfile />
@@ -4870,15 +5207,29 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
         {/* Poll display */}
         {post.poll && (
           <div className="px-3 space-y-2" onClick={(e)=> e.stopPropagation()}>
-            <div className="flex items-center gap-2 mb-2">
-              <i className="fa-solid fa-chart-bar text-cpoint-turquoise" />
-              <div className="font-medium text-sm flex-1">
+            {isSystemPoll && !useCompactPoll && (
+              <div className="flex items-center justify-between gap-2 border-b border-cpoint-turquoise/15 pb-2">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-cpoint-turquoise/15 text-cpoint-turquoise">
+                    <i className="fa-solid fa-chart-bar text-xs" />
+                  </span>
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cpoint-turquoise/80">Icebreaker</div>
+                    <div className="text-xs text-c-text-tertiary">Posted by Steve</div>
+                  </div>
+                </div>
+                <div className="text-xs text-c-text-tertiary tabular-nums">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
+              </div>
+            )}
+            <div className={`flex items-center gap-2 ${useCompactPoll ? 'mb-1' : 'mb-2'}`}>
+              {!useCompactPoll && <i className="fa-solid fa-chart-bar text-cpoint-turquoise" />}
+              <div className={`flex-1 ${useCompactPoll ? 'text-sm text-c-text-secondary' : 'font-medium text-sm'}`}>
                 {post.poll.question}
-                {post.poll.expires_at ? (
+                {!useCompactPoll && post.poll.expires_at ? (
                   <span className="ml-2 text-[11px] text-c-text-tertiary">{t('feed.poll_closes', { date: (() => { try { const d = new Date(post.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch { } return String(post.poll.expires_at) })() })}</span>
                 ) : null}
               </div>
-              {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
+              {!useCompactPoll && (post.username === currentUser || isAdmin || currentUser === 'admin') && !post.is_system_post && (
                 <>
                   <button 
                     className="px-2 py-1 rounded-full text-[#6c757d] hover:text-cpoint-turquoise" 
@@ -4901,57 +5252,90 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highl
                   </button>
                 </>
               )}
-              <button 
-                className="ml-1 px-2 py-1 rounded-full text-[#6c757d] hover:text-cpoint-turquoise" 
-                title={t('feed.voters')}
-                onClick={(e)=> { 
-                  e.preventDefault()
-                  e.stopPropagation()
-                  if (onOpenVoters) {
-                    onOpenVoters(post.poll!.id)
-                  }
-                }}
-              >
-                <i className="fa-solid fa-users" />
-              </button>
-            </div>
-            <div className="space-y-2">
-              {post.poll.options?.map(option => {
-                const percentage = post.poll?.total_votes ? Math.round((option.votes / post.poll.total_votes) * 100) : 0
-                const isUserVote = option.user_voted || false
-                // Check both is_active flag AND expires_at timestamp
-                const isClosed = post.poll!.is_active === 0
-                const isExpiredByTime = (() => { try { const raw = (post.poll as any)?.expires_at; if (!raw) return false; const d = new Date(raw); return !isNaN(d.getTime()) && Date.now() >= d.getTime(); } catch { return false } })()
-                const isExpired = isClosed || isExpiredByTime
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    disabled={isExpired}
-                    className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isExpired ? 'opacity-60 cursor-not-allowed' : (isUserVote ? 'border-cpoint-turquoise bg-cpoint-turquoise/10' : 'border-c-border hover:bg-c-hover-bg')}`}
-                    onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (!isExpired && onPollVote) { void triggerHaptic('selection'); onPollVote(post.id, post.poll!.id, option.id) } }}
-                  >
-                    <div className="absolute inset-0 bg-cpoint-turquoise/20" style={{ width: `${percentage}%`, transition: 'width 0.3s ease' }} />
-                    <div className="relative flex items-center justify-between">
-                      <span className="text-sm">{option.text}</span>
-                      <span className="text-xs text-c-text-tertiary font-medium">{option.votes} {percentage > 0 ? `(${percentage}%)` : ''}</span>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-            <div className="flex items-center justify-between text-xs text-c-text-tertiary pt-1">
-              {(() => { const sv = (post.poll as any)?.single_vote; const isSingle = !(sv === false || sv === 0 || sv === '0' || sv === 'false'); return isSingle })() && (
-                <span>{t('feed.vote_count', { count: post.poll.total_votes || 0 })}</span>
-              )}
+              {!useCompactPoll && (
                 <button 
-                  type="button"
-                  onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (onPollClick) onPollClick() }}
-                  className="text-cpoint-turquoise hover:underline"
+                  className="ml-1 px-2 py-1 rounded-full text-[#6c757d] hover:text-cpoint-turquoise" 
+                  title={t('feed.voters')}
+                  onClick={(e)=> { 
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (onOpenVoters) {
+                      onOpenVoters(post.poll!.id)
+                    }
+                  }}
                 >
-                  {t('feed.view_all_polls')}
+                  <i className="fa-solid fa-users" />
                 </button>
+              )}
             </div>
+            {useCompactPoll ? (
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={post.poll.question}>
+                {post.poll.options?.map(option => {
+                  const isUserVote = option.user_voted || false
+                  const isClosed = post.poll!.is_active === 0
+                  const isExpiredByTime = (() => { try { const raw = (post.poll as any)?.expires_at; if (!raw) return false; const d = new Date(raw); return !isNaN(d.getTime()) && Date.now() >= d.getTime(); } catch { return false } })()
+                  const isExpired = isClosed || isExpiredByTime
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={isUserVote}
+                      disabled={isExpired}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
+                        isExpired
+                          ? 'cursor-not-allowed border-c-border opacity-60'
+                          : isUserVote
+                            ? 'border-cpoint-turquoise/40 bg-cpoint-turquoise/15 text-cpoint-turquoise'
+                            : 'border-c-border bg-c-hover-bg text-c-text-secondary hover:border-cpoint-turquoise/40'
+                      }`}
+                      onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (!isExpired && onPollVote) { void triggerHaptic('selection'); onPollVote(post.id, post.poll!.id, option.id) } }}
+                    >
+                      {option.text}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {post.poll.options?.map(option => {
+                  const percentage = post.poll?.total_votes ? Math.round((option.votes / post.poll.total_votes) * 100) : 0
+                  const isUserVote = option.user_voted || false
+                  const isClosed = post.poll!.is_active === 0
+                  const isExpiredByTime = (() => { try { const raw = (post.poll as any)?.expires_at; if (!raw) return false; const d = new Date(raw); return !isNaN(d.getTime()) && Date.now() >= d.getTime(); } catch { return false } })()
+                  const isExpired = isClosed || isExpiredByTime
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      disabled={isExpired}
+                      className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isExpired ? 'opacity-60 cursor-not-allowed' : (isUserVote ? 'border-cpoint-turquoise bg-cpoint-turquoise/10' : 'border-c-border hover:bg-c-hover-bg')}`}
+                      onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (!isExpired && onPollVote) { void triggerHaptic('selection'); onPollVote(post.id, post.poll!.id, option.id) } }}
+                    >
+                      <div className="absolute inset-0 bg-cpoint-turquoise/20" style={{ width: `${percentage}%`, transition: 'width 0.3s ease' }} />
+                      <div className="relative flex items-center justify-between">
+                        <span className="text-sm">{option.text}</span>
+                        <span className="text-xs text-c-text-tertiary font-medium">{option.votes} {percentage > 0 ? `(${percentage}%)` : ''}</span>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            {!useCompactPoll && (
+              <div className="flex items-center justify-between text-xs text-c-text-tertiary pt-1">
+                {(() => { const sv = (post.poll as any)?.single_vote; const isSingle = !(sv === false || sv === 0 || sv === '0' || sv === 'false'); return isSingle })() && (
+                  <span>{t('feed.vote_count', { count: post.poll.total_votes || 0 })}</span>
+                )}
+                  <button 
+                    type="button"
+                    onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (onPollClick) onPollClick() }}
+                    className="text-cpoint-turquoise hover:underline"
+                  >
+                    {t('feed.view_all_polls')}
+                  </button>
+              </div>
+            )}
           </div>
         )}
         {/* Hide reactions and comments for poll posts */}
