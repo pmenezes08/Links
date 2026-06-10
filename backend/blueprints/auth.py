@@ -669,8 +669,6 @@ def login_password():
     if request.method == "POST":
         password = request.form.get("password", "")
         logger.info(f"login_password: POST for username='{username}', password_length={len(password)}, is_ios={is_ios}")
-        if username == "admin" and password == "12345":
-            return redirect("/premium_dashboard")
         try:
             conn = get_db_connection()
             c = conn.cursor()
