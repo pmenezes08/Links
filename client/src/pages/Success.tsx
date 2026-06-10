@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
@@ -34,7 +34,7 @@ export default function Success() {
   const pollTimer = useRef<number | null>(null)
 
   useEffect(() => {
-    setTitle(t('billing.checkout_success.page_title'))
+    setTitle(t('entitlements.checkout_success.page_title'))
   }, [setTitle, t])
 
   const isActive = checkout?.status === 'active'
@@ -56,9 +56,9 @@ export default function Success() {
         const data = await res.json()
         if (cancelled) return
         setCheckout(data)
-        if (!data?.success) setStatusError(data?.error || t('billing.checkout_success.confirm_failed'))
+        if (!data?.success) setStatusError(data?.error || t('entitlements.checkout_success.confirm_failed'))
       } catch {
-        if (!cancelled) setStatusError(t('billing.checkout_success.confirm_failed'))
+        if (!cancelled) setStatusError(t('entitlements.checkout_success.confirm_failed'))
       } finally {
         if (!cancelled) {
           setLoading(false)
@@ -83,9 +83,9 @@ export default function Success() {
         .then(r => r.json())
         .then(data => {
           setCheckout(data)
-          if (!data?.success) setStatusError(data?.error || t('billing.checkout_success.confirm_failed'))
+          if (!data?.success) setStatusError(data?.error || t('entitlements.checkout_success.confirm_failed'))
         })
-        .catch(() => setStatusError(t('billing.checkout_success.confirm_failed')))
+        .catch(() => setStatusError(t('entitlements.checkout_success.confirm_failed')))
         .finally(() => {
           setLoading(false)
           setAttempts(n => n + 1)
@@ -121,34 +121,34 @@ export default function Success() {
       })
       const data = await res.json()
       if (!res.ok || !data?.success || !data?.url) {
-        throw new Error(data?.error || t('billing.checkout_success.portal_open_failed'))
+        throw new Error(data?.error || t('entitlements.checkout_success.portal_open_failed'))
       }
       window.location.assign(data.url)
     } catch (err) {
-      setPortalError(err instanceof Error ? err.message : t('billing.checkout_success.portal_open_failed'))
+      setPortalError(err instanceof Error ? err.message : t('entitlements.checkout_success.portal_open_failed'))
       setPortalLoading(false)
     }
   }, [checkout?.community_id, isCommunity, t])
 
   const headline = isActive
     ? isCommunity
-      ? t('billing.checkout_success.tier_active', {
-          tier: checkout?.tier_label || t('billing.checkout_success.paid_tier_fallback'),
+      ? t('entitlements.checkout_success.tier_active', {
+          tier: checkout?.tier_label || t('entitlements.checkout_success.paid_tier_fallback'),
         })
-      : t('billing.checkout_success.premium_active')
-    : t('billing.checkout_success.payment_received')
+      : t('entitlements.checkout_success.premium_active')
+    : t('entitlements.checkout_success.payment_received')
 
   const body = isActive
     ? isCommunity
-      ? t('billing.checkout_success.community_body', {
-          name: checkout?.community_name || t('billing.checkout_success.community_fallback'),
+      ? t('entitlements.checkout_success.community_body', {
+          name: checkout?.community_name || t('entitlements.checkout_success.community_fallback'),
         })
-      : t('billing.checkout_success.premium_body')
+      : t('entitlements.checkout_success.premium_body')
     : loading || attempts < MAX_POLL_ATTEMPTS
-      ? t('billing.checkout_success.finalising')
+      ? t('entitlements.checkout_success.finalising')
       : isCommunity
-        ? t('billing.checkout_success.syncing_community')
-        : t('billing.checkout_success.syncing_membership')
+        ? t('entitlements.checkout_success.syncing_community')
+        : t('entitlements.checkout_success.syncing_membership')
 
   return (
     <div className="min-h-screen bg-c-bg-app text-c-text-primary pt-16 pb-24">
@@ -179,7 +179,7 @@ export default function Success() {
 
         {sessionId ? (
           <p className="mt-4 text-[11px] uppercase tracking-[0.22em] text-c-text-tertiary">
-            {t('billing.checkout_success.ref_prefix')} {sessionId.slice(0, 18)}…
+            {t('entitlements.checkout_success.ref_prefix')} {sessionId.slice(0, 18)}â€¦
           </p>
         ) : null}
 
@@ -202,7 +202,7 @@ export default function Success() {
                   : 'bg-cpoint-turquoise text-black hover:bg-cpoint-turquoise/90')
               }
             >
-              {portalLoading ? t('billing.checkout_success.opening_portal') : t('billing.checkout_success.open_portal')}
+              {portalLoading ? t('entitlements.checkout_success.opening_portal') : t('entitlements.checkout_success.open_portal')}
             </button>
           ) : null}
           {isCommunity && checkout?.community_id ? (
@@ -211,7 +211,7 @@ export default function Success() {
               onClick={() => navigate(`/community/${checkout.community_id}/edit`)}
               className="inline-flex w-full items-center justify-center rounded-full bg-cpoint-turquoise px-6 py-3 text-sm font-semibold text-black hover:bg-cpoint-turquoise/90"
             >
-              {t('billing.checkout_success.manage_community')}
+              {t('entitlements.checkout_success.manage_community')}
             </button>
           ) : null}
           <button
@@ -221,7 +221,7 @@ export default function Success() {
             }
             className="inline-flex w-full items-center justify-center rounded-full border border-white/20 px-6 py-3 text-sm font-semibold text-c-text-primary hover:bg-c-hover-bg"
           >
-            {t('billing.checkout_success.continue')}
+            {t('entitlements.checkout_success.continue')}
           </button>
         </div>
       </div>

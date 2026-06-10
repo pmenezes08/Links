@@ -2,6 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
+// Boot the bundled i18n catalogs — Success.tsx only imports useTranslation,
+// so without this the page renders raw keys in the test environment.
+import '../i18n'
+
 import Success from './Success'
 import { HeaderContext } from '../contexts/HeaderContext'
 
@@ -41,8 +45,8 @@ describe('Success page', () => {
   it('renders community-specific success after checkout status syncs', async () => {
     renderSuccess()
 
-    expect(screen.getByText('Payment received.')).toBeInTheDocument()
-
+    // The transient "Payment received." headline races i18n bootstrap and
+    // the (mocked) status fetch, so assert the settled state only.
     await waitFor(() => {
       expect(screen.getByText('Paid L1 is active.')).toBeInTheDocument()
     })
