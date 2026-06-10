@@ -599,3 +599,60 @@ def test_bulk_invite_enforces_per_request_maximum(mysql_dsn, monkeypatch):
     data = resp.get_json()
     assert data["success"] is False
     assert data["max_per_request"] == invites_svc.MAX_BULK_INVITES_PER_REQUEST
+
+
+def test_qr_link_invite_honours_single_use_toggle(mysql_dsn, monkeypatch):
+    """Multi-use by default: one QR/link token admits several members until
+    the owner flips invite_single_use on, after which the next accept
+    consumes the token."""
+    import bodybuilding_app
+
+    monkeypatch.setattr(bodybuilding_app, "send_push_to_user", lambda *a, **k: None)
+
+    make_user("qr_owner", subscription="premium")
+    for member in ("qr_member_one", "qr_member_two", "qr_member_three", "qr_member_four"):
+        make_user(member, subscription="free")
+    community_id = make_community("qr-multi-use", tier="free", creator_username="qr_owner")
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "qr_owner")
+    link_resp = client.post("/api/community/invite_link", json={"community_id": community_id})
+    assert link_resp.status_code == 200
+    link_data = link_resp.get_json()
+    invite_url = link_data.get("invite_url") or link_data.get("url") or link_data.get("link")
+    assert invite_url
+    token = invite_url.rstrip("/").split("/")[-1]
+
+    # Default (toggle off): the same link admits multiple members.
+    for member in ("qr_member_one", "qr_member_two"):
+        _login(client, member)
+        resp = client.post(f"/api/community/invites/token/{token}/accept")
+        assert resp.status_code == 200, resp.get_json()
+        assert _member_exists(member, community_id)
+
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"SELECT used FROM community_invitations WHERE token = {ph}",
+            (token,),
+        )
+        row = c.fetchone()
+        assert int(row["used"] if hasattr(row, "keys") else row[0]) == 0
+
+        # Owner flips the toggle on: the next accept consumes the token.
+        c.execute(
+            f"UPDATE communities SET invite_single_use = 1 WHERE id = {ph}",
+            (community_id,),
+        )
+        conn.commit()
+
+    _login(client, "qr_member_three")
+    resp = client.post(f"/api/community/invites/token/{token}/accept")
+    assert resp.status_code == 200, resp.get_json()
+    assert _member_exists("qr_member_three", community_id)
+
+    _login(client, "qr_member_four")
+    resp = client.post(f"/api/community/invites/token/{token}/accept")
+    assert resp.status_code == 400
+    assert not _member_exists("qr_member_four", community_id)

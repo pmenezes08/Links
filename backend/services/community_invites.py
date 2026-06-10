@@ -61,7 +61,7 @@ def _err(key: str, status: int, **params: Any) -> Tuple[Dict[str, Any], int]:
 
 logger = logging.getLogger(__name__)
 EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
-INVITE_EXPIRY_DAYS = 7
+INVITE_EXPIRY_DAYS = 30
 # Bulk invite guardrails: each request handles at most this many emails so a
 # big campaign (e.g. a 300-person pilot wave) is sent as several short
 # requests instead of one multi-minute request that can hit the Cloud Run
@@ -886,14 +886,32 @@ def accept_token_invite(username: str, invite_token: str) -> Tuple[Dict[str, Any
                         conn.rollback()
                         return render_member_cap_error(exc, session_username=username)
             now_value = datetime.now().isoformat()
-            c.execute(
-                f"""
-                UPDATE community_invitations
-                SET used = 1, used_at = {ph}, status = 'accepted', responded_at = {ph}
-                WHERE id = {ph}
-                """,
-                (now_value, now_value, invitation_id),
-            )
+            # Email-bound invites are single-recipient by definition and are
+            # always consumed. QR/link invites honour the community's
+            # invite_single_use toggle: when multi-use (the default), the row
+            # stays pending so the same link or QR code can admit the whole
+            # room — expiry and member caps still apply per accept.
+            consume_invite = True
+            if is_qr_invite:
+                try:
+                    _single_use_column(c)
+                    c.execute(
+                        f"SELECT invite_single_use FROM communities WHERE id = {ph}",
+                        (community_id,),
+                    )
+                    settings_row = c.fetchone()
+                    consume_invite = bool(_row_value(settings_row, "invite_single_use", 0)) if settings_row else False
+                except Exception:
+                    consume_invite = True  # fail-closed to the stricter behaviour
+            if consume_invite:
+                c.execute(
+                    f"""
+                    UPDATE community_invitations
+                    SET used = 1, used_at = {ph}, status = 'accepted', responded_at = {ph}
+                    WHERE id = {ph}
+                    """,
+                    (now_value, now_value, invitation_id),
+                )
             introduce_thread_post_id = ensure_introduce_yourself_thread(c, community_id)
             notify_community_new_member(
                 community_id,
@@ -1128,7 +1146,7 @@ def invite_email(username: str, data: Dict[str, Any], host_url: str) -> Tuple[Di
                 return {"success": False, "error": "Failed to send invitation email"}, 500
             return {
                 "success": True,
-                "message": "Invitation sent successfully. This invitation is valid for 7 days.",
+                "message": f"Invitation sent successfully. This invitation is valid for {INVITE_EXPIRY_DAYS} days.",
                 "expires_at": expires_at,
             }, 200
     except Exception as exc:
@@ -1341,6 +1359,6 @@ def invite_bulk(username: str, data: Dict[str, Any], host_url: str) -> Tuple[Dic
         "sent": sent,
         "failed": failed,
         "errors": errors if errors else None,
-        "message": "Invitations sent. Each invitation is valid for 7 days.",
+        "message": f"Invitations sent. Each invitation is valid for {INVITE_EXPIRY_DAYS} days.",
         "expires_in_days": INVITE_EXPIRY_DAYS,
     }, 200
