@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
@@ -256,7 +256,13 @@ export default function PremiumDashboard() {
   useEffect(() => {
     const hideHeaderForOnboarding = showOnboarding || showOnboardingWelcome || onboardingLaunching || onboardingGateRequired
     setHeaderHidden(hideHeaderForOnboarding)
-    return () => setHeaderHidden(false)
+    // Only undo our own hide on cleanup. The dashboard stays mounted during
+    // the 250ms page transition, so an unconditional reset here would stomp
+    // the next page's setHeaderHidden(true) (e.g. ScopedProfileBuilder) and
+    // bring the global header back over its full-screen chat.
+    return () => {
+      if (hideHeaderForOnboarding) setHeaderHidden(false)
+    }
   }, [showOnboarding, showOnboardingWelcome, onboardingLaunching, onboardingGateRequired, setHeaderHidden])
 
   useEffect(() => {
@@ -695,7 +701,7 @@ export default function PremiumDashboard() {
       }
     } catch (error) {
       console.error('Error loading user data:', error)
-      // Don't overwrite cached data when offline — leave whatever the cache loaded
+      // Don't overwrite cached data when offline â€” leave whatever the cache loaded
     } finally {
       setInitialLoading(false)
     }
@@ -1061,7 +1067,7 @@ export default function PremiumDashboard() {
             <i className="fa-solid fa-cog mr-2" />{t('navigation.settings')}
           </a>
         </nav>
-        {/* B2B pivot (June 2026): personal Premium upsell removed — plans hub
+        {/* B2B pivot (June 2026): personal Premium upsell removed â€” plans hub
             now leads with community tiers, reached via the menu entry. */}
       </div>
       )}
@@ -1213,7 +1219,7 @@ export default function PremiumDashboard() {
                     ))}
                   </div>
 
-                  {/* B2B pivot (June 2026): "Meet Steve / Talk to Steve" card removed —
+                  {/* B2B pivot (June 2026): "Meet Steve / Talk to Steve" card removed â€”
                       Steve is a community feature now. */}
                 </div>
               </div>
@@ -1257,7 +1263,7 @@ export default function PremiumDashboard() {
                         {/* Separator - Owner/Admin of */}
                         <div className="flex items-center gap-3 py-1">
                           <div className="h-px flex-1 bg-c-active-bg" />
-                          <span className="text-[10px] uppercase tracking-wider text-c-text-tertiary/60 font-medium">{t('dashboard.owner_admin_section')}</span>
+                          <span className="text-[10px] uppercase tracking-wider text-c-text-tertiary font-medium">{t('dashboard.owner_admin_section')}</span>
                           <div className="h-px flex-1 bg-c-active-bg" />
                         </div>
 
@@ -1287,7 +1293,7 @@ export default function PremiumDashboard() {
                         {/* Separator - Member of */}
                         <div className="flex items-center gap-3 py-1">
                           <div className="h-px flex-1 bg-c-active-bg" />
-                          <span className="text-[10px] uppercase tracking-wider text-c-text-tertiary/60 font-medium">{t('dashboard.member_of_section')}</span>
+                          <span className="text-[10px] uppercase tracking-wider text-c-text-tertiary font-medium">{t('dashboard.member_of_section')}</span>
                           <div className="h-px flex-1 bg-c-active-bg" />
                         </div>
 
@@ -1342,7 +1348,7 @@ export default function PremiumDashboard() {
         {/* DashboardBottomNav is now rendered by DashboardLayout (persistent across tabs) */}
       </div>
 
-      {/* Conversational Onboarding — portaled to body so z-index clears dashboard nav (main is z-0). */}
+      {/* Conversational Onboarding â€” portaled to body so z-index clears dashboard nav (main is z-0). */}
       {onboardingOverlayActive && typeof document !== 'undefined' && createPortal(
         <>
           {showOnboardingWelcome && !showOnboarding && !onboardingGateRequired && (
@@ -1696,15 +1702,15 @@ function CommunityCard({
         </div>
 
         {descText.length > 0 ? (
-          <p className="text-[11.5px] text-c-text-tertiary/85 leading-relaxed line-clamp-3">
+          <p className="text-[11.5px] text-c-text-tertiary leading-relaxed line-clamp-3">
             {descText}
           </p>
         ) : isOwner || isAdmin ? (
-          <p className="text-[11.5px] text-c-text-tertiary/70 leading-relaxed italic">
+          <p className="text-[11.5px] text-c-text-tertiary leading-relaxed italic">
             {t('dashboard.no_description_add_manage')}
           </p>
         ) : (
-          <p className="text-[11.5px] text-c-text-tertiary/70 leading-relaxed">
+          <p className="text-[11.5px] text-c-text-tertiary leading-relaxed">
             {t('dashboard.no_description_yet')}
           </p>
         )}
