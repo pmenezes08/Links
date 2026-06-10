@@ -71,6 +71,8 @@ _COMMUNITY_DEPENDENT_TABLES: List[Tuple[str, str]] = [
     ("user_communities", "community_id = {ph}"),
     ("community_admins", "community_id = {ph}"),
     ("community_announcements", "community_id = {ph}"),
+    ("useful_links", "community_id = {ph}"),
+    ("useful_docs", "community_id = {ph}"),
     ("community_files", "community_id = {ph}"),
     ("community_invites", "community_id = {ph}"),
     ("community_billing", "community_id = {ph}"),
@@ -1484,6 +1486,20 @@ def delete_community_cascade(cursor, community_id: int) -> int:
     which lets the route roll back and avoid returning a false success.
     """
     ph = get_sql_placeholder()
+    if _table_exists(cursor, "useful_docs"):
+        try:
+            from backend.services.useful_docs_write import purge_useful_docs_for_community
+
+            purge_useful_docs_for_community(cursor, ph, community_id)
+        except Exception as exc:
+            if _is_missing_optional_schema_error(exc):
+                logger.info(
+                    "Skipping useful_docs purge for community %s due to schema mismatch: %s",
+                    community_id,
+                    exc,
+                )
+            else:
+                raise
     for table, where in _COMMUNITY_DEPENDENT_TABLES:
         if not _table_exists(cursor, table):
             continue

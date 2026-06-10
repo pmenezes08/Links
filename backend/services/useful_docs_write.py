@@ -53,6 +53,57 @@ def _delete_doc_file_best_effort(file_path: str) -> None:
         logger.warning("Could not remove doc file %s: %s", file_path, fe)
 
 
+def purge_useful_docs_for_community(cursor: Any, ph: str, community_id: int) -> None:
+    """Best-effort R2/local bytes + Firestore purge before community cascade DELETE.
+
+    Called from ``delete_community_cascade`` so uploaded PDFs do not block the
+    ``communities`` row delete (MySQL FK on ``useful_docs.community_id``).
+    Failures are logged and skipped — same contract as ``delete_useful_doc``.
+    """
+    try:
+        cursor.execute(
+            f"""
+            SELECT id, file_path, community_id, group_id
+            FROM useful_docs
+            WHERE community_id = {ph}
+            """,
+            (community_id,),
+        )
+    except Exception as exc:
+        logger.warning(
+            "Could not list useful_docs for community %s purge: %s",
+            community_id,
+            exc,
+        )
+        return
+
+    for row in cursor.fetchall() or []:
+        if hasattr(row, "keys"):
+            doc_id = row["id"]
+            path = row["file_path"]
+            doc_community_id = row["community_id"]
+            group_id = row["group_id"]
+        else:
+            doc_id, path, doc_community_id, group_id = row[0], row[1], row[2], row[3]
+
+        _delete_doc_file_best_effort(str(path or ""))
+        try:
+            from backend.services.steve_document_memory import purge_useful_doc
+
+            purge_useful_doc(
+                int(doc_id),
+                community_id=int(doc_community_id) if doc_community_id is not None else None,
+                group_id=int(group_id) if group_id is not None else None,
+            )
+        except Exception as purge_err:
+            logger.warning(
+                "Steve document memory purge failed doc_id=%s community_id=%s: %s",
+                doc_id,
+                community_id,
+                purge_err,
+            )
+
+
 def _index_uploaded_doc_async(doc_id: int, payload: dict) -> None:
     try:
         from backend.services.steve_document_memory import index_useful_doc

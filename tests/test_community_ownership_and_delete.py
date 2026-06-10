@@ -110,6 +110,43 @@ def test_delete_community_cascade_removes_visit_history():
         conn.commit()
 
 
+def test_delete_community_cascade_removes_useful_resources(mysql_dsn):
+    """Uploaded PDFs/links must not block community delete (FK on useful_docs)."""
+    import bodybuilding_app as ba
+
+    ba.add_missing_tables()
+    make_user("resources_owner", subscription="free")
+    cid = make_community("cascade-resources", creator_username="resources_owner")
+    ph = get_sql_placeholder()
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""
+            INSERT INTO useful_links (community_id, username, url, description)
+            VALUES ({ph}, {ph}, {ph}, {ph})
+            """,
+            (cid, "resources_owner", "https://example.com/resource", "Pilot link"),
+        )
+        c.execute(
+            f"""
+            INSERT INTO useful_docs (community_id, username, file_path, description)
+            VALUES ({ph}, {ph}, {ph}, {ph})
+            """,
+            (cid, "resources_owner", "pilot.pdf", "Pilot doc"),
+        )
+
+        assert community_svc.delete_community_cascade(c, cid) == 1
+
+        c.execute(f"SELECT 1 FROM useful_docs WHERE community_id = {ph}", (cid,))
+        assert c.fetchone() is None
+        c.execute(f"SELECT 1 FROM useful_links WHERE community_id = {ph}", (cid,))
+        assert c.fetchone() is None
+        c.execute(f"SELECT 1 FROM communities WHERE id = {ph}", (cid,))
+        assert c.fetchone() is None
+        conn.commit()
+
+
 def test_delete_community_accepts_mixed_case_owner(client):
     make_user("Paulo", subscription="free")
     cid = make_community("mixed-case-delete", creator_username="Paulo")
