@@ -13,6 +13,21 @@ Short narratives for **how behaviour spans** Flask, Stripe, MySQL, Firestore, cr
 - **iOS Sign in with Apple is App Store compliance-critical.** On iOS only, the login screen shows Sign in with Apple beside Google. The client requests `email name` scopes through `@capacitor-community/apple-sign-in` and posts Apple’s identity token to `POST /api/auth/apple`. The backend verifies Apple JWKS / issuer / audience (`co.cpoint.app`), stores `users.apple_id`, accepts private relay email addresses, and uses first-login name fields only when Apple returns them.
 - **Session finish is shared.** Successful OAuth paths clear stale session state, issue the normal remember-token/install cookies, invalidate profile/dashboard caches, re-register push tokens, and redirect to `/premium_dashboard`.
 
+### Invitation acceptance
+
+- **Invites are pending until accepted.** Email, username, QR/link, and bulk invitations create `community_invitations` rows with a 7-day `expires_at`. Signup, email verification, password login, Google Sign-In, Apple Sign-In, deep links, and clipboard handoff may preserve or preview an invite token, but they must not insert `user_communities` rows.
+- **Preview before membership.** Invite links route to `/invite-preview/<token>`, backed by `GET /api/invite_preview/<token>`, so recipients see the community, inviter, and expiry before joining. Authenticated users join only by pressing Join/Accept, which calls the explicit invite-accept endpoint.
+- **Intro thread activation.** Accepting an invite writes membership, marks the invitation accepted, then creates or reuses Steve's pinned `Introduce Yourself` system thread (`cold_start.introduce_yourself.v1`). The accept response includes `next_url=/community_feed_react/<community_id>?joined=1`, so Invite Preview, dashboard invite prompts, and Notifications Invites land the new member on the community feed first with a calm orientation card. The intro thread stays available via Key Posts and an optional "Introduce yourself when ready" link; existing-member new-member notifications still link to the intro thread when available.
+- **Inbox parity.** Existing-user username and email invites appear in the Notifications Invites tab. Declining is private; accepting writes membership, marks the invitation accepted, triggers the intro-thread activation path above, and then uses the normal new-member notification path.
+- **Expired invite recovery.** Accepting an expired invite returns an expired-invite response and no membership write; UI tells the user to request a new invite from the inviter/community owner.
+
+### Community cold-start loop
+
+- **Creation:** `/create_community` still commits the community first, then calls `welcome_for_new_community()` best-effort. The service now publishes Steve's deterministic welcome post plus a notification-silent icebreaker poll (`cold_start.poll.v1`) in MySQL `posts`/`polls`/`poll_options`, then mirrors the post body to Firestore best-effort. **Locale:** welcome posts, polls, intro threads, rolling summaries, and owner DMs render in the **community owner's preferred locale** at write time (`users.preferred_locale` / Accept-Language on create); stored copy is not re-rendered for viewers and existing English posts are not backfilled.
+- **Owner first post:** `CommunityFeed.tsx` treats a community with only Steve system posts as having `0 userPosts`. Owners/admins see a dismissible "Start the room" banner and editable Steve draft modal. Publishing uses the normal `/create_post` route, so the owner's first real post gets standard feed fanout and push behavior.
+- **Member arrival:** Invite acceptance routes new members to the feed with a one-time orientation card. The owner's first post is ranked above Steve scaffolding while the community is young; the intro thread is hidden from the main timeline but reachable on demand. Steve welcome posts collapse to a Key Posts stub once the owner has posted; Steve polls render compact and rank below owner content.
+- **Weekly recognition:** Cloud Scheduler can call `POST /api/cron/communities/rolling-welcome` with `X-Cron-Secret`. The service batches recent joins by community, dedupes by `(community_id, window_start, window_end)`, and posts one Steve rolling welcome summary per community/window without using the generic create-post notification path.
+
 ---
 
 ## 0a. Age gate (18+, Option A)
@@ -65,6 +80,8 @@ Compliance and minimization rules: **`docs/COMPLIANCE_AGE_GATE.md`**. Server sto
 **UI:** `ManageMembershipModal` / `useEntitlements` / limit modals — **`AGENTS.md`** — should stay consistent with server truth.
 
 **Operator — end signup trial early:** From **admin-web → Users → Manage**, when the resolved tier is **trial**, an admin can **End trial** (requires a reason). That sets **`users.trial_revoked_at`** and writes **`subscription_audit_log`** with action **`trial_revoked_by_admin`**; **`resolve_entitlements`** then treats the account as **free** for tier purposes (Steve access follows free caps unless Premium / Special / Enterprise seat applies).
+
+**B2B pivot (June 2026) — signup trial grants no personal AI:** the `TIER_TRIAL` block in `backend/services/entitlements.py` now resolves with `can_use_steve: False` and zeroed Steve/Whisper/AI-daily/spend caps — identical to Free for AI purposes. The tier label, 30-day window, and admin trial-revoke tooling are unchanged (bookkeeping only). Members get Steve exclusively through a community's **Steve Community Package** pool (section 4) or an admin **Special** grant. Personal Premium is **soft-retired**: the purchase tile in `SubscriptionsHome` renders only for users with an existing personal subscription (legacy manage/cancel keeps working; backend checkout untouched), the dashboard "Upgrade to Premium" CTA and personal "Talk to Steve" entry points (bottom-nav Steve modal, dashboard card/tile, About modal prefill) were removed, and single-community users land directly on their community feed on app open (`useSingleCommunityLanding`). KB `user-tiers` trial seeds were zeroed — **requires KB reseed (Reseed + Force) after deploy**.
 
 ---
 
@@ -143,6 +160,16 @@ Cloud Scheduler POSTs to **`/api/cron/*`** on **`cpoint-app`** (or staging) with
 ## 7. Onboarding (Steve-guided setup)
 
 **Age gate (first):** Before welcome/Steve copy, new accounts pass the **18+ gate** in **`OnboardingIntroGate`** — see **§0a** and **`docs/COMPLIANCE_AGE_GATE.md`**.
+
+**Simple participation rule:** Users may accept invites and read community feeds first. The only hard participation requirement is a **basic real profile**: `users.first_name`, `users.last_name`, and `user_profiles.profile_picture`. `GET /api/me/basic_profile` returns completion status and missing fields; `POST /api/me/basic_profile` saves those three fields. Social write routes return **`412 Precondition Failed`** with `error_code="basic_profile_required"` when incomplete, and the client opens a focused basic-profile sheet. Feed reads and invite acceptance remain open.
+
+**Participation writes:** The first enforcement wave covers community posts/replies/reactions/poll votes, group feed posts/replies/reactions/polls, community invite sending, and DM/group-chat sends/edits/reactions. The gate is server-side; frontend handling is only UX.
+
+**Optional enrichment:** Rich Steve onboarding remains available as profile help, but it is no longer a first-session gate. Dashboard reminders and community feed recommendation cards frame Steve as optional enrichment (“Improve your profile with Steve”), not a requirement to participate.
+
+**Owner recommendation mode:** Community owners can set `recommended_profile_mode = none | personal | professional | both` in Manage Community. The feed renders a dismissible soft card for members, for example “This community works best with a professional profile. Steve can help.” It never blocks posting, replying, reacting, inviting, or messaging. The card is suppressed when `/api/onboarding/state` reports that the recommended section is effectively complete from durable profile fields or onboarding state.
+
+**Scoped Steve profile builder:** Contextual recommendation CTAs route to a dedicated Steve profile-builder surface such as `/steve/profile-builder/professional?community_id=<id>&source=community_profile_card`, not generic Steve DM. This preserves the originating community context, uses the existing swipe page transition stack, runs only the requested profile section, and returns the user to the community feed when finished.
 
 Onboarding stages and APIs: **`backend/blueprints/onboarding.py`** plus services such as **`onboarding_bootstrap`**, **`onboarding_company_intel`**, **`onboarding_cv_import`** (optional **PDF CV** upload: **`POST /api/onboarding/parse_cv`** extracts text locally, Grok returns structured current role / company / `current_role_start_ym` / prior roles; with **`persist=1`** the PDF is stored in **private R2** under `private/cv/{username}/…` and **`users.professional_cv_*`** metadata is updated when storage succeeds). **`POST /api/onboarding/apply_professional_structured`** persists to **`users`** after the user confirms, with **`mode`** **`replace`** (work history from the CV list only) or **`merge`** (keep and dedupe prior **`professional_work_history`**, promoting the previous current role into history when role/company change). Signed-in users download the last stored file via **`GET /api/profile/cv`**. **Firestore** collection **`steve_onboarding`** holds progressive state — see **`MYSQL_AND_FIRESTORE.md`**. Client navigates stages; backend enforces progression and ties into **Steve** where applicable.
 
@@ -328,7 +355,18 @@ Push tokens are stored in `fcm_tokens` (primary), `native_push_tokens` (direct A
 
 ---
 
-## 12. Deploy smoke (staging → production)
+## 12. Community Calendar: Timezone-Aware Scheduling and Device Export
+
+- **Timezone Authority.** The backend is the single source of truth for timezone conversion. When creating or editing a calendar event, the client submits the raw wall-clock dates/times entered by the user plus the selected IANA timezone (e.g., `Europe/Lisbon`).
+- **UTC Instants Derivation.** In `backend/services/community_calendar.py`, `create_event` and `update_event` use `zoneinfo` to validate the timezone and derive the exact UTC start and end instants (`starts_at_utc`, `ends_at_utc`) for timed events. All-day events are kept as date-only semantics (instants are stored as `NULL`) to prevent date shifting across timezones.
+- **Meeting Links.** Event creators can add an optional HTTPS meeting URL (for example Google Meet, Zoom, or Teams). `meeting_url` is validated server-side, returned in event payloads, shown on event detail pages, and included in device calendar notes / ICS descriptions.
+- **Device Calendar Export.** When exporting a timed event to the device's native calendar (via `@ebarooni/capacitor-calendar`), `eventToNativeRange` in `client/src/utils/nativeDeviceCalendar.ts` parses `starts_at_utc` and `ends_at_utc` directly into UTC epoch milliseconds. The device OS handles local display conversion automatically. All-day events use local date-only ranges.
+- **ICS Fallback.** The ICS generator `format_event_ics` in `backend/services/community_calendar.py` emits UTC `Z` formatted `DTSTART` and `DTEND` values for timed events using the canonical UTC instants, ensuring they import correctly in any timezone. When a meeting link is present, the ICS `DESCRIPTION` includes it and the event `URL` points to the meeting.
+- **Reminders.** The cron job `/api/cron/events/reminders` processes upcoming events and schedules notifications based on the canonical `starts_at_utc` instant, preventing reminders from firing early or late for users in different timezones.
+
+---
+
+## 13. Deploy smoke (staging → production)
 
 1. Merge to **staging** branch / workflow; run **`cloudbuild.yaml`** → **`cpoint-app-staging`**.
 2. Hit **staging** API and **admin-staging** against staging; remember **shared DB** risk (**OPERATIONS**).

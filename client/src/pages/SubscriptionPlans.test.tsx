@@ -233,6 +233,23 @@ describe('SubscriptionPlans (settings-style hub)', () => {
     expect(screen.getByText('€4.99 / month for your first 3 months')).toBeInTheDocument()
   })
 
+  it('hides the personal Premium purchase tile for users without a personal subscription (B2B soft retire)', async () => {
+    installFetch({
+      '/api/kb/pricing': makePricingPayload(),
+      '/api/me/subscriptions': {
+        success: true,
+        personal: { active: false, subscription: 'free' },
+        communities: [],
+      },
+    })
+    renderPage()
+    await waitForHub()
+
+    // The slide-over panel title stays mounted; what must disappear is the hub row.
+    expect(screen.queryByRole('button', { name: /User Premium Membership/i })).toBeNull()
+    expect(screen.getByText('Community Paid Tier')).toBeInTheDocument()
+  })
+
   it('shows active subscriptions on the hub', async () => {
     mockFetchOnce(makePricingPayload())
     renderPage()

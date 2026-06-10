@@ -452,18 +452,23 @@ def resolve_entitlements(username: Optional[str]) -> Dict[str, Any]:
             "hpm_per_user": defaults["hpm_per_user"],
         })
     elif tier == TIER_TRIAL:
+        # B2B pivot (June 2026): the signup trial no longer grants personal
+        # Steve/AI. Members get Steve only inside communities whose owner
+        # pays for the Steve Community Package (or via admin Special grants).
+        # The tier label is kept so admin trial-revoke tooling and the
+        # signup-window bookkeeping stay intact.
         ent.update({
-            "can_use_steve": True,
+            "can_use_steve": False,
             "can_create_communities": True,
-            "steve_uses_per_month": defaults["steve_uses_per_month"],
-            "whisper_minutes_per_month": defaults["whisper_minutes_per_month"],
+            "steve_uses_per_month": 0,
+            "whisper_minutes_per_month": 0,
             "communities_max": defaults["trial_communities_max"],
             # Trial inherits the Free member cap by design — trial
             # communities that overshoot Free limits lock read-only on lapse.
             "members_per_owned_community": defaults["free_members_per_owned_community"],
-            "ai_daily_limit": defaults["ai_daily_limit"],
+            "ai_daily_limit": 0,
             "max_tool_invocations_per_turn": defaults["max_tool_invocations_per_turn"],
-            "monthly_spend_ceiling_eur": defaults["monthly_spend_ceiling_eur"],
+            "monthly_spend_ceiling_eur": 0.0,
             "rpm_per_user": defaults["rpm_per_user"],
             "hpm_per_user": defaults["hpm_per_user"],
         })

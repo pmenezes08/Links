@@ -14,11 +14,13 @@ export type OnboardingTierHints = {
   community_tiers?: Partial<Record<OnboardingChatTierCode, CommunityTierHint>>
 }
 
+// Fallbacks must mirror the KB community-tiers live prices; the server hints
+// from /api/onboarding/tier_hints override these whenever available.
 const DEFAULT_TIER_HINTS: Record<OnboardingChatTierCode, CommunityTierHint> = {
   free: { label: 'Free Community', max_members: 25 },
-  paid_l1: { label: 'Paid L1', min_members: 26, max_members: 75, price_eur_monthly: 25 },
-  paid_l2: { label: 'Paid L2', min_members: 76, max_members: 150, price_eur_monthly: 50 },
-  paid_l3: { label: 'Paid L3', min_members: 151, max_members: 250, price_eur_monthly: 80 },
+  paid_l1: { label: 'Paid L1', min_members: 26, max_members: 75, price_eur_monthly: 49.99 },
+  paid_l2: { label: 'Paid L2', min_members: 76, max_members: 150, price_eur_monthly: 99.99 },
+  paid_l3: { label: 'Paid L3', min_members: 151, max_members: 250, price_eur_monthly: 189.99 },
   enterprise: { label: 'Enterprise', min_members: 251, pricing: 'custom' },
 }
 

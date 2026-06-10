@@ -17,10 +17,6 @@ const FEED_FEATURE_KEYS = [
   { icon: 'fa-regular fa-address-book', titleKey: 'dashboard.about_feed_members_title', textKey: 'dashboard.about_feed_members_text' },
 ] as const
 
-function stevePrefillUrl(message: string): string {
-  return `/user_chat/chat/Steve?prefill=${encodeURIComponent(message.trim())}`
-}
-
 function ModalBackdrop({
   children,
   onClose,
@@ -150,16 +146,7 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
           <div className="space-y-3 mb-4">
             <p className="text-sm text-c-text-tertiary leading-relaxed">{t('dashboard.about_steve_para_1')}</p>
             <p className="text-sm text-c-text-tertiary leading-relaxed">{t('dashboard.about_steve_para_2')}</p>
-            <button
-              type="button"
-              className="w-full py-2.5 rounded-xl bg-cpoint-turquoise text-black text-sm font-semibold hover:brightness-110"
-              onClick={() => {
-                onClose()
-                navigate(stevePrefillUrl(t('dashboard.about_talk_prefill')))
-              }}
-            >
-              {t('steve.talk_to_steve')}
-            </button>
+            {/* B2B pivot (June 2026): Steve DM prefill CTA removed — Steve lives in community surfaces. */}
           </div>
         ) : null}
 

@@ -196,14 +196,21 @@ export default function SubscriptionsHome({
         ) : null}
 
         <SettingsSection title={t('subscriptions.section_get_plan')}>
-          <SettingsRow
-            icon="fa-solid fa-crown"
-            title={premium.name}
-            subtitle={hubPriceSubtitle(premium.price_eur)}
-            active={activePanel === 'personalPlan'}
-            onClick={() => onOpenPanel('personalPlan')}
-          />
-          <SettingsDivider />
+          {/* B2B pivot (June 2026): Personal Premium is soft-retired — the
+              purchase tile only shows for legacy subscribers who already
+              hold (or need to fix) a personal plan. */}
+          {personalHealthy || personalNeedsAttention ? (
+            <>
+              <SettingsRow
+                icon="fa-solid fa-crown"
+                title={premium.name}
+                subtitle={hubPriceSubtitle(premium.price_eur)}
+                active={activePanel === 'personalPlan'}
+                onClick={() => onOpenPanel('personalPlan')}
+              />
+              <SettingsDivider />
+            </>
+          ) : null}
           <SettingsRow
             icon="fa-solid fa-people-group"
             title={communityTier.name}

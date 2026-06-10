@@ -55,11 +55,15 @@ class TestTierResolution:
         assert ent["ai_daily_limit"] == 0
 
     def test_trial_user_during_window(self, mysql_dsn):
+        """B2B pivot (June 2026): the signup trial keeps its tier label for
+        bookkeeping/admin tooling but grants no personal Steve/AI."""
         make_user("new_user", subscription="free", created_at=days_ago(7))
         ent = resolve_entitlements("new_user")
         assert ent["tier"] == TIER_TRIAL
-        assert ent["can_use_steve"] is True
-        assert ent["steve_uses_per_month"] > 0
+        assert ent["can_use_steve"] is False
+        assert ent["steve_uses_per_month"] == 0
+        assert ent["whisper_minutes_per_month"] == 0
+        assert ent["ai_daily_limit"] == 0
 
     def test_trial_revoked_early_is_free(self, mysql_dsn):
         """Admin ``trial_revoked_at`` forces FREE even inside the signup window."""

@@ -73,7 +73,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
   }
 
   const steveRowBtn =
-    'w-full text-left px-4 py-3.5 rounded-xl border border-c-border bg-white/[0.04] text-c-text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] hover:border-cpoint-turquoise/40 hover:bg-cpoint-turquoise/10 active:bg-cpoint-turquoise/15 active:scale-[0.98] transition-[transform,background-color,border-color] duration-100 touch-manipulation'
+    'w-full text-left px-4 py-3.5 rounded-xl border border-c-border bg-c-hover-bg text-c-text-primary shadow-c-card hover:border-cpoint-turquoise/40 hover:bg-cpoint-turquoise/10 active:bg-cpoint-turquoise/15 active:scale-[0.98] transition-[transform,background-color,border-color] duration-100 touch-manipulation'
 
   const tabPress = () => {
     void triggerHaptic('selection')
@@ -94,7 +94,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
           <div className="h-14 flex items-center justify-between gap-1 text-c-text-secondary px-2 sm:px-4">
           <button
             type="button"
-            className={`p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${isDashboard ? 'bg-white/10' : 'hover:bg-white/10 active:bg-white/15'}`}
+            className={`p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${isDashboard ? 'bg-c-active-bg' : 'hover:bg-c-hover-bg active:bg-c-active-bg'}`}
             aria-label={t('navigation.communities')}
             aria-current={isDashboard ? 'page' : undefined}
             onClick={() => { tabPress(); setSteveOpen(false); navigate('/premium_dashboard') }}
@@ -103,7 +103,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
           </button>
           <button
             type="button"
-            className={`p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${isFeed ? 'bg-white/10' : 'hover:bg-white/10 active:bg-white/15'}`}
+            className={`p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${isFeed ? 'bg-c-active-bg' : 'hover:bg-c-hover-bg active:bg-c-active-bg'}`}
             aria-label={t('navigation.feed')}
             aria-current={isFeed ? 'page' : undefined}
             onClick={() => { tabPress(); setSteveOpen(false); navigate('/feed') }}
@@ -112,7 +112,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
           </button>
           <button
             type="button"
-            className="py-1 px-2 sm:px-3 rounded-full hover:bg-white/10 active:bg-white/15 active:scale-95 transition-[transform,background-color] duration-100 touch-manipulation flex flex-col items-center justify-center gap-0 leading-none min-w-0"
+            className="py-1 px-2 sm:px-3 rounded-full hover:bg-c-hover-bg active:bg-c-active-bg active:scale-95 transition-[transform,background-color] duration-100 touch-manipulation flex flex-col items-center justify-center gap-0 leading-none min-w-0"
             aria-label={t('steve.options_label')}
             aria-expanded={steveOpen}
             onClick={() => { tabPress(); setSteveOpen(true) }}
@@ -122,7 +122,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
           </button>
           <button
             type="button"
-            className={`p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${!isFeed && !isAbout && searchOpen ? 'bg-white/10 text-cpoint-turquoise' : 'hover:bg-white/10 active:bg-white/15'}`}
+            className={`p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${!isFeed && !isAbout && searchOpen ? 'bg-c-active-bg text-cpoint-turquoise' : 'hover:bg-c-hover-bg active:bg-c-active-bg'}`}
             aria-label={searchOpen && !isFeed && !isAbout ? t('navigation.close_search') : t('navigation.search_communities')}
             aria-pressed={!isFeed && !isAbout && searchOpen}
             onClick={() => { tabPress(); setSteveOpen(false); onSearch() }}
@@ -134,7 +134,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
 
       {steveOpen ? (
         <div
-          className="fixed inset-x-0 top-0 z-[950] flex items-center justify-center px-4 pt-4 bg-black/60"
+          className="fixed inset-x-0 top-0 z-[950] flex items-center justify-center px-4 pt-4 bg-c-bg-overlay"
           style={{ bottom: 'var(--app-dashboard-bottom-nav-height)' }}
           role="presentation"
           onClick={() => setSteveOpen(false)}
@@ -143,7 +143,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
             role="dialog"
             aria-modal="true"
             aria-label={steveModalView === 'main' ? t('steve.main_aria') : steveModalView === 'recommendations' ? t('steve.recommendations_aria') : t('steve.news_aria')}
-            className="relative z-[950] w-full max-w-sm rounded-2xl overflow-hidden border border-cpoint-turquoise bg-c-bg-elevated shadow-[0_24px_56px_rgba(0,0,0,0.52)] flex flex-col max-h-[min(420px,78dvh)] min-h-[220px]"
+            className="relative z-[950] w-full max-w-sm rounded-2xl overflow-hidden border border-cpoint-turquoise bg-c-bg-elevated shadow-c-glass flex flex-col max-h-[min(420px,78dvh)] min-h-[220px]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="relative z-[1] flex flex-col flex-1 min-h-0 p-2">
@@ -153,17 +153,9 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
                   {t('steve.label')}
                 </div>
                 <div className="flex flex-col justify-center gap-2 flex-1 py-4 px-0.5">
-                <button
-                  type="button"
-                  className={steveRowBtn}
-                  onClick={() => {
-                    setSteveOpen(false)
-                    navigate('/user_chat/chat/Steve')
-                  }}
-                >
-                  <div className="font-medium">{t('steve.talk_to_steve')}</div>
-                  <div className="text-xs text-c-text-tertiary mt-0.5">{t('steve.talk_to_steve_helper')}</div>
-                </button>
+                {/* B2B pivot (June 2026): personal "Talk to Steve" DM entry removed —
+                    Steve lives in community surfaces; /user_chat/chat/Steve stays dormant
+                    for admin-granted Special users. */}
                 <button
                   type="button"
                   className={steveRowBtn}

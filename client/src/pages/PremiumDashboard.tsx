@@ -26,8 +26,10 @@ import { SkeletonCommunityCard } from '../components/SkeletonRow'
 import AboutCPointModal from '../components/about/AboutCPointModal'
 import BrandLogo from '../components/BrandLogo'
 import { setOnboardingFullscreenOverlay } from '../utils/fullscreenOverlay'
+import { useSingleCommunityLanding } from '../hooks/useSingleCommunityLanding'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
+const DASHBOARD_INVITE_PROMPT_DISMISSED_KEY = 'cpoint_dashboard_invite_prompt_dismissed'
 const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
 const ONBOARDING_RESUME_KEY = 'cpoint_onboarding_resume_step'
 
@@ -43,7 +45,23 @@ type Community = {
   unread_posts_count?: number
 }
 
-type OnboardingStateSummary = {
+type PendingCommunityInvite = {
+  id: number
+  community_id: number
+  community_name?: string | null
+  invited_by_username?: string | null
+  invited_at?: string | null
+  expires_at?: string | null
+  expired?: boolean
+  invite_type?: string | null
+  source?: 'pending' | 'token'
+  token?: string | null
+  status?: string | null
+  used?: boolean
+  already_member?: boolean
+}
+
+export type OnboardingStateSummary = {
   profileDeferUntil?: string | null
   serverTime?: string | null
   requiresOnboardingResume?: boolean
@@ -51,8 +69,47 @@ type OnboardingStateSummary = {
   onboardingProgress?: {
     personalSectionComplete?: boolean
     professionalSectionComplete?: boolean
+    personalSectionCompleteEffective?: boolean
+    professionalSectionCompleteEffective?: boolean
     nextStage?: string
   }
+}
+
+export function getEffectiveProfileSectionStatus(summary: OnboardingStateSummary | null | undefined) {
+  const personal =
+    summary?.onboardingProgress?.personalSectionCompleteEffective ??
+    summary?.onboardingProgress?.personalSectionComplete ??
+    false
+  const professional =
+    summary?.onboardingProgress?.professionalSectionCompleteEffective ??
+    summary?.onboardingProgress?.professionalSectionComplete ??
+    false
+  return { personal, professional, complete: personal && professional }
+}
+
+export function shouldShowProfileHelpCard(summary: OnboardingStateSummary | null | undefined): boolean {
+  if (!summary || summary.onboardingComplete) return false
+  const sections = getEffectiveProfileSectionStatus(summary)
+  if (sections.complete) return false
+  return Boolean(
+    summary.profileDeferUntil ||
+    summary.requiresOnboardingResume ||
+    !sections.personal ||
+    !sections.professional,
+  )
+}
+
+function formatInviteExpiry(value?: string | null) {
+  if (!value) return ''
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T')
+  const date = new Date(normalized.endsWith('Z') ? normalized : `${normalized}Z`)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 function formatOnboardingRemaining(
@@ -161,7 +218,7 @@ export default function PremiumDashboard() {
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [username, setUsername] = useState('')
-  const [subscription, setSubscription] = useState<string>('free')
+  const [, setSubscription] = useState<string>('free')
   const [, setHasProfilePic] = useState<boolean>(false)
   const [existingProfilePic, setExistingProfilePic] = useState<string>('')
   const [emailVerifiedAt, setEmailVerifiedAt] = useState<string | null>(null)
@@ -177,6 +234,19 @@ export default function PremiumDashboard() {
   const [joinedCommunityId, setJoinedCommunityId] = useState<number | null>(null)
   const [pendingInviteTarget, setPendingInviteTarget] = useState<{ communityId: number; communityName?: string | null } | null>(null)
   const [showSuccessModal, setShowSuccessModal] = useState(false)  // Success modal for join
+  const [pendingCommunityInvites, setPendingCommunityInvites] = useState<PendingCommunityInvite[]>([])
+  const [activeInvitePrompt, setActiveInvitePrompt] = useState<PendingCommunityInvite | null>(null)
+  const [invitesChecked, setInvitesChecked] = useState(false)
+  const [invitePromptLoading, setInvitePromptLoading] = useState(false)
+  const [invitePromptError, setInvitePromptError] = useState('')
+  const [inviteActionLoading, setInviteActionLoading] = useState<'accept' | 'decline' | null>(null)
+  const [invitePromptDismissed, setInvitePromptDismissed] = useState(() => {
+    try {
+      return typeof window !== 'undefined' && sessionStorage.getItem(DASHBOARD_INVITE_PROMPT_DISMISSED_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
   const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done'
   const { setTitle, setHeaderHidden, setTitleAccessory } = useHeader()
   useEffect(() => {
@@ -211,6 +281,16 @@ export default function PremiumDashboard() {
   const navigate = useNavigate()
   const location = useLocation()
   const isWeb = Capacitor.getPlatform() === 'web'
+  const invitePromptRequested = new URLSearchParams(location.search).get('invite_prompt') === '1'
+
+  // B2B landing: single-community members open the app inside their community.
+  useSingleCommunityLanding({
+    ready: communitiesLoaded && invitesChecked && emailVerified === true && !invitePromptRequested,
+    communities,
+    hasPendingInvites: pendingCommunityInvites.length > 0 || !!activeInvitePrompt,
+    overlayActive:
+      showOnboarding || showOnboardingWelcome || onboardingLaunching || onboardingGateRequired || showCreateModal,
+  })
 
   useEffect(() => {
     const sp = new URLSearchParams(location.search)
@@ -235,7 +315,6 @@ export default function PremiumDashboard() {
   useEffect(() => {
     if (searchOpen) searchInputRef.current?.focus()
   }, [searchOpen])
-  const isPremium = (subscription || 'free').toLowerCase() === 'premium'
   const handleCloseCreateModal = () => {
     setShowCreateModal(false)
     setNewCommName('')
@@ -314,6 +393,18 @@ export default function PremiumDashboard() {
     } catch {}
   }
 
+  const readStoredInviteToken = () => {
+    try {
+      if (typeof window === 'undefined') return ''
+      const raw = sessionStorage.getItem(PENDING_INVITE_KEY)
+      if (!raw) return ''
+      const parsed = JSON.parse(raw)
+      return typeof parsed?.inviteToken === 'string' ? parsed.inviteToken : ''
+    } catch {
+      return ''
+    }
+  }
+
   const clearOnboardingProfileHint = () => {
     try {
       if (typeof window !== 'undefined') {
@@ -355,9 +446,7 @@ export default function PremiumDashboard() {
       const resume = sessionStorage.getItem(ONBOARDING_RESUME_KEY)
       if (resume) {
         sessionStorage.removeItem(ONBOARDING_RESUME_KEY)
-        onboardingTriggeredRef.current = true
         setOnboardingMode('profile_builder')
-        setShowOnboarding(true)
       }
     } catch {}
   }, [])
@@ -395,6 +484,133 @@ export default function PremiumDashboard() {
     }catch(err:any){
       try{ await fetch('/api/client_log', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ level:'error', type:'dashboard_fetch_error', url, message: String(err) }) }) }catch{}
       return null
+    }
+  }
+
+  const clearInvitePromptQuery = useCallback(() => {
+    if (!invitePromptRequested) return
+    const sp = new URLSearchParams(location.search)
+    sp.delete('invite_prompt')
+    const next = sp.toString()
+    navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace: true })
+  }, [invitePromptRequested, location.pathname, location.search, navigate])
+
+  const dismissInvitePromptForSession = useCallback(() => {
+    setInvitePromptDismissed(true)
+    setActiveInvitePrompt(null)
+    setInvitePromptError('')
+    clearInvitePromptQuery()
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(DASHBOARD_INVITE_PROMPT_DISMISSED_KEY, '1')
+      }
+    } catch {}
+  }, [clearInvitePromptQuery])
+
+  const loadPendingCommunityInvites = useCallback(async () => {
+    setInvitePromptLoading(true)
+    try {
+      const inviteCandidates: PendingCommunityInvite[] = []
+      const r = await fetch('/api/community/invites/pending?include_email=true', {
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      })
+      if (r.status !== 401 && r.status !== 403) {
+        const j = await r.json().catch(() => null)
+        const invites = Array.isArray(j?.invites) ? j.invites : []
+        inviteCandidates.push(...invites.map((invite: PendingCommunityInvite) => ({ ...invite, source: 'pending' as const })))
+      }
+
+      const storedInviteToken = readStoredInviteToken()
+      if (storedInviteToken) {
+        const previewResponse = await fetch(`/api/invite_preview/${encodeURIComponent(storedInviteToken)}`, {
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+          cache: 'no-store',
+        })
+        const preview = await previewResponse.json().catch(() => null)
+        if (
+          preview?.success &&
+          !preview.already_member &&
+          !preview.used &&
+          (!preview.status || preview.status === 'pending')
+        ) {
+          const duplicate = inviteCandidates.some(invite => String(invite.id) === String(preview.invite_id))
+          if (!duplicate) {
+            inviteCandidates.unshift({
+              id: Number(preview.invite_id),
+              community_id: Number(preview.community_id),
+              community_name: preview.community_name,
+              invited_by_username: preview.invited_by_username,
+              invited_at: preview.invited_at,
+              expires_at: preview.expires_at,
+              expired: !!preview.expired,
+              invite_type: preview.recipient_bound ? 'email' : 'link',
+              source: 'token',
+              token: storedInviteToken,
+              status: preview.status,
+              used: !!preview.used,
+              already_member: !!preview.already_member,
+            })
+          }
+        }
+      }
+
+      setPendingCommunityInvites(inviteCandidates)
+    } catch {
+      setPendingCommunityInvites([])
+    } finally {
+      setInvitePromptLoading(false)
+      setInvitesChecked(true)
+    }
+  }, [])
+
+  const activeInviteExpiryText = formatInviteExpiry(activeInvitePrompt?.expires_at)
+
+  async function respondToDashboardInvite(action: 'accept' | 'decline') {
+    if (!activeInvitePrompt || inviteActionLoading) return
+    if (action === 'accept' && activeInvitePrompt.expired) return
+    setInviteActionLoading(action)
+    setInvitePromptError('')
+    try {
+      const endpoint =
+        activeInvitePrompt.source === 'token' && activeInvitePrompt.token
+          ? `/api/community/invites/token/${encodeURIComponent(activeInvitePrompt.token)}/${action}`
+          : `/api/community/invites/${activeInvitePrompt.id}/${action}`
+      const r = await fetch(endpoint, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok || !j?.success) {
+        setInvitePromptError(j?.error || `Could not ${action} this invitation.`)
+        return
+      }
+      setPendingCommunityInvites(prev => prev.filter(invite => invite.id !== activeInvitePrompt.id))
+      setActiveInvitePrompt(null)
+      setInvitePromptDismissed(false)
+      try {
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem(DASHBOARD_INVITE_PROMPT_DISMISSED_KEY)
+          if (activeInvitePrompt.source === 'token') sessionStorage.removeItem(PENDING_INVITE_KEY)
+        }
+      } catch {}
+      clearInvitePromptQuery()
+      if (action === 'accept') {
+        await triggerDashboardServerPull()
+        const refreshed = await refreshDashboardCommunities(undefined, true)
+        if (refreshed) {
+          setCommunities(refreshed)
+          setCommunitiesLoaded(true)
+        }
+        const targetId = j.community_id || activeInvitePrompt.community_id
+        navigate(j.next_url || `/community_feed_react/${targetId}`, { replace: true })
+      }
+    } catch {
+      setInvitePromptError(`Could not ${action} this invitation. Please try again.`)
+    } finally {
+      setInviteActionLoading(null)
     }
   }
 
@@ -507,6 +723,26 @@ export default function PremiumDashboard() {
   useEffect(() => {
     loadUserData()
   }, [loadUserData])
+
+  useEffect(() => {
+    if (!username && emailVerified == null) return
+    void loadPendingCommunityInvites()
+  }, [username, emailVerified, loadPendingCommunityInvites])
+
+  useEffect(() => {
+    if (pendingCommunityInvites.length === 0 || activeInvitePrompt) return
+    if (invitePromptDismissed && !invitePromptRequested) return
+    const nextInvite = pendingCommunityInvites[0]
+    setActiveInvitePrompt(nextInvite)
+    setInvitePromptError('')
+    clearInvitePromptQuery()
+  }, [
+    activeInvitePrompt,
+    clearInvitePromptQuery,
+    invitePromptDismissed,
+    invitePromptRequested,
+    pendingCommunityInvites,
+  ])
 
   // Refetch when returning to the dashboard from another route (fresh unread counts / server cache bypass).
   useEffect(() => {
@@ -687,7 +923,8 @@ export default function PremiumDashboard() {
     } catch {}
   }, [])
 
-  // Auto-prompt conversational onboarding; server state (defer / resume) runs even when not "recently verified"
+  // Rich Steve onboarding is optional enrichment. Server state only powers the
+  // dashboard reminder card; it no longer blocks first-session community value.
   useEffect(() => {
     if (onboardingTriggeredRef.current) return
     if (!communitiesLoaded) return
@@ -696,6 +933,7 @@ export default function PremiumDashboard() {
     if (!username) return
     if (showOnboarding) return
     if (showOnboardingWelcome) return
+    if (activeInvitePrompt || pendingCommunityInvites.length > 0) return
 
     try { if (localStorage.getItem(doneKey) === '1') return } catch {}
 
@@ -711,11 +949,6 @@ export default function PremiumDashboard() {
             onboardingComplete: j.onboardingComplete || (j.state && (j.state.stage === 'complete' || j.state.completed_at)),
             onboardingProgress: j.onboardingProgress,
           })
-          if (j.requiresOnboardingResume) {
-            setOnboardingGateRequired(true)
-            onboardingTriggeredRef.current = true
-            return
-          }
           if (j.onboardingComplete || (j.state && (j.state.stage === 'complete' || j.state.completed_at))) {
             try { localStorage.setItem(doneKey, '1') } catch {}
             onboardingTriggeredRef.current = true
@@ -748,25 +981,33 @@ export default function PremiumDashboard() {
         return
       }
 
-      // Only flip the launching overlay on right when we are actually about to mount Steve.
       onboardingTriggeredRef.current = true
-      setShowOnboardingWelcome(true)
     })()
     // Intentionally omit `communities`: array identity changes on every parent-community refetch and caused
     // a one-shot "Starting onboarding..." flicker for users who exit without auto-opening Steve.
-  }, [communitiesLoaded, emailVerified, emailVerifiedAt, username, showOnboarding, showOnboardingWelcome, doneKey, isRecentlyVerified])
+  }, [activeInvitePrompt, communitiesLoaded, emailVerified, emailVerifiedAt, username, showOnboarding, showOnboardingWelcome, doneKey, isRecentlyVerified, pendingCommunityInvites.length])
 
   // Parent-only creation: skip loading parent communities
 
 
   const hasAnyCommunity = communities.length > 0
-  const showOnboardingCompletionCard = !!(
-    onboardingStateSummary &&
-    !onboardingStateSummary.onboardingComplete &&
-    (onboardingStateSummary.profileDeferUntil || onboardingStateSummary.requiresOnboardingResume)
-  )
+  const {
+    personal: personalSectionComplete,
+    professional: professionalSectionComplete,
+  } = getEffectiveProfileSectionStatus(onboardingStateSummary)
+  const showOnboardingCompletionCard = shouldShowProfileHelpCard(onboardingStateSummary)
+  const onboardingCardTitle = !professionalSectionComplete && personalSectionComplete
+    ? 'Improve your professional profile with Steve'
+    : !personalSectionComplete && professionalSectionComplete
+      ? 'Improve your personal profile with Steve'
+      : 'Improve your profile with Steve'
+  const onboardingCardBody = !professionalSectionComplete && personalSectionComplete
+    ? 'Add richer professional context when you are ready. This helps communities understand what you do, but it will not block you from participating.'
+    : !personalSectionComplete && professionalSectionComplete
+      ? 'Add richer personal context when you are ready. This helps communities understand who you are, but it will not block you from participating.'
+      : 'Add richer personal or professional details when you are ready. This helps communities understand who you are, but it will not block you from participating.'
   const onboardingOverlayActive =
-    showOnboarding || showOnboardingWelcome || onboardingLaunching || onboardingGateRequired
+    showOnboarding || showOnboardingWelcome || onboardingLaunching || onboardingGateRequired || !!activeInvitePrompt
   const { setNavOverrides, clearNavOverrides } = useDashboardLayout()
   useEffect(() => {
     setNavOverrides({ show: !onboardingOverlayActive, searchOpen, onToggleSearch: () => setSearchOpen((v) => !v) })
@@ -808,7 +1049,7 @@ export default function PremiumDashboard() {
       {/* Web uses shared HeaderBar from App.tsx, native platforms use old sidebar */}
       {!isWeb && (
       /* Desktop sidebar - only for native platforms (iOS/Android) */
-      <div className="fixed left-0 top-14 bottom-0 w-52 hidden md:flex flex-col z-30 liquid-glass-surface border border-c-border rounded-r-3xl shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
+      <div className="fixed left-0 top-14 bottom-0 w-52 hidden md:flex flex-col z-30 liquid-glass-surface border border-c-border rounded-r-3xl shadow-c-glass">
         <nav className="flex-1 overflow-y-auto py-3">
           <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/premium_dashboard">{t('navigation.dashboard')}</a>
           <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/profile">{t('navigation.profile')}</a>
@@ -820,17 +1061,8 @@ export default function PremiumDashboard() {
             <i className="fa-solid fa-cog mr-2" />{t('navigation.settings')}
           </a>
         </nav>
-        {!isPremium && (
-          <div className="p-4 border-t border-c-border">
-            <button
-              type="button"
-              className="w-full rounded-lg bg-cpoint-turquoise px-4 py-2.5 text-sm font-semibold text-c-text-primary hover:brightness-110 transition"
-              onClick={() => navigate('/subscription_plans')}
-            >
-              {t('dashboard.upgrade_to_premium')}
-            </button>
-          </div>
-        )}
+        {/* B2B pivot (June 2026): personal Premium upsell removed — plans hub
+            now leads with community tiers, reached via the menu entry. */}
       </div>
       )}
 
@@ -851,7 +1083,7 @@ export default function PremiumDashboard() {
             <div className="px-4 py-4">
               <button
                 type="button"
-                  className="w-full rounded-2xl liquid-glass-chip border border-cpoint-turquoise/30 px-4 py-3 text-sm font-semibold text-c-text-primary tracking-[0.2em] uppercase shadow-[0_15px_35px_rgba(0,0,0,0.4)] hover:shadow-[0_20px_45px_rgba(0,0,0,0.55)] transition"
+                  className="w-full rounded-2xl liquid-glass-chip border border-cpoint-turquoise/30 px-4 py-3 text-sm font-semibold text-c-text-primary tracking-[0.2em] uppercase shadow-c-card hover:shadow-c-glass transition"
                 onClick={() => {
                   setMobileMenuOpen(false)
                   navigate('/subscription_plans')
@@ -869,24 +1101,22 @@ export default function PremiumDashboard() {
       >
         <div className="app-content max-w-5xl mx-auto px-3 py-6">
           {showOnboardingCompletionCard && (
-            <div className="mb-4 rounded-2xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 p-4 shadow-[0_16px_45px_rgba(0,0,0,0.28)]">
+            <div className="mb-4 rounded-2xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 p-4 shadow-c-card">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <div className="text-base font-semibold text-c-text-primary">{t('dashboard.complete_onboarding_title')}</div>
+                  <div className="text-base font-semibold text-c-text-primary">{onboardingCardTitle}</div>
                   <p className="mt-1 text-sm leading-relaxed text-c-text-secondary">
-                    {onboardingStateSummary?.requiresOnboardingResume
-                      ? t('dashboard.complete_onboarding_resume_body')
-                      : t('dashboard.complete_onboarding_saved_body')}
+                    {onboardingCardBody}
                   </p>
                   {onboardingRemaining && (
                     <div className="mt-2 text-xs font-medium text-c-accent-ink">{onboardingRemaining}</div>
                   )}
                   <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
-                    <span className={`rounded-full border px-2.5 py-1 ${onboardingStateSummary?.onboardingProgress?.personalSectionComplete ? 'border-cpoint-turquoise/35 bg-cpoint-turquoise/10 text-c-accent-ink' : 'border-c-border bg-c-hover-bg text-c-text-tertiary'}`}>
-                      {onboardingStateSummary?.onboardingProgress?.personalSectionComplete ? t('dashboard.personal_complete') : t('dashboard.personal_pending')}
+                    <span className={`rounded-full border px-2.5 py-1 ${personalSectionComplete ? 'border-cpoint-turquoise/35 bg-cpoint-turquoise/10 text-c-accent-ink' : 'border-c-border bg-c-hover-bg text-c-text-tertiary'}`}>
+                      {personalSectionComplete ? t('dashboard.personal_complete') : t('dashboard.personal_pending')}
                     </span>
-                    <span className={`rounded-full border px-2.5 py-1 ${onboardingStateSummary?.onboardingProgress?.professionalSectionComplete ? 'border-cpoint-turquoise/35 bg-cpoint-turquoise/10 text-c-accent-ink' : 'border-c-border bg-c-hover-bg text-c-text-tertiary'}`}>
-                      {onboardingStateSummary?.onboardingProgress?.professionalSectionComplete ? t('dashboard.professional_complete') : t('dashboard.professional_pending')}
+                    <span className={`rounded-full border px-2.5 py-1 ${professionalSectionComplete ? 'border-cpoint-turquoise/35 bg-cpoint-turquoise/10 text-c-accent-ink' : 'border-c-border bg-c-hover-bg text-c-text-tertiary'}`}>
+                      {professionalSectionComplete ? t('dashboard.professional_complete') : t('dashboard.professional_pending')}
                     </span>
                   </div>
                 </div>
@@ -895,7 +1125,7 @@ export default function PremiumDashboard() {
                   onClick={openOnboardingResume}
                   className="shrink-0 rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-sm font-semibold text-black transition hover:brightness-110"
                 >
-                  {t('dashboard.continue_onboarding')}
+                  Open Steve
                 </button>
               </div>
             </div>
@@ -939,7 +1169,7 @@ export default function PremiumDashboard() {
             ) : communities.length === 0 ? (
               <div className="px-3 py-6">
                 <div className="mx-auto max-w-xl space-y-4">
-                  <div className="liquid-glass-surface overflow-hidden rounded-3xl border border-c-border p-5 text-center shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+                  <div className="liquid-glass-surface overflow-hidden rounded-3xl border border-c-border p-5 text-center shadow-c-glass">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cpoint-turquoise">
                       {t('dashboard.welcome_badge')}
                     </div>
@@ -971,7 +1201,6 @@ export default function PremiumDashboard() {
                     {[
                       { icon: 'fa-solid fa-lock', titleKey: 'dashboard.tile_private_feeds_title', textKey: 'dashboard.tile_private_feeds_text' },
                       { icon: 'fa-regular fa-comments', titleKey: 'dashboard.tile_member_chats_title', textKey: 'dashboard.tile_member_chats_text' },
-                      { icon: 'fa-solid fa-wand-magic-sparkles', titleKey: 'dashboard.tile_steve_title', textKey: 'dashboard.tile_steve_text' },
                       { icon: 'fa-solid fa-user-group', titleKey: 'dashboard.tile_networking_title', textKey: 'dashboard.tile_networking_text' },
                     ].map((tile) => (
                       <div key={tile.titleKey} className="rounded-2xl border border-c-border bg-c-bg-surface p-3">
@@ -984,19 +1213,8 @@ export default function PremiumDashboard() {
                     ))}
                   </div>
 
-                  <div className="flex items-center justify-between rounded-2xl border border-c-border bg-c-bg-surface px-4 py-3">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-c-text-primary">{t('dashboard.meet_steve')}</div>
-                      <div className="text-xs text-c-text-tertiary">{t('dashboard.ask_try_first')}</div>
-                    </div>
-                    <button
-                      className="shrink-0 rounded-full border border-cpoint-turquoise/40 px-4 py-2 text-sm font-medium text-cpoint-turquoise transition hover:bg-cpoint-turquoise/10 active:scale-95 touch-manipulation"
-                      onClick={() => navigate('/user_chat/chat/Steve')}
-                      style={{ WebkitTapHighlightColor: 'transparent' }}
-                    >
-                      {t('steve.talk_to_steve')}
-                    </button>
-                  </div>
+                  {/* B2B pivot (June 2026): "Meet Steve / Talk to Steve" card removed —
+                      Steve is a community feature now. */}
                 </div>
               </div>
             ) : (
@@ -1138,7 +1356,7 @@ export default function PremiumDashboard() {
           )}
           {onboardingGateRequired && !showOnboarding && (
             <div className="fixed inset-0 z-[1200] bg-c-bg-overlay backdrop-blur-md flex items-center justify-center px-6">
-              <div className="w-full max-w-md rounded-2xl border border-c-border bg-c-bg-elevated p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.55)]">
+              <div className="w-full max-w-md rounded-2xl border border-c-border bg-c-bg-elevated p-6 text-center shadow-c-glass">
                 <BrandLogo className="w-14 h-14 rounded-2xl object-contain mx-auto mb-4" />
                 <h2 className="text-lg font-semibold text-c-text-primary mb-2">{t('dashboard.finish_profile_title')}</h2>
                 <p className="text-sm text-c-text-tertiary mb-6">
@@ -1203,6 +1421,85 @@ export default function PremiumDashboard() {
           )}
         </>,
         document.body
+      )}
+
+      {activeInvitePrompt && (
+        <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-c-bg-app/80 px-4 backdrop-blur-md">
+          <div className="w-full max-w-md rounded-3xl border border-c-border bg-c-bg-elevated p-5 shadow-c-glass">
+            <div className="mb-5 flex justify-center">
+              <BrandLogo className="h-10 w-auto" />
+            </div>
+            <div className="rounded-2xl border border-cpoint-turquoise/25 bg-cpoint-turquoise/10 p-5 text-center">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-cpoint-turquoise/20 text-cpoint-turquoise">
+                <i className="fa-solid fa-user-plus text-xl" />
+              </div>
+              <p className="text-xs uppercase tracking-wide text-c-text-tertiary">Community invitation</p>
+              <h2 className="mt-2 text-2xl font-semibold text-c-text-primary">
+                {activeInvitePrompt.community_name || 'Private community'}
+              </h2>
+              <p className="mt-2 text-sm text-c-text-secondary">
+                {activeInvitePrompt.invited_by_username
+                  ? `${activeInvitePrompt.invited_by_username} invited you to join this C-Point community.`
+                  : 'You have been invited to join this C-Point community.'}
+              </p>
+              {activeInviteExpiryText ? (
+                <p className={`mt-3 text-xs ${activeInvitePrompt.expired ? 'text-red-300' : 'text-c-text-tertiary'}`}>
+                  {activeInvitePrompt.expired ? 'Expired' : 'Valid until'} {activeInviteExpiryText}
+                </p>
+              ) : null}
+            </div>
+
+            {activeInvitePrompt.expired ? (
+              <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                This invitation expired. Ask the sender for a new invite.
+              </div>
+            ) : null}
+
+            {invitePromptError ? (
+              <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                {invitePromptError.toLowerCase().includes('different email')
+                  ? 'This invite was sent to a different email. Sign in with that email, or ask the sender to invite your current account.'
+                  : invitePromptError}
+              </div>
+            ) : null}
+
+            <div className="mt-5 space-y-2">
+              {!activeInvitePrompt.expired ? (
+                <button
+                  className="flex w-full items-center justify-center rounded-xl bg-cpoint-turquoise px-4 py-3 text-sm font-semibold text-black disabled:opacity-50"
+                  disabled={inviteActionLoading !== null || invitePromptLoading}
+                  onClick={() => { void respondToDashboardInvite('accept') }}
+                >
+                  {inviteActionLoading === 'accept'
+                    ? 'Joining...'
+                    : `Join ${activeInvitePrompt.community_name || 'community'}`}
+                </button>
+              ) : null}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  className="rounded-xl border border-c-border bg-c-hover-bg px-4 py-3 text-sm font-semibold text-c-text-primary disabled:opacity-50"
+                  disabled={inviteActionLoading !== null}
+                  onClick={dismissInvitePromptForSession}
+                >
+                  Not now
+                </button>
+                <button
+                  className="rounded-xl border border-c-border bg-transparent px-4 py-3 text-sm text-c-text-secondary disabled:opacity-50"
+                  disabled={inviteActionLoading !== null}
+                  onClick={() => { void respondToDashboardInvite('decline') }}
+                >
+                  {inviteActionLoading === 'decline' ? 'Declining...' : 'Decline'}
+                </button>
+              </div>
+              <button
+                className="w-full rounded-xl px-4 py-2 text-xs font-medium text-cpoint-turquoise"
+                onClick={() => navigate('/notifications?tab=invites')}
+              >
+                View all invitations
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Success Toast - Subtle notification */}
@@ -1379,7 +1676,7 @@ function CommunityCard({
     <button
       onClick={onClick}
       aria-label={name}
-      className="group relative flex min-h-[8.5rem] w-full rounded-2xl overflow-hidden text-c-text-primary transition-all duration-300 liquid-glass-surface border border-c-border hover:border-cpoint-turquoise/40 shadow-[0_24px_56px_rgba(0,0,0,0.48)] hover:shadow-[0_32px_64px_rgba(0,0,0,0.58)] hover:-translate-y-0.5 text-left"
+      className="group relative flex min-h-[8.5rem] w-full rounded-2xl overflow-hidden text-c-text-primary transition-all duration-300 liquid-glass-surface border border-c-border hover:border-cpoint-turquoise/40 shadow-c-glass hover:shadow-c-glass hover:-translate-y-0.5 text-left"
     >
       <div
         className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"

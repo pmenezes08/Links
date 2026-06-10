@@ -550,7 +550,7 @@ def _seed_pages() -> List[Dict[str, Any]]:
             "sort_order": 10,
             "field_groups": [
                 {"id": "free", "label": "Free", "icon": "fa-user"},
-                {"id": "trial", "label": "Free Trial (30d Premium)", "icon": "fa-gift"},
+                {"id": "trial", "label": "Free Trial (30d, no personal AI)", "icon": "fa-gift"},
                 {"id": "premium", "label": "Premium", "icon": "fa-crown"},
                 {"id": "enterprise_derived", "label": "Enterprise member (derived)", "icon": "fa-building"},
                 {"id": "special", "label": "Special (admin / founder / F&F)", "icon": "fa-star"},
@@ -568,8 +568,11 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "trial_duration_days", "label": "Trial duration (days)", "type": "integer", "value": 30, "group": "trial"},
                 {"name": "trial_communities_max", "label": "Max communities owned", "type": "integer", "value": 5,
                  "help": "Intentionally capped at Free-tier level — not Premium's 10.", "group": "trial"},
-                {"name": "trial_steve_uses_per_month", "label": "Steve uses / month", "type": "integer", "value": 100, "group": "trial"},
-                {"name": "trial_whisper_minutes_per_month", "label": "Whisper minutes / month", "type": "integer", "value": 100, "group": "trial"},
+                {"name": "trial_steve_uses_per_month", "label": "Steve uses / month", "type": "integer", "value": 0,
+                 "help": "B2B pivot (June 2026): the signup trial grants no personal Steve. "
+                         "Members use Steve only via a community's Steve Package pool.", "group": "trial"},
+                {"name": "trial_whisper_minutes_per_month", "label": "Whisper minutes / month", "type": "integer", "value": 0,
+                 "help": "B2B pivot (June 2026): no personal Whisper during trial.", "group": "trial"},
                 {"name": "trial_lapse_policy", "label": "Expiry behavior", "type": "string",
                  "value": "Silently downgrades to Free. Communities > Free limits lock read-only until user subscribes or trims.", "group": "trial"},
                 {"name": "trial_conversion_email_days", "label": "Conversion reminder email days", "type": "string", "value": "7, 14, 25, 28", "group": "trial"},
@@ -648,10 +651,12 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 "Enterprise unlimited).\n"
                 "- **Premium (standard)** — from month 4 at `premium_price_standard_eur` "
                 "(€7.99/mo). Same entitlements as early adoption.\n"
-                "- **Free Trial** — 30 days of Premium-equivalent AI on signup, "
-                "community ownership capped at `trial_communities_max` (5). Member caps "
-                "inherit Free (25/community). Converts to paid only if a card is added; "
-                "otherwise silently downgrades to Free.\n\n"
+                "- **Free Trial** — 30-day signup window tracked for bookkeeping, but "
+                "since the B2B pivot (June 2026) it grants **no personal Steve/AI** "
+                "(`trial_steve_uses_per_month` = 0). Community ownership capped at "
+                "`trial_communities_max` (5); member caps inherit Free (25/community). "
+                "Members get Steve only inside communities whose owner pays for the "
+                "Steve Community Package.\n\n"
                 "**Trial lapse policy**: communities created during trial that exceed Free "
                 "tier limits (> 5 owned, or > 25 members) lock read-only until the user "
                 "subscribes or trims down.\n\n"
@@ -2005,6 +2010,7 @@ def _seed_pages() -> List[Dict[str, Any]]:
                         {"title": "Capacitor App + Storage for background state and persistent local data", "area": "client", "phase": "next", "status": "not_started", "effort": "M", "target_quarter": "2026-Q4", "notes": "App for resume/background events to trigger local sync; Storage for persistent drafts/settings beyond localStorage. Purpose: less server reliance for offline-first (extend offlineDb.ts and deviceCache), better phone memory. Safest after Network/Filesystem.", "test": "native:app-storage-offline", "test_status": "not_run"},
                         {"title": "Logout session-persistence hotfix (May 2026)", "area": "backend", "phase": "now", "status": "shipped", "effort": "M", "target_quarter": "2026-Q2", "notes": "Sessions were silently re-authenticating after `/logout` on Capacitor (iOS + Android). Root cause: `rotate_remember_token_after_auto_login` re-issued a fresh `remember_token` on the `/logout` response when remember-me had restored the session in `before_app_request`. All PRs shipped: (PR-A) skip rotation + revoke_for_user; (PR-D) legacy-domain sweep + delete_account cookie-clear parity; (PR-E) SW network-only /api/profile_me (verified); (PR-F) password-login session.clear() parity with OAuth; (PR-G) Vitest hoist fix; (PR-B) iOS HTTPCookieStorage guard in syncBadgeWithServer; (PR-C) Android CookieManager.flush() in onPause. Audit: `docs/audit/LOGOUT_REMEDIATION_PLAN.md` + `docs/audit/LOGOUT_SECURITY_REVIEW.md`.", "test": "auth:logout-no-remember-reissue", "test_status": "not_run"},
                         {"title": "FLASK_SECRET_KEY yearly rotation policy", "area": "infra", "phase": "next", "status": "not_started", "effort": "S", "target_quarter": "2026-Q3", "notes": "Current key created 2025-12-15 in Secret Manager (flask-secret-key), never rotated. No evidence of compromise. Schedule annual rotation during a planned maintenance window — all users will need to re-authenticate. Before scheduling: verify key is not exposed in CI logs, debug routes, or env-dump endpoints. See `docs/audit/LOGOUT_SECURITY_REVIEW.md` section 4.3.", "test": "infra:secret-key-rotation", "test_status": "not_run"},
+                        {"title": "B2B Wave 1 — consumer surface retirement", "area": "Subscriptions", "phase": "now", "status": "completed", "effort": "M", "target_quarter": "2026-Q2", "notes": "B2B pivot quick wins (June 2026): signup trial grants no personal Steve/AI (TIER_TRIAL zeroed in `entitlements.py`, label kept for admin trial-revoke tooling); Personal Premium soft-retired (purchase tile hidden in SubscriptionsHome unless a personal subscription exists, dashboard Upgrade CTA removed, checkout backend untouched for legacy renewals); personal 'Talk to Steve' entry points removed (bottom-nav Steve modal, dashboard card + marketing tile, About modal prefill — `/user_chat/chat/Steve` dormant for Special users); single-community members land directly on their community feed on app open (`useSingleCommunityLanding`); onboarding `DEFAULT_TIER_HINTS` fallback prices fixed to KB live values (€49.99/€99.99/€189.99). Requires KB Reseed + Force after deploy. Docs: `docs/PRODUCT_JOURNEYS.md` § 3.", "test": "entitlements:trial-no-personal-ai", "test_status": "not_run"},
                     ],
                 },
             ],
