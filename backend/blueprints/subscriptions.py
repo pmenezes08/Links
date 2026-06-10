@@ -900,6 +900,17 @@ def _preflight_steve_package(
             409,
         )
     state = community_billing.get_billing_state(root_id) or {}
+    # A synthetic (non-Stripe) 14-day trial must never block the real
+    # purchase — the owner converting mid-trial is the whole point. Health
+    # and ownership checks see the community as package-less; the webhook
+    # overwrites the trial columns once the real subscription exists.
+    if community_billing.is_synthetic_steve_package_trial(state):
+        state = {
+            **state,
+            "steve_package_stripe_subscription_id": None,
+            "steve_package_subscription_status": None,
+            "steve_package_subscription_active": False,
+        }
     kb_fields = _kb_field_map("community-tiers")
     ent_incl = _kb_truthy(kb_fields, "enterprise_steve_package_included", True)
     health = derive_community_subscription_health(

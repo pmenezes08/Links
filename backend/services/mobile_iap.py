@@ -543,9 +543,10 @@ def _steve_preflight(*, username: str, community_id: int) -> Optional[str]:
     root_id, is_root = community_svc.resolve_root_community_id(community_id)
     if not is_root or int(root_id) != int(community_id):
         return "not_root_community"
-    if community_billing.has_active_steve_package(community_id):
-        return "steve_package_already_active"
     state = community_billing.get_billing_state(community_id) or {}
+    if community_billing.has_active_steve_package(community_id) and not community_billing.is_synthetic_steve_package_trial(state):
+        # The synthetic 14-day trial must not block a real purchase.
+        return "steve_package_already_active"
     kb_fields = _kb_field_map("community-tiers")
     ent_incl = _truthy(kb_fields.get("enterprise_steve_package_included"), default=True)
     health = subscription_health.derive_community_subscription_health(

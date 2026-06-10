@@ -23045,6 +23045,19 @@ def create_community():
             invalidate_user_cache(username)
             logger.info(f"Invalidated dashboard cache for {username} after community creation")
 
+        # B2B pivot: every new root community starts a 14-day Steve Community
+        # Package trial so members can taste Steve before the owner buys the
+        # add-on. Best-effort; the service no-ops for sub-communities and
+        # never overwrites an existing package subscription.
+        try:
+            from backend.services.community_billing import grant_steve_package_trial
+            grant_steve_package_trial(community_id)
+        except Exception as trial_err:
+            logger.warning(
+                "create_community: steve package trial grant failed for community %s (non-fatal): %s",
+                community_id, trial_err,
+            )
+
         # Steve community welcome flow (welcome post + owner DM). Best-effort —
         # the create-community response must never fail because the welcome
         # post or DM hit a snag. See docs/STEVE_COMMUNITY_WELCOME.md.

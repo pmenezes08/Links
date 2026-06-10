@@ -32,7 +32,7 @@ has a single owner.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from backend.services.community import (
@@ -44,6 +44,66 @@ from backend.services.database import get_db_connection, get_sql_placeholder
 
 
 logger = logging.getLogger(__name__)
+
+
+# ── Steve package trial (synthetic, non-Stripe) ─────────────────────────
+#
+# New root communities get the Steve Community Package free for 14 days so
+# members taste Steve inside the community and demand lands on the owner.
+# The trial is a synthetic subscription row (id ``trial_pkg_<community_id>``,
+# status ``trialing``) — no Stripe object exists, so expiry is enforced at
+# read time in ``get_billing_state`` instead of via webhooks. Buying the
+# real package simply overwrites these columns through the normal webhook
+# path.
+STEVE_PACKAGE_TRIAL_SUB_PREFIX = "trial_pkg_"
+STEVE_PACKAGE_TRIAL_DAYS = 14
+
+
+def is_synthetic_steve_package_trial(state: Optional[Dict[str, Any]]) -> bool:
+    """True when the package columns hold our synthetic trial, not Stripe."""
+    sub_id = str((state or {}).get("steve_package_stripe_subscription_id") or "")
+    return sub_id.startswith(STEVE_PACKAGE_TRIAL_SUB_PREFIX)
+
+
+def grant_steve_package_trial(
+    community_id: int,
+    *,
+    trial_days: int = STEVE_PACKAGE_TRIAL_DAYS,
+) -> bool:
+    """Activate the Steve Community Package as a one-off trial for a new
+    root community.
+
+    Root communities only; never overwrites an existing package record
+    (one trial per community, and a real Stripe sub must never be
+    clobbered). Best-effort: returns False instead of raising so the
+    community-creation path can call it inline.
+    """
+    try:
+        if not community_id:
+            return False
+        root_id, is_root = resolve_root_community_id(int(community_id))
+        if not is_root or int(root_id) != int(community_id):
+            return False
+        state = get_billing_state(community_id) or {}
+        if state.get("steve_package_stripe_subscription_id"):
+            return False
+        period_end = datetime.utcnow() + timedelta(days=int(trial_days))
+        granted = mark_steve_package_subscription(
+            community_id,
+            subscription_id=f"{STEVE_PACKAGE_TRIAL_SUB_PREFIX}{int(community_id)}",
+            status="trialing",
+            current_period_end=period_end.strftime("%Y-%m-%d %H:%M:%S"),
+        )
+        if granted:
+            logger.info(
+                "Steve package trial granted: community=%s ends=%s",
+                community_id,
+                period_end.isoformat(),
+            )
+        return granted
+    except Exception:
+        logger.exception("grant_steve_package_trial failed for community %s", community_id)
+        return False
 
 
 # ── Schema ──────────────────────────────────────────────────────────────
@@ -173,7 +233,18 @@ def get_billing_state(community_id: int) -> Optional[Dict[str, Any]]:
         str(steve_period_end) if steve_period_end else None
     )
     steve_st = str(steve_status or "").strip().lower()
-    steve_active = bool(steve_sub_id) and steve_st in ("active", "trialing")
+    # Trials expire at read time: synthetic (non-Stripe) trials have no
+    # webhook to flip their status, so a past period_end means inactive.
+    steve_trial_expired = False
+    if steve_st == "trialing":
+        trial_end = _parse_datetime(steve_period_end)
+        if trial_end is not None and trial_end <= datetime.utcnow():
+            steve_trial_expired = True
+    steve_active = (
+        bool(steve_sub_id)
+        and steve_st in ("active", "trialing")
+        and not steve_trial_expired
+    )
 
     days_remaining = _days_until(current_period_end)
     return {

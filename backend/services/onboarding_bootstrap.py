@@ -50,6 +50,14 @@ def _add_user_legacy(cursor, user_id: int, community_id: int, **kwargs):
 
 
 def _welcome_community(community_id: int) -> None:
+    # B2B pivot: new root communities get a 14-day Steve package trial
+    # (root-only guard lives in the billing service).
+    try:
+        from backend.services.community_billing import grant_steve_package_trial
+
+        grant_steve_package_trial(community_id)
+    except Exception as exc:
+        logger.warning("onboarding_bootstrap steve package trial grant failed: %s", exc)
     try:
         from backend.services.steve_community_welcome import welcome_for_new_community
 

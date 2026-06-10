@@ -181,7 +181,14 @@ def active_community_owners(root_community_id: int) -> List[BillingOwner]:
             source="communities",
         ))
     steve_status = _status(state.get("steve_package_subscription_status"))
-    if state.get("steve_package_stripe_subscription_id") and steve_status in ACTIVE_STATUSES:
+    if (
+        state.get("steve_package_stripe_subscription_id")
+        and steve_status in ACTIVE_STATUSES
+        # The synthetic 14-day package trial has no provider subscription
+        # behind it, so it must not claim billing ownership (it would block
+        # the owner from buying the real package via any provider).
+        and not community_billing.is_synthetic_steve_package_trial(state)
+    ):
         owners.append(BillingOwner(
             provider=provider,
             product_family=PRODUCT_STEVE_PACKAGE,

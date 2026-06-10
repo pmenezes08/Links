@@ -95,6 +95,8 @@ jobs:
             tests/test_email_normalization.py \
             tests/test_disposable_email.py \
             tests/test_signup_canonical_uniqueness.py \
+            tests/test_username_invites.py \
+            tests/test_steve_package_trial.py \
             -v --tb=short --maxfail=5
 
       - name: Upload test logs (on failure)
