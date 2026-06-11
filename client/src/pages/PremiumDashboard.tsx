@@ -1291,6 +1291,21 @@ export default function PremiumDashboard() {
 
                 return (
                   <div className="space-y-4">
+                    {/* Find a community — the door for handles shared outside
+                        the app (the Join modal opens handle-first). */}
+                    <button
+                      type="button"
+                      onClick={() => setShowJoinModal(true)}
+                      aria-label={t('communities.find_entry_aria')}
+                      className="flex h-11 w-full items-center gap-3 rounded-2xl border border-c-border bg-c-bg-elevated px-3 text-left transition hover:bg-c-hover-bg active:scale-[0.99]"
+                    >
+                      <i className="fa-solid fa-at text-sm text-c-text-tertiary" aria-hidden="true" />
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-c-text-primary">
+                        {t('communities.find_entry_label')}
+                      </span>
+                      <i className="fa-solid fa-chevron-right text-xs text-c-text-tertiary" aria-hidden="true" />
+                    </button>
+
                     {/* Owner/Admin Section */}
                     {ownedOrAdmin.length > 0 && (
                       <>

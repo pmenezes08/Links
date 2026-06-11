@@ -741,6 +741,8 @@
     "findable_hint_on": "Quem souber o teu identificador pode pedir para entrar. Nada do interior fica visível — tu decides quem entra.",
     "findable_hint_off": "O teu identificador funciona apenas como nome. Ninguém pode pedir para entrar, mesmo que o conheça.",
     "findable_requires_handle": "Guarda primeiro um identificador.",
+    "find_entry_label": "Procurar uma comunidade",
+    "find_entry_aria": "Procurar uma comunidade pelo identificador",
     "find_placeholder": "identificador",
     "find_helper": "Sabes o identificador de uma comunidade? Introduz-o exatamente para pedires para entrar.",
     "find_not_found": "Nada responde a @{{handle}}. Confirma a escrita — ou confirma com quem to deu.",

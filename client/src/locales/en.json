@@ -741,6 +741,8 @@
     "findable_hint_on": "People who know your handle can ask to join. Nothing inside is visible — you decide who comes in.",
     "findable_hint_off": "Your handle works only as a name. No one can request to join, even if they know it.",
     "findable_requires_handle": "Save a handle first.",
+    "find_entry_label": "Find a community",
+    "find_entry_aria": "Find a community by its handle",
     "find_placeholder": "handle",
     "find_helper": "Know a community's handle? Enter it exactly to ask to join.",
     "find_not_found": "Nothing answers to @{{handle}}. Check the spelling — or check with whoever gave it to you.",
