@@ -90,3 +90,23 @@ def post_summary(post_id: int):
 
     body, status = generate_post_summary(username, post_id)
     return jsonify(body), status
+
+
+@summaries_bp.route("/api/post_summary/config", methods=["GET"])
+def post_summary_config():
+    """Affordance thresholds for the feed glyph — KB-driven, never hardcoded
+    client-side. The client shows the inline Steve glyph only on posts that
+    clear these bars; sub-threshold posts keep the ⋯ menu entry."""
+    username = session.get("username")
+    if not username:
+        return api_errors.auth_required()
+
+    from backend.services.post_summary import get_post_summary_config
+
+    config = get_post_summary_config()
+    return jsonify({
+        "success": True,
+        "enabled": config.enabled,
+        "min_replies": config.min_replies_for_affordance,
+        "min_thread_chars": config.min_thread_chars_for_affordance,
+    })

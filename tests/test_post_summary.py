@@ -124,6 +124,20 @@ class _FakeOpenAI:
         self.chat = _FakeChat(self.__class__.calls)
 
 
+@pytest.fixture(autouse=True)
+def _clear_summary_cache():
+    """The shared cache is process-global and post ids reset with TRUNCATE —
+    flush it so a cached summary from one test can't leak into the next."""
+    from redis_cache import cache as shared_cache
+
+    for store in ("cache", "expiry"):
+        try:
+            getattr(shared_cache, store).clear()
+        except Exception:
+            pass
+    yield
+
+
 @pytest.fixture()
 def fake_grok(monkeypatch):
     """Patch the xAI client and API key; yields the recorded call list."""
@@ -258,6 +272,90 @@ class TestPostSummaryAccounting:
         expected = int(ent.get("max_output_tokens_feed") or 500)
         assert len(fake_grok) == 1
         assert fake_grok[0]["max_tokens"] == expected
+
+    def test_cache_hit_logs_nothing_and_skips_the_model(self, mysql_dsn, fake_grok):
+        from backend.services.post_summary import generate_post_summary
+
+        make_user("alice", subscription="premium", created_at=days_ago(60))
+        cid = make_community("Cache Club", creator_username="alice")
+        _join_community("alice", cid)
+        post_id = _make_post(cid, "alice", "Hot thread", ["r1", "r2"])
+
+        first, _ = generate_post_summary("alice", post_id)
+        assert first["cached"] is False
+
+        # Second viewer: same summary, no second model call, no second row.
+        make_user("bob", subscription="premium", created_at=days_ago(60))
+        _join_community("bob", cid)
+        second, status = generate_post_summary("bob", post_id)
+
+        assert status == 200
+        assert second["cached"] is True
+        assert second["summary"] == first["summary"]
+        assert len(fake_grok) == 1
+        assert len(_usage_rows()) == 1  # only the generation logged
+
+    def test_new_reply_invalidates_the_cache(self, mysql_dsn, fake_grok):
+        from backend.services.post_summary import generate_post_summary
+
+        make_user("alice", subscription="premium", created_at=days_ago(60))
+        cid = make_community("Fresh Club", creator_username="alice")
+        _join_community("alice", cid)
+        post_id = _make_post(cid, "alice", "Evolving thread", ["r1"])
+
+        generate_post_summary("alice", post_id)
+        ph = get_sql_placeholder()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"INSERT INTO replies (post_id, community_id, username, content) VALUES ({ph}, {ph}, {ph}, {ph})",
+                (post_id, cid, "alice", "late reply"),
+            )
+            conn.commit()
+
+        body, _ = generate_post_summary("alice", post_id)
+        assert body["cached"] is False  # reply count changed the key
+        assert len(fake_grok) == 2
+
+    def test_kill_switch_disables_the_surface(self, mysql_dsn, fake_grok):
+        from backend.services.post_summary import generate_post_summary
+        from tests.fixtures import kb_override_field
+
+        kb_override_field("post-summary", "post_summary_enabled", False, field_type="boolean")
+        make_user("alice", subscription="premium", created_at=days_ago(60))
+        cid = make_community("Dark Club", creator_username="alice")
+        _join_community("alice", cid)
+        post_id = _make_post(cid, "alice", "Should not summarize")
+
+        body, status = generate_post_summary("alice", post_id)
+
+        assert status == 503
+        assert fake_grok == []
+        assert _usage_rows() == []
+
+    def test_daily_backstop_blocks_after_cap(self, mysql_dsn, fake_grok):
+        from backend.services.post_summary import generate_post_summary
+        from tests.fixtures import kb_override_field
+
+        kb_override_field("post-summary", "calls_per_user_per_24h", 1)
+        make_user("alice", subscription="premium", created_at=days_ago(60))
+        cid = make_community("Backstop Club", creator_username="alice")
+        _join_community("alice", cid)
+        first_post = _make_post(cid, "alice", "First thread")
+        second_post = _make_post(cid, "alice", "Second thread")
+
+        ok_body, ok_status = generate_post_summary("alice", first_post)
+        assert ok_status == 200
+
+        blocked_body, blocked_status = generate_post_summary("alice", second_post)
+
+        assert blocked_status != 200
+        assert blocked_body.get("reason") == "daily_cap"
+        assert len(fake_grok) == 1  # second call never reached the model
+        rows = _usage_rows()
+        blocked_rows = [r for r in rows if not int(r["success"])]
+        assert len(blocked_rows) == 1
+        assert blocked_rows[0]["reason_blocked"] == "daily_cap"
 
     def test_upstream_error_logs_failed_row(self, mysql_dsn, fake_grok, monkeypatch):
         import openai

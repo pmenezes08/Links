@@ -40,6 +40,11 @@ import {
 import EditableAISummary from '../components/EditableAISummary'
 import GifPicker from '../components/GifPicker'
 import FeedBottomNav from '../components/FeedBottomNav'
+import AskSteveEntry from '../components/feed/AskSteveEntry'
+import SteveSummarySheet from '../components/steve/SteveSummarySheet'
+import { SteveGlyph } from '../components/steve/SteveMark'
+import { hasSummary } from '../components/steve/steveSummaryStore'
+import { postQualifiesForSummary, useSteveSummaryConfig } from '../components/steve/useSteveSummaryConfig'
 import { SkeletonFeedList } from '../components/SkeletonRow'
 import { resolveCommunityBackgroundUrl } from '../utils/communityBackgroundUrl'
 import { NativeActionButton } from '../components/NativeActionButton'
@@ -3047,6 +3052,10 @@ export default function CommunityFeed() {
             />
           )}
 
+            {/* Ask Steve entry — top-of-feed, scrolls away with content.
+                Hidden unless this community is networking-eligible. */}
+            {community_id && <AskSteveEntry communityId={community_id} />}
+
             {/* Feed items */}
             {feedPosts.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 px-4">
@@ -4388,10 +4397,8 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
   const [linkDisplayName, setLinkDisplayName] = useState('')
   const [showMoreMenu, setShowMoreMenu] = useState<number | null>(null)
   const [mediaCarouselIndex, setMediaCarouselIndex] = useState(0)
-  const [showSummaryModal, setShowSummaryModal] = useState(false)
-  const [summaryLoading, setSummaryLoading] = useState(false)
-  const [summaryText, setSummaryText] = useState<string | null>(null)
-  const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [summarySheetOpen, setSummarySheetOpen] = useState(false)
+  const summaryConfig = useSteveSummaryConfig()
   const [steveWelcomeExpanded, setSteveWelcomeExpanded] = useState(false)
   
   const parsedMediaPaths = useMemo((): MediaItem[] => {
@@ -4423,35 +4430,6 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
     document.addEventListener('click', handleClickOutside)
     return () => document.removeEventListener('click', handleClickOutside)
   }, [showMoreMenu])
-  
-  // Fetch post summary from AI
-  const fetchSummary = async () => {
-    setSummaryLoading(true)
-    setSummaryError(null)
-    setSummaryText(null)
-    setShowSummaryModal(true)
-    
-    try {
-      const response = await fetch(`/api/post/${post.id}/summary`, {
-        credentials: 'include',
-        headers: { 'Accept': 'application/json' }
-      })
-      const data = await entitlementsHandler.handleResponse<{ success?: boolean; summary?: string; error?: string }>(response)
-      if (!data) {
-        setShowSummaryModal(false)
-        return
-      }
-      if (data.success) {
-        setSummaryText(data.summary || null)
-      } else {
-        setSummaryError(data.error || t('feed.summary_failed'))
-      }
-    } catch {
-      setSummaryError(t('errors.network'))
-    } finally {
-      setSummaryLoading(false)
-    }
-  }
   
   const [replyText, setReplyText] = useState('')
   const [replyGif, setReplyGif] = useState<GifSelection | null>(null)
@@ -4901,14 +4879,14 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
                     >
                       <button
                         className="w-full px-4 py-3 text-left text-sm text-c-text-primary hover:bg-c-hover-bg flex items-center gap-3"
-                        onClick={(e) => { 
+                        onClick={(e) => {
                           e.stopPropagation()
                           setShowMoreMenu(null)
-                          fetchSummary()
+                          setSummarySheetOpen(true)
                         }}
                       >
-                        <i className="fa-solid fa-wand-magic-sparkles text-cpoint-turquoise w-4" />
-                        {t('feed.summary')}
+                        <SteveGlyph size={15} className="text-cpoint-turquoise w-4" />
+                        {t('feed.steve_summary')}
                       </button>
                       <button
                         className="w-full px-4 py-3 text-left text-sm text-c-text-primary hover:bg-c-hover-bg flex items-center gap-3"
@@ -5352,7 +5330,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
             </div>
             <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> onToggleReaction(post.id, 'thumbs-up')} />
             <ReactionFA icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> onToggleReaction(post.id, 'thumbs-down')} />
-            <button className="px-2 py-1 rounded-full text-c-text-tertiary hover:text-c-text-primary" title={t('feed.view_reactions')} onClick={(e)=> { 
+            <button className="px-2 py-1 rounded-full text-c-text-tertiary hover:text-c-text-primary" title={t('feed.view_reactions')} onClick={(e)=> {
               e.stopPropagation()
               if (onOpenReactions) {
                 onOpenReactions()
@@ -5360,6 +5338,19 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
             }}>
               <i className="fa-solid fa-users" />
             </button>
+            {/* Steve summary glyph — only on threads worth summarizing
+                (KB-tunable threshold), never on Steve's own posts. Quiet
+                turquoise once a summary exists for this session. */}
+            {post.username !== 'steve' && postQualifiesForSummary(summaryConfig, post) && (
+              <button
+                className={`px-2 py-1 rounded-full ${hasSummary(post.id) ? 'text-cpoint-turquoise' : 'text-c-text-tertiary hover:text-c-text-primary'}`}
+                title={t('feed.steve_summary')}
+                aria-label={t('feed.steve_summary')}
+                onClick={(e)=> { e.stopPropagation(); setSummarySheetOpen(true) }}
+              >
+                <SteveGlyph size={15} />
+              </button>
+            )}
             <button className="ml-auto px-2.5 py-1 rounded-full text-c-text-secondary"
               onClick={(e)=> { e.stopPropagation(); onOpen() }}>
               <i className="fa-regular fa-comment" />
@@ -5800,64 +5791,9 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
         </div>
       )}
       
-      {/* Summary Modal */}
-      {showSummaryModal && (
-        <div 
-          className="fixed inset-0 z-[1002] flex items-center justify-center bg-black/70 p-4"
-          onClick={() => setShowSummaryModal(false)}
-        >
-          <div 
-            className="bg-c-bg-app rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden border border-c-border shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-c-border">
-              <div className="flex items-center gap-2">
-                <i className="fa-solid fa-wand-magic-sparkles text-cpoint-turquoise" />
-                <span className="font-semibold text-c-text-primary">{t('feed.steve_summary')}</span>
-              </div>
-              <button 
-                className="text-c-text-tertiary hover:text-c-text-primary p-1"
-                onClick={() => setShowSummaryModal(false)}
-              >
-                <i className="fa-solid fa-xmark text-lg" />
-              </button>
-            </div>
-            
-            {/* Content */}
-            <div className="p-4 overflow-y-auto max-h-[60vh]">
-              {summaryLoading && (
-                <div className="flex flex-col items-center justify-center py-8 gap-3">
-                  <div className="w-8 h-8 border-2 border-cpoint-turquoise border-t-transparent rounded-full animate-spin" />
-                  <span className="text-c-text-secondary text-sm">{t('feed.steve_summary_loading')}</span>
-                </div>
-              )}
-              
-              {summaryError && (
-                <div className="text-red-400 text-sm text-center py-4">
-                  <i className="fa-solid fa-exclamation-circle mr-2" />
-                  {summaryError}
-                </div>
-              )}
-              
-              {summaryText && !summaryLoading && (
-                <div className="text-c-text-primary text-[15px] leading-relaxed whitespace-pre-wrap">
-                  {summaryText}
-                </div>
-              )}
-            </div>
-            
-            {/* Footer */}
-            <div className="px-4 py-3 border-t border-c-border">
-              <button
-                className="w-full py-2.5 rounded-xl bg-cpoint-turquoise text-black font-medium hover:brightness-110"
-                onClick={() => setShowSummaryModal(false)}
-              >
-                {t('common.close')}
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Steve summary sheet */}
+      {summarySheetOpen && (
+        <SteveSummarySheet postId={post.id} onClose={() => setSummarySheetOpen(false)} />
       )}
     </div>
   )

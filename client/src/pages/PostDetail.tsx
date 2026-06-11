@@ -16,6 +16,8 @@ import VideoEmbed from '../components/VideoEmbed'
 import LinkPreview, { feedPostLinkPreviewUrls } from '../components/LinkPreview'
 import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
 import EditableAISummary from '../components/EditableAISummary'
+import SteveSummarySheet from '../components/steve/SteveSummarySheet'
+import { SteveGlyph } from '../components/steve/SteveMark'
 import { clearDeviceCache, readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
 import { renderRichText } from '../utils/linkUtils'
 import { isVideoAttachmentPath } from '../utils/replyMedia'
@@ -273,10 +275,7 @@ export default function PostDetail(){
   const [showReportModal, setShowReportModal] = useState(false)
   const [showBlockModal, setShowBlockModal] = useState(false)
   const [showMoreMenu, setShowMoreMenu] = useState(false)
-  const [showSummaryModal, setShowSummaryModal] = useState(false)
-  const [summaryLoading, setSummaryLoading] = useState(false)
-  const [summaryText, setSummaryText] = useState<string | null>(null)
-  const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [summarySheetOpen, setSummarySheetOpen] = useState(false)
   const [reportReason, setReportReason] = useState('')
   const [reportDetails, setReportDetails] = useState('')
   const [reportSubmitting, setReportSubmitting] = useState(false)
@@ -348,36 +347,6 @@ export default function PostDetail(){
       document.removeEventListener('click', handleClickOutside)
     }
   }, [showMoreMenu])
-
-  // Fetch post summary from AI
-  const fetchSummary = async () => {
-    if (!post) return
-    setSummaryLoading(true)
-    setSummaryError(null)
-    setSummaryText(null)
-    setShowSummaryModal(true)
-    
-    try {
-      const response = await fetch(`/api/post/${post.id}/summary`, {
-        credentials: 'include',
-        headers: { 'Accept': 'application/json' }
-      })
-      const data = await entitlementsHandler.handleResponse<{ success?: boolean; summary?: string; error?: string }>(response)
-      if (!data) {
-        setShowSummaryModal(false)
-        return
-      }
-      if (data.success) {
-        setSummaryText(data.summary || null)
-      } else {
-        setSummaryError(data.error || 'Failed to generate summary')
-      }
-    } catch {
-      setSummaryError('Network error. Please try again.')
-    } finally {
-      setSummaryLoading(false)
-    }
-  }
 
   useLayoutEffect(() => {
     if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return
@@ -1730,18 +1699,20 @@ export default function PostDetail(){
                   </button>
                   {showMoreMenu && (
                     <div className="absolute right-0 top-8 z-50 w-44 bg-c-bg-surface border border-c-border rounded-xl shadow-xl overflow-hidden">
+                      {!isGroupPost && (
+                      <>
+                      {/* Summary is community-post only: the endpoint reads the
+                          posts table, so a group-post id would hit the wrong row. */}
                       <button
                         className="w-full px-4 py-3 text-left text-sm text-c-text-primary hover:bg-c-hover-bg flex items-center gap-3"
                         onClick={() => {
                           setShowMoreMenu(false)
-                          fetchSummary()
+                          setSummarySheetOpen(true)
                         }}
                       >
-                        <i className="fa-solid fa-wand-magic-sparkles text-teal-400 w-4" />
-                        {t('feed.summary')}
+                        <SteveGlyph size={15} className="text-cpoint-turquoise w-4" />
+                        {t('feed.steve_summary')}
                       </button>
-                      {!isGroupPost && (
-                      <>
                       <button
                         className="w-full px-4 py-3 text-left text-sm text-c-text-primary hover:bg-c-hover-bg flex items-center gap-3"
                         onClick={() => {
@@ -2008,8 +1979,20 @@ export default function PostDetail(){
               <Reaction icon="fa-regular fa-heart" count={post.reactions?.['heart']||0} active={post.user_reaction==='heart'} onClick={()=> toggleReaction('heart')} />
               <Reaction icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> toggleReaction('thumbs-up')} />
               <Reaction icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> toggleReaction('thumbs-down')} />
+              {/* Steve summary — community posts only (the endpoint reads the
+                  posts table) and never on Steve's own posts. */}
+              {!isGroupPost && post.username !== 'steve' && (
+                <button
+                  className={`px-2 py-1 rounded ${summarySheetOpen ? 'text-cpoint-turquoise' : 'text-c-text-tertiary hover:text-c-text-primary hover:bg-c-hover-bg'} transition-colors`}
+                  title={t('feed.steve_summary')}
+                  aria-label={t('feed.steve_summary')}
+                  onClick={() => setSummarySheetOpen(true)}
+                >
+                  <SteveGlyph size={15} />
+                </button>
+              )}
               {/* View count - opens viewers/reactors modal */}
-              <button 
+              <button
                 className="ml-auto flex items-center gap-1 px-2 py-1 rounded text-c-text-tertiary hover:text-c-text-primary hover:bg-c-hover-bg transition-colors"
                 onClick={openReactorsModal}
                 title={t('feed.view_reactions_viewers')}
@@ -2761,64 +2744,9 @@ export default function PostDetail(){
         </div>
       )}
 
-      {/* Summary Modal */}
-      {showSummaryModal && (
-        <div 
-          className="fixed inset-0 z-[1002] flex items-center justify-center bg-black/70 p-4"
-          onClick={() => setShowSummaryModal(false)}
-        >
-          <div 
-            className="bg-c-bg-surface rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden border border-c-border shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-c-border">
-              <div className="flex items-center gap-2">
-                <i className="fa-solid fa-wand-magic-sparkles text-teal-400" />
-                <span className="font-semibold text-c-text-primary">{t('feed.steve_summary')}</span>
-              </div>
-              <button 
-                className="text-c-text-tertiary hover:text-c-text-primary p-1"
-                onClick={() => setShowSummaryModal(false)}
-              >
-                <i className="fa-solid fa-xmark text-lg" />
-              </button>
-            </div>
-            
-            {/* Content */}
-            <div className="p-4 overflow-y-auto max-h-[60vh]">
-              {summaryLoading && (
-                <div className="flex flex-col items-center justify-center py-8 gap-3">
-                  <div className="w-8 h-8 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-c-text-tertiary text-sm">{t('feed.steve_summary_loading')}</span>
-                </div>
-              )}
-              
-              {summaryError && (
-                <div className="text-red-400 text-sm text-center py-4">
-                  <i className="fa-solid fa-exclamation-circle mr-2" />
-                  {summaryError}
-                </div>
-              )}
-              
-              {summaryText && !summaryLoading && (
-                <div className="text-c-text-primary text-[15px] leading-relaxed whitespace-pre-wrap">
-                  {summaryText}
-                </div>
-              )}
-            </div>
-            
-            {/* Footer */}
-            <div className="px-4 py-3 border-t border-c-border">
-              <button
-                className="w-full py-2.5 rounded-xl bg-cpoint-turquoise text-black font-medium hover:brightness-110"
-                onClick={() => setShowSummaryModal(false)}
-              >
-                {t('common.close')}
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Steve summary sheet */}
+      {summarySheetOpen && post && (
+        <SteveSummarySheet postId={post.id} onClose={() => setSummarySheetOpen(false)} />
       )}
 
     </div>

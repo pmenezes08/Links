@@ -1235,6 +1235,41 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 "Do not use non-reasoning models for KB synthesis, query planning, or final recommendations."
             ),
         },
+        {
+            "slug": "post-summary",
+            "title": "Post Summaries",
+            "category": "ai",
+            "icon": "fa-list-check",
+            "description": "Steve post-summary surface: kill switch, affordance thresholds, cache, and abuse backstop.",
+            "sort_order": 21,
+            "fields": [
+                {"name": "post_summary_enabled", "label": "Post summaries enabled", "type": "boolean", "value": True,
+                 "help": "Master kill switch for the tap-to-summarize surface (the API and the feed affordance)."},
+                {"name": "min_replies_for_affordance", "label": "Min replies to show the affordance", "type": "integer", "value": 5,
+                 "help": "Below this the Steve glyph stays out of the action row (the ⋯ menu entry remains). A summary of a 2-reply post embarrasses Steve."},
+                {"name": "min_thread_chars_for_affordance", "label": "Min thread characters to show the affordance", "type": "integer", "value": 600,
+                 "help": "Alternative trigger: long posts qualify even with few replies."},
+                {"name": "cache_ttl_seconds", "label": "Summary cache TTL (seconds)", "type": "integer", "value": 21600,
+                 "help": "A summary is viewer-independent, so one generation serves every member. New replies invalidate via the cache key."},
+                {"name": "calls_per_user_per_24h", "label": "Generations / user / 24h backstop", "type": "integer", "value": 50,
+                 "help": "Abuse backstop independent of the general Steve caps. Cache hits do not count."},
+                {"name": "summary_model", "label": "Summary model", "type": "enum",
+                 "allowed_values": ["grok-4.20-non-reasoning", "grok-4.3"],
+                 "value": "grok-4.20-non-reasoning",
+                 "help": "Fast model is fine: bounded input, 3-5 sentence output."},
+            ],
+            "body": (
+                "# Post summaries\n\n"
+                "Steve summarizes a post plus its replies on demand (the wave-pin glyph on qualifying "
+                "posts; the ⋯ menu on the rest). Calls are authorized against community membership, "
+                "gated through entitlements with surface `post_summary` (credit weight in "
+                "`internal_weights`), and logged to `ai_usage_log`. Summaries are cached per "
+                "post + reply-count, so members are only debited when a generation actually runs; "
+                "cache hits are free and instant.\n\n"
+                "The summary mirrors the language of the discussion itself (not the viewer's locale), "
+                "which is what makes one cached summary correct for every member."
+            ),
+        },
 
         # ── Pricing ─────────────────────────────────────────────────
         {

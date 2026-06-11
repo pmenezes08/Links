@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import SteveAvatar from '../steve/SteveAvatar'
+
 const PHASE_STILL_MS = 8_000
 const PHASE_LONGER_MS = 20_000
 const PHASE_UNUSUAL_MS = 45_000
@@ -46,9 +48,7 @@ export default function SteveTypingIndicator({ active }: SteveTypingIndicatorPro
 
   return (
     <div className="flex items-center gap-3 px-3 py-2 mb-2">
-      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cpoint-turquoise to-[#26a69a] flex items-center justify-center flex-shrink-0">
-        <span className="text-white text-xs font-bold">S</span>
-      </div>
+      <SteveAvatar size={32} />
       <div className="bg-c-active-bg rounded-2xl rounded-bl-lg px-4 py-2">
         <div className="flex items-center gap-1">
           <span className="text-c-text-secondary text-sm">{label}</span>

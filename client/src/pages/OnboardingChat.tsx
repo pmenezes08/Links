@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
 import { FixedComposerShell } from '../components/FixedComposerShell'
 import BrandLogo from '../components/BrandLogo'
+import SteveAvatar from '../components/steve/SteveAvatar'
 import {
   STEVE_REPLY_DELAY_BASE_MS,
   STEVE_REPLY_DELAY_PER_CHAR_MS,
@@ -2288,9 +2289,7 @@ export default function OnboardingChat({
             <BrandLogo className="w-8 h-8 rounded-lg object-contain" />
           </div>
           <div className="w-full flex items-center gap-3 pb-2">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-cpoint-turquoise to-[#2a7a72] flex items-center justify-center text-[10px] font-bold text-black shrink-0">
-              S
-            </div>
+            <SteveAvatar size={28} />
             <div className="flex-1 min-w-0">
               <div className="text-xs font-semibold text-c-text-primary">{oc(t, 'ui.steve')}</div>
             </div>
@@ -2326,9 +2325,7 @@ export default function OnboardingChat({
             <div key={i}>
               {msg.from === 'steve' ? (
                 <div className="flex items-start gap-2.5">
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-cpoint-turquoise to-[#2a7a72] flex items-center justify-center text-[10px] font-bold text-black shrink-0 mt-0.5">
-                    S
-                  </div>
+                  <SteveAvatar size={28} className="mt-0.5" />
                   <div className="max-w-[85%] space-y-2">
                     <div className="bg-c-bg-surface border border-c-border rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-[13px] text-c-text-secondary leading-relaxed whitespace-pre-line">
                       {msg.text}
@@ -2546,9 +2543,7 @@ export default function OnboardingChat({
           {/* Typing indicator */}
           {(isTyping || enriching) && (
             <div className="flex items-start gap-2.5">
-              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-cpoint-turquoise to-[#2a7a72] flex items-center justify-center text-[10px] font-bold text-black shrink-0 mt-0.5">
-                S
-              </div>
+              <SteveAvatar size={28} className="mt-0.5" />
               <div className="bg-c-bg-surface border border-c-border rounded-2xl rounded-tl-sm px-4 py-3">
                 {bioDraftingKind && (
                   <div className="mb-2 text-[12px] font-medium text-c-text-secondary">

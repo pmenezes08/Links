@@ -315,6 +315,7 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/stripe/create_checkout_session` | POST | `api_stripe_create_checkout_session` | `backend/blueprints/subscriptions.py:1477` | api stripe create checkout session | `client/src/pages/SubscriptionPlans.test.tsx` (1), `client/src/pages/SubscriptionPlans.tsx` (1) |
 | `/api/summaries/voice/preflight` | POST | `voice_summary_preflight` | `backend/blueprints/summaries.py:31` | voice summary preflight | *(no exact string match — may use helpers)* |
 | `/api/post/<int:post_id>/summary` | GET | `post_summary` | `backend/blueprints/summaries.py:82` | post summary | *(no exact string match — may use helpers)* |
+| `/api/post_summary/config` | GET | `post_summary_config` | `backend/blueprints/summaries.py:95` | post summary config | `client/src/components/steve/useSteveSummaryConfig.ts` (1) |
 | `/get_links` | GET (default) | `get_links` | `backend/blueprints/useful_resources.py:41` | get links | `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/GroupFeed.tsx` (1), `client/src/pages/UsefulLinks.tsx` (1) |
 | `/add_link` | POST | `add_link` | `backend/blueprints/useful_resources.py:61` | add link | `client/src/pages/UsefulLinks.tsx` (1) |
 | `/upload_doc` | POST | `upload_doc` | `backend/blueprints/useful_resources.py:91` | upload doc | `client/src/pages/UsefulLinks.tsx` (1) |
@@ -727,7 +728,7 @@ Total **373** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/api/networking/communities` | GET | `api_networking_communities` | 12636 | api networking communities | `client/src/pages/Networking.tsx` (1) |
+| `/api/networking/communities` | GET | `api_networking_communities` | 12636 | api networking communities | `client/src/pages/Networking.tsx` (1), `client/src/components/feed/AskSteveEntry.tsx` (1) |
 | `/api/networking/community_members/<int:community_id>` | GET | `api_networking_community_members` | 12659 | api networking community members | — |
 | `/api/networking/steve_auto_match` | POST | `api_networking_steve_auto_match` | 13500 | api networking steve auto match | `client/src/pages/Networking.tsx` (1) |
 | `/api/networking/steve_feedback` | POST | `api_steve_feedback` | 13856 | api steve feedback | `client/src/pages/Networking.tsx` (1) |
@@ -1574,7 +1575,7 @@ Total **373** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/networking` | GET | `networking_page` | 5951 | networking page | `client/src/pages/Networking.tsx` (21), `client/src/App.tsx` (1), `client/src/components/DashboardBottomNav.tsx` (1), `client/src/components/pageTransitionUtils.ts` (1) |
+| `/networking` | GET | `networking_page` | 5951 | networking page | `client/src/pages/Networking.tsx` (21), `client/src/components/feed/AskSteveEntry.tsx` (2), `client/src/App.tsx` (1), `client/src/components/DashboardBottomNav.tsx` (1), `client/src/components/pageTransitionUtils.ts` (1) |
 
 ### `/post`
 
