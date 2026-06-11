@@ -13743,9 +13743,22 @@ def api_steve_session_messages(session_id):
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
-            c.execute(f"SELECT id FROM steve_chat_sessions WHERE id = {ph} AND username = {ph}", (session_id, username))
-            if not c.fetchone():
+            c.execute(f"SELECT id, community_id FROM steve_chat_sessions WHERE id = {ph} AND username = {ph}", (session_id, username))
+            row = c.fetchone()
+            if not row:
                 return jsonify({'success': False, 'error': 'Session not found'}), 404
+            session_community_id = row['community_id'] if hasattr(row, 'keys') else row[1]
+            # History-resumption tripwire: a load of anything but the user's
+            # latest session is the signal that would justify promoting Steve
+            # history from a bottom sheet to a dedicated page. Log-only.
+            try:
+                c.execute(f"SELECT MAX(id) AS latest_id FROM steve_chat_sessions WHERE username = {ph} AND community_id = {ph}", (username, session_community_id))
+                latest_row = c.fetchone()
+                latest_id = (latest_row['latest_id'] if hasattr(latest_row, 'keys') else latest_row[0]) if latest_row else None
+                if latest_id is not None and latest_id != session_id:
+                    logger.info(f"networking_history_resume user={username} session={session_id} community={session_community_id}")
+            except Exception:
+                pass
             c.execute(f"SELECT role, text FROM steve_chat_messages WHERE session_id = {ph} ORDER BY id ASC", (session_id,))
             messages = []
             for r in c.fetchall():
@@ -13766,7 +13779,7 @@ def api_steve_session_messages(session_id):
                     }
             except Exception:
                 pass
-            return jsonify({'success': True, 'messages': messages, 'feedback': feedback})
+            return jsonify({'success': True, 'messages': messages, 'feedback': feedback, 'community_id': session_community_id})
     except Exception as e:
         logger.error(f"Error loading steve session messages: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Failed to load messages'}), 500

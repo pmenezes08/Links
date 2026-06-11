@@ -45,6 +45,7 @@ Stack (from [`client/src/index.css`](../client/src/index.css)):
 | `PAGE_TRANSITION_MS` | 250ms | Push/pop route transitions (chat threads) |
 | `CHAT_KEYBOARD_ANIMATION_MS` | 250ms | Composer / list inset smoothing |
 | `CPOINT_EASE_OUT` | `cubic-bezier(0.32, 0.72, 0, 1)` | Native-style deceleration |
+| `STEVE_THINKING_SEARCHING_MS` / `_NARROWING_MS` / `_LONG_MS` | 2.5s / 7s / 14s | Networking "Steve is thinking" staged wait line — advance-only, labels crossfade at `TAB_CROSSFADE_MS`, fixed-height so the page scroller never jitters. Recalibrate from `ai_usage_log.response_time_ms`, never by feel; copy must not claim progress the client can't know. |
 
 Chat surfaces must not add decorative bubble entrance animations. Layout motion only (keyboard, inset, page stack).
 

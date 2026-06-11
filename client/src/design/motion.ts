@@ -32,3 +32,15 @@ export const STEVE_REPLY_DELAY_MIN_MS = 350
 export const STEVE_REPLY_DELAY_MAX_MS = 1100
 export const STEVE_REPLY_DELAY_JITTER_MS = 120
 export const STEVE_REPLY_BURST_DISCOUNT = 0.6
+
+/**
+ * Networking "Steve is thinking" staged status — elapsed-ms thresholds at
+ * which the wait line advances. The match pipeline is a single non-streamed
+ * call (planner → retrieval → fusion → answer, ~8-15s warm), so these are
+ * client-timed and advance-only: the copy never claims completion or
+ * progress it cannot know. Recalibrate from ai_usage_log.response_time_ms
+ * percentiles, not by feel.
+ */
+export const STEVE_THINKING_SEARCHING_MS = 2_500
+export const STEVE_THINKING_NARROWING_MS = 7_000
+export const STEVE_THINKING_LONG_MS = 14_000

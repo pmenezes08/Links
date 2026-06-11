@@ -4,21 +4,14 @@ import { useComposerKeyboardLift } from '../hooks/useComposerKeyboardLift'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import MatchesSheet from '../components/networking/MatchesSheet'
-import { useNavigate } from 'react-router-dom'
+import HistorySheet from '../components/networking/HistorySheet'
+import SteveEmptyState from '../components/networking/SteveEmptyState'
+import SteveThinking from '../components/networking/SteveThinking'
+import SteveDebugModal, { type DebugTabKey, type SteveDebugTrace } from '../components/networking/SteveDebugModal'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
 import { useNetwork } from '../contexts/NetworkContext'
 import { CHAT_KEYBOARD_ANIMATION_MS, CPOINT_EASE_OUT } from '../design/motion'
-
-/** First-person suggestion asks shown on an empty Steve thread — sent
- * verbatim as the member's message, so each one is a real retrieval
- * query, not a category label. Auto-match renders as row 1 separately. */
-const SUGGESTION_KEYS = [
-  'networking.suggest_mentor',
-  'networking.suggest_cofounder',
-  'networking.suggest_investors',
-  'networking.suggest_clients',
-  'networking.suggest_nearby',
-] as const
 
 type Community = { id: number; name: string }
 type MemberProfile = {
@@ -34,22 +27,6 @@ type MemberProfile = {
   bio?: string | null
 }
 type FilterOptions = { locations: string[]; industries: string[]; interests: string[] }
-type SteveDebugTrace = {
-  planner?: Record<string, unknown>
-  retrieval?: Record<string, unknown>
-  fusion?: Record<string, unknown>
-  context?: Record<string, unknown>
-  final_answer?: Record<string, unknown>
-}
-
-const DEBUG_TABS = [
-  { key: 'planner', labelKey: 'networking.debug.tab_planner' },
-  { key: 'retrieval', labelKey: 'networking.debug.tab_retrieval' },
-  { key: 'fusion', labelKey: 'networking.debug.tab_fusion' },
-  { key: 'context', labelKey: 'networking.debug.tab_context' },
-  { key: 'final_answer', labelKey: 'networking.debug.tab_final' },
-] as const
-type DebugTabKey = (typeof DEBUG_TABS)[number]['key']
 
 const SECTION_DEFINITIONS = [
   { key: 'steve' },
@@ -79,85 +56,21 @@ function profileFieldLabel(id: ProfileFieldId, t: (key: string) => string): stri
 /** Sends enough turns for backend NETWORKING_GROK_PRIOR_MESSAGES_CAP (30). */
 const NETWORKING_CHAT_HISTORY_SEND_CAP = 50
 
-function DebugJsonBlock({ data }: { data: unknown }) {
-  return (
-    <pre className="max-h-[58vh] overflow-auto whitespace-pre-wrap rounded-xl border border-c-border bg-c-bg-app/70 p-3 text-[11px] leading-relaxed text-c-text-secondary">
-      {JSON.stringify(data ?? {}, null, 2)}
-    </pre>
-  )
-}
-
-function SteveDebugModal({
-  trace,
-  activeTab,
-  onTabChange,
-  onClose,
-}: {
-  trace: SteveDebugTrace
-  activeTab: DebugTabKey
-  onTabChange: (tab: DebugTabKey) => void
-  onClose: () => void
-}) {
-  const { t } = useTranslation()
-  return (
-    <div className="fixed inset-0 z-[80] bg-c-bg-overlay backdrop-blur-sm px-3 py-6" role="dialog" aria-modal="true" aria-label={t('networking.debug.modal_aria')}>
-      <div className="mx-auto flex max-h-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-cpoint-turquoise/25 bg-c-bg-elevated shadow-2xl">
-        <div className="flex items-start justify-between gap-3 border-b border-c-border p-4">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cpoint-turquoise">{t('networking.debug.staging_label')}</p>
-            <h2 className="mt-1 text-lg font-semibold text-c-text-primary">{t('networking.debug.title')}</h2>
-            <p className="mt-1 text-xs text-c-text-tertiary">{t('networking.debug.subtitle')}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-c-border px-3 py-1.5 text-xs text-c-text-secondary hover:border-c-border-strong"
-          >
-            {t('networking.debug.close')}
-          </button>
-        </div>
-        <div className="flex flex-wrap gap-2 border-b border-c-border p-3">
-          {DEBUG_TABS.map(tab => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => onTabChange(tab.key)}
-              className={`rounded-full border px-3 py-1.5 text-xs transition ${activeTab === tab.key ? 'border-cpoint-turquoise/60 bg-cpoint-turquoise/10 text-cpoint-turquoise' : 'border-c-border text-c-text-secondary hover:border-c-border-strong'}`}
-            >
-              {t(tab.labelKey)}
-            </button>
-          ))}
-        </div>
-        <div className="overflow-auto p-4">
-          <DebugJsonBlock data={trace[activeTab]} />
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/** Steve empty-thread welcome — his question leads, the member count is the
- * proof, and the prompt chips below replace the old read-then-retype list. */
-function SteveWelcomeCopy({ communityName, activeMemberCount }: { communityName: string; activeMemberCount: number }) {
-  const { t } = useTranslation()
-  return (
-    <div className="space-y-2 text-[14px] leading-relaxed text-c-text-secondary">
-      <p className="text-base font-semibold text-c-text-primary">{t('networking.welcome_prompt_bold')}</p>
-      <p>
-        {t(activeMemberCount === 1 ? 'networking.welcome_members_one' : 'networking.welcome_members_other', {
-          community: communityName,
-          count: activeMemberCount,
-        })}
-      </p>
-    </div>
-  )
-}
-
 export default function Networking() {
   const { t } = useTranslation()
   const { setTitle } = useHeader()
   const navigate = useNavigate()
   const { isOnline } = useNetwork()
+  const [searchParams, setSearchParams] = useSearchParams()
+  // ?session=<id>&community=<id> restore: read once on mount; both must be
+  // present so a multi-network member's session never loads under the wrong
+  // community selector. Invalid/foreign ids fall back silently to latest.
+  const pendingUrlSessionRef = useRef<number | null>(
+    /^\d+$/.test(searchParams.get('session') || '') ? Number(searchParams.get('session')) : null,
+  )
+  const pendingUrlCommunityRef = useRef<number | null>(
+    /^\d+$/.test(searchParams.get('community') || '') ? Number(searchParams.get('community')) : null,
+  )
   useEffect(() => { setTitle(t('networking.page_title')) }, [setTitle, t])
 
   const [activeSection, setActiveSection] = useState<SectionKey>('steve')
@@ -176,9 +89,8 @@ export default function Networking() {
   const steveEndRef = useRef<HTMLDivElement>(null)
   const [steveSessionId, setSteveSessionId] = useState<number | null>(null)
   const [steveSessions, setSteveSessions] = useState<Array<{ id: number; created_at: string; first_message: string }>>([])
-  const [showSessionList, setShowSessionList] = useState(false)
+  const [historySheetOpen, setHistorySheetOpen] = useState(false)
   const [sessionsLoading, setSessionsLoading] = useState(false)
-  const [deletingSessionId, setDeletingSessionId] = useState<number | null>(null)
   const [steveFeedback, setSteveFeedback] = useState<Record<string, { feedback: 'up' | 'down'; reasoning?: string }>>({})
   const [steveMembers, setSteveMembers] = useState<MemberProfile[]>([])
   const [steveMemberCount, setSteveMemberCount] = useState<number | null>(null)
@@ -191,8 +103,6 @@ export default function Networking() {
   const [lastSteveDebugTrace, setLastSteveDebugTrace] = useState<SteveDebugTrace | null>(null)
   const [showDebugModal, setShowDebugModal] = useState(false)
   const [debugTab, setDebugTab] = useState<DebugTabKey>('planner')
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const longPressActiveRef = useRef(false)
 
   const scrollToBottom = useCallback(() => {
     steveEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -254,7 +164,11 @@ export default function Networking() {
       .then(data => {
         if (data.success && data.communities?.length) {
           setCommunities(data.communities)
-          setSteveCommunity(data.communities[0].id)
+          const urlCommunity = pendingUrlCommunityRef.current
+          const restored = urlCommunity && data.communities.some((c: Community) => c.id === urlCommunity)
+            ? urlCommunity
+            : data.communities[0].id
+          setSteveCommunity(restored)
           setPersonalCommunity(data.communities[0].id)
         }
       })
@@ -282,13 +196,19 @@ export default function Networking() {
       .then(r => r.json())
       .then(data => {
         if (data.success) {
-          setSteveSessions(data.sessions || [])
-          if (openLatest && data.sessions?.length > 0) {
-            const latest = data.sessions[0]
-            setSteveSessionId(latest.id)
+          const sessions = data.sessions || []
+          setSteveSessions(sessions)
+          // URL restore wins over auto-open-latest, once, when valid.
+          const pending = pendingUrlSessionRef.current
+          pendingUrlSessionRef.current = null
+          const target = pending && sessions.some((s: { id: number }) => s.id === pending)
+            ? pending
+            : openLatest && sessions.length > 0 ? sessions[0].id : null
+          if (target) {
+            setSteveSessionId(target)
             setLastSteveDebugTrace(null)
             setShowDebugModal(false)
-            fetch(`/api/networking/steve_session/${latest.id}/messages`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
+            fetch(`/api/networking/steve_session/${target}/messages`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
               .then(r => r.json())
               .then(d => { if (d.success) setSteveMessages(d.messages || []) })
               .catch(() => {})
@@ -307,6 +227,27 @@ export default function Networking() {
   useEffect(() => {
     if (steveCommunity) loadSessions(steveCommunity)
   }, [steveCommunity, loadSessions])
+
+  // Mirror the active thread into ?session/?community so refresh and
+  // deep-links restore what's on screen. Always replace, never push —
+  // hardware back must leave /networking, not walk through session
+  // switches (Capacitor WebView back-trap). Ref dodges the unstable
+  // setSearchParams identity across navigations.
+  const setSearchParamsRef = useRef(setSearchParams)
+  useEffect(() => { setSearchParamsRef.current = setSearchParams })
+  useEffect(() => {
+    setSearchParamsRef.current(params => {
+      const next = new URLSearchParams(params)
+      if (steveSessionId && steveCommunity) {
+        next.set('session', String(steveSessionId))
+        next.set('community', String(steveCommunity))
+      } else {
+        next.delete('session')
+        next.delete('community')
+      }
+      return next
+    }, { replace: true })
+  }, [steveSessionId, steveCommunity])
 
   useEffect(() => {
     if (!steveCommunity) return
@@ -345,7 +286,7 @@ export default function Networking() {
           setSteveFeedback({})
           setLastSteveDebugTrace(null)
           setShowDebugModal(false)
-          setShowSessionList(false)
+          setHistorySheetOpen(false)
           loadSessions(steveCommunity)
         }
       })
@@ -354,7 +295,7 @@ export default function Networking() {
 
   const loadSession = useCallback((sessionId: number) => {
     setSteveSessionId(sessionId)
-    setShowSessionList(false)
+    setHistorySheetOpen(false)
     setLastSteveDebugTrace(null)
     setShowDebugModal(false)
     fetch(`/api/networking/steve_session/${sessionId}/messages`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
@@ -475,14 +416,13 @@ export default function Networking() {
   }, [steveSessionId, steveFeedback])
 
   const deleteSession = useCallback((sessionId: number) => {
-    if (!steveCommunity) return
     fetch(`/api/networking/steve_session/${sessionId}`, {
       method: 'DELETE', credentials: 'include'
     })
       .then(r => r.json())
       .then(data => {
         if (data.success) {
-          setDeletingSessionId(null)
+          setSteveSessions(prev => prev.filter(s => s.id !== sessionId))
           if (steveSessionId === sessionId) {
             setSteveSessionId(null)
             setSteveMessages([])
@@ -490,27 +430,10 @@ export default function Networking() {
             setLastSteveDebugTrace(null)
             setShowDebugModal(false)
           }
-          loadSessions(steveCommunity, { openLatest: false })
         }
       })
       .catch(() => {})
-      .finally(() => setDeletingSessionId(null))
-  }, [steveCommunity, steveSessionId, loadSessions])
-
-  const handleSessionLongPressStart = useCallback((sessionId: number) => {
-    longPressActiveRef.current = false
-    longPressTimerRef.current = setTimeout(() => {
-      longPressActiveRef.current = true
-      setDeletingSessionId(sessionId)
-    }, 600)
-  }, [])
-
-  const handleSessionLongPressEnd = useCallback(() => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current)
-      longPressTimerRef.current = null
-    }
-  }, [])
+  }, [steveSessionId])
 
   const sendSteveMessage = async (overrideText?: string) => {
     const msg = (overrideText ?? steveInput).trim()
@@ -666,7 +589,7 @@ export default function Networking() {
                     setSteveCommunity(Number(e.target.value))
                     setSteveMessages([])
                     setSteveSessionId(null)
-                    setShowSessionList(false)
+                    setHistorySheetOpen(false)
                     setSteveFeedback({})
                     setLastSteveDebugTrace(null)
                     setShowDebugModal(false)
@@ -685,19 +608,18 @@ export default function Networking() {
                   title={t('networking.new_chat')}
                   aria-label={t('networking.new_chat')}
                 >
-                  <i className="fa-solid fa-plus text-sm text-cpoint-turquoise" />
+                  <i className="fa-solid fa-plus text-sm" />
                 </button>
-                <button
-                  onClick={() => setShowSessionList(prev => !prev)}
-                  className={`relative flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-c-hover-bg ${showSessionList ? 'text-cpoint-turquoise' : 'text-c-text-secondary'}`}
-                  title={t('networking.history')}
-                  aria-label={t('networking.history')}
-                >
-                  <i className="fa-solid fa-clock-rotate-left text-sm" />
-                  {steveSessions.length > 0 && (
-                    <span className="absolute right-1 top-1 min-w-[16px] rounded-full bg-c-active-bg px-1 text-center text-[9px] leading-4 text-c-text-tertiary">{steveSessions.length}</span>
-                  )}
-                </button>
+                {steveSessions.length > 0 && (
+                  <button
+                    onClick={() => setHistorySheetOpen(true)}
+                    className="flex h-11 w-11 items-center justify-center rounded-full text-c-text-secondary transition hover:bg-c-hover-bg"
+                    title={t('networking.history')}
+                    aria-label={t('networking.history')}
+                  >
+                    <i className="fa-solid fa-clock-rotate-left text-sm" />
+                  </button>
+                )}
                 {isAppAdmin && (
                   <button
                     type="button"
@@ -723,67 +645,6 @@ export default function Networking() {
               </div>
             </div>
 
-              {/* Session history list */}
-              {showSessionList && (
-                <div className="mx-2 mt-2 rounded-xl border border-c-border bg-c-bg-app/60 p-2 max-h-[200px] overflow-y-auto space-y-1">
-                  {sessionsLoading ? (
-                    <div className="text-xs text-c-text-tertiary py-2 text-center">{t('networking.loading')}</div>
-                  ) : steveSessions.length === 0 ? (
-                    <div className="text-xs text-c-text-tertiary py-2 text-center">{t('networking.no_previous_chats')}</div>
-                  ) : (
-                    steveSessions.map(s => (
-                      <div key={s.id} className="relative">
-                        <button
-                          onClick={() => { if (!longPressActiveRef.current) loadSession(s.id) }}
-                          onTouchStart={() => handleSessionLongPressStart(s.id)}
-                          onTouchEnd={handleSessionLongPressEnd}
-                          onTouchCancel={handleSessionLongPressEnd}
-                          onContextMenu={e => { e.preventDefault(); setDeletingSessionId(s.id) }}
-                          className={`w-full text-left rounded-lg px-3 py-2 text-xs transition select-none ${s.id === steveSessionId ? 'bg-c-active-bg text-c-text-primary' : 'text-c-text-secondary hover:bg-c-hover-bg'}`}
-                        >
-                          <div className="truncate font-medium">{s.first_message || t('networking.session_new_chat')}</div>
-                          <div className="text-[10px] text-c-text-tertiary mt-0.5">{new Date(s.created_at.replace(' ', 'T') + 'Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
-                        </button>
-                        {deletingSessionId === s.id && (
-                          <div
-                            className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-c-bg-overlay border border-red-500/30 backdrop-blur-sm"
-                            onClick={e => e.stopPropagation()}
-                            onPointerDown={e => e.stopPropagation()}
-                            onTouchStart={e => e.stopPropagation()}
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className="text-[11px] text-c-text-secondary">{t('networking.delete_confirm')}</span>
-                              <button
-                                type="button"
-                                onClick={e => {
-                                  e.preventDefault()
-                                  e.stopPropagation()
-                                  deleteSession(s.id)
-                                }}
-                                className="rounded-md bg-red-500/20 border border-red-500/40 px-2.5 py-1 text-[11px] font-medium text-red-400 hover:bg-red-500/30 transition"
-                              >
-                                {t('common.delete')}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={e => {
-                                  e.preventDefault()
-                                  e.stopPropagation()
-                                  setDeletingSessionId(null)
-                                }}
-                                className="rounded-md border border-c-border px-2.5 py-1 text-[11px] font-medium text-c-text-secondary hover:bg-c-hover-bg transition"
-                              >
-                                {t('common.cancel')}
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-
             {/* Conversation — full-bleed; the page scroller is the only
                 scroller (the old bordered box capped the chat at 50vh and
                 created scroll-within-scroll). */}
@@ -794,44 +655,13 @@ export default function Networking() {
                     <p className="text-sm text-c-text-tertiary">{t('networking.loading')}</p>
                   </div>
                 ) : (
-                  <div className="pt-2">
-                    <SteveWelcomeCopy
-                      communityName={communities.find(c => c.id === steveCommunity)?.name ?? t('networking.welcome_community_fallback')}
-                      activeMemberCount={steveMemberCount}
-                    />
-                    <div className="mt-4">
-                      <p className="text-[11px] text-c-text-tertiary">{t('networking.suggestions_lead')}</p>
-                      <div className="mt-1 divide-y divide-c-border-subtle">
-                        <button
-                          type="button"
-                          onClick={triggerAutoMatch}
-                          disabled={steveSending || autoMatching}
-                          className="group flex min-h-[44px] w-full items-center gap-3 text-left transition disabled:opacity-50"
-                        >
-                          <i className="fa-solid fa-wand-magic-sparkles w-3 text-[10px] text-c-text-tertiary transition group-hover:text-cpoint-turquoise" aria-hidden="true" />
-                          <span className="flex-1 truncate text-[13px] text-c-text-secondary transition group-hover:text-c-text-primary">
-                            {t('networking.auto_match_message')}
-                          </span>
-                          <i className="fa-solid fa-chevron-right text-[9px] text-c-text-disabled opacity-0 transition group-hover:opacity-100" aria-hidden="true" />
-                        </button>
-                        {SUGGESTION_KEYS.map(key => (
-                          <button
-                            key={key}
-                            type="button"
-                            onClick={() => void sendSteveMessage(t(key))}
-                            disabled={steveSending || autoMatching}
-                            className="group flex min-h-[44px] w-full items-center gap-3 text-left transition disabled:opacity-50"
-                          >
-                            <i className="fa-solid fa-magnifying-glass w-3 text-[10px] text-c-text-tertiary transition group-hover:text-cpoint-turquoise" aria-hidden="true" />
-                            <span className="flex-1 truncate text-[13px] text-c-text-secondary transition group-hover:text-c-text-primary">
-                              {t(key)}
-                            </span>
-                            <i className="fa-solid fa-chevron-right text-[9px] text-c-text-disabled opacity-0 transition group-hover:opacity-100" aria-hidden="true" />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
+                  <SteveEmptyState
+                    communityName={communities.find(c => c.id === steveCommunity)?.name ?? t('networking.welcome_community_fallback')}
+                    activeMemberCount={steveMemberCount}
+                    disabled={steveSending || autoMatching}
+                    onAutoMatch={triggerAutoMatch}
+                    onSuggestion={text => void sendSteveMessage(text)}
+                  />
                 )
               ) : (
                 steveMessages.map((msg, i) => {
@@ -873,16 +703,7 @@ export default function Networking() {
                   )
                 })
               )}
-              {(steveSending || autoMatching) && (
-                <div className="flex items-center gap-1.5 py-2 text-[13px] text-c-text-tertiary">
-                  <span>{t('networking.steve_thinking')}</span>
-                  <span className="flex gap-0.5">
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cpoint-turquoise" />
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cpoint-turquoise" style={{ animationDelay: '300ms' }} />
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cpoint-turquoise" style={{ animationDelay: '600ms' }} />
-                  </span>
-                </div>
-              )}
+              {(steveSending || autoMatching) && <SteveThinking />}
               <div ref={steveEndRef} />
             </div>
             {/* Spacer for fixed input bar */}
@@ -901,15 +722,6 @@ export default function Networking() {
             }}
           >
             <div className="max-w-3xl mx-auto flex items-center gap-2">
-              <button
-                onClick={triggerAutoMatch}
-                disabled={autoMatching || steveSending || !steveCommunity}
-                className="h-11 w-11 rounded-lg border border-c-border flex items-center justify-center flex-shrink-0 hover:border-c-border-strong disabled:opacity-40 transition"
-                title={t('networking.auto_match_title')}
-                aria-label={t('networking.auto_match_title')}
-              >
-                <i className="fa-solid fa-wand-magic-sparkles text-xs text-cpoint-turquoise" />
-              </button>
               <textarea
                 value={steveInput}
                 onChange={e => { setSteveInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
@@ -920,17 +732,28 @@ export default function Networking() {
                 style={{ maxHeight: 120 }}
                 disabled={steveSending || autoMatching}
               />
+              {/* App-canonical send button (ChatThread spec: 40px paper-plane,
+                  filled states, spinner) inside a transparent 44px hit area. */}
               <button
                 onClick={() => void sendSteveMessage()}
                 disabled={!steveInput.trim() || steveSending || autoMatching}
-                className={`h-11 w-11 rounded-lg flex items-center justify-center flex-shrink-0 disabled:opacity-40 transition ${
-                  steveInput.trim()
-                    ? 'bg-cpoint-turquoise text-black'
-                    : 'border border-c-border text-c-text-primary hover:border-c-border-strong'
-                }`}
+                className="h-11 w-11 flex items-center justify-center flex-shrink-0"
                 aria-label={t('networking.send')}
+                style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
               >
-                <i className="fa-solid fa-arrow-up text-xs" />
+                <span className={`w-10 h-10 rounded-[14px] flex items-center justify-center active:scale-95 ${
+                  steveSending || autoMatching
+                    ? 'bg-c-active-bg text-c-text-tertiary'
+                    : steveInput.trim()
+                      ? 'bg-cpoint-turquoise text-black'
+                      : 'bg-c-active-bg text-c-text-secondary'
+                }`}>
+                  {steveSending || autoMatching ? (
+                    <i className="fa-solid fa-spinner fa-spin text-base pointer-events-none" />
+                  ) : (
+                    <i className="fa-solid fa-paper-plane text-base pointer-events-none" />
+                  )}
+                </span>
               </button>
             </div>
           </div>
@@ -956,7 +779,7 @@ export default function Networking() {
                 <select
                   value={selectedLocation}
                   onChange={e => setSelectedLocation(e.target.value)}
-                  className="rounded-lg border border-c-border bg-transparent px-2.5 py-1.5 text-[10px] text-c-text-primary focus:outline-none focus:border-cpoint-turquoise"
+                  className="rounded-lg border border-c-border bg-transparent px-2.5 py-1.5 text-[11px] text-c-text-primary focus:outline-none focus:border-cpoint-turquoise"
                 >
                   <option value="" className="bg-c-bg-app">{t('networking.filter_location')}</option>
                   {filterOptions.locations.filter(Boolean).sort().map(loc => (
@@ -966,7 +789,7 @@ export default function Networking() {
                 <select
                   value={selectedIndustry}
                   onChange={e => setSelectedIndustry(e.target.value)}
-                  className="rounded-lg border border-c-border bg-transparent px-2.5 py-1.5 text-[10px] text-c-text-primary focus:outline-none focus:border-cpoint-turquoise"
+                  className="rounded-lg border border-c-border bg-transparent px-2.5 py-1.5 text-[11px] text-c-text-primary focus:outline-none focus:border-cpoint-turquoise"
                 >
                   <option value="" className="bg-c-bg-app">{t('networking.filter_industry')}</option>
                   {filterOptions.industries.filter(Boolean).sort().map(ind => (
@@ -976,7 +799,7 @@ export default function Networking() {
                 <select
                   value={selectedInterest}
                   onChange={e => setSelectedInterest(e.target.value)}
-                  className="rounded-lg border border-c-border bg-transparent px-2.5 py-1.5 text-[10px] text-c-text-primary focus:outline-none focus:border-cpoint-turquoise"
+                  className="rounded-lg border border-c-border bg-transparent px-2.5 py-1.5 text-[11px] text-c-text-primary focus:outline-none focus:border-cpoint-turquoise"
                 >
                   <option value="" className="bg-c-bg-app">{t('networking.filter_interests')}</option>
                   {filterOptions.interests.filter(Boolean).sort().map(int => (
@@ -1060,6 +883,14 @@ export default function Networking() {
           </div>
         )}
       </div>
+      <HistorySheet
+        open={historySheetOpen}
+        sessions={steveSessions}
+        activeSessionId={steveSessionId}
+        onSelect={loadSession}
+        onDelete={deleteSession}
+        onClose={() => setHistorySheetOpen(false)}
+      />
       <MatchesSheet
         open={matchSheetOpen}
         usernames={matchSheetUsers}
