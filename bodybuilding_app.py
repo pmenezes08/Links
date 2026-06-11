@@ -23015,17 +23015,22 @@ def create_community():
             
             community_id = c.lastrowid
 
-            # Root communities get their unique @handle at birth (slugified
-            # from the name, deduped). Stays non-discoverable until the
-            # owner opts in; sub-communities carry no handle.
+            # Root communities get their unique @handle at birth. The creator
+            # may pick one in the create form (validated + uniqueness-checked);
+            # otherwise it's slugified from the name and deduped. Stays
+            # non-discoverable until the owner opts in; sub-communities carry
+            # no handle.
             if parent_id_int is None:
                 try:
                     from backend.services.community_handles import (
+                        choose_handle_for_creation,
                         ensure_handle_columns,
-                        generate_unique_handle,
                     )
                     ensure_handle_columns()
-                    new_handle = generate_unique_handle(c, get_sql_placeholder(), name, int(community_id))
+                    requested_handle = request.form.get('handle', '')
+                    new_handle = choose_handle_for_creation(
+                        c, get_sql_placeholder(), requested_handle, name, int(community_id)
+                    )
                     c.execute(
                         f"UPDATE communities SET handle = {get_sql_placeholder()} WHERE id = {get_sql_placeholder()}",
                         (new_handle, int(community_id)),

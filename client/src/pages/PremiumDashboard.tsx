@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { useHeader } from '../contexts/HeaderContext'
 import { useUserProfile } from '../contexts/UserProfileContext'
+import { normalizeHandleInput } from '../components/community/HandleSettings'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { readDeviceCacheStale, writeDeviceCache } from '../utils/deviceCache'
@@ -199,6 +200,11 @@ export default function PremiumDashboard() {
   const [showAboutCPointModal, setShowAboutCPointModal] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newCommName, setNewCommName] = useState('')
+  // Handle pre-fills from the name (slugified) until the creator edits it
+  // by hand; sent with create and validated server-side (silent fallback
+  // to auto-generation on conflict, adjustable later in Manage Community).
+  const [newCommHandle, setNewCommHandle] = useState('')
+  const [handleEdited, setHandleEdited] = useState(false)
   const [newCommType, setNewCommType] = useState<'Gym'|'University'|'General'|'Business'>('General')
   const [isCreatingCommunity, setIsCreatingCommunity] = useState(false)
   const [isAppAdmin, setIsAppAdmin] = useState(false)
@@ -324,6 +330,8 @@ export default function PremiumDashboard() {
   const handleCloseCreateModal = () => {
     setShowCreateModal(false)
     setNewCommName('')
+    setNewCommHandle('')
+    setHandleEdited(false)
     setNewCommType('General')
     setIsCreatingCommunity(false)
   }
@@ -1570,7 +1578,30 @@ export default function PremiumDashboard() {
             <div className="space-y-3">
               <div>
                 <label className="block text-xs text-c-text-tertiary mb-1">{t('dashboard.community_name_parent_label')}</label>
-                <input value={newCommName} onChange={e=> setNewCommName(e.target.value)} placeholder={t('dashboard.community_name_parent_placeholder')} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border:white/15 text-sm" />
+                <input
+                  value={newCommName}
+                  onChange={e=> {
+                    setNewCommName(e.target.value)
+                    if (!handleEdited) setNewCommHandle(normalizeHandleInput(e.target.value))
+                  }}
+                  placeholder={t('dashboard.community_name_parent_placeholder')}
+                  className="w-full px-3 py-2 rounded-md bg-c-bg-app border border:white/15 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-c-text-tertiary mb-1">{t('communities.handle_section_title')}</label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-c-text-tertiary text-sm">@</span>
+                  <input
+                    value={newCommHandle}
+                    onChange={e=> { setHandleEdited(true); setNewCommHandle(normalizeHandleInput(e.target.value)) }}
+                    spellCheck={false}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    className="w-full pl-7 pr-3 py-2 rounded-md bg-c-bg-app border border:white/15 text-sm"
+                  />
+                </div>
+                <div className="text-[11px] text-c-text-tertiary mt-1">{t('communities.handle_helper')}</div>
               </div>
                 <div>
                   <label className="block text-xs text-c-text-tertiary mb-1">{t('dashboard.community_type_label')}</label>
@@ -1599,6 +1630,7 @@ export default function PremiumDashboard() {
                         setIsCreatingCommunity(true)
                         try{
                           const fd = new URLSearchParams({ name: newCommName.trim(), type: isAppAdmin ? newCommType : 'General' })
+                          if (newCommHandle.trim()) fd.set('handle', newCommHandle.trim())
                           const r = await fetch('/create_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                           const j = await r.json().catch(()=>null)
                           if (j?.success){

@@ -14,16 +14,30 @@ names may collide; handles never do). These tests lock down:
 
 from __future__ import annotations
 
+import pytest
+
 from backend.services.community_handles import (
     RESERVED_HANDLES,
     backfill_missing_handles,
+    choose_handle_for_creation,
     ensure_handle_columns,
     is_valid_handle,
     slugify_handle,
+    update_handle_settings,
 )
 from backend.services.database import get_db_connection, get_sql_placeholder
 
 from tests.fixtures import make_community
+
+
+@pytest.fixture()
+def as_manager(monkeypatch):
+    """Bypass the monolith permission helper — these tests cover the
+    handle logic, not the (already-tested) management-permission lattice."""
+    from backend.services import community_handles as ch
+
+    monkeypatch.setattr(ch, "_has_manage_permission", lambda username, cid: username == "owner")
+    yield
 
 
 def _community_row(community_id: int) -> dict:
@@ -119,3 +133,83 @@ class TestHandleBackfill:
         assert emoji_handle == f"community-{emoji}"
         assert is_valid_handle(reserved_handle)
         assert is_valid_handle(emoji_handle)
+
+
+# ── 4. Owner settings ───────────────────────────────────────────────────
+
+
+class TestHandleSettings:
+    def test_non_manager_is_forbidden(self, mysql_dsn, as_manager):
+        cid = make_community("Locked Down", creator_username="owner")
+        body, status = update_handle_settings("stranger", cid, handle="locked-down-2")
+        assert status == 403
+
+    def test_owner_changes_handle_and_cooldown_starts(self, mysql_dsn, as_manager):
+        cid = make_community("Renameable", creator_username="owner")
+        backfill_missing_handles()
+
+        body, status = update_handle_settings("owner", cid, handle="@Fresh-Name")
+        assert status == 200
+        assert body["handle"] == "fresh-name"  # normalized: @ stripped, lowercased
+        assert body["can_change_handle"] is False  # 30-day cooldown started
+
+        again, again_status = update_handle_settings("owner", cid, handle="another-one")
+        assert again_status == 429
+        assert again.get("reason") == "handle_cooldown"
+
+    def test_taken_and_invalid_handles_are_refused(self, mysql_dsn, as_manager):
+        first = make_community("Holder", creator_username="owner")
+        second = make_community("Wanter", creator_username="owner")
+        backfill_missing_handles()
+
+        taken, taken_status = update_handle_settings("owner", second, handle="holder")
+        assert taken_status == 409
+        assert taken.get("reason") == "handle_taken"
+
+        bad, bad_status = update_handle_settings("owner", second, handle="No Spaces!")
+        assert bad_status == 400
+        assert bad.get("reason") == "invalid_handle"
+
+    def test_discoverable_requires_saved_handle(self, mysql_dsn, as_manager):
+        cid = make_community("No Address Yet", creator_username="owner")
+        # No backfill — handle is NULL.
+        ensure_handle_columns()
+        blocked, blocked_status = update_handle_settings("owner", cid, discoverable=True)
+        assert blocked_status == 400
+        assert blocked.get("reason") == "handle_required"
+
+        backfill_missing_handles()
+        on, on_status = update_handle_settings("owner", cid, discoverable=True)
+        assert on_status == 200
+        assert on["discoverable"] is True
+        off, _ = update_handle_settings("owner", cid, discoverable=False)
+        assert off["discoverable"] is False
+
+    def test_sub_communities_have_no_handle_settings(self, mysql_dsn, as_manager):
+        root = make_community("Root For Sub", creator_username="owner")
+        child = make_community("Sub Unit", creator_username="owner", parent_community_id=root)
+        body, status = update_handle_settings("owner", child, handle="sub-unit")
+        assert status == 400
+
+
+class TestCreationHandlePick:
+    def test_requested_handle_used_when_free(self, mysql_dsn):
+        ensure_handle_columns()
+        cid = make_community("Pick Me", creator_username="owner")
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            chosen = choose_handle_for_creation(c, get_sql_placeholder(), "@My-Pick", "Pick Me", cid)
+        assert chosen == "my-pick"
+
+    def test_taken_or_bad_request_falls_back_to_generated(self, mysql_dsn):
+        ensure_handle_columns()
+        holder = make_community("Held Handle", creator_username="owner")
+        backfill_missing_handles()
+        cid = make_community("Fallback Co", creator_username="owner")
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            taken = choose_handle_for_creation(c, ph, "held-handle", "Fallback Co", cid)
+            invalid = choose_handle_for_creation(c, ph, "x!", "Fallback Co", cid)
+        assert taken == "fallback-co"
+        assert invalid == "fallback-co"
