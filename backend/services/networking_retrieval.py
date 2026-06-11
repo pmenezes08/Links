@@ -943,6 +943,53 @@ def structured_match_details(
     )
 
 
+def structured_candidates_from_details(
+    details: dict[str, dict[str, Any]],
+    *,
+    cap: int = 120,
+) -> list[str]:
+    """Rank an already-computed structured-details map.
+
+    Lets the match route reuse a single ``_structured_match_details_from_plan``
+    pass for both the candidate list and the details — previously both were
+    computed independently, doubling the per-request KB dimension reads and
+    O(N) regex scoring. Sort order matches ``_structured_candidates_from_plan``
+    exactly.
+    """
+    if not details:
+        return []
+    ranked = sorted(
+        details.values(),
+        key=lambda item: (
+            -item["hard_hits"],
+            -item["direct_evidence_hits"],
+            -item["primary_hits"],
+            -item["matched_dimensions_count"],
+            -item["score"],
+            item["username"],
+        ),
+    )
+    return [item["username"] for item in ranked[:cap]]
+
+
+def semantic_candidates_from_details(
+    details: dict[str, dict[str, Any]],
+    *,
+    cap: int | None = None,
+) -> list[str]:
+    """Derive the semantic candidate list from ``semantic_match_details`` output.
+
+    The candidate and detail passes previously embedded the identical query
+    and searched the index twice per request; the details map already carries
+    ``semantic_rank`` so the ranked list can be derived for free.
+    """
+    if not details:
+        return []
+    ranked = sorted(details.values(), key=lambda item: int(item.get("semantic_rank") or 0))
+    usernames = [item["username"] for item in ranked]
+    return usernames[:cap] if cap else usernames
+
+
 def _candidate_location_terms(member_rows: Sequence[Any], getter: Callable[[Any, int], Any]) -> list[str]:
     terms: set[str] = set()
     for row in member_rows:
@@ -1222,7 +1269,7 @@ def load_dimension_metadata_scores(
     """Load lightweight KB metadata signals for reranking."""
     try:
         from datetime import datetime, timezone
-        from backend.services.steve_knowledge_base import get_member_knowledge
+        from backend.services.steve_knowledge_base import batch_get_member_knowledge
     except Exception:
         return {}
 
@@ -1248,11 +1295,15 @@ def load_dimension_metadata_scores(
 
     now = datetime.now(timezone.utc)
     metadata_by_user: dict[str, dict[str, Any]] = {}
-    for username in _dedupe_keep_order([str(u).strip() for u in usernames if str(u).strip()])[:80]:
-        try:
-            docs = get_member_knowledge(username, dimensions)
-        except Exception:
-            continue
+    capped_usernames = _dedupe_keep_order([str(u).strip() for u in usernames if str(u).strip()])[:80]
+    # One batched Firestore read for the whole pool — the previous per-user
+    # get_member_knowledge loop issued up to 80 sequential queries per request.
+    try:
+        docs_by_user = batch_get_member_knowledge(capped_usernames, dimensions)
+    except Exception:
+        docs_by_user = {}
+    for username in capped_usernames:
+        docs = docs_by_user.get(username) or {}
         total_adjustment = 0.0
         dimension_adjustments: dict[str, float] = {}
         for dimension, doc in (docs or {}).items():
@@ -1403,7 +1454,10 @@ def _tiered_matches_from_details(
             if details:
                 tier_map[username] = "broader" if username in forced else "discard"
             else:
-                tier_map[username] = "broader" if username in forced else "direct"
+                # No match evidence at all (fresh community, empty index):
+                # present candidates honestly as "broader", never as "direct" —
+                # the old fallback labelled arbitrary members as direct matches.
+                tier_map[username] = "broader"
             continue
         primary_dimensions = info.get("primary_dimensions") or []
         hard_dimensions = info.get("hard_dimensions") or []

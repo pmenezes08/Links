@@ -664,7 +664,10 @@ class TestNetworkingRetrieval(unittest.TestCase):
             },
         }
 
-        with patch("backend.services.steve_knowledge_base.get_member_knowledge", return_value=fake_docs):
+        with patch(
+            "backend.services.steve_knowledge_base.batch_get_member_knowledge",
+            return_value={"hugo": fake_docs},
+        ):
             scores = load_dimension_metadata_scores(
                 ["hugo"],
                 dimension_plan={
@@ -688,7 +691,10 @@ class TestNetworkingRetrieval(unittest.TestCase):
         }
         negative_feedback_scores = {"hugo": -2}  # e.g. 2 thumbs-downs
 
-        with patch("backend.services.steve_knowledge_base.get_member_knowledge", return_value=fake_docs):
+        with patch(
+            "backend.services.steve_knowledge_base.batch_get_member_knowledge",
+            return_value={"hugo": fake_docs},
+        ):
             scores = load_dimension_metadata_scores(
                 ["hugo"],
                 dimension_plan={"primary_dimensions": ["ExpertiseDepth"]},

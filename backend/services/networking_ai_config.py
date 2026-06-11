@@ -112,12 +112,25 @@ def _model(fields: Mapping[str, Any], name: str, default: str, allowed: frozense
     return default
 
 
+# Short-lived process cache: the config was re-read from MySQL (including an
+# ensure_tables round-trip) on every networking request. 60s staleness is
+# fine for an admin-edited policy page.
+_CONFIG_CACHE_TTL_SECONDS = 60.0
+_config_cache: dict[str, Any] = {"at": 0.0, "value": None}
+
+
 def get_networking_ai_config(page: Optional[Mapping[str, Any]] = None) -> NetworkingAiConfig:
     """Return the KB-backed networking AI config with safe defaults.
 
-    Tests may pass *page* directly. Production reads the editable KB page.
+    Tests may pass *page* directly (bypasses the cache). Production reads the
+    editable KB page, cached for up to 60 seconds per process.
     """
     if page is None:
+        import time as _time
+
+        cached = _config_cache.get("value")
+        if cached is not None and (_time.monotonic() - float(_config_cache.get("at") or 0.0)) < _CONFIG_CACHE_TTL_SECONDS:
+            return cached
         try:
             from backend.services import knowledge_base
 
@@ -126,6 +139,14 @@ def get_networking_ai_config(page: Optional[Mapping[str, Any]] = None) -> Networ
         except Exception as exc:
             logger.warning("Could not read %s KB page; using defaults: %s", KB_SLUG, exc)
             page = None
+        config = _build_config(page)
+        _config_cache["value"] = config
+        _config_cache["at"] = _time.monotonic()
+        return config
+    return _build_config(page)
+
+
+def _build_config(page: Optional[Mapping[str, Any]]) -> NetworkingAiConfig:
 
     fields = _field_map(page)
     defaults = DEFAULT_CONFIG

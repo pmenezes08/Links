@@ -8790,16 +8790,21 @@ def batch_get_steve_contexts(
     return results
 
 
-def _scrub_community_names(text: str, target_username: str, viewer_username: str) -> str:
+def _scrub_community_names(text: str, target_username: str, viewer_username: str, viewer_names: set | None = None) -> str:
     """Remove references to community names that the viewer doesn't share with the target user.
-    This is a safety net — Grok should already avoid naming communities in output."""
+    This is a safety net — Grok should already avoid naming communities in output.
+
+    ``viewer_names`` lets callers that scrub many members for one viewer
+    (networking prompt assembly) fetch the viewer's communities once instead
+    of per member."""
     try:
         target_communities = _fetch_user_communities(target_username)
-        viewer_communities = _fetch_user_communities(viewer_username)
+        if viewer_names is None:
+            viewer_communities = _fetch_user_communities(viewer_username)
+            viewer_names = {c.get('name', '') for c in viewer_communities if c.get('name')}
 
         target_names = {c.get('name', '') for c in target_communities if c.get('name')}
-        viewer_names = {c.get('name', '') for c in viewer_communities if c.get('name')}
-        private_names = target_names - viewer_names
+        private_names = target_names - set(viewer_names)
 
         if not private_names:
             return text
@@ -12884,6 +12889,17 @@ def _networking_build_members_text(
 
     profiles_raw = batch_get_steve_user_profiles(ordered_prompt)
 
+    # Fetch the viewer's community names once for the whole roster — the
+    # scrub previously re-queried them per member (2 SQL × 40 members).
+    viewer_community_names = None
+    if viewer_username:
+        try:
+            viewer_community_names = {
+                c.get('name', '') for c in _fetch_user_communities(viewer_username) if c.get('name')
+            }
+        except Exception:
+            viewer_community_names = None
+
     ctx_map = {}
     rec_counts = {}
     feedback_scores = {}
@@ -12896,7 +12912,7 @@ def _networking_build_members_text(
                 tier = default_tier
             ctx = _get_or_build_context(uname, prof, context_tier=tier)
             if viewer_username and ctx:
-                ctx = _scrub_community_names(ctx, uname, viewer_username)
+                ctx = _scrub_community_names(ctx, uname, viewer_username, viewer_names=viewer_community_names)
             ctx_map[uname] = ctx
             rec_counts[uname] = prof.get('recommendationCount30d', 0) or 0
             feedback_scores[uname] = prof.get('feedbackScore', 0) or 0
@@ -13145,10 +13161,11 @@ def api_networking_steve_match():
             load_dimension_metadata_scores,
             networking_policy_for_size,
             resolve_named_people,
-            semantic_candidates,
+            semantic_candidates_from_details,
             semantic_match_details,
             structured_match_details,
             structured_candidates,
+            structured_candidates_from_details,
             tiered_roster,
         )
         from backend.services.networking_debug_trace import build_networking_debug_trace
@@ -13214,31 +13231,42 @@ def api_networking_steve_match():
                 query_plan=query_plan,
             )
             dimension_plan = build_dimension_plan(query_plan)
-            structured_ids = structured_candidates(
-                member_rows,
-                retrieval_query,
-                _v,
-                retrieval_plan=query_plan,
-                cap=retrieval_policy["prompt_member_cap"],
-            )
+            # One structured KB/scoring pass serves both the details map and
+            # the ranked candidate list (previously two identical passes per
+            # request). The keyword fallback only runs when the plan produced
+            # no structured hits — same behaviour as structured_candidates'
+            # internal fallthrough.
             structured_details = structured_match_details(
                 member_rows,
                 _v,
                 retrieval_plan=query_plan,
                 cap=retrieval_policy["ann_recall_cap"],
             )
-            semantic_ids = semantic_candidates(
+            structured_ids = structured_candidates_from_details(
+                structured_details,
+                cap=retrieval_policy["prompt_member_cap"],
+            ) or structured_candidates(
+                member_rows,
                 retrieval_query,
-                all_member_usernames,
-                k_recall=retrieval_policy["ann_recall_cap"],
-                k_final=retrieval_policy["prompt_member_cap"],
+                _v,
+                cap=retrieval_policy["prompt_member_cap"],
             )
+            # Load the vector index BEFORE the first semantic search: lazily
+            # loading it later (inside members-text assembly) meant the first
+            # request on a cold instance got silently unranked candidates.
+            _ensure_embedding_index()
             semantic_details = semantic_match_details(
                 retrieval_query,
                 all_member_usernames,
                 retrieval_plan=query_plan,
                 k_recall=retrieval_policy["ann_recall_cap"],
                 k_final=retrieval_policy["ann_recall_cap"],
+            )
+            # Derived from the details map — previously a second identical
+            # query embedding + index search.
+            semantic_ids = semantic_candidates_from_details(
+                semantic_details,
+                cap=retrieval_policy["ann_recall_cap"],
             )
             forced_usernames = resolve_named_people(
                 member_rows,
