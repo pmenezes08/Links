@@ -38,12 +38,13 @@ Switch the app to **light** theme (Account Settings → Appearance) before this 
 - [ ] Signup with a **duplicate email** → real error shown (NOT "verification email sent").
 - [ ] Signup with mismatched passwords → real error.
 - [ ] Signup correctly → "verify your email" state.
-- [ ] Click the verification link → **you land logged in** (no /login password re-entry) on the dashboard **with the invite prompt open**.
+- [ ] Click the verification link **on desktop** → **you land logged in** (no /login password re-entry) on the dashboard **with the invite prompt open**.
+- [ ] Click the verification link **on a phone** → the "verified — return to the app" page, **no web session, never the mobile webapp**.
 - [ ] Accept → community feed with `?joined=1` orientation card.
 
 ## 4. Invite funnel — mobile browser
 
-- [ ] Open invite link on phone browser (no app installed): "Open in C-Point App" primary, store fallback, **"Continue in browser instead"** present and working.
+- [ ] Open invite link on phone browser (no app installed): "Open in C-Point App" primary, store fallback — and **NO browser/webapp option anywhere** (mobile users only get the app or the store).
 - [ ] Open an **expired or already-used** email invite link: proper "no longer valid" page (not "You're Invited!").
 
 ## 5. QR / link invites — single-use toggle

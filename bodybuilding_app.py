@@ -10913,9 +10913,18 @@ def verify_email():
                     pass
                 conn.commit()
 
-            # The verification link proves mailbox ownership (standard
-            # magic-link semantics), so establish the session here instead
-            # of bouncing the brand-new user to /login to retype the
+            # Mobile users must return to the NATIVE app — never the web
+            # app. So the auto-login + dashboard redirect below is
+            # DESKTOP-ONLY; on phones we render the classic "verified —
+            # return to the app" page and create no web session.
+            _ua = (request.headers.get('User-Agent') or '').lower()
+            _is_mobile_ua = any(tok in _ua for tok in ('iphone', 'ipad', 'ipod', 'android', 'mobile'))
+            if _is_mobile_ua:
+                return _verification_result_template(success=True, message='Your email has been verified successfully.')
+
+            # Desktop: the verification link proves mailbox ownership
+            # (standard magic-link semantics), so establish the session here
+            # instead of bouncing the brand-new user to /login to retype the
             # password they created a minute ago. If a live invite is
             # waiting on this email, land them on the dashboard invite
             # prompt so the join is one tap away.
@@ -24041,9 +24050,11 @@ def invite_landing(token):
     # The previous page only offered "Open in App" + an App Store redirect,
     # which dead-ended every laptop user.
     if is_mobile:
+        # Mobile NEVER gets a web-app path: open the installed app or
+        # download it — those are the only two doors.
         primary_btn = f'<a href="{app_url}" class="btn btn-primary" id="openAppBtn">Open in C-Point App</a>'
         store_block = f'<p style="color:#555; font-size:12px; margin:14px 0 10px;">Don&apos;t have the app yet?</p>{store_btn}'
-        browser_btn = f'<a href="{browser_url}" class="btn btn-tertiary">Continue in browser instead</a>'
+        browser_btn = ''
         hint_html = '<p class="hint">After you install, open the app from your home screen &mdash; we save your invite automatically when you tap Download above. If you don&apos;t land in the right community, open this page again and tap &quot;Open in C-Point App&quot;, or on Sign in use &quot;Use invite from clipboard&quot;.</p>'
     else:
         primary_btn = f'<a href="{browser_url}" class="btn btn-primary">Continue in browser</a>'
