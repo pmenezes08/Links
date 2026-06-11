@@ -1,6 +1,14 @@
 ﻿import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
 import { FixedComposerShell } from '../components/FixedComposerShell'
 import BrandLogo from '../components/BrandLogo'
+import {
+  STEVE_REPLY_DELAY_BASE_MS,
+  STEVE_REPLY_DELAY_PER_CHAR_MS,
+  STEVE_REPLY_DELAY_MIN_MS,
+  STEVE_REPLY_DELAY_MAX_MS,
+  STEVE_REPLY_DELAY_JITTER_MS,
+  STEVE_REPLY_BURST_DISCOUNT,
+} from '../design/motion'
 import { useTranslation } from 'react-i18next'
 import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
 import {
@@ -449,19 +457,31 @@ export default function OnboardingChat({
 
   const { keyboardLift, safeBottomPx } = useFixedComposerKeyboard({ onLayoutNudge: scrollToBottom })
 
+  // Consecutive Steve bubbles in one uninterrupted burst pay a discounted
+  // delay — people type faster mid-thought, and full price per bubble is
+  // what made the old flat-delay flow drag.
+  const steveBurstCountRef = useRef(0)
+
   const addSteveMessage = useCallback((text: string, opts?: Partial<ChatMessage>) => {
     setIsTyping(true)
-    // Keep the typing indicator long enough to read as intentional but not
-    // padded: the old 600-1000ms delay on every Steve line added 15-20s of
-    // dead air across the full flow.
+    // Length-scaled pacing (constants in design/motion.ts): short acks land
+    // fast, long questions read as composed. Flat-fast (250ms) felt like a
+    // vending machine; flat-slow (600-1000ms) added 15-20s of dead air.
+    const base = Math.min(
+      STEVE_REPLY_DELAY_MAX_MS,
+      Math.max(STEVE_REPLY_DELAY_MIN_MS, STEVE_REPLY_DELAY_BASE_MS + text.length * STEVE_REPLY_DELAY_PER_CHAR_MS),
+    )
+    const burst = steveBurstCountRef.current >= 1 ? STEVE_REPLY_BURST_DISCOUNT : 1
+    steveBurstCountRef.current += 1
     setTimeout(() => {
       setIsTyping(false)
       setMessages(prev => [...prev, { from: 'steve', text, ...opts }])
       scrollToBottom()
-    }, 250 + Math.random() * 150)
+    }, base * burst + Math.random() * STEVE_REPLY_DELAY_JITTER_MS)
   }, [scrollToBottom])
 
   const addUserMessage = useCallback((text: string) => {
+    steveBurstCountRef.current = 0
     setMessages(prev => [...prev, { from: 'user', text }])
     scrollToBottom()
   }, [scrollToBottom])

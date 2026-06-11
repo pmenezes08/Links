@@ -3,21 +3,21 @@ import { useTranslation } from 'react-i18next'
 import { useComposerKeyboardLift } from '../hooks/useComposerKeyboardLift'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
-import MemberMatchCard from '../components/networking/MemberMatchCard'
+import MatchesSheet from '../components/networking/MatchesSheet'
 import { useNavigate } from 'react-router-dom'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
 import { useNetwork } from '../contexts/NetworkContext'
 import { CHAT_KEYBOARD_ANIMATION_MS, CPOINT_EASE_OUT } from '../design/motion'
 
-/** Tappable prompt-starter chips shown on an empty Steve thread — the
- * member taps instead of reading a paragraph and retyping it. */
-const PROMPT_CHIP_KEYS = [
-  'networking.chip_mentor',
-  'networking.chip_investors',
-  'networking.chip_cofounder',
-  'networking.chip_clients',
-  'networking.chip_hiring',
-  'networking.chip_nearby',
+/** First-person suggestion asks shown on an empty Steve thread — sent
+ * verbatim as the member's message, so each one is a real retrieval
+ * query, not a category label. Auto-match renders as row 1 separately. */
+const SUGGESTION_KEYS = [
+  'networking.suggest_mentor',
+  'networking.suggest_cofounder',
+  'networking.suggest_investors',
+  'networking.suggest_clients',
+  'networking.suggest_nearby',
 ] as const
 
 type Community = { id: number; name: string }
@@ -182,6 +182,9 @@ export default function Networking() {
   const [steveFeedback, setSteveFeedback] = useState<Record<string, { feedback: 'up' | 'down'; reasoning?: string }>>({})
   const [steveMembers, setSteveMembers] = useState<MemberProfile[]>([])
   const [steveMemberCount, setSteveMemberCount] = useState<number | null>(null)
+  // Introductions sheet: usernames persist through the close transition.
+  const [matchSheetUsers, setMatchSheetUsers] = useState<string[]>([])
+  const [matchSheetOpen, setMatchSheetOpen] = useState(false)
   const [steveMembersLoading, setSteveMembersLoading] = useState(false)
   const [isAppAdmin, setIsAppAdmin] = useState(false)
   const [steveDebugEnabled, setSteveDebugEnabled] = useState(false)
@@ -607,7 +610,7 @@ export default function Networking() {
             </div>
             <button
               type="button"
-              onClick={() => navigate('/profile')}
+              onClick={() => navigate('/profile?return=/networking')}
               className="rounded-full bg-cpoint-turquoise px-4 py-2 text-sm font-semibold text-black hover:brightness-110 transition"
             >
               {t('networking.complete_profile')}
@@ -796,18 +799,37 @@ export default function Networking() {
                       communityName={communities.find(c => c.id === steveCommunity)?.name ?? t('networking.welcome_community_fallback')}
                       activeMemberCount={steveMemberCount}
                     />
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {PROMPT_CHIP_KEYS.map(key => (
+                    <div className="mt-4">
+                      <p className="text-[11px] text-c-text-tertiary">{t('networking.suggestions_lead')}</p>
+                      <div className="mt-1 divide-y divide-c-border-subtle">
                         <button
-                          key={key}
                           type="button"
-                          onClick={() => void sendSteveMessage(t(key))}
+                          onClick={triggerAutoMatch}
                           disabled={steveSending || autoMatching}
-                          className="min-h-[44px] rounded-full border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-4 text-xs font-medium text-c-accent-ink transition hover:bg-cpoint-turquoise/15 disabled:opacity-50"
+                          className="group flex min-h-[44px] w-full items-center gap-3 text-left transition disabled:opacity-50"
                         >
-                          {t(key)}
+                          <i className="fa-solid fa-wand-magic-sparkles w-3 text-[10px] text-c-text-tertiary transition group-hover:text-cpoint-turquoise" aria-hidden="true" />
+                          <span className="flex-1 truncate text-[13px] text-c-text-secondary transition group-hover:text-c-text-primary">
+                            {t('networking.auto_match_message')}
+                          </span>
+                          <i className="fa-solid fa-chevron-right text-[9px] text-c-text-disabled opacity-0 transition group-hover:opacity-100" aria-hidden="true" />
                         </button>
-                      ))}
+                        {SUGGESTION_KEYS.map(key => (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => void sendSteveMessage(t(key))}
+                            disabled={steveSending || autoMatching}
+                            className="group flex min-h-[44px] w-full items-center gap-3 text-left transition disabled:opacity-50"
+                          >
+                            <i className="fa-solid fa-magnifying-glass w-3 text-[10px] text-c-text-tertiary transition group-hover:text-cpoint-turquoise" aria-hidden="true" />
+                            <span className="flex-1 truncate text-[13px] text-c-text-secondary transition group-hover:text-c-text-primary">
+                              {t(key)}
+                            </span>
+                            <i className="fa-solid fa-chevron-right text-[9px] text-c-text-disabled opacity-0 transition group-hover:opacity-100" aria-hidden="true" />
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )
@@ -826,19 +848,24 @@ export default function Networking() {
                             {renderTextWithSourceLinks(msg.text, false, handleMentionClick)}
                           </div>
                           {mentions.length > 0 && (
-                            <div className="space-y-2">
-                              {mentions.map(u => (
-                                <MemberMatchCard
-                                  key={u}
-                                  username={u}
-                                  member={steveMemberByName[u.toLowerCase()]}
-                                  feedback={steveFeedback[u]?.feedback}
-                                  onFeedback={value => submitFeedback(u, value)}
-                                  onOpen={() => handleMentionClick(u)}
-                                  onMessage={() => navigate(`/user_chat/chat/${u}`)}
-                                />
-                              ))}
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() => { setMatchSheetUsers(mentions); setMatchSheetOpen(true) }}
+                              aria-label={t('networking.matches_affordance_aria')}
+                              className="group flex min-h-[44px] items-center gap-2.5 text-left"
+                            >
+                              <span className="flex -space-x-2">
+                                {mentions.slice(0, 3).map(u => (
+                                  <span key={u} className="rounded-full ring-2 ring-c-bg-app">
+                                    <Avatar username={u} url={steveMemberByName[u.toLowerCase()]?.profile_picture || undefined} size={24} />
+                                  </span>
+                                ))}
+                              </span>
+                              <span className="text-[13px] font-medium text-c-accent-ink">
+                                {t(mentions.length === 1 ? 'networking.matches_affordance_one' : 'networking.matches_affordance_other', { count: mentions.length })}
+                              </span>
+                              <i className="fa-solid fa-chevron-right text-[9px] text-c-text-tertiary transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                            </button>
                           )}
                         </div>
                       )}
@@ -896,10 +923,14 @@ export default function Networking() {
               <button
                 onClick={() => void sendSteveMessage()}
                 disabled={!steveInput.trim() || steveSending || autoMatching}
-                className="h-11 w-11 rounded-lg border border-c-border flex items-center justify-center flex-shrink-0 hover:border-c-border-strong disabled:opacity-40 transition"
+                className={`h-11 w-11 rounded-lg flex items-center justify-center flex-shrink-0 disabled:opacity-40 transition ${
+                  steveInput.trim()
+                    ? 'bg-cpoint-turquoise text-black'
+                    : 'border border-c-border text-c-text-primary hover:border-c-border-strong'
+                }`}
                 aria-label={t('networking.send')}
               >
-                <i className="fa-solid fa-arrow-up text-xs text-c-text-primary" />
+                <i className="fa-solid fa-arrow-up text-xs" />
               </button>
             </div>
           </div>
@@ -978,7 +1009,16 @@ export default function Networking() {
                         m.username.toLowerCase().includes(q))
                     : personalMembers
                   return filtered.length === 0 ? (
-                    <div className="text-c-text-tertiary">{t('networking.no_members_match')}</div>
+                    <div className="py-4 text-center">
+                      <p className="text-[13px] text-c-text-tertiary">{t('networking.no_members_handoff')}</p>
+                      <button
+                        type="button"
+                        onClick={() => setActiveSection('steve')}
+                        className="mt-2 min-h-[44px] rounded-full border border-cpoint-turquoise/30 px-4 text-xs font-semibold text-c-accent-ink transition hover:bg-cpoint-turquoise/10"
+                      >
+                        {t('networking.ask_steve')}
+                      </button>
+                    </div>
                   ) : (
                   <div>
                     <div className="text-[11px] text-c-text-tertiary mb-2">
@@ -1005,7 +1045,7 @@ export default function Networking() {
                           {/* Row tap already opens the profile — the old
                               duplicate "View" pill is gone. */}
                           <button
-                            className="min-h-[40px] shrink-0 rounded-full border border-c-border px-3.5 text-xs font-medium text-c-text-primary hover:border-c-border-strong"
+                            className="min-h-[44px] shrink-0 rounded-full border border-c-border px-3.5 text-xs font-medium text-c-text-primary hover:border-c-border-strong"
                             onClick={(e) => { e.stopPropagation(); navigate(`/user_chat/chat/${m.username}`) }}
                           >
                             {t('networking.message')}
@@ -1020,6 +1060,24 @@ export default function Networking() {
           </div>
         )}
       </div>
+      <MatchesSheet
+        open={matchSheetOpen}
+        usernames={matchSheetUsers}
+        memberByName={steveMemberByName}
+        feedback={steveFeedback}
+        onFeedback={(u, value) => submitFeedback(u, value)}
+        onOpenProfile={u => { setMatchSheetOpen(false); handleMentionClick(u) }}
+        onMessage={u => {
+          // A Message tap is the strongest positive signal this surface has —
+          // record it as implicit thumbs-up (unless the member already voted)
+          // and carry attribution so conversion from Steve matches is
+          // measurable in chat analytics.
+          if (!steveFeedback[u]) submitFeedback(u, 'up', 'implicit_message_tap')
+          setMatchSheetOpen(false)
+          navigate(`/user_chat/chat/${u}?source=steve_match`)
+        }}
+        onClose={() => setMatchSheetOpen(false)}
+      />
       {isAppAdmin && showDebugModal && lastSteveDebugTrace && (
         <SteveDebugModal
           trace={lastSteveDebugTrace}

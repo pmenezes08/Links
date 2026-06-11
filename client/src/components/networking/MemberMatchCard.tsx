@@ -12,10 +12,10 @@ export type MatchCardMember = {
 }
 
 /**
- * Compact member card rendered under Steve's networking replies for each
- * recommended member. The card is the product moment owners pay for —
- * avatar, identity line, and a direct "Message" CTA — replacing the old
- * footer of tiny @username chips. Calm by design: no entrance animation.
+ * Member row inside the "Introductions" sheet — avatar, identity line,
+ * per-member feedback, and a direct "Message" CTA. Rendered as list rows
+ * (the sheet's divide-y provides separation); calm by design, no
+ * entrance animation.
  */
 export default function MemberMatchCard({
   username,
@@ -40,7 +40,8 @@ export default function MemberMatchCard({
       : member?.role || member?.company || `@${username}`
 
   return (
-    <div className="flex items-center gap-2.5 rounded-xl border border-c-border bg-c-bg-elevated px-3 py-2">
+    <div className="py-2.5">
+    <div className="flex items-center gap-2.5">
       <button type="button" onClick={onOpen} aria-label={displayName} className="shrink-0">
         <Avatar username={username} url={member?.profile_picture || undefined} size={40} />
       </button>
@@ -71,10 +72,14 @@ export default function MemberMatchCard({
       <button
         type="button"
         onClick={onMessage}
-        className="min-h-[40px] shrink-0 rounded-full bg-cpoint-turquoise px-3.5 text-xs font-semibold text-black transition hover:brightness-110"
+        className="min-h-[44px] shrink-0 rounded-full bg-cpoint-turquoise px-3.5 text-xs font-semibold text-black transition hover:brightness-110"
       >
         {t('networking.message')}
       </button>
+    </div>
+    {feedback === 'down' && (
+      <p className="mt-1.5 pl-[52px] text-[11px] text-c-text-tertiary">{t('networking.matches_down_ack')}</p>
+    )}
     </div>
   )
 }
