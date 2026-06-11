@@ -451,11 +451,14 @@ export default function OnboardingChat({
 
   const addSteveMessage = useCallback((text: string, opts?: Partial<ChatMessage>) => {
     setIsTyping(true)
+    // Keep the typing indicator long enough to read as intentional but not
+    // padded: the old 600-1000ms delay on every Steve line added 15-20s of
+    // dead air across the full flow.
     setTimeout(() => {
       setIsTyping(false)
       setMessages(prev => [...prev, { from: 'steve', text, ...opts }])
       scrollToBottom()
-    }, 600 + Math.random() * 400)
+    }, 250 + Math.random() * 150)
   }, [scrollToBottom])
 
   const addUserMessage = useCallback((text: string) => {
@@ -2280,7 +2283,8 @@ export default function OnboardingChat({
             </button>
             <div className="text-[10px] text-c-text-tertiary">
               {oc(t, 'ui.step_of', {
-                current: Math.min(Math.ceil(stageProgress(stage) / (100 / USER_FACING_STEPS)), USER_FACING_STEPS),
+                // Never show "Step 0 of 8" — welcome/intent stages count as step 1.
+                current: Math.max(1, Math.min(Math.ceil(stageProgress(stage) / (100 / USER_FACING_STEPS)), USER_FACING_STEPS)),
                 total: USER_FACING_STEPS,
               })}
             </div>
@@ -2698,7 +2702,7 @@ export default function OnboardingChat({
 
       {showDeferConfirm && (
         <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-c-bg-overlay px-4 backdrop-blur-sm" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-          <div className="w-full max-w-sm rounded-3xl border border-cpoint-turquoise/25 bg-c-bg-elevated p-5 shadow-[0_24px_80px_rgba(0, 206, 200,0.16)]">
+          <div className="w-full max-w-sm rounded-3xl border border-cpoint-turquoise/25 bg-c-bg-elevated p-5 shadow-[0_24px_80px_rgba(0,206,200,0.16)]">
             <div className="text-lg font-semibold text-c-text-primary">{oc(t, 'ui.need_more_time')}</div>
             <div className="mt-3 text-sm leading-relaxed text-c-text-secondary">{oc(t, 'ui.defer_body')}</div>
             <div className="mt-5 flex flex-col gap-2 sm:flex-row">

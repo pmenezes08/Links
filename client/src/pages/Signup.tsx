@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useUserProfile } from '../contexts/UserProfileContext'
@@ -131,7 +131,7 @@ export default function Signup(){
     fetch('/signup', {
       method: 'POST',
       credentials: 'include',
-      // Accept header makes the backend answer JSON for every outcome —
+      // Accept header makes the backend answer JSON for every outcome â€”
       // without it desktop UAs got HTML error pages with HTTP 200, which
       // this client misread as "verification email sent".
       headers: { Accept: 'application/json' },
@@ -162,7 +162,7 @@ export default function Signup(){
           }
         } catch {
           // Non-JSON 200 should never happen now that we send Accept:
-          // application/json — treat it as a failure instead of faking
+          // application/json â€” treat it as a failure instead of faking
           // the "verification sent" modal.
           setError(t('auth.signup.registration_failed'))
         }
@@ -224,7 +224,7 @@ export default function Signup(){
               onChange={e => handleInputChange('username', e.target.value)}
               placeholder={t('auth.signup.username_placeholder')}
               required
-              className="w-full px-3 py-2.5 bg-c-hover-bg border border-white/20 rounded-lg text-sm text-c-text-primary placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
+              className="w-full px-3 py-2.5 bg-c-hover-bg border border-c-border rounded-lg text-sm text-c-text-primary focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
             />
           </div>
             <div>
@@ -235,7 +235,7 @@ export default function Signup(){
                 onChange={e => handleInputChange('first_name', e.target.value)}
                 placeholder={t('auth.signup.first_name_placeholder')}
                 required
-                className="w-full px-3 py-2.5 bg-c-hover-bg border border-white/20 rounded-lg text-sm text-c-text-primary placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
+                className="w-full px-3 py-2.5 bg-c-hover-bg border border-c-border rounded-lg text-sm text-c-text-primary focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
               />
             </div>
             <div>
@@ -246,7 +246,7 @@ export default function Signup(){
                 onChange={e => handleInputChange('last_name', e.target.value)}
                 placeholder={t('auth.signup.last_name_placeholder')}
                 required
-                className="w-full px-3 py-2.5 bg-c-hover-bg border border-white/20 rounded-lg text-sm text-c-text-primary placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
+                className="w-full px-3 py-2.5 bg-c-hover-bg border border-c-border rounded-lg text-sm text-c-text-primary focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
               />
             </div>
           </div>
@@ -261,7 +261,7 @@ export default function Signup(){
               placeholder={t('auth.signup.email_placeholder')}
               required
               disabled={emailLocked}
-              className={`w-full px-3 py-2.5 bg-c-hover-bg border border-white/20 rounded-lg text-sm text-c-text-primary placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors ${emailLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+              className={`w-full px-3 py-2.5 bg-c-hover-bg border border-c-border rounded-lg text-sm text-c-text-primary focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors ${emailLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
             />
             {emailLocked && (
               <p className="text-xs text-c-text-tertiary mt-1">{t('auth.signup.email_locked')}</p>
@@ -276,7 +276,7 @@ export default function Signup(){
               value={formData.mobile}
               onChange={e => handleInputChange('mobile', e.target.value)}
               placeholder="+1 (555) 123-4567"
-              className="w-full px-3 py-2.5 bg-c-hover-bg border border-white/20 rounded-lg text-sm text-c-text-primary placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
+              className="w-full px-3 py-2.5 bg-c-hover-bg border border-c-border rounded-lg text-sm text-c-text-primary focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
             />
           </div>
 
@@ -289,7 +289,7 @@ export default function Signup(){
               onChange={e => handleInputChange('password', e.target.value)}
               placeholder="********"
               required
-              className="w-full px-3 py-2.5 bg-c-hover-bg border border-white/20 rounded-lg text-sm text-c-text-primary placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
+              className="w-full px-3 py-2.5 bg-c-hover-bg border border-c-border rounded-lg text-sm text-c-text-primary focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
             />
           </div>
 
@@ -302,7 +302,7 @@ export default function Signup(){
               onChange={e => handleInputChange('confirm_password', e.target.value)}
               placeholder="********"
               required
-              className="w-full px-3 py-2.5 bg-c-hover-bg border border-white/20 rounded-lg text-sm text-c-text-primary placeholder-white/50 focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
+              className="w-full px-3 py-2.5 bg-c-hover-bg border border-c-border rounded-lg text-sm text-c-text-primary focus:border-cpoint-turquoise focus:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 transition-colors"
             />
           </div>
 
@@ -312,7 +312,7 @@ export default function Signup(){
             disabled={loading}
             className={`w-full py-3 rounded-xl text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50 ${
               loading
-                ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
+                ? 'bg-c-hover-bg text-c-text-tertiary cursor-not-allowed'
                 : 'bg-cpoint-turquoise text-black hover:brightness-110'
             }`}
           >

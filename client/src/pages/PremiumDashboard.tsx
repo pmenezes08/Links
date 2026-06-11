@@ -1141,7 +1141,19 @@ export default function PremiumDashboard() {
                 </div>
                 <button
                   type="button"
-                  onClick={openOnboardingResume}
+                  onClick={() => {
+                    // When exactly one section is missing, open the scoped
+                    // 2-minute builder for that section — the full chat
+                    // (name/photo/section picker) is only right for a
+                    // completely fresh profile.
+                    if (personalSectionComplete && !professionalSectionComplete) {
+                      navigate('/steve/profile-builder/professional')
+                    } else if (professionalSectionComplete && !personalSectionComplete) {
+                      navigate('/steve/profile-builder/personal')
+                    } else {
+                      openOnboardingResume()
+                    }
+                  }}
                   className="shrink-0 rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-sm font-semibold text-black transition hover:brightness-110"
                 >
                   Open Steve
