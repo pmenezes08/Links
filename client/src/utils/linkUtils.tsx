@@ -183,6 +183,17 @@ export function applyBoldEmphasis(nodes: React.ReactNode[]): React.ReactNode[] {
 }
 
 /**
+ * Markdown-lite for AI-authored plain-text blocks: converts **bold** to
+ * <strong>. Pair with a whitespace-pre-wrap/pre-line container for line
+ * breaks. Any surface rendering model output must use this (or the full
+ * renderTextWithSourceLinks/renderRichText) — raw ** asterisks must never
+ * reach the screen (docs/DESIGN.md § Typography).
+ */
+export function renderBoldText(text: string): React.ReactNode[] {
+  return applyBoldEmphasis([text])
+}
+
+/**
  * Replaces special tokens like [FA_STAR] with Font Awesome icons.
  * Used for roundup welcome messages to add a star after "Steve!".
  */

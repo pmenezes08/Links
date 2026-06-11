@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import TranslateGlobeButton from './TranslateGlobeButton'
+import { renderBoldText } from '../utils/linkUtils'
 
 interface EditableAISummaryProps {
   postId?: number;
@@ -128,7 +129,7 @@ export default function EditableAISummary({ postId, replyId, initialSummary, isO
           </div>
         </div>
       ) : (
-        <p className="text-sm text-c-text-primary leading-relaxed">{translatedText || summary}</p>
+        <p className="text-sm text-c-text-primary leading-relaxed whitespace-pre-wrap">{renderBoldText(translatedText || summary)}</p>
       )}
     </div>
   );

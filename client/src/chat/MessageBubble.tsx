@@ -22,7 +22,7 @@ import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/vide
 import { normalizeMediaPath, formatMessageTime, parseMessageTime, resolveDocUrl } from './utils'
 import AudioMessage from './AudioMessage'
 import LongPressActionable from './LongPressActionable'
-import { renderTextWithSourceLinks } from '../utils/linkUtils'
+import { renderBoldText, renderTextWithSourceLinks } from '../utils/linkUtils'
 
 export interface MessageBubbleProps {
   message: ChatMessage & {
@@ -273,8 +273,8 @@ function MessageBubbleInner({
                       )}
                     </div>
                   </div>
-                  <p className="text-[12px] text-c-text-secondary leading-relaxed italic">
-                    {translatedSummaries?.[m.id] || m.audio_summary}
+                  <p className="text-[12px] text-c-text-secondary leading-relaxed italic whitespace-pre-wrap">
+                    {renderBoldText(translatedSummaries?.[m.id] || m.audio_summary || '')}
                   </p>
                 </div>
               ) : m.audio_path && (() => {

@@ -38,6 +38,8 @@ Stack (from [`client/src/index.css`](../client/src/index.css)):
 
 `Inter`, `SF Pro Display`, `SF Pro Text`, `-apple-system`, `BlinkMacSystemFont`, `Segoe UI`, sans-serif
 
+**AI-authored text renders markdown-lite — raw `**asterisks**` must never reach the screen.** Every surface that displays model output (Steve replies, summaries, onboarding bubbles, Steve's profile view, voice-note summaries) renders `**bold**` as `<strong>` via the shared helpers in [`client/src/utils/linkUtils.tsx`](../client/src/utils/linkUtils.tsx): use `renderTextWithSourceLinks` / `renderRichText` when the text can contain links or @mentions, or the minimal `renderBoldText` for plain blocks (pair it with a `whitespace-pre-wrap` container for line breaks). New AI surfaces must not render model text as a bare string.
+
 ## Motion
 
 | Token | Value | Use |

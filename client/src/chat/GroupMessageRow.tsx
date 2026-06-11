@@ -13,6 +13,7 @@ import MessageVideo from '../components/MessageVideo'
 import VoiceNotePlayer from '../components/VoiceNotePlayer'
 import LinkPreview, { stripExtractedUrlsFromText, feedLinkPreviewUrls } from '../components/LinkPreview'
 import VideoEmbed from '../components/VideoEmbed'
+import { renderBoldText } from '../utils/linkUtils'
 import YouTubeChatSnippet from '../components/YouTubeChatSnippet'
 import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
 
@@ -459,8 +460,8 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                             )}
                           </div>
                         </div>
-                        <p className="text-[12px] text-c-text-secondary leading-relaxed italic">
-                          {translationForMessage || msg.audio_summary}
+                        <p className="text-[12px] text-c-text-secondary leading-relaxed italic whitespace-pre-wrap">
+                          {renderBoldText(translationForMessage || msg.audio_summary || '')}
                         </p>
                       </div>
                     ) : (

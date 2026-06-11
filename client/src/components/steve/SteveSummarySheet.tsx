@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router-dom'
 
 import SteveAvatar from './SteveAvatar'
 import { getKnownSummary, rememberSummary, type KnownSummary } from './steveSummaryStore'
 import { useEntitlementsHandler } from '../../contexts/EntitlementsContext'
+import { renderTextWithSourceLinks } from '../../utils/linkUtils'
 import { CPOINT_EASE_OUT, TAB_CROSSFADE_MS } from '../../design/motion'
 
 /** Elapsed-ms thresholds for the staged wait line (advance-only, honest:
@@ -46,6 +49,10 @@ function WaitLine() {
  * enter transition plays via a two-frame open state. Fetches through the
  * entitlements handler so cap denials open the LimitReachedModal and the
  * sheet quietly closes.
+ *
+ * Rendered through a portal: this sheet mounts inside post cards, whose
+ * ancestor stacking contexts otherwise trap it underneath the fixed
+ * bottom nav (z-[900]) regardless of its own z-index.
  */
 export default function SteveSummarySheet({
   postId,
@@ -55,6 +62,7 @@ export default function SteveSummarySheet({
   onClose: () => void
 }) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const entitlementsHandler = useEntitlementsHandler()
   const [shown, setShown] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -134,7 +142,7 @@ export default function SteveSummarySheet({
     }
   })()
 
-  return (
+  return createPortal(
     <div
       className={`fixed inset-0 z-[1002] flex items-end justify-center bg-black/60 transition-opacity duration-200 ${shown ? 'opacity-100' : 'opacity-0'}`}
       onClick={e => { if (e.currentTarget === e.target) onClose() }}
@@ -143,7 +151,7 @@ export default function SteveSummarySheet({
       aria-label={t('feed.steve_summary')}
     >
       <div
-        className={`w-full max-w-xl max-h-[75dvh] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-c-border bg-c-bg-elevated px-4 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] transition-transform duration-[250ms] ${shown ? 'translate-y-0' : 'translate-y-full'} sm:mb-4 sm:rounded-2xl sm:border`}
+        className={`w-full max-w-xl min-h-[30dvh] max-h-[75dvh] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-c-border bg-c-bg-elevated px-4 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] transition-transform duration-[250ms] ${shown ? 'translate-y-0' : 'translate-y-full'} sm:mb-4 sm:rounded-2xl sm:border`}
         style={{ transitionTimingFunction: CPOINT_EASE_OUT }}
         onClick={e => e.stopPropagation()}
       >
@@ -174,7 +182,12 @@ export default function SteveSummarySheet({
 
         {result && !loading && !error && (
           <div className="space-y-3 pb-1">
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-c-text-primary">{result.summary}</p>
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-c-text-primary">
+              {renderTextWithSourceLinks(result.summary, false, username => {
+                onClose()
+                navigate(`/profile/${encodeURIComponent(username)}`)
+              })}
+            </p>
             <div className="flex items-center gap-3 border-t border-c-border-subtle pt-2">
               {wasCached && cachedTimeLabel && (
                 <span className="text-[11px] text-c-text-tertiary">
@@ -192,6 +205,7 @@ export default function SteveSummarySheet({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

@@ -9,7 +9,7 @@ import MentionTextarea from '../components/MentionTextarea'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
-import { renderRichText } from '../utils/linkUtils'
+import { renderBoldText, renderRichText } from '../utils/linkUtils'
 import { openExternalInApp } from '../utils/openExternalInApp'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import EditableAISummary from '../components/EditableAISummary'
@@ -941,7 +941,7 @@ export default function CommentReply() {
                   {parent.audio_path && (
                     <div className="mt-2 space-y-1" onClick={(e) => e.stopPropagation()}>
                       {parent.audio_summary ? (
-                        <p className="text-[12px] text-c-text-secondary italic line-clamp-4">{parent.audio_summary}</p>
+                        <p className="text-[12px] text-c-text-secondary italic line-clamp-4">{renderBoldText(parent.audio_summary)}</p>
                       ) : (() => {
                         const timestampMs = parseFlexibleDate(parent.timestamp)?.getTime()
                         if (timestampMs != null && !Number.isNaN(timestampMs) && Date.now() - timestampMs < 120000) {

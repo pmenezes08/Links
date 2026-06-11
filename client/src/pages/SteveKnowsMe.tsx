@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
+import { renderBoldText } from '../utils/linkUtils'
 
 type SteveProfilePayload = {
   username: string
@@ -285,10 +286,10 @@ export default function SteveKnowsMe() {
           </div>
         ) : null}
         {driving ? (
-          <p className="text-sm text-c-text-secondary leading-relaxed whitespace-pre-wrap">{driving}</p>
+          <p className="text-sm text-c-text-secondary leading-relaxed whitespace-pre-wrap">{renderBoldText(driving)}</p>
         ) : null}
         {bridge ? (
-          <p className="text-sm text-cpoint-turquoise/90 leading-relaxed italic whitespace-pre-wrap">{bridge}</p>
+          <p className="text-sm text-cpoint-turquoise/90 leading-relaxed italic whitespace-pre-wrap">{renderBoldText(bridge)}</p>
         ) : null}
       </div>
     )
@@ -300,7 +301,7 @@ export default function SteveKnowsMe() {
       case 'networkingValue':
         return (
           <p className="text-sm text-c-text-primary leading-relaxed whitespace-pre-wrap">
-            {typeof val === 'string' ? val : ''}
+            {renderBoldText(typeof val === 'string' ? val : '')}
           </p>
         )
       case 'identity':

@@ -2,6 +2,7 @@
 import { FixedComposerShell } from '../components/FixedComposerShell'
 import BrandLogo from '../components/BrandLogo'
 import SteveAvatar from '../components/steve/SteveAvatar'
+import { renderBoldText } from '../utils/linkUtils'
 import {
   STEVE_REPLY_DELAY_BASE_MS,
   STEVE_REPLY_DELAY_PER_CHAR_MS,
@@ -2328,7 +2329,7 @@ export default function OnboardingChat({
                   <SteveAvatar size={28} className="mt-0.5" />
                   <div className="max-w-[85%] space-y-2">
                     <div className="bg-c-bg-surface border border-c-border rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-[13px] text-c-text-secondary leading-relaxed whitespace-pre-line">
-                      {msg.text}
+                      {renderBoldText(msg.text)}
                     </div>
                     {msg.sectionCard && (
                       <div className="rounded-2xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/[0.06] px-4 py-3">
