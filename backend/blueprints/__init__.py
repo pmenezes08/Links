@@ -96,6 +96,11 @@ def register_blueprints(app: Flask) -> None:
         _chat_uploads.ensure_tables()
         from backend.services import remember_tokens as _remember_tokens
         _remember_tokens.ensure_tables()
+        from backend.services import community_handles as _community_handles
+        _community_handles.ensure_handle_columns()
+        # Deterministic + idempotent: only fills NULL handles, oldest
+        # community wins the clean slug, discoverable stays 0 throughout.
+        _community_handles.backfill_missing_handles()
         from backend.services.dm_chats_tables import ensure_fulltext_search_indexes as _ensure_ft
         from backend.services.database import get_db_connection as _get_db
         try:

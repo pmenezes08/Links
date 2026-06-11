@@ -23014,7 +23014,25 @@ def create_community():
             )
             
             community_id = c.lastrowid
-            
+
+            # Root communities get their unique @handle at birth (slugified
+            # from the name, deduped). Stays non-discoverable until the
+            # owner opts in; sub-communities carry no handle.
+            if parent_id_int is None:
+                try:
+                    from backend.services.community_handles import (
+                        ensure_handle_columns,
+                        generate_unique_handle,
+                    )
+                    ensure_handle_columns()
+                    new_handle = generate_unique_handle(c, get_sql_placeholder(), name, int(community_id))
+                    c.execute(
+                        f"UPDATE communities SET handle = {get_sql_placeholder()} WHERE id = {get_sql_placeholder()}",
+                        (new_handle, int(community_id)),
+                    )
+                except Exception as handle_err:
+                    logger.warning(f"handle assignment failed for community {community_id}: {handle_err}")
+
             # Get user's ID and add creator as owner
             c.execute(f"SELECT id FROM users WHERE username = {get_sql_placeholder()}", (username,))
             user_row = c.fetchone()

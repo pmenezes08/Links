@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS users (
 _COMMUNITIES_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS communities (
     id INT PRIMARY KEY AUTO_INCREMENT,
-    name VARCHAR(191) UNIQUE NOT NULL,
+    name VARCHAR(191) NOT NULL,
     tier VARCHAR(32) DEFAULT 'free',
     creator_username VARCHAR(191),
     parent_community_id INT NULL,
@@ -170,6 +170,9 @@ CREATE TABLE IF NOT EXISTS communities (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 )
 """
+# NOTE: prod's communities.name is deliberately NOT unique (display names
+# may collide; the unique identity is the @handle). Keep this schema in
+# lockstep — a UNIQUE here once made tests pass behavior prod didn't have.
 
 # Minimal posts shape — the lifecycle dispatcher only reads MAX(timestamp)
 # by community_id, and a handful of existing suites touch posts for smoke
