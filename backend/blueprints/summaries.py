@@ -1,6 +1,6 @@
 """Post / voice summary endpoints (gated, logged, bounded).
 
-Wave-4 scaffolding. The legacy summary endpoints still live in
+Wave-4 scaffolding. Remaining legacy summary endpoints still live in
 :mod:`bodybuilding_app` and are gated inline; over time they migrate here.
 
 Currently exposes:
@@ -8,6 +8,9 @@ Currently exposes:
 * ``POST /api/summaries/voice/preflight`` — checks the caller's Whisper
   allowance before the client uploads a long audio file, so we don't burn
   bandwidth for a call that will be rejected.
+* ``GET /api/post/<post_id>/summary`` — Steve summary of a post + its
+  replies (moved out of the monolith; authz/gate/logging live in
+  :mod:`backend.services.post_summary`).
 """
 
 from __future__ import annotations
@@ -74,3 +77,16 @@ def voice_summary_preflight():
         "needs_minutes": round(need_minutes, 2),
         "enforcement_enabled": entitlements_enforcement_enabled(),
     })
+
+
+@summaries_bp.route("/api/post/<int:post_id>/summary", methods=["GET"])
+def post_summary(post_id: int):
+    """Steve summary of a post and its discussion (member-only, gated, logged)."""
+    username = session.get("username")
+    if not username:
+        return api_errors.auth_required()
+
+    from backend.services.post_summary import generate_post_summary
+
+    body, status = generate_post_summary(username, post_id)
+    return jsonify(body), status
