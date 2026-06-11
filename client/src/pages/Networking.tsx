@@ -1,11 +1,24 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useComposerKeyboardLift } from '../hooks/useComposerKeyboardLift'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
+import MemberMatchCard from '../components/networking/MemberMatchCard'
 import { useNavigate } from 'react-router-dom'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
 import { useNetwork } from '../contexts/NetworkContext'
+import { CHAT_KEYBOARD_ANIMATION_MS, CPOINT_EASE_OUT } from '../design/motion'
+
+/** Tappable prompt-starter chips shown on an empty Steve thread — the
+ * member taps instead of reading a paragraph and retyping it. */
+const PROMPT_CHIP_KEYS = [
+  'networking.chip_mentor',
+  'networking.chip_investors',
+  'networking.chip_cofounder',
+  'networking.chip_clients',
+  'networking.chip_hiring',
+  'networking.chip_nearby',
+] as const
 
 type Community = { id: number; name: string }
 type MemberProfile = {
@@ -123,21 +136,18 @@ function SteveDebugModal({
   )
 }
 
-/** Steve empty-thread welcome (variant A) — community name + active member count from networking API */
+/** Steve empty-thread welcome — his question leads, the member count is the
+ * proof, and the prompt chips below replace the old read-then-retype list. */
 function SteveWelcomeCopy({ communityName, activeMemberCount }: { communityName: string; activeMemberCount: number }) {
   const { t } = useTranslation()
   return (
-    <div className="space-y-3 text-[13px] leading-relaxed text-c-text-secondary">
+    <div className="space-y-2 text-[14px] leading-relaxed text-c-text-secondary">
+      <p className="text-base font-semibold text-c-text-primary">{t('networking.welcome_prompt_bold')}</p>
       <p>
         {t(activeMemberCount === 1 ? 'networking.welcome_members_one' : 'networking.welcome_members_other', {
           community: communityName,
           count: activeMemberCount,
         })}
-      </p>
-      <p>
-        <span className="font-semibold text-c-text-secondary">{t('networking.welcome_prompt_bold')}</span>
-        {' '}
-        {t('networking.welcome_prompt_rest')}
       </p>
     </div>
   )
@@ -170,6 +180,7 @@ export default function Networking() {
   const [sessionsLoading, setSessionsLoading] = useState(false)
   const [deletingSessionId, setDeletingSessionId] = useState<number | null>(null)
   const [steveFeedback, setSteveFeedback] = useState<Record<string, { feedback: 'up' | 'down'; reasoning?: string }>>({})
+  const [steveMembers, setSteveMembers] = useState<MemberProfile[]>([])
   const [steveMemberCount, setSteveMemberCount] = useState<number | null>(null)
   const [steveMembersLoading, setSteveMembersLoading] = useState(false)
   const [isAppAdmin, setIsAppAdmin] = useState(false)
@@ -303,10 +314,16 @@ export default function Networking() {
       .then(r => r.json())
       .then(data => {
         if (cancelled) return
-        if (data.success) setSteveMemberCount((data.members || []).length)
-        else setSteveMemberCount(0)
+        if (data.success) {
+          const members = data.members || []
+          setSteveMembers(members)
+          setSteveMemberCount(members.length)
+        } else {
+          setSteveMembers([])
+          setSteveMemberCount(0)
+        }
       })
-      .catch(() => { if (!cancelled) setSteveMemberCount(0) })
+      .catch(() => { if (!cancelled) { setSteveMembers([]); setSteveMemberCount(0) } })
       .finally(() => { if (!cancelled) setSteveMembersLoading(false) })
     return () => { cancelled = true }
   }, [steveCommunity])
@@ -417,6 +434,14 @@ export default function Networking() {
     navigate(`/profile/${username}`)
   }, [navigate])
 
+  const steveMemberByName = useMemo(() => {
+    const map: Record<string, MemberProfile> = {}
+    for (const member of steveMembers) {
+      map[member.username.toLowerCase()] = member
+    }
+    return map
+  }, [steveMembers])
+
   const extractMentions = useCallback((text: string): string[] => {
     const matches = text.match(/@([a-zA-Z0-9_]+)/g)
     return matches ? [...new Set(matches.map(m => m.slice(1)))] : []
@@ -484,14 +509,14 @@ export default function Networking() {
     }
   }, [])
 
-  const sendSteveMessage = async () => {
-    if (!steveInput.trim() || !steveCommunity || steveSending) return
+  const sendSteveMessage = async (overrideText?: string) => {
+    const msg = (overrideText ?? steveInput).trim()
+    if (!msg || !steveCommunity || steveSending) return
     if (!isOnline) {
-      setSteveMessages(prev => [...prev, { role: 'user', text: steveInput.trim() }, { role: 'steve', text: t('networking.offline_reply') }])
+      setSteveMessages(prev => [...prev, { role: 'user', text: msg }, { role: 'steve', text: t('networking.offline_reply') }])
       setSteveInput('')
       return
     }
-    const msg = steveInput.trim()
     setSteveInput('')
     setSteveMessages(prev => [...prev, { role: 'user', text: msg }])
     setSteveSending(true)
@@ -506,7 +531,13 @@ export default function Networking() {
         body: JSON.stringify({ community_id: steveCommunity, message: msg, history, debug: isAppAdmin && steveDebugEnabled }),
       })
       const data = await res.json()
-      const reply = data.success ? data.response : (data.error || t('networking.error_generic'))
+      // Server copy stays in Steve's voice: the weekly cap reason maps to a
+      // localized line instead of surfacing the backend's English quota text.
+      const reply = data.success
+        ? data.response
+        : data.reason === 'weekly_networking_prompt_cap'
+          ? t('networking.weekly_limit_reply')
+          : (data.error || t('networking.error_generic'))
       setSteveMessages(prev => [...prev, { role: 'steve', text: reply }])
       setLastSteveDebugTrace(data.debug_trace || null)
       if (!data.debug_trace) setShowDebugModal(false)
@@ -533,7 +564,11 @@ export default function Networking() {
     try {
       const res = await fetch('/api/networking/steve_auto_match', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ community_id: steveCommunity }) })
       const data = await res.json()
-      const reply = data.success ? data.response : (data.error || t('networking.error_generic'))
+      const reply = data.success
+        ? data.response
+        : data.reason === 'weekly_networking_prompt_cap'
+          ? t('networking.weekly_limit_reply')
+          : (data.error || t('networking.error_generic'))
       setSteveMessages(prev => [...prev, { role: 'steve', text: reply }])
       if (sid) saveMessage(sid, 'steve', reply)
     } catch {
@@ -545,7 +580,7 @@ export default function Networking() {
   }
 
   const sectionTabLabel = (key: SectionKey) =>
-    key === 'steve' ? t('steve.recommendations') : t('networking.tab_personal')
+    key === 'steve' ? t('networking.tab_steve') : t('networking.tab_personal')
 
   if (loading || profileGateLoading) return <div className="glass-page min-h-screen text-c-text-primary flex items-center justify-center"><span className="text-c-text-tertiary">{t('networking.loading')}</span></div>
 
@@ -612,80 +647,82 @@ export default function Networking() {
 
       <div
         className="app-subnav-offset max-w-3xl mx-auto px-1 sm:px-3 pb-2 overflow-y-auto overscroll-auto"
-        style={{ WebkitOverflowScrolling: 'touch' as any }}
+        style={{ WebkitOverflowScrolling: 'touch' as any, ['--app-subnav-gap' as any]: '4px' }}
       >
         {/* ── Steve Recommendations ── */}
         {activeSection === 'steve' && (
-          <div className="space-y-3">
-            <section className="rounded-xl border border-c-border bg-c-bg-app p-3 space-y-2.5">
-              <div className="space-y-1.5">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-c-text-tertiary">{t('networking.steve_kicker')}</p>
-                <h1 className="text-xl font-semibold tracking-tight text-c-text-primary">{t('networking.steve_headline')}</h1>
-                <p className="text-[13px] leading-relaxed text-c-text-secondary">
-                  {t('steve.networking_helper')}
-                </p>
-              </div>
-
-              {/* Community selector */}
-              <select
-                value={steveCommunity || ''}
-                onChange={e => {
-                  setSteveCommunity(Number(e.target.value))
-                  setSteveMessages([])
-                  setSteveSessionId(null)
-                  setShowSessionList(false)
-                  setSteveFeedback({})
-                  setLastSteveDebugTrace(null)
-                  setShowDebugModal(false)
-                }}
-                className="w-full rounded-lg border border-c-border bg-transparent px-3 py-2 text-xs text-c-text-primary focus:outline-none focus:border-cpoint-turquoise"
-              >
-                {communities.map(c => <option key={c.id} value={c.id} className="bg-c-bg-app">{c.name}</option>)}
-              </select>
-
-              {/* Session controls */}
-              <div className="flex flex-wrap items-center gap-2">
+          <div>
+            {/* Slim utility row: community pill (multi-network only) + icon
+                actions. The old intro card (kicker/headline/helper) is gone —
+                Steve's welcome bubble carries the value proposition. */}
+            <div className="flex items-center justify-between gap-2 px-2 pt-1">
+              {communities.length > 1 ? (
+                <select
+                  value={steveCommunity || ''}
+                  onChange={e => {
+                    setSteveCommunity(Number(e.target.value))
+                    setSteveMessages([])
+                    setSteveSessionId(null)
+                    setShowSessionList(false)
+                    setSteveFeedback({})
+                    setLastSteveDebugTrace(null)
+                    setShowDebugModal(false)
+                  }}
+                  className="h-9 max-w-[55%] truncate rounded-full border border-c-border bg-transparent px-3 text-xs text-c-text-primary focus:border-cpoint-turquoise focus:outline-none"
+                >
+                  {communities.map(c => <option key={c.id} value={c.id} className="bg-c-bg-app">{c.name}</option>)}
+                </select>
+              ) : (
+                <div />
+              )}
+              <div className="flex items-center">
                 <button
                   onClick={startNewChat}
-                  className="flex items-center gap-1.5 rounded-lg border border-c-border px-3 py-1.5 text-xs text-c-text-secondary hover:border-c-border-strong transition"
+                  className="flex h-11 w-11 items-center justify-center rounded-full text-c-text-secondary transition hover:bg-c-hover-bg"
+                  title={t('networking.new_chat')}
+                  aria-label={t('networking.new_chat')}
                 >
-                  <i className="fa-solid fa-plus text-[10px] text-cpoint-turquoise" />
-                  {t('networking.new_chat')}
+                  <i className="fa-solid fa-plus text-sm text-cpoint-turquoise" />
                 </button>
                 <button
                   onClick={() => setShowSessionList(prev => !prev)}
-                  className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition ${showSessionList ? 'border-cpoint-turquoise/50 text-cpoint-turquoise' : 'border-c-border text-c-text-secondary hover:border-c-border-strong'}`}
+                  className={`relative flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-c-hover-bg ${showSessionList ? 'text-cpoint-turquoise' : 'text-c-text-secondary'}`}
+                  title={t('networking.history')}
+                  aria-label={t('networking.history')}
                 >
-                  <i className="fa-solid fa-clock-rotate-left text-[10px]" />
-                  {t('networking.history')}
-                  {steveSessions.length > 0 && <span className="text-[10px] text-c-text-tertiary">({steveSessions.length})</span>}
+                  <i className="fa-solid fa-clock-rotate-left text-sm" />
+                  {steveSessions.length > 0 && (
+                    <span className="absolute right-1 top-1 min-w-[16px] rounded-full bg-c-active-bg px-1 text-center text-[9px] leading-4 text-c-text-tertiary">{steveSessions.length}</span>
+                  )}
                 </button>
                 {isAppAdmin && (
                   <button
                     type="button"
                     onClick={() => setSteveDebugEnabled(prev => !prev)}
-                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition ${steveDebugEnabled ? 'border-cpoint-turquoise/60 bg-cpoint-turquoise/10 text-cpoint-turquoise' : 'border-c-border text-c-text-secondary hover:border-c-border-strong'}`}
+                    className={`flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-c-hover-bg ${steveDebugEnabled ? 'text-cpoint-turquoise' : 'text-c-text-secondary'}`}
                     title={t('networking.debug_toggle_title')}
+                    aria-label={t('networking.debug_toggle_title')}
                   >
-                    <i className="fa-solid fa-bug text-[10px]" />
-                    {steveDebugEnabled ? t('networking.debug_on') : t('networking.debug_off')}
+                    <i className="fa-solid fa-bug text-sm" />
                   </button>
                 )}
                 {isAppAdmin && lastSteveDebugTrace && (
                   <button
                     type="button"
                     onClick={() => { setDebugTab('planner'); setShowDebugModal(true) }}
-                    className="flex items-center gap-1.5 rounded-lg border border-cpoint-turquoise/50 px-3 py-1.5 text-xs text-cpoint-turquoise hover:bg-cpoint-turquoise/10 transition"
+                    className="flex h-11 w-11 items-center justify-center rounded-full text-cpoint-turquoise transition hover:bg-cpoint-turquoise/10"
+                    title={t('networking.view_reasoning')}
+                    aria-label={t('networking.view_reasoning')}
                   >
-                    <i className="fa-solid fa-magnifying-glass-chart text-[10px]" />
-                    {t('networking.view_reasoning')}
+                    <i className="fa-solid fa-magnifying-glass-chart text-sm" />
                   </button>
                 )}
               </div>
+            </div>
 
               {/* Session history list */}
               {showSessionList && (
-                <div className="rounded-xl border border-c-border bg-c-bg-app/60 p-2 max-h-[200px] overflow-y-auto space-y-1">
+                <div className="mx-2 mt-2 rounded-xl border border-c-border bg-c-bg-app/60 p-2 max-h-[200px] overflow-y-auto space-y-1">
                   {sessionsLoading ? (
                     <div className="text-xs text-c-text-tertiary py-2 text-center">{t('networking.loading')}</div>
                   ) : steveSessions.length === 0 ? (
@@ -744,80 +781,85 @@ export default function Networking() {
                 </div>
               )}
 
-              {/* Chat area */}
-              <div className="rounded-xl border border-c-border bg-c-bg-app/50 p-3 min-h-[280px] max-h-[50vh] overflow-y-auto space-y-3">
-                {steveMessages.length === 0 ? (
-                  (sessionsLoading || steveMembersLoading || steveMemberCount === null) ? (
-                    <div className="flex flex-col items-center justify-center py-16 text-center">
-                      <p className="text-sm text-c-text-tertiary">{t('networking.loading')}</p>
-                    </div>
-                  ) : (
-                    <div className="flex justify-start">
-                      <div className="max-w-[85%] rounded-2xl rounded-bl-md px-3.5 py-2 text-[13px] leading-relaxed bg-transparent text-c-text-secondary">
-                        <SteveWelcomeCopy
-                          communityName={communities.find(c => c.id === steveCommunity)?.name ?? t('networking.welcome_community_fallback')}
-                          activeMemberCount={steveMemberCount}
-                        />
-                      </div>
-                    </div>
-                  )
+            {/* Conversation — full-bleed; the page scroller is the only
+                scroller (the old bordered box capped the chat at 50vh and
+                created scroll-within-scroll). */}
+            <div className="px-2 pt-2 space-y-3">
+              {steveMessages.length === 0 ? (
+                (sessionsLoading || steveMembersLoading || steveMemberCount === null) ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <p className="text-sm text-c-text-tertiary">{t('networking.loading')}</p>
+                  </div>
                 ) : (
-                  steveMessages.map((msg, i) => {
-                    const mentions = msg.role === 'steve' ? extractMentions(msg.text) : []
-                    return (
-                      <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed ${
-                          msg.role === 'user'
-                            ? 'bg-c-active-bg text-c-text-primary rounded-br-md'
-                            : 'bg-transparent text-c-text-secondary rounded-bl-md'
-                        }`}>
-                          {msg.role === 'steve' ? (
-                            <>
-                              <div className="whitespace-pre-wrap">{renderTextWithSourceLinks(msg.text, false, handleMentionClick)}</div>
-                              {mentions.length > 0 && (
-                                <div className="mt-2 pt-1.5 border-t border-c-border-subtle flex flex-wrap gap-x-3 gap-y-1">
-                                  {mentions.map(u => (
-                                    <span key={u} className="inline-flex items-center gap-1 text-[11px] text-c-text-tertiary">
-                                      <span className="text-c-text-disabled">@{u}</span>
-                                      <button
-                                        onClick={() => submitFeedback(u, 'up')}
-                                        className={`p-0.5 rounded transition ${steveFeedback[u]?.feedback === 'up' ? 'text-cpoint-turquoise' : 'text-c-text-disabled hover:text-c-text-tertiary'}`}
-                                        title={t('networking.feedback_good')}
-                                      ><i className="fa-solid fa-thumbs-up text-[10px]" /></button>
-                                      <button
-                                        onClick={() => submitFeedback(u, 'down')}
-                                        className={`p-0.5 rounded transition ${steveFeedback[u]?.feedback === 'down' ? 'text-red-400/80' : 'text-c-text-disabled hover:text-c-text-tertiary'}`}
-                                        title={t('networking.feedback_not_relevant')}
-                                      ><i className="fa-solid fa-thumbs-down text-[10px]" /></button>
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </>
-                          ) : msg.text}
-                        </div>
-                      </div>
-                    )
-                  })
-                )}
-                {(steveSending || autoMatching) && (
-                  <div className="flex justify-start">
-                    <div className="flex items-center gap-1.5 px-3 py-2 text-[13px] text-c-text-tertiary">
-                      <span>{t('networking.steve_thinking')}</span>
-                      <span className="flex gap-0.5">
-                        <span className="w-1.5 h-1.5 bg-cpoint-turquoise rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-1.5 h-1.5 bg-cpoint-turquoise rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-1.5 h-1.5 bg-cpoint-turquoise rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                      </span>
+                  <div className="pt-2">
+                    <SteveWelcomeCopy
+                      communityName={communities.find(c => c.id === steveCommunity)?.name ?? t('networking.welcome_community_fallback')}
+                      activeMemberCount={steveMemberCount}
+                    />
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {PROMPT_CHIP_KEYS.map(key => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => void sendSteveMessage(t(key))}
+                          disabled={steveSending || autoMatching}
+                          className="min-h-[44px] rounded-full border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-4 text-xs font-medium text-c-accent-ink transition hover:bg-cpoint-turquoise/15 disabled:opacity-50"
+                        >
+                          {t(key)}
+                        </button>
+                      ))}
                     </div>
                   </div>
-                )}
-                <div ref={steveEndRef} />
-              </div>
-
-            </section>
+                )
+              ) : (
+                steveMessages.map((msg, i) => {
+                  const mentions = msg.role === 'steve' ? extractMentions(msg.text) : []
+                  return (
+                    <div key={i} className={msg.role === 'user' ? 'flex justify-end' : ''}>
+                      {msg.role === 'user' ? (
+                        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-c-active-bg px-3.5 py-2 text-[13px] leading-relaxed text-c-text-primary">
+                          {msg.text}
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="max-w-[92%] whitespace-pre-wrap text-[13px] leading-relaxed text-c-text-secondary">
+                            {renderTextWithSourceLinks(msg.text, false, handleMentionClick)}
+                          </div>
+                          {mentions.length > 0 && (
+                            <div className="space-y-2">
+                              {mentions.map(u => (
+                                <MemberMatchCard
+                                  key={u}
+                                  username={u}
+                                  member={steveMemberByName[u.toLowerCase()]}
+                                  feedback={steveFeedback[u]?.feedback}
+                                  onFeedback={value => submitFeedback(u, value)}
+                                  onOpen={() => handleMentionClick(u)}
+                                  onMessage={() => navigate(`/user_chat/chat/${u}`)}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })
+              )}
+              {(steveSending || autoMatching) && (
+                <div className="flex items-center gap-1.5 py-2 text-[13px] text-c-text-tertiary">
+                  <span>{t('networking.steve_thinking')}</span>
+                  <span className="flex gap-0.5">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cpoint-turquoise" />
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cpoint-turquoise" style={{ animationDelay: '300ms' }} />
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cpoint-turquoise" style={{ animationDelay: '600ms' }} />
+                  </span>
+                </div>
+              )}
+              <div ref={steveEndRef} />
+            </div>
             {/* Spacer for fixed input bar */}
-            <div className="h-16" />
+            <div className="h-20" />
           </div>
         )}
 
@@ -828,22 +870,23 @@ export default function Networking() {
             style={{
               bottom: showKeyboard ? `${keyboardLift}px` : 0,
               paddingBottom: showKeyboard ? '4px' : `calc(${safeBottomPx}px + 8px)`,
-              transition: 'bottom 0.1s ease-out',
+              transition: `bottom ${CHAT_KEYBOARD_ANIMATION_MS}ms ${CPOINT_EASE_OUT}`,
             }}
           >
             <div className="max-w-3xl mx-auto flex items-center gap-2">
               <button
                 onClick={triggerAutoMatch}
                 disabled={autoMatching || steveSending || !steveCommunity}
-                className="w-9 h-9 rounded-lg border border-c-border flex items-center justify-center flex-shrink-0 hover:border-c-border-strong disabled:opacity-40 transition"
+                className="h-11 w-11 rounded-lg border border-c-border flex items-center justify-center flex-shrink-0 hover:border-c-border-strong disabled:opacity-40 transition"
                 title={t('networking.auto_match_title')}
+                aria-label={t('networking.auto_match_title')}
               >
                 <i className="fa-solid fa-wand-magic-sparkles text-xs text-cpoint-turquoise" />
               </button>
               <textarea
                 value={steveInput}
                 onChange={e => { setSteveInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSteveMessage() } }}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendSteveMessage() } }}
                 placeholder={t('networking.input_placeholder')}
                 rows={1}
                 className="flex-1 rounded-lg border border-c-border bg-transparent px-3 py-2.5 text-sm text-c-text-primary placeholder-c-text-tertiary focus:outline-none focus:border-cpoint-turquoise resize-none overflow-y-auto"
@@ -851,9 +894,10 @@ export default function Networking() {
                 disabled={steveSending || autoMatching}
               />
               <button
-                onClick={sendSteveMessage}
+                onClick={() => void sendSteveMessage()}
                 disabled={!steveInput.trim() || steveSending || autoMatching}
-                className="w-9 h-9 rounded-lg border border-c-border flex items-center justify-center flex-shrink-0 hover:border-c-border-strong disabled:opacity-40 transition"
+                className="h-11 w-11 rounded-lg border border-c-border flex items-center justify-center flex-shrink-0 hover:border-c-border-strong disabled:opacity-40 transition"
+                aria-label={t('networking.send')}
               >
                 <i className="fa-solid fa-arrow-up text-xs text-c-text-primary" />
               </button>
@@ -861,26 +905,20 @@ export default function Networking() {
           </div>
         )}
 
-        {/* ── Personal ── */}
+        {/* ── Personal directory ── */}
         {activeSection === 'personal' && (
-          <div className="space-y-3">
-            <section className="rounded-xl border border-c-border bg-c-bg-app p-3 space-y-2.5">
-              <div className="space-y-1.5">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-c-text-tertiary">{t('networking.personal_kicker')}</p>
-                <h1 className="text-xl font-semibold tracking-tight text-c-text-primary">{t('networking.personal_headline')}</h1>
-                <p className="text-[13px] leading-relaxed text-c-text-secondary">
-                  {t('networking.personal_intro')}
-                </p>
-              </div>
-
-              {/* Community selector */}
-              <select
-                value={personalCommunity || ''}
-                onChange={e => setPersonalCommunity(Number(e.target.value))}
-                className="w-full rounded-lg border border-c-border bg-transparent px-3 py-2 text-xs text-c-text-primary focus:outline-none focus:border-cpoint-turquoise"
-              >
-                {communities.map(c => <option key={c.id} value={c.id} className="bg-c-bg-app">{c.name}</option>)}
-              </select>
+          <div className="space-y-2.5 px-2 pt-1">
+              {/* The old kicker/headline/intro narrated the visible filters
+                  below — removed. Selector only shows with several networks. */}
+              {communities.length > 1 && (
+                <select
+                  value={personalCommunity || ''}
+                  onChange={e => setPersonalCommunity(Number(e.target.value))}
+                  className="h-9 w-full rounded-full border border-c-border bg-transparent px-3 text-xs text-c-text-primary focus:outline-none focus:border-cpoint-turquoise"
+                >
+                  {communities.map(c => <option key={c.id} value={c.id} className="bg-c-bg-app">{c.name}</option>)}
+                </select>
+              )}
 
               {/* Filters */}
               <div className="grid grid-cols-3 gap-1.5">
@@ -927,8 +965,9 @@ export default function Networking() {
                 />
               </div>
 
-              {/* Results */}
-              <div className="rounded-xl border border-c-border bg-c-bg-app/50 p-3">
+              {/* Results — full-bleed list; the old bordered card added
+                  chrome without elevation. */}
+              <div className="pt-1">
                 {personalLoading ? (
                   <div className="text-c-text-tertiary">{t('networking.loading')}</div>
                 ) : (() => {
@@ -945,11 +984,11 @@ export default function Networking() {
                     <div className="text-[11px] text-c-text-tertiary mb-2">
                       {t(filtered.length === 1 ? 'networking.member_count_one' : 'networking.member_count_other', { count: filtered.length })}
                     </div>
-                    <div className="divide-y divide-white/5">
+                    <div className="divide-y divide-c-border-subtle">
                       {filtered.map(m => (
                         <div
                           key={m.username}
-                          className="flex items-center gap-3 py-2.5 cursor-pointer hover:bg-white/[0.02] -mx-1 px-1 rounded-lg transition"
+                          className="flex items-center gap-3 py-2.5 cursor-pointer hover:bg-c-hover-bg -mx-1 px-1 rounded-lg transition"
                           onClick={() => navigate(`/profile/${m.username}`)}
                         >
                           <Avatar username={m.username} url={m.profile_picture || undefined} size={40} />
@@ -963,20 +1002,14 @@ export default function Networking() {
                               </div>
                             )}
                           </div>
-                          <div className="flex flex-col items-stretch gap-1.5 sm:flex-row sm:items-center">
-                            <button
-                              className="rounded-full border border-c-border px-3 py-1 text-xs font-medium text-c-text-primary hover:border-c-border-strong"
-                              onClick={(e) => { e.stopPropagation(); navigate(`/profile/${m.username}`) }}
-                            >
-                              {t('networking.view')}
-                            </button>
-                            <button
-                              className="rounded-full border border-c-border px-3 py-1 text-xs font-medium text-c-text-primary hover:border-c-border-strong"
-                              onClick={(e) => { e.stopPropagation(); navigate(`/user_chat/chat/${m.username}`) }}
-                            >
-                              {t('networking.message')}
-                            </button>
-                          </div>
+                          {/* Row tap already opens the profile — the old
+                              duplicate "View" pill is gone. */}
+                          <button
+                            className="min-h-[40px] shrink-0 rounded-full border border-c-border px-3.5 text-xs font-medium text-c-text-primary hover:border-c-border-strong"
+                            onClick={(e) => { e.stopPropagation(); navigate(`/user_chat/chat/${m.username}`) }}
+                          >
+                            {t('networking.message')}
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -984,7 +1017,6 @@ export default function Networking() {
                   )
                 })()}
               </div>
-            </section>
           </div>
         )}
       </div>
