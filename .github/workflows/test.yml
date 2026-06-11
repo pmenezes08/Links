@@ -98,6 +98,7 @@ jobs:
             tests/test_username_invites.py \
             tests/test_steve_package_trial.py \
             tests/test_age_gate_api.py \
+            tests/test_networking_membership_gate.py \
             -v --tb=short --maxfail=5
 
       - name: Upload test logs (on failure)

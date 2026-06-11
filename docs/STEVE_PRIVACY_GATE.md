@@ -40,6 +40,11 @@ These two accounts (and Steve internally) always bypass and receive full KB. No 
 ### DMs
 - Simple asker (`viewer_username`) vs target check using the same root-network logic.
 
+### Networking page (Steve match / auto-match)
+- `POST /api/networking/steve_match` and `POST /api/networking/steve_auto_match` accept `community_id` from the request body and expose the **whole community-tree roster** (profiles + synthesized KB "AI insight") to the requester through Steve's answer.
+- **Membership is enforced server-side first**: `community_access.user_is_member_of_community_tree(cursor, ph, username, community_id)` must pass (member of the community **or any of its direct sub-communities** — exactly the roster scope the routes load) before any config, cap, or retrieval work. Non-members receive `403 "Not a member of this community"`; app admins bypass per the standard invariant. Regression coverage: `tests/test_networking_membership_gate.py`.
+- Downstream KB reads on this surface are then implicitly scoped by the roster SQL (same tree); any future widening of the roster scope must widen the gate in the same change.
+
 ## Implementation Requirements
 
 - **Single reusable function**: `user_can_access_steve_kb(...)` in a blueprint (e.g. `backend/blueprints/steve_privacy.py` or `backend/services/steve_profiling_gates.py` extension). Must be called first in all paths.

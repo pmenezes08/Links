@@ -13092,6 +13092,19 @@ def api_networking_steve_match():
     debug_allowed = bool(debug_requested and username and is_app_admin(username))
     if not community_id or not message:
         return jsonify({'success': False, 'error': 'community_id and message required'}), 400
+    try:
+        community_id = int(community_id)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Invalid community_id'}), 400
+    # Server-side authorization: the requester must belong to the community
+    # tree Steve is about to profile. community_id comes from the request
+    # body, so without this check any authenticated user could enumerate
+    # ids and read other networks' member knowledge (AGENTS.md § Privacy).
+    from backend.services.community_access import user_is_member_of_community_tree
+    if not is_app_admin(username):
+        with get_db_connection() as _auth_conn:
+            if not user_is_member_of_community_tree(_auth_conn.cursor(), get_sql_placeholder(), username, community_id):
+                return jsonify({'success': False, 'error': 'Not a member of this community'}), 403
     from backend.services import ai_usage as _networking_ai_usage
     from backend.services.networking_ai_config import get_networking_ai_config
 
@@ -13456,6 +13469,16 @@ def api_networking_steve_auto_match():
     community_id = data.get('community_id')
     if not community_id:
         return jsonify({'success': False, 'error': 'community_id required'}), 400
+    try:
+        community_id = int(community_id)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Invalid community_id'}), 400
+    # Same server-side membership authorization as steve_match above.
+    from backend.services.community_access import user_is_member_of_community_tree
+    if not is_app_admin(username):
+        with get_db_connection() as _auth_conn:
+            if not user_is_member_of_community_tree(_auth_conn.cursor(), get_sql_placeholder(), username, community_id):
+                return jsonify({'success': False, 'error': 'Not a member of this community'}), 403
     from backend.services import ai_usage as _networking_ai_usage
     from backend.services.networking_ai_config import get_networking_ai_config
 

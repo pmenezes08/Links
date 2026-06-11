@@ -41,6 +41,40 @@ def user_is_member_of_community(cursor: Any, ph: str, username: str, community_i
     return cursor.fetchone() is not None
 
 
+def user_is_member_of_community_tree(cursor: Any, ph: str, username: str, community_id: int) -> bool:
+    """Return True when ``username`` belongs to ``community_id`` or any of its
+    direct sub-communities.
+
+    This mirrors the roster scope the networking surfaces load (the community
+    plus its children), so authorization and data exposure cover the exact
+    same set. Used as the server-side gate for the Steve networking routes —
+    profile visibility is an authorization decision (AGENTS.md § Privacy).
+    """
+    if not username or not community_id:
+        return False
+    try:
+        community_id = int(community_id)
+    except (TypeError, ValueError):
+        return False
+    cursor.execute(
+        f"SELECT id FROM communities WHERE id = {ph} OR parent_community_id = {ph}",
+        (community_id, community_id),
+    )
+    ids = [(r["id"] if hasattr(r, "keys") else r[0]) for r in cursor.fetchall()]
+    if not ids:
+        return False
+    comm_ph = ",".join([ph] * len(ids))
+    cursor.execute(
+        f"""
+        SELECT 1 FROM user_communities uc
+        JOIN users u ON uc.user_id = u.id
+        WHERE u.username = {ph} AND uc.community_id IN ({comm_ph})
+        """,
+        (username, *ids),
+    )
+    return cursor.fetchone() is not None
+
+
 def check_useful_resource_mutation_access(
     cursor: Any,
     ph: str,
