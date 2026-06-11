@@ -368,6 +368,15 @@ Push tokens are stored in `fcm_tokens` (primary), `native_push_tokens` (direct A
 
 ---
 
+## 12b. Community handles: find by handle → request → approve
+
+- **Handles.** Every root community has a globally-unique `@handle` (`communities.handle`, owned by `backend/services/community_handles.py`): assigned at creation (creator-picked or slugified from the name), backfilled at startup for older rows, owner-changeable in Manage Community with a 30-day cooldown. Display names are deliberately **not** unique; the handle is the identity. Sub-communities carry no handle.
+- **Findability is opt-in.** `communities.discoverable` defaults OFF. The Manage Community card ("Open to join requests") only unlocks once a handle is saved. There is **no directory**: the only discovery primitive is exact-match lookup — `GET /api/community/by_handle/<handle>` — which is rate-limited and **non-enumerating** (nonexistent handle ≡ non-discoverable community ≡ sub-community: identical response). The lookup payload is an allowlist: name, @handle, short description, *bucketed* member count.
+- **Request → approve.** A member who finds a community asks to join (`community_join_requests`, one row per user+community). Owners/admins get a push + notification (recipient-locale copy via `notification_copy`: `community_join_request`) and act from the Notifications → Invites tab ("Asking to join" cards) or the admin-only pending-requests row at the top of the community feed (navigates to the inbox; no inline mutations). Accept routes through the same join path as invite acceptance — member-cap checks (`render_member_cap_error`; the request stays pending on cap block), introduce-yourself thread, `notify_on_new_member`, cache invalidation — then notifies the requester (`community_join_request_accepted`).
+- **Silent expiry on decline.** Declines never notify and are requester-invisible: the lookup keeps reporting `pending` for the 30-day cooldown, after which the state quietly resets. Request-pending copy promises only the positive path ("If you're welcomed in, you'll hear here"). No reason is ever recorded or shown.
+
+---
+
 ## 13. Deploy smoke (staging → production)
 
 1. Merge to **staging** branch / workflow; run **`cloudbuild.yaml`** → **`cpoint-app-staging`**.

@@ -197,7 +197,7 @@ export default function HandleSettings({ communityId }: { communityId: number | 
       <div className="relative">
         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-c-text-tertiary">@</span>
         <input
-          className="w-full rounded-md bg-c-bg-app border border-c-border pl-7 pr-12 py-2 text-[16px] focus:border-cpoint-turquoise outline-none"
+          className="w-full rounded-md bg-c-bg-app border border-c-border pl-7 pr-12 py-2 text-[16px] text-c-text-primary focus:border-cpoint-turquoise outline-none"
           value={draft}
           onChange={e => onDraftChange(e.target.value)}
           spellCheck={false}

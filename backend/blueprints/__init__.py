@@ -98,6 +98,8 @@ def register_blueprints(app: Flask) -> None:
         _chat_uploads.ensure_tables()
         from backend.services import remember_tokens as _remember_tokens
         _remember_tokens.ensure_tables()
+        from backend.services import community_join_requests as _community_join_requests
+        _community_join_requests.ensure_tables()
         from backend.services import community_handles as _community_handles
         _community_handles.ensure_handle_columns()
         # Deterministic + idempotent: only fills NULL handles, oldest

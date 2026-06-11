@@ -79,7 +79,13 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/get_event_rsvp_details` | GET (default) | `get_event_rsvp_details` | `backend/blueprints/community_calendar.py:224` | get event rsvp details | `client/src/pages/EventDetail.tsx` (1) |
 | `/api/community/<int:community_id>/handle_settings` | GET | `handle_settings_get` | `backend/blueprints/community_handles.py:20` | handle settings get | *(no exact string match — may use helpers)* |
 | `/api/community/<int:community_id>/handle_settings` | POST | `handle_settings_post` | `backend/blueprints/community_handles.py:33` | handle settings post | *(no exact string match — may use helpers)* |
-| `/api/community/handle_check` | GET | `handle_check` | `backend/blueprints/community_handles.py:55` | handle check | `client/src/components/community/HandleSettings.tsx` (1) |
+| `/api/community/by_handle/<handle>` | GET | `lookup_by_handle` | `backend/blueprints/community_handles.py:55` | lookup by handle | *(no exact string match — may use helpers)* |
+| `/api/community/<int:community_id>/join_requests` | POST | `join_request_create` | `backend/blueprints/community_handles.py:70` | join request create | *(no exact string match — may use helpers)* |
+| `/api/community/<int:community_id>/join_requests/mine` | DELETE | `join_request_withdraw` | `backend/blueprints/community_handles.py:83` | join request withdraw | *(no exact string match — may use helpers)* |
+| `/api/community/join_requests/pending` | GET | `join_requests_pending` | `backend/blueprints/community_handles.py:96` | join requests pending | `client/src/pages/Notifications.tsx` (1) |
+| `/api/community/<int:community_id>/join_requests/count` | GET | `join_requests_count` | `backend/blueprints/community_handles.py:110` | join requests count | *(no exact string match — may use helpers)* |
+| `/api/community/<int:community_id>/join_requests/decide` | POST | `join_request_decide` | `backend/blueprints/community_handles.py:123` | join request decide | *(no exact string match — may use helpers)* |
+| `/api/community/handle_check` | GET | `handle_check` | `backend/blueprints/community_handles.py:143` | handle check | `client/src/components/community/HandleSettings.tsx` (1) |
 | `/api/community/<int:community_id>/invite_settings` | GET, POST | `community_invite_settings` | `backend/blueprints/community_invites.py:45` | community invite settings | *(no exact string match — may use helpers)* |
 | `/api/community/invite_link` | POST | `generate_invite_link` | `backend/blueprints/community_invites.py:52` | generate invite link | `client/src/pages/AdminDashboard.tsx` (1), `client/src/pages/Members.tsx` (1), `admin-web/src/pages/Invites.tsx` (1) |
 | `/api/community/manageable` | GET | `list_manageable_communities` | `backend/blueprints/community_invites.py:68` | list manageable communities | `client/src/pages/Members.tsx` (1), `client/src/pages/PublicProfile.tsx` (1) |
@@ -1317,7 +1323,7 @@ Total **373** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/feed` | GET | `feed` | 14322 | feed | `client/src/components/pageTransition.test.ts` (8), `client/src/App.tsx` (4), `client/src/components/pageTransitionUtils.ts` (3), `client/src/components/DashboardBottomNav.tsx` (2), `client/src/components/KnowledgeBaseGraph.tsx` (1) |
+| `/feed` | GET | `feed` | 14322 | feed | `client/src/components/pageTransition.test.ts` (8), `client/src/App.tsx` (4), `client/src/components/pageTransitionUtils.ts` (3), `client/src/components/DashboardBottomNav.tsx` (2), `client/src/pages/CommunityFeed.tsx` (2) |
 
 ### `/fix_database_issues`
 

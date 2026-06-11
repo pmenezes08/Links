@@ -241,6 +241,16 @@
       "title": "Upcoming event",
       "body": "{event_name} starts soon",
       "message": "Reminder: {event_name} starts soon"
+    },
+    "community_join_request": {
+      "title": "Someone's asking to join",
+      "body": "@{username} asked to join {community}",
+      "message": "@{username} asked to join {community}"
+    },
+    "community_join_request_accepted": {
+      "title": "Welcome in",
+      "body": "You're in — {community} accepted your request.",
+      "message": "You're in — {community} accepted your request."
     }
   },
   "communities": {

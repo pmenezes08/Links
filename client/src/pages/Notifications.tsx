@@ -66,6 +66,16 @@ type PendingCommunityInvite = {
   expired?: boolean
 }
 
+type PendingJoinRequest = {
+  id: number
+  community_id: number
+  community_name: string
+  username: string
+  display_name: string
+  profile_picture?: string | null
+  created_at?: string
+}
+
 type TabType = 'notifications' | 'invites' | 'calendar' | 'polls' | 'tasks'
 
 function tabFromSearch(search: string): TabType {
@@ -97,6 +107,8 @@ function iconFor(type?: string){
       case 'follow_request': return 'fa-solid fa-user-plus'
       case 'follow_accept': return 'fa-solid fa-user-check'
       case 'community_invite': return 'fa-solid fa-user-plus'
+      case 'community_join_request': return 'fa-solid fa-user-plus'
+      case 'community_join_request_accepted': return 'fa-solid fa-user-check'
     case 'poll': return 'fa-solid fa-chart-bar'
     case 'poll_vote': return 'fa-solid fa-square-poll-vertical'
     case 'event_invitation': return 'fa-solid fa-calendar-check'
@@ -181,6 +193,8 @@ export default function Notifications(){
   const [unreadInviteCount, setUnreadInviteCount] = useState(0)
   const [inviteActionLoading, setInviteActionLoading] = useState<number | null>(null)
   const [inviteActionError, setInviteActionError] = useState('')
+  const [joinRequests, setJoinRequests] = useState<PendingJoinRequest[]>([])
+  const [joinRequestActionLoading, setJoinRequestActionLoading] = useState<number | null>(null)
   const [eventsLoading, setEventsLoading] = useState(false)
   const [pollsLoading, setPollsLoading] = useState(false)
   const [tasksLoading, setTasksLoading] = useState(false)
@@ -263,10 +277,49 @@ export default function Notifications(){
     }
   }, [])
 
+  const loadJoinRequests = useCallback(async function loadJoinRequests(){
+    try {
+      const r = await fetch('/api/community/join_requests/pending', {
+        credentials: 'include',
+        headers: { 'Accept': 'application/json' },
+      })
+      const j = await r.json().catch(() => null)
+      if (j?.success && Array.isArray(j.requests)) {
+        setJoinRequests(j.requests)
+      }
+    } catch (err) {
+      console.error('Failed to load join requests:', err)
+    }
+  }, [])
+
+  const respondToJoinRequest = useCallback(async (req: PendingJoinRequest, action: 'accept' | 'reject') => {
+    setJoinRequestActionLoading(req.id)
+    setInviteActionError('')
+    try {
+      const r = await fetch(`/api/community/${req.community_id}/join_requests/decide`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: req.username, action }),
+      })
+      const j = await r.json().catch(() => null)
+      if (j?.success) {
+        setJoinRequests(prev => prev.filter(item => item.id !== req.id))
+      } else {
+        setInviteActionError(j?.error || j?.message || t('notifications_page.invite_action_failed', { action }))
+      }
+    } catch {
+      setInviteActionError(t('notifications_page.invite_action_failed', { action }))
+    } finally {
+      setJoinRequestActionLoading(null)
+    }
+  }, [t])
+
   useEffect(() => {
     void load()
     void loadPendingInvites()
-  }, [load, loadPendingInvites])
+    void loadJoinRequests()
+  }, [load, loadPendingInvites, loadJoinRequests])
 
   useEffect(() => {
     const previous = lastUnreadNotifsRef.current
@@ -746,12 +799,59 @@ export default function Notifications(){
                 {inviteActionError}
               </div>
             ) : null}
-            {pendingInvites.length === 0 ? (
+            {joinRequests.length > 0 && (
+              <div className="space-y-2 mb-4">
+                <div className="text-xs font-semibold uppercase tracking-wide text-c-text-tertiary">{t('notifications_page.join_requests_heading')}</div>
+                {joinRequests.map(req => (
+                  <div key={`join-req-${req.id}`} className="rounded-xl border border-cpoint-turquoise/35 bg-cpoint-turquoise/10 p-3">
+                    <div className="flex items-start gap-3">
+                      {req.profile_picture ? (
+                        <img
+                          src={req.profile_picture.startsWith('http') || req.profile_picture.startsWith('/') ? req.profile_picture : `/${req.profile_picture}`}
+                          alt=""
+                          className="w-10 h-10 rounded-full object-cover bg-c-active-bg"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-cpoint-turquoise/20 flex items-center justify-center text-cpoint-turquoise">
+                          <i className="fa-solid fa-user-plus" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-c-text-primary">
+                          {t('notifications_page.join_request_body', {
+                            user: req.display_name,
+                            community: req.community_name,
+                          })}
+                        </div>
+                        <div className="text-[11px] text-c-text-tertiary mt-0.5">@{req.username}{req.created_at ? ` · ${formatTimeAgo(req.created_at, t)}` : ''}</div>
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            className="flex-1 min-h-[44px] rounded-lg bg-cpoint-turquoise px-3 py-2 text-sm font-semibold text-black disabled:opacity-50"
+                            disabled={joinRequestActionLoading === req.id}
+                            onClick={() => respondToJoinRequest(req, 'accept')}
+                          >
+                            {joinRequestActionLoading === req.id ? t('notifications_page.working') : t('notifications_page.join_request_accept')}
+                          </button>
+                          <button
+                            className="flex-1 min-h-[44px] rounded-lg border border-c-border bg-c-hover-bg px-3 py-2 text-sm text-c-text-primary disabled:opacity-50"
+                            disabled={joinRequestActionLoading === req.id}
+                            onClick={() => respondToJoinRequest(req, 'reject')}
+                          >
+                            {t('notifications_page.join_request_decline')}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {pendingInvites.length === 0 && joinRequests.length === 0 ? (
               <div className="text-c-text-tertiary py-10 text-center">
                 <i className="fa-solid fa-user-plus text-2xl" />
                 <div className="mt-2">{t('notifications_page.no_invites')}</div>
               </div>
-            ) : (
+            ) : pendingInvites.length === 0 ? null : (
               <div className="space-y-2">
                 <div className="text-xs font-semibold uppercase tracking-wide text-c-text-tertiary">{t('notifications_page.community_invites_heading')}</div>
                 {pendingInvites.map(invite => (

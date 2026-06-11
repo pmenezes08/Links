@@ -5,6 +5,7 @@ import type { TFunction } from 'i18next'
 import { useHeader } from '../contexts/HeaderContext'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { normalizeHandleInput } from '../components/community/HandleSettings'
+import JoinByHandlePanel from '../components/community/JoinByHandlePanel'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { readDeviceCacheStale, writeDeviceCache } from '../utils/deviceCache'
@@ -1598,7 +1599,7 @@ export default function PremiumDashboard() {
                     spellCheck={false}
                     autoCapitalize="none"
                     autoCorrect="off"
-                    className="w-full pl-7 pr-3 py-2 rounded-md bg-c-bg-app border border:white/15 text-sm"
+                    className="w-full pl-7 pr-3 py-2 rounded-md bg-c-bg-app border border:white/15 text-sm text-c-text-primary"
                   />
                 </div>
                 <div className="text-[11px] text-c-text-tertiary mt-1">{t('communities.handle_helper')}</div>
@@ -1666,7 +1667,15 @@ export default function PremiumDashboard() {
               <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowJoinModal(false)} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
             </div>
             <div className="space-y-3">
-              <input value={joinCode} onChange={e=> setJoinCode(e.target.value)} placeholder={t('dashboard.join_code_placeholder')} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border:white/15 text-sm" />
+              {/* Find by handle — the primary way in. The legacy code path
+                  stays below as fallback for older invites. */}
+              <JoinByHandlePanel onJoinedNavigate={() => setShowJoinModal(false)} />
+              <div className="flex items-center gap-2 text-[11px] text-c-text-tertiary">
+                <span className="h-px flex-1 bg-c-border" />
+                {t('communities.find_or_code')}
+                <span className="h-px flex-1 bg-c-border" />
+              </div>
+              <input value={joinCode} onChange={e=> setJoinCode(e.target.value)} placeholder={t('dashboard.join_code_placeholder')} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border:white/15 text-sm text-c-text-primary" />
               <div className="flex items-center justify-end gap-2">
                 <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowJoinModal(false)}>{t('common.cancel')}</button>
                 <button className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black hover:brightness-110" onClick={async()=> {

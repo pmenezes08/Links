@@ -41,6 +41,7 @@ import EditableAISummary from '../components/EditableAISummary'
 import GifPicker from '../components/GifPicker'
 import FeedBottomNav from '../components/FeedBottomNav'
 import AskSteveEntry from '../components/feed/AskSteveEntry'
+import PendingRequestsRow from '../components/feed/PendingRequestsRow'
 import SteveSummarySheet from '../components/steve/SteveSummarySheet'
 import { SteveGlyph } from '../components/steve/SteveMark'
 import { hasSummary } from '../components/steve/steveSummaryStore'
@@ -3052,6 +3053,14 @@ export default function CommunityFeed() {
             />
           )}
 
+            {/* Admin-only pending join requests (actionable state outranks
+                the evergreen Ask Steve door; both quiet rows, never more). */}
+            {community_id && (
+              <PendingRequestsRow
+                communityId={community_id}
+                isAdmin={!!(data?.is_community_admin || data?.community?.creator_username === data?.username)}
+              />
+            )}
             {/* Ask Steve entry — top-of-feed, scrolls away with content.
                 Hidden unless this community is networking-eligible. */}
             {community_id && <AskSteveEntry communityId={community_id} />}

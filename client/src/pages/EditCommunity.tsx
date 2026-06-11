@@ -593,12 +593,12 @@ export default function EditCommunity(){
         <form ref={formRef} onSubmit={onSubmit} className="space-y-4">
           <div>
             <label className="block text-sm text-c-text-tertiary mb-1">{t('communities.community_name')}</label>
-            <input className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-cpoint-turquoise outline-none" value={name} onChange={e=> setName(e.target.value)} required />
+            <input className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] text-c-text-primary focus:border-cpoint-turquoise outline-none" value={name} onChange={e=> setName(e.target.value)} required />
           </div>
           <div>
             <label className="block text-sm text-c-text-tertiary mb-1">{t('communities.description')}</label>
             <textarea
-              className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-cpoint-turquoise outline-none min-h-[96px]"
+              className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] text-c-text-primary focus:border-cpoint-turquoise outline-none min-h-[96px]"
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder={t('communities.description_placeholder')}
@@ -814,7 +814,7 @@ export default function EditCommunity(){
                 setImageFile(e.target.files?.[0] || null)
                 if (e.target.files?.[0]) setRemoveBackground(false)
               }} 
-              className="block w-full text-sm" 
+              className="block w-full text-sm text-c-text-primary"
             />
           </div>
           

@@ -110,6 +110,7 @@ Also: **`groups`** (optional **`steve_agent_enabled`**, **`steve_agent_preset`**
 |-------|------|
 | `community_stories`, `community_story_*` | Stories (`community_stories.py`). |
 | `community_invitations` | Community invitations. Rows stay pending until explicit user acceptance; `expires_at` gives each invite a 7-day default lifetime and expired rows must not create `user_communities` membership. |
+| `community_join_requests` | Member-initiated join requests (find-by-handle flow), owned by `backend/services/community_join_requests.py`. One row per `(community_id, username)` (UNIQUE); `status` ∈ pending/accepted/rejected/withdrawn. **Silent expiry invariant:** a `rejected` row keeps reporting `pending` to the requester for the 30-day cooldown — declines never notify and never reveal themselves. Accept routes through the invite-parity join path (cap checks, introduce-thread, new-member notify, cache invalidation). |
 | `community_lifecycle_notifications` | Grace / lifecycle emails (`community_lifecycle.py`). |
 | `community_rolling_welcome_log` | Dedupe log for `/api/cron/communities/rolling-welcome`. Unique by `(community_id, window_start, window_end)` so Steve posts at most one rolling new-member summary per community/window. Ensured by `backend/services/steve_community_welcome.py`. |
 | `community_media_assets` | Accounting (`media_assets.py`). |
