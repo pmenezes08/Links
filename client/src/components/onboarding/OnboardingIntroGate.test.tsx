@@ -1,8 +1,15 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import '@testing-library/jest-dom/vitest'
 
 import OnboardingIntroGate from './OnboardingIntroGate'
+
+// The You page renders <Avatar>, which uses useNavigate — give every render
+// a Router context (production gets it from the app shell via the portal).
+function render(ui: React.ReactElement) {
+  return rtlRender(<MemoryRouter>{ui}</MemoryRouter>)
+}
 
 // The 18+ age step moved to the app-level AgeGate (AgeGate.test.tsx); the
 // intro flow is now: language + appearance → welcome → profile setup.
@@ -27,6 +34,21 @@ function mockIntroFetches(options?: { preferredLocale?: string | null }) {
       return Promise.resolve({
         ok: true,
         json: async () => ({ success: true, video_url: null }),
+      })
+    }
+    if (path.includes('/api/me/basic_profile')) {
+      if (init?.method === 'POST') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, basic_profile: { complete: true } }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          success: true,
+          basic_profile: { profile: { first_name: 'Ana', last_name: 'Silva', profile_picture: '' } },
+        }),
       })
     }
     if (path.includes('/api/onboarding/defer_profile')) {
@@ -85,10 +107,18 @@ describe('OnboardingIntroGate', () => {
     expect(screen.queryByText(/C-Point's heart and intelligence/i)).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    expect(screen.getByRole('heading', { name: 'Build Your Profile' })).toBeInTheDocument()
-    expect(screen.getByText(/private communities where people should know who they are talking to/i)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Set up your Profile' }))
-    expect(onStart).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('heading', { name: 'Meet Steve' })).toBeInTheDocument()
+    expect(screen.getByText(/Steve is your host here/i)).toBeInTheDocument()
+
+    // The Steve page no longer forks — Continue lands on the Tier-1 You page.
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(screen.getByRole('heading', { name: /One last thing/i })).toBeInTheDocument()
+    // Enter is gated on photo + names; the full Steve flow stays one tap away.
+    expect(screen.getByRole('button', { name: 'Enter C-Point' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Build my full profile with Steve' }))
+    await waitFor(() => {
+      expect(onStart).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('skips the language step when preferred_locale is already saved', async () => {
@@ -123,17 +153,24 @@ describe('OnboardingIntroGate', () => {
     expect(screen.getByRole('heading', { name: 'The C-Point Manifesto' })).toBeInTheDocument()
     expect(screen.getByText(/No public feeds\. No self-promotion/i)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Set up your Profile' }))
-    expect(onStart).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Build my full profile with Steve' }))
+    await waitFor(() => {
+      expect(onStart).toHaveBeenCalledTimes(1)
+    })
   })
 
-  it('lets users defer profile setup with a 3-day confirmation', async () => {
+  it('completes the Tier-1 You page and enters C-Point', async () => {
     const fetchMock = mockIntroFetches({ preferredLocale: null })
     vi.stubGlobal('fetch', fetchMock)
     const replaceMock = vi.fn()
     vi.stubGlobal('location', { ...window.location, replace: replaceMock })
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: vi.fn(() => 'blob:avatar-preview'),
+      revokeObjectURL: vi.fn(),
+    })
 
-    render(<OnboardingIntroGate onStart={vi.fn()} />)
+    const { container } = render(<OnboardingIntroGate onStart={vi.fn()} />)
 
     await waitFor(() => {
       expect(
@@ -141,20 +178,34 @@ describe('OnboardingIntroGate', () => {
       ).toBeInTheDocument()
     })
     await advancePastLanguageIfNeeded()
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' })) // welcome → Steve
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' })) // Steve → You page
 
-    fireEvent.click(screen.getByRole('button', { name: 'Set up my profile later' }))
-    expect(screen.getByRole('heading', { name: 'Finish within 3 days' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /One last thing/i })).toBeInTheDocument()
+    // Names prefill from /api/me/basic_profile; without a photo Enter stays off.
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Ana')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('Silva')).toBeInTheDocument()
+    })
+    expect(screen.getByRole('button', { name: 'Enter C-Point' })).toBeDisabled()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Set up later' }))
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(fileInput, {
+      target: { files: [new File(['x'], 'me.png', { type: 'image/png' })] },
+    })
+
+    const enter = screen.getByRole('button', { name: 'Enter C-Point' })
+    await waitFor(() => expect(enter).toBeEnabled())
+    fireEvent.click(enter)
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
+        '/api/me/basic_profile',
+        expect.objectContaining({ method: 'POST', credentials: 'include' }),
+      )
+      expect(fetchMock).toHaveBeenCalledWith(
         '/api/onboarding/defer_profile',
-        expect.objectContaining({
-          method: 'POST',
-          credentials: 'include',
-        }),
+        expect.objectContaining({ method: 'POST', credentials: 'include' }),
       )
       expect(replaceMock).toHaveBeenCalledWith('/premium_dashboard')
     })

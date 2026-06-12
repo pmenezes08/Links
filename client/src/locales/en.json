@@ -2471,16 +2471,10 @@
     "underage_delete_confirm_body": "This permanently deletes your account and data. This cannot be undone.",
     "summary": "C-Point is built on a simple belief: the world is meant to be lived, and private communities should help you reconnect with your people without public noise or algorithms in the way.",
     "welcome_title": "Welcome to C-Point",
-    "steve_title": "Build Your Profile",
-    "steve_body": "C-Point is not traditional social media. You are joining private communities where people should know who they are talking to. A profile photo and a few details help members recognize you, welcome you, and understand how to connect. Your profile page and profile picture are only visible to people who share a community with you.",
+    "steve_title": "Meet Steve",
+    "steve_body": "Steve is your host here — he can build your full profile with you in a short conversation, and later introduce you to the right people. You can do it now or whenever suits you; first, let's get the one thing every member has.",
     "continue": "Continue",
-    "start": "Set up your Profile",
-    "profile_later": "Set up my profile later",
-    "profile_later_confirm_title": "Finish within 3 days",
-    "profile_later_confirm_body": "You can explore your communities now. To keep C-Point trusted and useful for members, please complete your profile within 3 days. After that, you will need to finish it before continuing into your communities.",
-    "profile_later_confirm_cta": "Set up later",
-    "profile_later_saving": "Saving...",
-    "profile_later_error": "Could not save this for later. Please try again.",
+    "start": "Build my full profile with Steve",
     "read_manifesto": "Read the manifesto",
     "progress_label": "Welcome progress",
     "manifesto_title": "The C-Point Manifesto",
@@ -2492,7 +2486,15 @@
       "Inside every community lives Steve - our intelligent presence who deeply understands each member's journey, values and expertise, and quietly works to create meaningful connections and keep the space alive.",
       "Access is by invitation only. Privacy and exclusivity are built in from day one. Everything shared inside stays inside. No strangers. No algorithms deciding what deserves your attention.",
       "This is your world. Come connect with it."
-    ]
+    ],
+    "you_title": "One last thing — you",
+    "you_subtitle": "This is how members see you. Your photo and profile are only visible to people who share a community with you.",
+    "you_photo_hint": "Any image that represents you works.",
+    "you_photo_aria": "Add a profile photo",
+    "you_enter": "Enter C-Point",
+    "you_saving": "Saving…",
+    "you_missing_fields": "Add your first name, last name, and a photo to enter.",
+    "you_save_failed": "That didn't save. Try again."
   },
   "subscriptions": {
     "price_tbd": "TBD",
@@ -2649,5 +2651,18 @@
     "yesterday": "yesterday",
     "days_ago_one": "{{count}} day ago",
     "days_ago_other": "{{count}} days ago"
+  },
+  "basic_profile": {
+    "kicker": "Almost there",
+    "title": "Add your name and photo",
+    "body": "You can look around first. To post, reply, react, invite, or message, C-Point asks for a basic real profile.",
+    "photo_label": "Photo",
+    "photo_aria": "Add a profile photo",
+    "photo_hint": "A face or clear profile image helps owners and members know who is in the room.",
+    "error_missing": "Add your first name, last name, and a profile picture to participate.",
+    "error_save": "Could not save your profile.",
+    "not_now": "Not now",
+    "save_cta": "Save and participate",
+    "saving": "Saving…"
   }
 }

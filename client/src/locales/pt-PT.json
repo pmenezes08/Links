@@ -2471,16 +2471,10 @@
     "underage_delete_confirm_body": "Isto elimina definitivamente a tua conta e os teus dados. Esta ação não pode ser anulada.",
     "summary": "O C-Point nasce de uma ideia simples: o mundo é para ser vivido, e as comunidades privadas devem ajudar-te a reencontrar as tuas pessoas sem ruído público nem algoritmos pelo meio.",
     "welcome_title": "Bem-vindo ao C-Point",
-    "steve_title": "Constrói o teu perfil",
-    "steve_body": "O C-Point não é uma rede social tradicional. Estás a entrar em comunidades privadas onde as pessoas devem saber com quem estão a falar. Uma foto de perfil e alguns detalhes ajudam os membros a reconhecer-te, receber-te melhor e perceber como se podem ligar a ti. A tua página de perfil e a tua foto só são visíveis para pessoas que partilham uma comunidade contigo.",
+    "steve_title": "Conhece o Steve",
+    "steve_body": "O Steve é o teu anfitrião aqui — pode construir o teu perfil completo contigo numa conversa curta e, mais tarde, apresentar-te às pessoas certas. Podes fazê-lo agora ou quando te der jeito; primeiro, vamos tratar da única coisa que todos os membros têm.",
     "continue": "Continuar",
-    "start": "Configurar o teu perfil",
-    "profile_later": "Configurar o meu perfil mais tarde",
-    "profile_later_confirm_title": "Termina dentro de 3 dias",
-    "profile_later_confirm_body": "Podes explorar as tuas comunidades agora. Para manter o C-Point confiável e útil para todos os membros, completa o teu perfil dentro de 3 dias. Depois disso, terás de o terminar antes de continuares nas tuas comunidades.",
-    "profile_later_confirm_cta": "Configurar mais tarde",
-    "profile_later_saving": "A guardar...",
-    "profile_later_error": "Não foi possível guardar isto para mais tarde. Tenta de novo.",
+    "start": "Construir o meu perfil completo com o Steve",
     "read_manifesto": "Ler o manifesto",
     "progress_label": "Progresso de boas-vindas",
     "manifesto_title": "O manifesto do C-Point",
@@ -2492,7 +2486,15 @@
       "Dentro de cada comunidade vive o Steve — a nossa presença inteligente, que compreende profundamente o percurso, os valores e a experiência de cada membro, e trabalha discretamente para criar ligações significativas e manter o espaço vivo.",
       "O acesso é apenas por convite. Privacidade e exclusividade vêm desde o primeiro dia. Tudo o que é partilhado lá dentro fica lá dentro. Sem estranhos. Sem algoritmos a decidir o que merece a tua atenção.",
       "Este é o teu mundo. Vem ligar-te a ele."
-    ]
+    ],
+    "you_title": "Uma última coisa — tu",
+    "you_subtitle": "É assim que os membros te veem. A tua foto e o teu perfil só são visíveis para quem partilha uma comunidade contigo.",
+    "you_photo_hint": "Qualquer imagem que te represente serve.",
+    "you_photo_aria": "Adicionar foto de perfil",
+    "you_enter": "Entrar no C-Point",
+    "you_saving": "A guardar…",
+    "you_missing_fields": "Adiciona o teu nome, apelido e uma foto para entrares.",
+    "you_save_failed": "Não foi possível guardar. Tenta de novo."
   },
   "subscriptions": {
     "price_tbd": "A definir",
@@ -2649,5 +2651,18 @@
     "yesterday": "ontem",
     "days_ago_one": "há {{count}} dia",
     "days_ago_other": "há {{count}} dias"
+  },
+  "basic_profile": {
+    "kicker": "Quase lá",
+    "title": "Adiciona o teu nome e foto",
+    "body": "Podes explorar primeiro. Para publicar, responder, reagir, convidar ou enviar mensagens, o C-Point pede um perfil básico real.",
+    "photo_label": "Foto",
+    "photo_aria": "Adicionar foto de perfil",
+    "photo_hint": "Uma cara ou imagem de perfil clara ajuda os responsáveis e os membros a saber quem está na sala.",
+    "error_missing": "Adiciona o teu nome, apelido e uma foto de perfil para participares.",
+    "error_save": "Não foi possível guardar o teu perfil.",
+    "not_now": "Agora não",
+    "save_cta": "Guardar e participar",
+    "saving": "A guardar…"
   }
 }

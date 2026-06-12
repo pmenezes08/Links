@@ -7,18 +7,19 @@ import { LOCALE_OPTIONS } from '../../i18n/localeOptions'
 import { useLocale } from '../../i18n/useLocale'
 import { isAtLeast18, isValidDobIso } from '../../lib/ageGate'
 import { clearAllUserData } from '../../utils/clearAllUserData'
+import Avatar from '../Avatar'
+import { useBasicProfileForm } from '../basic-profile/useBasicProfileForm'
 import BrandLogo from '../BrandLogo'
 
 type OnboardingIntroGateProps = {
   onStart: () => void
 }
 
-type IntroPage = 0 | 1 | 2 | 3
+type IntroPage = 0 | 1 | 2 | 3 | 4
 
 type AgeGateError = 'dob_required' | 'consent_required' | 'dob_invalid' | null
 
 type DeleteStep = 'idle' | 'confirm' | 'loading'
-type DeferStep = 'idle' | 'confirm' | 'loading'
 
 const AGE_GATE_CONFIRMED_KEY = 'cpoint:age_gate_confirmed_at'
 
@@ -78,7 +79,7 @@ function buildProgressPages(skipLanguageStep: boolean, skipAgeStep: boolean): In
   const steps: IntroPage[] = []
   if (!skipLanguageStep) steps.push(0)
   if (!skipAgeStep) steps.push(1)
-  steps.push(2, 3)
+  steps.push(2, 3, 4)
   return steps
 }
 
@@ -101,8 +102,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
   const [dobHelpOpen, setDobHelpOpen] = useState(false)
   const [underageOpen, setUnderageOpen] = useState(false)
   const [deleteStep, setDeleteStep] = useState<DeleteStep>('idle')
-  const [deferStep, setDeferStep] = useState<DeferStep>('idle')
-  const [deferError, setDeferError] = useState('')
+  const [exiting, setExiting] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const [deleteFeedback, setDeleteFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(
     null,
@@ -231,12 +231,22 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
     setPage(2)
   }, [consent18, dob])
 
-  const handleConfirmProfileLater = useCallback(async () => {
-    if (deferStep === 'loading') return
-    setDeferStep('loading')
-    setDeferError('')
+  // Tier-1 collection for the "You" page (page 4): photo + names, saved to
+  // /api/me/basic_profile. The full Steve onboarding is invited from here,
+  // never required — entering C-Point only needs the basics.
+  const basicForm = useBasicProfileForm({ fetchPrefill: true })
+  const photoInputRef = useRef<HTMLInputElement>(null)
+
+  const handleEnterCpoint = useCallback(async () => {
+    if (exiting) return
+    const saved = await basicForm.save()
+    if (!saved) return
+    setExiting(true)
     try {
-      const response = await fetch('/api/onboarding/defer_profile', {
+      // Mark the rich onboarding as deferred-by-choice so the dashboard
+      // doesn't auto-open Steve. Best-effort: the intro gate is already
+      // marked seen locally, so a failure here costs nothing.
+      await fetch('/api/onboarding/defer_profile', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -245,18 +255,20 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
           onboarding_auto_open_suppressed: true,
         }),
       })
-      const data = await response.json().catch(() => null)
-      if (!response.ok || !data?.success) {
-        setDeferError(data?.error || t('onboarding_intro.profile_later_error'))
-        setDeferStep('confirm')
-        return
-      }
-      window.location.replace('/premium_dashboard')
-    } catch {
-      setDeferError(t('onboarding_intro.profile_later_error'))
-      setDeferStep('confirm')
+    } catch {}
+    window.location.replace('/premium_dashboard')
+  }, [basicForm, exiting])
+
+  const handleStartWithSteve = useCallback(async () => {
+    // Keep anything already typed: persist the basics silently when valid,
+    // then hand over to the full Steve flow.
+    if (basicForm.canSave) {
+      try {
+        await basicForm.save()
+      } catch {}
     }
-  }, [deferStep, t])
+    onStart()
+  }, [basicForm, onStart])
 
   const handleUnderageTryAgain = useCallback(() => {
     setUnderageOpen(false)
@@ -491,12 +503,73 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                   <h1 className="text-2xl font-semibold tracking-tight mb-3">{t('onboarding_intro.welcome_title')}</h1>
                   <p className="text-sm leading-relaxed text-c-text-secondary mb-6">{t('onboarding_intro.summary')}</p>
                 </div>
-              ) : (
+              ) : page === 3 ? (
                 <div className="text-center">
                   <h1 className="text-2xl font-semibold tracking-tight mb-3">{t('onboarding_intro.steve_title')}</h1>
                   <p className="text-sm leading-relaxed text-c-text-tertiary mb-6">
                     {t('onboarding_intro.steve_body')}
                   </p>
+                </div>
+              ) : (
+                <div>
+                  <div className="text-center">
+                    <h1 className="text-2xl font-semibold tracking-tight mb-1">{t('onboarding_intro.you_title')}</h1>
+                    <p className="text-sm leading-relaxed text-c-text-tertiary mb-5">{t('onboarding_intro.you_subtitle')}</p>
+                  </div>
+                  <div className="mb-4 flex flex-col items-center">
+                    <button
+                      type="button"
+                      onClick={() => photoInputRef.current?.click()}
+                      className="relative h-24 w-24 overflow-hidden rounded-full border border-c-border bg-c-active-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                      aria-label={t('onboarding_intro.you_photo_aria')}
+                    >
+                      <Avatar
+                        username="you"
+                        url={basicForm.displayPreview}
+                        size={96}
+                        displayName={`${basicForm.firstName} ${basicForm.lastName}`.trim()}
+                      />
+                      <span className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full bg-cpoint-turquoise text-black">
+                        <i className="fa-solid fa-camera text-[11px]" />
+                      </span>
+                    </button>
+                    <p className="mt-2 text-xs text-c-text-tertiary">{t('onboarding_intro.you_photo_hint')}</p>
+                    <input
+                      ref={photoInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(event) => basicForm.pickFile(event.target.files?.[0] || null)}
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <label className="block">
+                      <span className="text-xs font-medium text-c-text-secondary">{t('profile.personal.first_name')}</span>
+                      <input
+                        value={basicForm.firstName}
+                        onChange={(event) => basicForm.setFirstName(event.target.value)}
+                        className="mt-1 w-full rounded-xl border border-c-border bg-c-bg-app px-3 py-3 text-sm text-c-text-primary outline-none focus:border-cpoint-turquoise"
+                        autoComplete="given-name"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-c-text-secondary">{t('profile.personal.last_name')}</span>
+                      <input
+                        value={basicForm.lastName}
+                        onChange={(event) => basicForm.setLastName(event.target.value)}
+                        className="mt-1 w-full rounded-xl border border-c-border bg-c-bg-app px-3 py-3 text-sm text-c-text-primary outline-none focus:border-cpoint-turquoise"
+                        autoComplete="family-name"
+                      />
+                    </label>
+                  </div>
+                  {basicForm.error ? (
+                    <p role="alert" className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                      {basicForm.error === 'missing_fields' || basicForm.error === 'save_failed'
+                        ? t(`onboarding_intro.you_${basicForm.error}`)
+                        : basicForm.error}
+                    </p>
+                  ) : null}
+                  <div className="mb-6" />
                 </div>
               )}
 
@@ -527,24 +600,31 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                   >
                     {t('onboarding_intro.continue')}
                   </button>
+                ) : page === 3 ? (
+                  <button
+                    type="button"
+                    onClick={() => setPage(4)}
+                    className="w-full rounded-xl bg-cpoint-turquoise text-black font-semibold py-3 text-sm hover:brightness-110 active:scale-[0.99] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                  >
+                    {t('onboarding_intro.continue')}
+                  </button>
                 ) : (
                   <>
                     <button
                       type="button"
-                      onClick={onStart}
-                      className="w-full rounded-xl bg-cpoint-turquoise text-black font-semibold py-3 text-sm hover:brightness-110 active:scale-[0.99] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                      disabled={!basicForm.canSave || exiting}
+                      onClick={() => void handleEnterCpoint()}
+                      className="w-full rounded-xl bg-cpoint-turquoise text-black font-semibold py-3 text-sm hover:brightness-110 active:scale-[0.99] transition disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
                     >
-                      {t('onboarding_intro.start')}
+                      {basicForm.saving || exiting ? t('onboarding_intro.you_saving') : t('onboarding_intro.you_enter')}
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        setDeferStep('confirm')
-                        setDeferError('')
-                      }}
-                      className="mt-3 w-full rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 py-3 text-sm font-medium text-c-accent-ink transition hover:bg-cpoint-turquoise/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                      disabled={basicForm.saving || exiting}
+                      onClick={() => void handleStartWithSteve()}
+                      className="mt-3 w-full rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 py-3 text-sm font-medium text-c-accent-ink transition hover:bg-cpoint-turquoise/15 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
                     >
-                      {t('onboarding_intro.profile_later')}
+                      {t('onboarding_intro.start')}
                     </button>
                   </>
                 )}
@@ -561,6 +641,15 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                     type="button"
                     onClick={() => setPage(2)}
                     className="w-full rounded-xl bg-cpoint-turquoise/10 text-c-accent-ink border border-cpoint-turquoise/30 font-medium py-3 text-sm hover:bg-cpoint-turquoise/15 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
+                  >
+                    {t('common.back')}
+                  </button>
+                ) : page === 4 ? (
+                  <button
+                    type="button"
+                    disabled={basicForm.saving || exiting}
+                    onClick={() => setPage(3)}
+                    className="w-full rounded-xl py-2 text-xs font-medium text-c-text-tertiary transition hover:text-c-text-secondary disabled:opacity-50"
                   >
                     {t('common.back')}
                   </button>
@@ -620,59 +709,6 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                 className="rounded-xl bg-cpoint-turquoise text-black font-semibold py-3 text-sm hover:brightness-110 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
               >
                 {t('onboarding_intro.start')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {deferStep !== 'idle' && (
-        <div
-          className="fixed inset-0 z-[1112] flex items-center justify-center px-4"
-          style={{
-            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)',
-            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)',
-          }}
-        >
-          <div className="absolute inset-0 bg-c-bg-overlay backdrop-blur-sm" onClick={() => deferStep === 'confirm' && setDeferStep('idle')} />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="onboarding-profile-later-title"
-            className="relative w-full max-w-md rounded-2xl border border-cpoint-turquoise/45 bg-c-bg-app p-6 shadow-[0_24px_80px_rgba(0,206,200,0.18)]"
-          >
-            <h2 id="onboarding-profile-later-title" className="text-xl font-semibold text-c-text-primary">
-              {t('onboarding_intro.profile_later_confirm_title')}
-            </h2>
-            <p className="mt-3 text-sm leading-6 text-c-text-secondary">
-              {t('onboarding_intro.profile_later_confirm_body')}
-            </p>
-            {deferError ? (
-              <p role="alert" className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-                {deferError}
-              </p>
-            ) : null}
-            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <button
-                type="button"
-                disabled={deferStep === 'loading'}
-                onClick={() => {
-                  setDeferStep('idle')
-                  setDeferError('')
-                }}
-                className="rounded-xl border border-c-border bg-c-hover-bg px-4 py-3 text-sm font-semibold text-c-text-primary disabled:opacity-50"
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                type="button"
-                disabled={deferStep === 'loading'}
-                onClick={() => void handleConfirmProfileLater()}
-                className="rounded-xl bg-cpoint-turquoise px-4 py-3 text-sm font-semibold text-black disabled:opacity-50"
-              >
-                {deferStep === 'loading'
-                  ? t('onboarding_intro.profile_later_saving')
-                  : t('onboarding_intro.profile_later_confirm_cta')}
               </button>
             </div>
           </div>

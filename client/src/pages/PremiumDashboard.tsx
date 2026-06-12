@@ -114,33 +114,6 @@ function formatInviteExpiry(value?: string | null) {
   })
 }
 
-function formatOnboardingRemaining(
-  profileDeferUntil: string | null | undefined,
-  serverTime: string | null | undefined,
-  t: TFunction,
-): string {
-  if (!profileDeferUntil) return ''
-  const end = new Date(profileDeferUntil).getTime()
-  const server = serverTime ? new Date(serverTime).getTime() : Date.now()
-  if (Number.isNaN(end) || Number.isNaN(server)) return ''
-  const diffMs = end - server
-  if (diffMs <= 0) return t('dashboard.onboarding_ready')
-  const hours = Math.ceil(diffMs / 3600000)
-  const days = Math.floor(hours / 24)
-  const remHours = hours % 24
-  if (days > 0 && remHours > 0) {
-    const daysLabel = t(days === 1 ? 'dashboard.onboarding_day_one' : 'dashboard.onboarding_day_other')
-    const hoursLabel = t(remHours === 1 ? 'dashboard.onboarding_hour_one' : 'dashboard.onboarding_hour_other')
-    return t('dashboard.onboarding_remaining_days_hours', { days, hours: remHours, daysLabel, hoursLabel })
-  }
-  if (days > 0) {
-    const label = t(days === 1 ? 'dashboard.onboarding_day_one' : 'dashboard.onboarding_day_other')
-    return t('dashboard.onboarding_remaining_days', { count: days, label })
-  }
-  const label = t(hours === 1 ? 'dashboard.onboarding_hour_one' : 'dashboard.onboarding_hour_other')
-  return t('dashboard.onboarding_remaining_hours', { count: hours, label })
-}
-
 function formatLastActive(timestamp: string | null | undefined, t: TFunction): string {
   if (!timestamp) return ''
   try {
@@ -217,7 +190,6 @@ export default function PremiumDashboard() {
   // Onboarding
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [showOnboardingWelcome, setShowOnboardingWelcome] = useState(false)
-  const [onboardingGateRequired, setOnboardingGateRequired] = useState(false)
   const [onboardingMode, setOnboardingMode] = useState<'fresh' | 'profile_builder'>('fresh')
   const [onboardingLaunching, setOnboardingLaunching] = useState(false)
   const [displayName, setDisplayName] = useState('')
@@ -258,7 +230,7 @@ export default function PremiumDashboard() {
     return () => setTitle('')
   }, [setTitle])
   useEffect(() => {
-    const hideHeaderForOnboarding = showOnboarding || showOnboardingWelcome || onboardingLaunching || onboardingGateRequired
+    const hideHeaderForOnboarding = showOnboarding || showOnboardingWelcome || onboardingLaunching
     setHeaderHidden(hideHeaderForOnboarding)
     // Only undo our own hide on cleanup. The dashboard stays mounted during
     // the 250ms page transition, so an unconditional reset here would stomp
@@ -267,14 +239,14 @@ export default function PremiumDashboard() {
     return () => {
       if (hideHeaderForOnboarding) setHeaderHidden(false)
     }
-  }, [showOnboarding, showOnboardingWelcome, onboardingLaunching, onboardingGateRequired, setHeaderHidden])
+  }, [showOnboarding, showOnboardingWelcome, onboardingLaunching, setHeaderHidden])
 
   useEffect(() => {
     const overlayActive =
-      showOnboarding || showOnboardingWelcome || onboardingLaunching || onboardingGateRequired
+      showOnboarding || showOnboardingWelcome || onboardingLaunching
     setOnboardingFullscreenOverlay(overlayActive)
     return () => setOnboardingFullscreenOverlay(false)
-  }, [showOnboarding, showOnboardingWelcome, onboardingLaunching, onboardingGateRequired])
+  }, [showOnboarding, showOnboardingWelcome, onboardingLaunching])
 
   useEffect(() => {
     // Once Steve is mounted, the bridging overlay is no longer needed; clear it so it never
@@ -299,7 +271,7 @@ export default function PremiumDashboard() {
     communities,
     hasPendingInvites: pendingCommunityInvites.length > 0 || !!activeInvitePrompt,
     overlayActive:
-      showOnboarding || showOnboardingWelcome || onboardingLaunching || onboardingGateRequired || showCreateModal,
+      showOnboarding || showOnboardingWelcome || onboardingLaunching || showCreateModal,
   })
 
   useEffect(() => {
@@ -891,12 +863,10 @@ export default function PremiumDashboard() {
     if (!prev || !current || prev === current) return
     onboardingTriggeredRef.current = false
     setOnboardingStateSummary(null)
-    setOnboardingGateRequired(false)
     setShowOnboardingWelcome(false)
   }, [username])
 
   const openOnboardingResume = useCallback(() => {
-    setOnboardingGateRequired(false)
     setShowOnboardingWelcome(false)
     setOnboardingMode('fresh')
     setOnboardingLaunching(true)
@@ -917,8 +887,7 @@ export default function PremiumDashboard() {
         })
       } else if (r.status === 401 || r.status === 404 || j?.success === false) {
         setOnboardingStateSummary(null)
-        setOnboardingGateRequired(false)
-      }
+          }
     } catch {}
   }, [])
 
@@ -967,8 +936,7 @@ export default function PremiumDashboard() {
           }
         } else if (r.status === 401 || r.status === 404 || j?.success === false) {
           setOnboardingStateSummary(null)
-          setOnboardingGateRequired(false)
-        }
+              }
       } catch {}
 
       if (!isRecentlyVerified) {
@@ -1019,17 +987,12 @@ export default function PremiumDashboard() {
       ? 'Add richer personal context when you are ready. This helps communities understand who you are, but it will not block you from participating.'
       : 'Add richer personal or professional details when you are ready. This helps communities understand who you are, but it will not block you from participating.'
   const onboardingOverlayActive =
-    showOnboarding || showOnboardingWelcome || onboardingLaunching || onboardingGateRequired || !!activeInvitePrompt
+    showOnboarding || showOnboardingWelcome || onboardingLaunching || !!activeInvitePrompt
   const { setNavOverrides, clearNavOverrides } = useDashboardLayout()
   useEffect(() => {
     setNavOverrides({ show: !onboardingOverlayActive, searchOpen, onToggleSearch: () => setSearchOpen((v) => !v) })
     return clearNavOverrides
   }, [onboardingOverlayActive, searchOpen, setNavOverrides, clearNavOverrides])
-  const onboardingRemaining = formatOnboardingRemaining(
-    onboardingStateSummary?.profileDeferUntil,
-    onboardingStateSummary?.serverTime,
-    t,
-  )
   const communityFallback = t('dashboard.community_fallback')
   const resolvedCommunityName = (() => {
     if (pendingInviteTarget?.communityName) return pendingInviteTarget.communityName
@@ -1116,20 +1079,12 @@ export default function PremiumDashboard() {
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="text-base font-semibold text-c-text-primary">{onboardingCardTitle}</div>
+                  {/* No countdown, no per-section status pills: deadlines are
+                      manufactured urgency and pills are progress framing —
+                      both banned by the ask register. Title + one line + CTA. */}
                   <p className="mt-1 text-sm leading-relaxed text-c-text-secondary">
                     {onboardingCardBody}
                   </p>
-                  {onboardingRemaining && (
-                    <div className="mt-2 text-xs font-medium text-c-accent-ink">{onboardingRemaining}</div>
-                  )}
-                  <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
-                    <span className={`rounded-full border px-2.5 py-1 ${personalSectionComplete ? 'border-cpoint-turquoise/35 bg-cpoint-turquoise/10 text-c-accent-ink' : 'border-c-border bg-c-hover-bg text-c-text-tertiary'}`}>
-                      {personalSectionComplete ? t('dashboard.personal_complete') : t('dashboard.personal_pending')}
-                    </span>
-                    <span className={`rounded-full border px-2.5 py-1 ${professionalSectionComplete ? 'border-cpoint-turquoise/35 bg-cpoint-turquoise/10 text-c-accent-ink' : 'border-c-border bg-c-hover-bg text-c-text-tertiary'}`}>
-                      {professionalSectionComplete ? t('dashboard.professional_complete') : t('dashboard.professional_pending')}
-                    </span>
-                  </div>
                 </div>
                 <button
                   type="button"
@@ -1393,7 +1348,7 @@ export default function PremiumDashboard() {
       {/* Conversational Onboarding â€” portaled to body so z-index clears dashboard nav (main is z-0). */}
       {onboardingOverlayActive && typeof document !== 'undefined' && createPortal(
         <>
-          {showOnboardingWelcome && !showOnboarding && !onboardingGateRequired && (
+          {showOnboardingWelcome && !showOnboarding && (
             <OnboardingIntroGate
               onStart={() => {
                 setShowOnboardingWelcome(false)
@@ -1402,25 +1357,10 @@ export default function PremiumDashboard() {
               }}
             />
           )}
-          {onboardingGateRequired && !showOnboarding && (
-            <div className="fixed inset-0 z-[1200] bg-c-bg-overlay backdrop-blur-md flex items-center justify-center px-6">
-              <div className="w-full max-w-md rounded-2xl border border-c-border bg-c-bg-elevated p-6 text-center shadow-c-glass">
-                <BrandLogo className="w-14 h-14 rounded-2xl object-contain mx-auto mb-4" />
-                <h2 className="text-lg font-semibold text-c-text-primary mb-2">{t('dashboard.finish_profile_title')}</h2>
-                <p className="text-sm text-c-text-tertiary mb-6">
-                  {t('dashboard.finish_profile_body')}
-                </p>
-                <button
-                  type="button"
-                  className="w-full rounded-xl bg-cpoint-turquoise text-black font-semibold py-3 text-sm hover:brightness-110 transition"
-                  onClick={openOnboardingResume}
-                >
-                  {t('dashboard.continue_with_steve')}
-                </button>
-              </div>
-            </div>
-          )}
-          {onboardingLaunching && !showOnboarding && !onboardingGateRequired && (
+          {/* The hard "finish your profile" wall is gone for good: the rich
+              Steve onboarding is invited (cards, gates with payoff), never
+              forced. Tier-1 basics are collected in the intro gate's You page. */}
+          {onboardingLaunching && !showOnboarding && (
             <div className="fixed inset-0 z-[1200] bg-c-bg-overlay backdrop-blur-sm flex items-center justify-center px-6">
               <div className="flex flex-col items-center gap-4 text-center">
                 <BrandLogo className="w-14 h-14 rounded-2xl object-contain" />
@@ -1443,8 +1383,7 @@ export default function PremiumDashboard() {
                 setShowOnboarding(false)
                 setShowOnboardingWelcome(false)
                 setOnboardingLaunching(false)
-                setOnboardingGateRequired(false)
-                onboardingTriggeredRef.current = false
+                            onboardingTriggeredRef.current = false
                 window.location.href = '/premium_dashboard'
               }}
               onCreateCommunity={() => {
