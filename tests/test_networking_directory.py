@@ -86,8 +86,11 @@ def _set_profile(
     with get_db_connection() as conn:
         c = conn.cursor()
         if display_name:
+            # make_user already inserts a user_profiles row (profile picture
+            # for the basic-profile gate) — upsert the display name onto it.
             c.execute(
-                f"INSERT INTO user_profiles (username, display_name) VALUES ({ph}, {ph})",
+                f"INSERT INTO user_profiles (username, display_name) VALUES ({ph}, {ph})"
+                f" ON DUPLICATE KEY UPDATE display_name = VALUES(display_name)",
                 (username, display_name),
             )
         c.execute(

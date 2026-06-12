@@ -237,6 +237,39 @@ CREATE TABLE IF NOT EXISTS community_admins (
 )
 """
 
+# The basic-profile gate (backend/services/basic_profile_gate.py) LEFT JOINs
+# user_profiles on several routes (e.g. community invites) — without this
+# table every gated route 500s. Full prod-like shape so suites that also
+# CREATE IF NOT EXISTS it (test_profile_privacy, test_networking_directory)
+# no-op cleanly against it.
+_USER_PROFILES_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS user_profiles (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    username VARCHAR(191) UNIQUE NOT NULL,
+    display_name TEXT,
+    bio TEXT,
+    location TEXT,
+    website TEXT,
+    instagram TEXT,
+    twitter TEXT,
+    profile_picture TEXT,
+    cover_photo TEXT,
+    is_public TINYINT(1) DEFAULT 1
+)
+"""
+
+# group_polls_data.ensure_tables() declares a FOREIGN KEY to groups(id);
+# without the referenced table MySQL fails with errno 1824 the first time
+# any test path triggers that ensure.
+_GROUPS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS `groups` (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(255),
+    community_id INT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
 _NOTIFICATIONS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS notifications (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -314,6 +347,8 @@ def _bootstrap_schema() -> None:
         c.execute(_POST_VIEWS_TABLE_SQL)
         c.execute(_REPLIES_TABLE_SQL)
         c.execute(_NOTIFICATIONS_TABLE_SQL)
+        c.execute(_USER_PROFILES_TABLE_SQL)
+        c.execute(_GROUPS_TABLE_SQL)
         try:
             conn.commit()
         except Exception:
@@ -350,6 +385,7 @@ def _bootstrap_schema() -> None:
 # fixture.
 _TRUNCATE_TABLES: List[str] = [
     "users",
+    "user_profiles",
     "communities",
     "user_communities",
     "community_admins",
@@ -357,6 +393,7 @@ _TRUNCATE_TABLES: List[str] = [
     "posts",
     "replies",
     "notifications",
+    "`groups`",
     "ai_usage_log",
     "special_access_log",
     "kb_pages",
