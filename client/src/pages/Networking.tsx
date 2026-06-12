@@ -23,7 +23,8 @@ type MemberProfile = {
   industry?: string | null
   role?: string | null
   company?: string | null
-  professional_interests?: string | null
+  location?: string | null
+  professional_interests?: string[] | null
   bio?: string | null
 }
 type FilterOptions = { locations: string[]; industries: string[]; interests: string[] }
@@ -344,18 +345,28 @@ export default function Networking() {
     setSelectedLocation(''); setSelectedIndustry(''); setSelectedInterest('')
   }, [personalCommunity])
 
-  // Personal: filter
-  useEffect(() => {
-    if (!personalCommunity) return
-    const params = new URLSearchParams()
-    if (selectedLocation) params.set('location', selectedLocation)
-    if (selectedIndustry) params.set('industry', selectedIndustry)
-    if (selectedInterest) params.set('interests', selectedInterest)
-    fetch(`/api/networking/community_members/${personalCommunity}?${params}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
-      .then(r => r.json())
-      .then(data => { if (data.success) setPersonalMembers(data.members || []) })
-      .catch(() => {})
-  }, [selectedLocation, selectedIndustry, selectedInterest, personalCommunity])
+  // Personal: filter in memory. The initial payload already carries every
+  // field the dropdowns filter on, so changing a filter never needs a server
+  // round-trip (matching semantics: location is exact "City, Country" or a
+  // substring of the space-joined parts; industry/interest are substrings).
+  const filteredPersonalMembers = useMemo(() => {
+    const loc = selectedLocation.trim().toLowerCase()
+    const ind = selectedIndustry.trim().toLowerCase()
+    const int = selectedInterest.trim().toLowerCase()
+    if (!loc && !ind && !int) return personalMembers
+    return personalMembers.filter(m => {
+      if (loc) {
+        const combined = (m.location || '').toLowerCase()
+        if (loc !== combined && !combined.replace(/, /g, ' ').includes(loc)) return false
+      }
+      if (ind && !(m.industry || '').toLowerCase().includes(ind)) return false
+      if (int) {
+        const interests = m.professional_interests || []
+        if (!interests.some(i => (i || '').toLowerCase().includes(int))) return false
+      }
+      return true
+    })
+  }, [personalMembers, selectedLocation, selectedIndustry, selectedInterest])
 
   const ensureSession = useCallback(async (): Promise<number | null> => {
     if (steveSessionId) return steveSessionId
@@ -827,10 +838,10 @@ export default function Networking() {
                 ) : (() => {
                   const q = memberSearch.trim().toLowerCase()
                   const filtered = q
-                    ? personalMembers.filter(m =>
+                    ? filteredPersonalMembers.filter(m =>
                         (m.display_name || '').toLowerCase().includes(q) ||
                         m.username.toLowerCase().includes(q))
-                    : personalMembers
+                    : filteredPersonalMembers
                   return filtered.length === 0 ? (
                     <div className="py-4 text-center">
                       <p className="text-[13px] text-c-text-tertiary">{t('networking.no_members_handoff')}</p>

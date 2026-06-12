@@ -252,6 +252,7 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 | `networking_planner.py` | Planner step. |
 | `networking_retrieval.py` | Retrieval / context assembly. |
 | `networking_debug_trace.py` | Debug trace for support. |
+| `networking_directory.py` | Member directory: single-JOIN tree roster with a community-keyed short-TTL cache (membership gate runs per-request before the cache read; viewer excluded at serve time). |
 
 ### Embeddings & search
 

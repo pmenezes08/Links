@@ -12661,132 +12661,16 @@ def api_networking_communities():
 def api_networking_community_members(community_id):
     """Get community members with profiles for networking. Uses same data as public profiles."""
     username = session.get('username')
-    location_filter = request.args.get('location', '').strip()
-    industry_filter = request.args.get('industry', '').strip()
-    interests_filter = request.args.get('interests', '').strip()
-
     try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-
-            # Get this community + all its children
-            c.execute(f"SELECT id FROM communities WHERE id = {ph} OR parent_community_id = {ph}", (community_id, community_id))
-            community_ids = [r['id'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
-            if not community_ids:
-                return jsonify({'success': False, 'error': 'Community not found'}), 404
-
-            # Verify user belongs to at least one
-            comm_ph = ','.join([ph] * len(community_ids))
-            c.execute(f"SELECT 1 FROM user_communities uc JOIN users u ON uc.user_id = u.id WHERE u.username = {ph} AND uc.community_id IN ({comm_ph})", (username, *community_ids))
-            if not c.fetchone():
-                return jsonify({'success': False, 'error': 'Not a member of this community'}), 403
-
-            # Get all member usernames (excluding self, admin, steve)
-            c.execute(f"""
-                SELECT DISTINCT u.username FROM users u
-                JOIN user_communities uc ON u.id = uc.user_id
-                WHERE uc.community_id IN ({comm_ph}) AND u.username != {ph}
-                  AND LOWER(u.username) NOT IN ('admin', 'steve')
-            """, tuple(community_ids) + (username,))
-            member_usernames = [r['username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
-
-            if not member_usernames:
-                return jsonify({'success': True, 'members': [], 'filters': {'cities': [], 'countries': [], 'industries': [], 'interests': []}})
-
-            # For each member, fetch profile data the same way public profile does
-            members = []
-            locations_set = set()
-            industries_set = set()
-            all_interests = set()
-
-            for member_un in member_usernames:
-                # Base profile from user_profiles
-                c.execute(f"""
-                    SELECT u.username, COALESCE(p.display_name, u.username), p.profile_picture, p.bio, p.location,
-                           u.city, u.country
-                    FROM users u LEFT JOIN user_profiles p ON u.username = p.username
-                    WHERE u.username = {ph}
-                """, (member_un,))
-                row = c.fetchone()
-                if not row:
-                    continue
-                def gv(r, i):
-                    try: return r[i] if not hasattr(r, 'keys') else list(r.values())[i]
-                    except: return None
-
-                display_name = gv(row, 1) or member_un
-                profile_picture = gv(row, 2)
-                bio = gv(row, 3) or ''
-                profile_location = gv(row, 4) or ''
-                city = gv(row, 5) or ''
-                country = gv(row, 6) or ''
-                # Use profile location if city/country empty
-                loc_display = [city, country] if (city or country) else ([profile_location] if profile_location else [])
-                loc_display = [x for x in loc_display if x]
-
-                # Professional fields (same try/except as public profile)
-                role = ''; company = ''; industry = ''; pro_interests = []; pro_about = ''
-                try:
-                    c.execute(f"SELECT role, company, industry, professional_interests, professional_about FROM users WHERE username = {ph}", (member_un,))
-                    prow = c.fetchone()
-                    if prow:
-                        role = (prow['role'] if hasattr(prow, 'keys') else prow[0]) or ''
-                        company = (prow['company'] if hasattr(prow, 'keys') else prow[1]) or ''
-                        industry = (prow['industry'] if hasattr(prow, 'keys') else prow[2]) or ''
-                        inter_raw = (prow['professional_interests'] if hasattr(prow, 'keys') else prow[3]) or ''
-                        pro_about = (prow['professional_about'] if hasattr(prow, 'keys') else prow[4]) or ''
-                        if inter_raw:
-                            try:
-                                decoded = json.loads(inter_raw)
-                                pro_interests = [str(x).strip() for x in decoded if isinstance(x, str) and len(str(x).strip()) > 1] if isinstance(decoded, list) else []
-                            except Exception:
-                                pro_interests = [p.strip() for p in str(inter_raw).split(',') if p.strip() and len(p.strip()) > 1]
-                except Exception:
-                    pass
-
-                # Collect filter values — use "City, Country" format for locations
-                loc_combined = ', '.join(loc_display) if loc_display else ''
-                if loc_combined:
-                    locations_set.add(loc_combined)
-                if industry:
-                    industries_set.add(industry)
-                for interest in pro_interests:
-                    all_interests.add(interest)
-
-                # Apply filters
-                if location_filter:
-                    loc_combined_lower = loc_combined.lower()
-                    loc_parts_lower = ' '.join(loc_display).lower()
-                    filter_lower = location_filter.lower()
-                    if filter_lower != loc_combined_lower and filter_lower not in loc_parts_lower:
-                        continue
-                if industry_filter:
-                    if industry_filter.lower() not in industry.lower():
-                        continue
-                if interests_filter:
-                    if not any(interests_filter.lower() in i.lower() for i in pro_interests):
-                        continue
-
-                members.append({
-                    'username': member_un,
-                    'display_name': display_name,
-                    'profile_picture': profile_picture,
-                    'city': city,
-                    'country': country,
-                    'location': ', '.join(loc_display) if loc_display else '',
-                    'industry': industry,
-                    'role': role,
-                    'company': company,
-                    'professional_interests': pro_interests,
-                    'bio': bio or pro_about,
-                })
-
-            return jsonify({'success': True, 'members': members, 'filters': {
-                'locations': sorted(locations_set),
-                'industries': sorted(industries_set),
-                'interests': sorted(all_interests),
-            }})
+        from backend.services.networking_directory import get_directory_payload
+        body, status = get_directory_payload(
+            username,
+            community_id,
+            location_filter=request.args.get('location', '').strip(),
+            industry_filter=request.args.get('industry', '').strip(),
+            interests_filter=request.args.get('interests', '').strip(),
+        )
+        return jsonify(body), status
     except Exception as e:
         logger.error(f"Error fetching community members: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
