@@ -251,6 +251,16 @@
       "title": "Welcome in",
       "body": "You're in — {community} accepted your request.",
       "message": "You're in — {community} accepted your request."
+    },
+    "profile_section_professional": {
+      "title": "A question from Steve",
+      "body": "What do you do? I can't introduce someone I don't know.",
+      "message": "What do you do? I can't introduce someone I don't know."
+    },
+    "profile_section_personal": {
+      "title": "From Steve",
+      "body": "I know what you do. I'd like to know who you are.",
+      "message": "I know what you do. I'd like to know who you are."
     }
   },
   "communities": {

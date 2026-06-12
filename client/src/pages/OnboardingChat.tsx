@@ -951,20 +951,29 @@ export default function OnboardingChat({
         break
       case 'cv_review':
         break
-      case 'professional_associations':
+      case 'professional_associations': {
+        // Express path: associations + strengths are compose-time seasoning
+        // (never persisted anywhere) - skipping jumps both, straight to
+        // LinkedIn, so the professional section is two real interactions.
+        const assocOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_professional_associations', 'â­ï¸')]
+        if (stageHistory.current.length > 1) assocOpts.push(ocOpt(t, 'go_back', 'go_back', 'â†©ï¸'))
         addSteveMessage(oc(t, 'messages.professional_associations'), {
           inputType: 'text',
           inputPlaceholder: oc(t, 'placeholders.associations'),
-          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back', 'â†©ï¸')] : undefined,
+          options: assocOpts,
         })
         break
-      case 'professional_strengths':
+      }
+      case 'professional_strengths': {
+        const strengthOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_professional_strengths', 'â­ï¸')]
+        if (stageHistory.current.length > 1) strengthOpts.push(ocOpt(t, 'go_back', 'go_back', 'â†©ï¸'))
         addSteveMessage(oc(t, 'messages.professional_strengths'), {
           inputType: 'text',
           inputPlaceholder: oc(t, 'placeholders.strengths'),
-          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back', 'â†©ï¸')] : undefined,
+          options: strengthOpts,
         })
         break
+      }
       case 'linkedin': {
         const lnOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_linkedin', 'â­ï¸')]
         if (stageHistory.current.length > 1) lnOpts.push(ocOpt(t, 'go_back', 'go_back', 'â†©ï¸'))
@@ -1654,6 +1663,16 @@ export default function OnboardingChat({
       case 'skip_journey':
         addUserMessage(oc(t, 'user_echo.skip'))
         advanceTo('recommend')
+        break
+      case 'skip_professional_associations':
+        // Skipping the first "extras" question skips its sibling too —
+        // one decision, not two.
+        addUserMessage(oc(t, 'user_echo.skip'))
+        advanceTo('linkedin')
+        break
+      case 'skip_professional_strengths':
+        addUserMessage(oc(t, 'user_echo.skip'))
+        advanceTo('linkedin')
         break
       case 'skip_recommend':
         addUserMessage(oc(t, 'user_echo.skip'))

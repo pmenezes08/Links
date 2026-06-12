@@ -251,6 +251,16 @@
       "title": "Bem-vindo",
       "body": "Estás dentro — {community} aceitou o teu pedido.",
       "message": "Estás dentro — {community} aceitou o teu pedido."
+    },
+    "profile_section_professional": {
+      "title": "Uma pergunta do Steve",
+      "body": "O que fazes? Não consigo apresentar quem não conheço.",
+      "message": "O que fazes? Não consigo apresentar quem não conheço."
+    },
+    "profile_section_personal": {
+      "title": "Do Steve",
+      "body": "Já sei o que fazes. Gostava de saber quem és.",
+      "message": "Já sei o que fazes. Gostava de saber quem és."
     }
   },
   "communities": {

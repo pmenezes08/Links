@@ -3006,22 +3006,22 @@ export default function CommunityFeed() {
 
           {showProfileRecommendationCard && (
             <section className="rounded-3xl border border-cpoint-turquoise/20 bg-c-bg-surface p-4 shadow-c-card shadow-black/20">
+              {/* Steve asks the way a host asks: he owns the gap, names the
+                  payoff, sets no deadline. Copy keyed by the targeted section
+                  (the same strings the dashboard reminder card uses). */}
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cpoint-turquoise/80">
-                    Optional profile help
-                  </div>
-                  <h2 className="mt-1 text-base font-semibold text-c-text-primary">
-                    This community works best with a {recommendedProfileMode === 'both' ? 'personal and professional' : recommendedProfileMode} profile
+                  <h2 className="text-base font-semibold text-c-text-primary">
+                    {t(recommendedTargetSection === 'personal' ? 'feed.steve_ask_personal_title' : 'feed.steve_ask_professional_title')}
                   </h2>
                   <p className="mt-1 text-sm leading-relaxed text-c-text-secondary">
-                    You can keep participating. Steve can help you add the details when you are ready.
+                    {t(recommendedTargetSection === 'personal' ? 'feed.steve_ask_personal_body' : 'feed.steve_ask_professional_body')}
                   </p>
                 </div>
                 <button
                   type="button"
                   className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-c-border bg-c-hover-bg text-c-text-tertiary hover:border-cpoint-turquoise/50 hover:text-cpoint-turquoise"
-                  aria-label="Dismiss profile recommendation"
+                  aria-label={t('feed.steve_ask_dismiss_aria')}
                   onClick={dismissProfileRecommendationCard}
                 >
                   <i className="fa-solid fa-xmark text-xs" />
@@ -3035,7 +3035,7 @@ export default function CommunityFeed() {
                   navigate(buildScopedProfileBuilderPath(recommendedTargetSection, community_id))
                 }}
               >
-                Build with Steve
+                {t(recommendedTargetSection === 'personal' ? 'feed.steve_ask_personal_cta' : 'feed.steve_ask_professional_cta')}
               </button>
             </section>
           )}

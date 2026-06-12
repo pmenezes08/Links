@@ -1,3 +1,5 @@
+"""Section-aware profile prompts — cadence, rotation, budgets, locale copy."""
+
 from datetime import datetime, timedelta, timezone
 
 from flask import Flask
@@ -5,6 +7,7 @@ from flask import Flask
 from backend.blueprints import onboarding as onboarding_bp_module
 from backend.blueprints.onboarding import onboarding_bp
 from backend.services import onboarding_reminders
+from backend.services.onboarding_reminders import pick_section, section_status
 
 
 class _FakeRef:
@@ -42,32 +45,152 @@ class _FakeDb:
         return _FakeCollection(self.docs)
 
 
-def test_dispatch_onboarding_reminders_sends_and_dedupes(monkeypatch):
-    now = datetime(2026, 4, 2, 13, 0, tzinfo=timezone.utc)
-    doc = _FakeDoc(
-        "alice",
-        {
-            "stage": "section_picker",
-            "profile_deferred_at": (now - timedelta(hours=25)).isoformat(),
-            "profile_defer_until": (now + timedelta(hours=47)).isoformat(),
+def _quiet_sends(monkeypatch, notifications, pushes):
+    monkeypatch.setattr(
+        onboarding_reminders, "create_notification",
+        lambda *args, **kwargs: notifications.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        onboarding_reminders, "send_push_to_user",
+        lambda *args, **kwargs: pushes.append((args, kwargs)),
+    )
+    # No SQL in these unit tests — durable status comes from the doc only.
+    monkeypatch.setattr(onboarding_reminders, "_fetch_sql_row", lambda username: None)
+    monkeypatch.setattr(
+        onboarding_reminders.notification_copy, "recipient_locale", lambda username: "en"
+    )
+
+
+def _tier1_doc(now, *, hours_ago=72, extra=None):
+    payload = {
+        "stage": "intro_profile_later",
+        "profile_deferred_at": (now - timedelta(hours=hours_ago)).isoformat(),
+    }
+    if extra:
+        payload.update(extra)
+    return _FakeDoc("alice", payload)
+
+
+NOW = datetime(2026, 6, 10, 13, 0, tzinfo=timezone.utc)
+
+
+def test_professional_is_asked_first_with_locale_copy_and_markers(monkeypatch):
+    notifications, pushes = [], []
+    _quiet_sends(monkeypatch, notifications, pushes)
+    doc = _tier1_doc(NOW)
+
+    result = onboarding_reminders.dispatch_onboarding_reminders(db=_FakeDb([doc]), now_utc=NOW)
+
+    assert result["sent"] == 1
+    args, kwargs = notifications[0]
+    assert args[0] == "alice"
+    assert args[2] == "profile_section_professional"
+    assert kwargs["link"] == "/steve/profile-builder/professional"
+    assert "introduce someone" in args[5]  # resolved copy, not a key
+    assert pushes[0][0][0] == "alice"
+    markers = doc.reference.writes[0][0]
+    assert markers["section_prompt_last_section"] == "professional"
+    assert markers["section_prompt_count"] == 1
+    assert markers["last_profile_ask_at"] == NOW.isoformat()
+
+
+def test_quiet_for_48h_after_tier1(monkeypatch):
+    notifications, pushes = [], []
+    _quiet_sends(monkeypatch, notifications, pushes)
+    doc = _tier1_doc(NOW, hours_ago=24)
+
+    result = onboarding_reminders.dispatch_onboarding_reminders(db=_FakeDb([doc]), now_utc=NOW)
+
+    assert result["sent"] == 0
+    assert notifications == []
+
+
+def test_ignored_section_rotates_once_then_budget_caps(monkeypatch):
+    notifications, pushes = [], []
+    _quiet_sends(monkeypatch, notifications, pushes)
+    doc = _tier1_doc(
+        NOW,
+        hours_ago=24 * 10,
+        extra={
+            "section_prompt_last_sent_at": (NOW - timedelta(hours=96)).isoformat(),
+            "section_prompt_last_section": "professional",
+            "section_prompt_count": 1,
+            "last_profile_ask_at": (NOW - timedelta(hours=96)).isoformat(),
         },
     )
-    calls = []
-    monkeypatch.setattr(onboarding_reminders, "create_notification", lambda *args, **kwargs: calls.append((args, kwargs)))
 
-    result = onboarding_reminders.dispatch_onboarding_reminders(db=_FakeDb([doc]), now_utc=now)
+    result = onboarding_reminders.dispatch_onboarding_reminders(db=_FakeDb([doc]), now_utc=NOW)
 
-    assert result["success"] is True
     assert result["sent"] == 1
-    assert calls[0][0][0] == "alice"
-    assert calls[0][0][2] == "onboarding_reminder_24h"
-    assert doc.reference.writes[0][0]["onboarding_reminder_24h_sent_at"] == now.isoformat()
+    assert notifications[0][0][2] == "profile_section_personal"  # rotated
 
-    doc._payload["onboarding_reminder_24h_sent_at"] = now.isoformat()
-    calls.clear()
-    result = onboarding_reminders.dispatch_onboarding_reminders(db=_FakeDb([doc]), now_utc=now)
+    # Lifetime cap: two prompts, then permanent silence.
+    capped = _tier1_doc(
+        NOW,
+        hours_ago=24 * 30,
+        extra={
+            "section_prompt_last_sent_at": (NOW - timedelta(hours=200)).isoformat(),
+            "section_prompt_last_section": "personal",
+            "section_prompt_count": 2,
+        },
+    )
+    notifications.clear()
+    result = onboarding_reminders.dispatch_onboarding_reminders(db=_FakeDb([capped]), now_utc=NOW)
     assert result["sent"] == 0
-    assert calls == []
+
+
+def test_daily_budget_and_spacing_block_sends(monkeypatch):
+    notifications, pushes = [], []
+    _quiet_sends(monkeypatch, notifications, pushes)
+    recent_ask = _tier1_doc(
+        NOW, extra={"last_profile_ask_at": (NOW - timedelta(hours=3)).isoformat()}
+    )
+    recent_prompt = _tier1_doc(
+        NOW,
+        extra={
+            "section_prompt_last_sent_at": (NOW - timedelta(hours=30)).isoformat(),
+            "section_prompt_count": 1,
+        },
+    )
+
+    for doc in (recent_ask, recent_prompt):
+        result = onboarding_reminders.dispatch_onboarding_reminders(db=_FakeDb([doc]), now_utc=NOW)
+        assert result["sent"] == 0
+
+
+def test_complete_sections_end_the_prompts(monkeypatch):
+    notifications, pushes = [], []
+    _quiet_sends(monkeypatch, notifications, pushes)
+    doc = _tier1_doc(
+        NOW,
+        extra={
+            "collected": {
+                "bio": "I grow olives.",
+                "role": "CTO",
+                "company": "Acme",
+            }
+        },
+    )
+
+    result = onboarding_reminders.dispatch_onboarding_reminders(db=_FakeDb([doc]), now_utc=NOW)
+    assert result["sent"] == 0
+
+
+def test_pick_section_rules():
+    assert pick_section(False, False, None) == "professional"
+    assert pick_section(False, False, "professional") == "personal"
+    assert pick_section(False, False, "personal") == "professional"
+    assert pick_section(True, False, None) == "professional"
+    assert pick_section(False, True, "professional") == "personal"
+    assert pick_section(True, True, None) is None
+
+
+def test_section_status_reads_collected():
+    personal, professional = section_status(
+        {"collected": {"talkAllDay": "olives", "role": "CTO", "company": "Acme"}}, None
+    )
+    assert personal is True
+    assert professional is True
 
 
 def test_onboarding_reminder_cron_rejects_missing_secret(monkeypatch):

@@ -1288,7 +1288,14 @@
       "category_tips": "Dicas e truques",
       "category_questions": "Perguntas",
       "category_announcements": "Anúncios"
-    }
+    },
+    "steve_ask_professional_title": "Conta-me o que fazes",
+    "steve_ask_professional_body": "Não consigo apresentar alguém que não conheço. Dá-me as linhas gerais — eu trato do resto.",
+    "steve_ask_professional_cta": "Construir com o Steve",
+    "steve_ask_personal_title": "És mais do que um cargo",
+    "steve_ask_personal_body": "É o lado pessoal que transforma apresentações em conversas. Dois minutos, quando quiseres.",
+    "steve_ask_personal_cta": "Adicionar o lado pessoal",
+    "steve_ask_dismiss_aria": "Dispensar esta sugestão"
   },
   "chat": {
     "page_title": "Mensagens",

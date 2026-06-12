@@ -976,16 +976,12 @@ export default function PremiumDashboard() {
     professional: professionalSectionComplete,
   } = getEffectiveProfileSectionStatus(onboardingStateSummary)
   const showOnboardingCompletionCard = shouldShowProfileHelpCard(onboardingStateSummary)
-  const onboardingCardTitle = !professionalSectionComplete && personalSectionComplete
-    ? 'Improve your professional profile with Steve'
-    : !personalSectionComplete && professionalSectionComplete
-      ? 'Improve your personal profile with Steve'
-      : 'Improve your profile with Steve'
-  const onboardingCardBody = !professionalSectionComplete && personalSectionComplete
-    ? 'Add richer professional context when you are ready. This helps communities understand what you do, but it will not block you from participating.'
-    : !personalSectionComplete && professionalSectionComplete
-      ? 'Add richer personal context when you are ready. This helps communities understand who you are, but it will not block you from participating.'
-      : 'Add richer personal or professional details when you are ready. This helps communities understand who you are, but it will not block you from participating.'
+  // Host-register ask, one section at a time: personal copy only when the
+  // professional section is already done (professional first by default).
+  // Shares the feed card's strings so the two surfaces can't drift.
+  const onboardingCardAskPersonal = !personalSectionComplete && professionalSectionComplete
+  const onboardingCardTitle = t(onboardingCardAskPersonal ? 'feed.steve_ask_personal_title' : 'feed.steve_ask_professional_title')
+  const onboardingCardBody = t(onboardingCardAskPersonal ? 'feed.steve_ask_personal_body' : 'feed.steve_ask_professional_body')
   const onboardingOverlayActive =
     showOnboarding || showOnboardingWelcome || onboardingLaunching || !!activeInvitePrompt
   const { setNavOverrides, clearNavOverrides } = useDashboardLayout()
@@ -1103,7 +1099,7 @@ export default function PremiumDashboard() {
                   }}
                   className="shrink-0 rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-sm font-semibold text-black transition hover:brightness-110"
                 >
-                  Open Steve
+                  {t(onboardingCardAskPersonal ? 'feed.steve_ask_personal_cta' : 'feed.steve_ask_professional_cta')}
                 </button>
               </div>
             </div>
