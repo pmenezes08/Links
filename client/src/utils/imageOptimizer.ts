@@ -6,9 +6,10 @@
 // Your domain for Cloudflare transformations
 const CF_DOMAIN = 'https://c-point.co'
 
-// R2 / direct object hosts — skip CF Image Resize (wrong zone pulls break thumbnails).
+// Direct R2 object hosts OUTSIDE the c-point.co zone — CF Image Resize can't pull
+// cross-zone, so these load raw. media.c-point.co is on our zone and resizes fine
+// (full-size avatars there were the main cause of slow avatar loads).
 const R2_DOMAINS = [
-  'media.c-point.co',
   'pub-',
   'r2.dev',
   'r2.cloudflarestorage.com',
@@ -47,7 +48,7 @@ export function optimizeImage(originalUrl: string | null | undefined, options: I
   // - Already optimized URLs
   // - SVGs (don't need optimization)
   // - GIFs (preserve animation)
-  // - R2 CDN URLs (already on edge)
+  // - Off-zone R2 object URLs (CF can't pull cross-zone)
   const isR2Url = R2_DOMAINS.some((domain) => originalUrl.includes(domain))
   if (
     originalUrl.startsWith('blob:') ||

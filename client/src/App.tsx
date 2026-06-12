@@ -671,10 +671,9 @@ function AppRoutes(){
     if (profileData) {
       const username = (profileData as any)?.username
       const displayName = (profileData as any)?.display_name || username
-      const rawAvatarUrl = (profileData as any)?.profile_picture || null
-      const avatarUrl = rawAvatarUrl
-        ? (rawAvatarUrl.includes('?') ? rawAvatarUrl : `${rawAvatarUrl}?u=${username}&v=${Date.now()}`)
-        : null
+      // No cache-buster: upload filenames are timestamped, so the URL itself
+      // changes when the picture changes and the old one can stay cached.
+      const avatarUrl = (profileData as any)?.profile_picture || null
       setUserMeta({ username, displayName, avatarUrl })
     } else {
       setUserMeta({})

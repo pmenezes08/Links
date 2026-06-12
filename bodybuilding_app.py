@@ -11794,7 +11794,7 @@ def update_public_profile():
                 
                 if file and file.filename != '' and allowed_file(file.filename):
                     # Save the uploaded file
-                    profile_picture_path = save_uploaded_file(file, subfolder='profile_pictures')
+                    profile_picture_path = save_uploaded_file(file, subfolder='profile_pictures', optimize_profile='avatar')
                     logger.info(f"Profile picture saved for {username}: {profile_picture_path}")
                     
                     # Get current profile picture to delete old one if exists
@@ -11881,7 +11881,7 @@ def upload_profile_picture():
 
                 if file and file.filename != '' and allowed_file(file.filename):
                     # Save the uploaded file
-                    profile_picture_path = save_uploaded_file(file, subfolder='profile_pictures')
+                    profile_picture_path = save_uploaded_file(file, subfolder='profile_pictures', optimize_profile='avatar')
                     logger.info(f"Profile picture saved for {username}: {profile_picture_path}")
 
                     # Get current profile picture to delete old one if exists
@@ -24342,7 +24342,11 @@ def serve_uploads(filename):
             # Construct R2 URL - the file might be stored with or without 'uploads/' prefix
             r2_url = f"{r2_public_url}/{normalized}"
             logger.info(f"serve_uploads: redirecting to R2 CDN: {r2_url}")
-            return redirect(r2_url)
+            resp = redirect(r2_url)
+            # R2 keys are unique (timestamped filenames), so the mapping never changes;
+            # without this every avatar load re-traverses Flask just to fetch the 302.
+            resp.headers['Cache-Control'] = 'public, max-age=86400'
+            return resp
 
         missing_key = (filename or '').lower()
         if missing_key not in MISSING_UPLOAD_CACHE:

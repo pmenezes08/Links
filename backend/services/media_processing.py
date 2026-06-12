@@ -25,6 +25,9 @@ IMAGE_PROFILES = {
     "story": {"max_width": 1440, "quality": 84},
     "feed": {"max_width": 1920, "quality": 85},
     "background": {"max_width": 1920, "quality": 85},
+    # Avatars render in <=80px circles; cap both dimensions (portrait photos
+    # would otherwise pass a width-only check at full multi-MB size).
+    "avatar": {"max_width": 512, "max_height": 512, "quality": 82},
 }
 
 
@@ -70,9 +73,17 @@ def optimize_image_file(path: str, profile: str = "feed") -> bool:
         with Image.open(path) as img:  # type: ignore[arg-type]
             img = ImageOps.exif_transpose(img)
             max_width = int(config["max_width"])
+            max_height = int(config.get("max_height") or 0)
+            ratio = 1.0
             if img.width > max_width:
                 ratio = max_width / img.width
-                img = img.resize((max_width, int(img.height * ratio)), Image.Resampling.LANCZOS)
+            if max_height and img.height > max_height:
+                ratio = min(ratio, max_height / img.height)
+            if ratio < 1.0:
+                img = img.resize(
+                    (max(1, round(img.width * ratio)), max(1, round(img.height * ratio))),
+                    Image.Resampling.LANCZOS,
+                )
             quality = int(config["quality"])
             if ext in {".jpg", ".jpeg"}:
                 if img.mode not in ("RGB", "L"):
