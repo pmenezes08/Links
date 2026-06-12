@@ -96,8 +96,11 @@
          data-theme before paint, so the pre-React shell (body, #root, and
          the initial loader) must not flash the dark canvas for light users.
          !important is required to win over the loader's inline styles. */
-      :root[data-theme='light'] html,
-      :root[data-theme='light'] body {
+      /* :root IS the html element, so target it directly — the previous
+         ":root[data-theme='light'] html" descendant selector never matched
+         and left html with the dark base color in light mode. */
+      html[data-theme='light'],
+      html[data-theme='light'] body {
         background: #FAFBFC;
         color: #1a1a1a;
         color-scheme: light;
@@ -118,9 +121,9 @@
       input, textarea, select { font-size: 16px !important; }
     </style>
     <!-- Font Awesome is now bundled via npm (@fortawesome/fontawesome-free) in main.tsx -->
-    <script type="module" crossorigin src="/assets/index-DhN_sE7F.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DA178Zmm.css">
-      <link rel="modulepreload" href="/assets/index-DhN_sE7F.js">
+    <script type="module" crossorigin src="/assets/index-DRO1aYaE.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-KIi1pB-W.css">
+      <link rel="modulepreload" href="/assets/index-DRO1aYaE.js">
   </head>
   <body>
     <!-- Outside #root so React createRoot() does not remove this until auth is ready -->
