@@ -753,6 +753,14 @@ class ProfileIndex:
                 return [(uname, score_chunk[0], score_chunk[1]) for uname, score_chunk in ranked]
             return [(uname, score_chunk[0]) for uname, score_chunk in ranked]
 
+    def export_state(self) -> Tuple[List[Tuple[str, str]], Optional[np.ndarray]]:
+        """Copy of (keys, normalized vector matrix) for snapshot persistence.
+        Returns ([], None) when the index is empty/unbuilt."""
+        with self._lock:
+            if not self._built or self._vectors is None or self._vectors.shape[0] == 0:
+                return [], None
+            return list(self._keys), self._vectors.copy()
+
     @property
     def size(self) -> int:
         with self._lock:

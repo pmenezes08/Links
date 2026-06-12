@@ -458,3 +458,26 @@ gcloud scheduler jobs update http staging-steve-reminder-vault-dispatch \
 | **Query** | `dry_run=1` — counts eligible due rows without deleting schedule rows or calling Steve. |
 
 Add `group-steve-agent-due` to the bulk-pause list in §6 when you register the job in GCP.
+
+## 10. Embedding index snapshot refresh
+
+| Field | Value |
+|-------|--------|
+| **URI** | `{BASE}/api/cron/refresh_embedding_index` |
+| **Method** | `POST` |
+| **Header** | `X-Cron-Secret` = same `CRON_SHARED_SECRET` as other crons |
+| **Suggested schedule** | Every **30 minutes** (`*/30 * * * *`, UTC) — rebuilds the in-memory profile embedding index from live Firestore and rewrites the private R2 snapshot (`backend/services/embedding_index_snapshot.py`) that cold Cloud Run instances boot from. Bounds snapshot staleness for new instances. |
+
+```bash
+gcloud scheduler jobs create http refresh-embedding-index \
+  --location=europe-west1 \
+  --schedule="*/30 * * * *" \
+  --time-zone=UTC \
+  --uri="$BASE/api/cron/refresh_embedding_index" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=300s
+```
+
+The snapshot is an accelerator, not a source of truth: if it is missing or
+corrupt, networking falls back to the legacy Firestore stream on first use.

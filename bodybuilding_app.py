@@ -12690,10 +12690,11 @@ NETWORKING_ENRICHMENT_CAP = NETWORKING_PROMPT_MEMBER_CAP  # backward-compatible 
 
 
 def _ensure_embedding_index():
-    """Lazily load the FAISS index on first networking call."""
-    from backend.services.embedding_service import profile_index, load_index_from_firestore
-    if not profile_index.is_ready:
-        load_index_from_firestore()
+    """Lazily load the FAISS index on first networking call (snapshot-first:
+    the R2 snapshot loads in <1s vs 5-30s streaming Firestore on a cold
+    instance; the Firestore stream remains the fallback)."""
+    from backend.services.embedding_index_snapshot import ensure_index_ready
+    ensure_index_ready()
 
 
 def _get_or_build_context(username: str, profile: dict, *, networking: bool = False, context_tier: str = "full") -> str:
