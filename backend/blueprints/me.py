@@ -25,7 +25,7 @@ from urllib.parse import urlencode, urljoin
 
 from flask import Blueprint, jsonify, request, session
 
-from backend.services import ai_usage, auth_session, session_identity, subscription_billing_ledger, user_billing
+from backend.services import ai_usage, auth_session, remember_tokens, session_identity, subscription_billing_ledger, user_billing
 from backend.services import client_ui_flags, i18n, user_locale
 from backend.services.basic_profile_gate import apply_basic_profile_updates, basic_profile_status
 from backend.services.database import get_db_connection, get_sql_placeholder
