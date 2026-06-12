@@ -190,6 +190,7 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 |------|------|
 | `media.py` | Upload allow-list, optimization, local paths, `save_uploaded_file`. |
 | `media_processing.py` | Processing helpers. |
+| `profile_pictures.py` | Case-insensitive batched avatar lookups (content tables may store a different username casing than `user_profiles`). |
 | `media_assets.py` | Tracked media assets + cleanup. |
 | `chat_uploads.py` | Resumable multipart upload session lifecycle + auth gates. |
 | `r2_storage.py` | **Cloudflare R2** (S3) upload/delete; public URL mapping. |

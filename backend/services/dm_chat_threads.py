@@ -16,6 +16,7 @@ from backend.services.dm_human_thread import (
     ensure_human_dm_thread_column,
     is_private_steve_dm_peer,
 )
+from backend.services.profile_pictures import CaseInsensitiveUserMap
 from redis_cache import CHAT_THREADS_TTL, cache
 
 logger = logging.getLogger(__name__)
@@ -162,7 +163,9 @@ def build_chat_threads_payload(username: str) -> dict:
                 row["other_username"] if isinstance(row, dict) or hasattr(row, "keys") else row[0]
                 for row in counterpart_rows
             ]
-            profile_map: dict[str, dict] = {}
+            # Case-insensitive map: messages store the session spelling, which
+            # can differ from user_profiles.username.
+            profile_map = CaseInsensitiveUserMap()
             if counterpart_usernames:
                 try:
                     placeholders = ",".join([ph] * len(counterpart_usernames))
@@ -181,10 +184,10 @@ def build_chat_threads_payload(username: str) -> dict:
                                 pic_url = pr
                             else:
                                 pic_url = url_for("static", filename=pr)
-                        profile_map[profile_username] = {
+                        profile_map.set(profile_username, {
                             "display_name": display_name,
                             "profile_picture_url": pic_url,
-                        }
+                        })
                 except Exception as profile_err:
                     logger.warning("Could not batch fetch chat thread profiles: %s", profile_err)
 

@@ -679,18 +679,19 @@ def login_password():
             c = conn.cursor()
             placeholder = get_sql_placeholder()
             try:
-                c.execute(f"SELECT password, subscription, is_active FROM users WHERE username={placeholder}", (username,))
+                c.execute(f"SELECT password, subscription, is_active, username FROM users WHERE username={placeholder}", (username,))
                 row = c.fetchone()
             except Exception:
-                c.execute(f"SELECT password, subscription FROM users WHERE username={placeholder}", (username,))
+                c.execute(f"SELECT password, subscription, username FROM users WHERE username={placeholder}", (username,))
                 r2 = c.fetchone()
-                row = (r2[0], r2[1], 1) if r2 else None
+                row = (r2[0], r2[1], 1, r2[2]) if r2 else None
             user = row
             conn.close()
             if user:
                 stored_password = user[0] if isinstance(user, (list, tuple)) else user["password"]
                 subscription = user[1] if isinstance(user, (list, tuple)) else user.get("subscription")
                 is_active = (user[2] if isinstance(user, (list, tuple)) else user.get("is_active", 1)) or 1
+                canonical_username = (user[3] if isinstance(user, (list, tuple)) else user.get("username")) or username
 
                 if not is_active:
                     flash("Your account has been deactivated. Please contact the administrator.", "error")
@@ -709,6 +710,12 @@ def login_password():
                     logger.info(f"login_password: Plain password check for '{username}', correct={password_correct}")
 
                 if password_correct:
+                    # MySQL matched the typed spelling case-insensitively; from here on
+                    # use the DB spelling so session/content rows never drift from
+                    # user_profiles.username (drifted spellings broke avatar lookups).
+                    if canonical_username != username:
+                        logger.info(f"login_password: canonicalizing username '{username}' -> '{canonical_username}'")
+                        username = canonical_username
                     posted_invite_token = (request.form.get("invite_token") or "").strip()
                     pending_invite_token = session.get("pending_invite_token") or posted_invite_token
                     session.clear()

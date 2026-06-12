@@ -24582,13 +24582,10 @@ def api_community_feed(community_id):
                 placeholders = ','.join([get_sql_placeholder()] * len(post_ids))
                 
                 # BATCH 1: Get all author usernames and fetch profile pictures in one query
-                author_usernames = list(set(p['username'] for p in posts))
-                if author_usernames:
-                    author_placeholders = ','.join([get_sql_placeholder()] * len(author_usernames))
-                    c.execute(f"SELECT username, profile_picture FROM user_profiles WHERE username IN ({author_placeholders})", tuple(author_usernames))
-                    profile_pics = {row['username']: row['profile_picture'] for row in c.fetchall()}
-                else:
-                    profile_pics = {}
+                # (case-insensitive map: posts store the session spelling, which can
+                # differ from user_profiles.username)
+                from backend.services.profile_pictures import fetch_profile_picture_map
+                profile_pics = fetch_profile_picture_map(c, (p['username'] for p in posts))
                 
                 # BATCH 2: Get all view counts in one query
                 view_counts: Dict[int, int] = {}
@@ -24729,17 +24726,8 @@ def api_community_feed(community_id):
                 except Exception:
                     pass
                 
-                # BATCH 12: Get profile pictures for reply authors
-                reply_profile_pics: Dict[str, str] = {}
-                if reply_authors:
-                    reply_author_list = list(reply_authors)
-                    reply_author_placeholders = ','.join([get_sql_placeholder()] * len(reply_author_list))
-                    try:
-                        c.execute(f"SELECT username, profile_picture FROM user_profiles WHERE username IN ({reply_author_placeholders})", tuple(reply_author_list))
-                        for row in c.fetchall():
-                            reply_profile_pics[row['username']] = row['profile_picture']
-                    except Exception:
-                        pass
+                # BATCH 12: Get profile pictures for reply authors (case-insensitive map)
+                reply_profile_pics = fetch_profile_picture_map(c, reply_authors)
                 
                 # BATCH 13: Get all reply reactions
                 reply_reactions: Dict[int, Dict[str, int]] = {rid: {} for rid in all_reply_ids}
@@ -25679,14 +25667,9 @@ def api_home_timeline():
             if post_ids:
                 placeholders = ','.join([get_sql_placeholder()] * len(post_ids))
                 
-                # BATCH 1: Get all author profile pictures
-                author_usernames = list(set(p['username'] for p in posts))
-                profile_pics = {}
-                if author_usernames:
-                    author_ph = ','.join([get_sql_placeholder()] * len(author_usernames))
-                    c.execute(f"SELECT username, profile_picture FROM user_profiles WHERE username IN ({author_ph})", tuple(author_usernames))
-                    for row in c.fetchall():
-                        profile_pics[row['username']] = row['profile_picture']
+                # BATCH 1: Get all author profile pictures (case-insensitive map)
+                from backend.services.profile_pictures import fetch_profile_picture_map
+                profile_pics = fetch_profile_picture_map(c, (p['username'] for p in posts))
                 
                 # BATCH 2: Get all reactions
                 post_reactions: Dict[int, Dict[str, int]] = {pid: {} for pid in post_ids}

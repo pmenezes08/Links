@@ -103,23 +103,18 @@ def _enrich_group_message_profile_pictures(messages: list) -> list:
         return messages
     senders = list({m["sender"] for m in need})
     try:
+        from backend.services.profile_pictures import fetch_profile_picture_map
+
         with get_db_connection() as conn:
             cc = conn.cursor()
-            ph = get_sql_placeholder()
-            placeholders = ",".join([ph] * len(senders))
-            cc.execute(
-                f"SELECT username, profile_picture FROM user_profiles WHERE username IN ({placeholders})",
-                tuple(senders),
-            )
-            by_user = {}
-            for row in cc.fetchall():
-                u = row["username"] if hasattr(row, "keys") else row[0]
-                pic = row["profile_picture"] if hasattr(row, "keys") else row[1]
-                by_user[u] = _public_profile_picture_url(pic)
+            # Case-insensitive map: message sender spelling can differ from
+            # user_profiles.username.
+            by_user = fetch_profile_picture_map(cc, senders)
             for m in messages:
                 s = m.get("sender")
                 if s and not m.get("profile_picture"):
-                    m["profile_picture"] = by_user.get(s)
+                    pic = by_user.get(s)
+                    m["profile_picture"] = _public_profile_picture_url(pic) if pic else None
     except Exception as ex:
         logger.warning(f"group message profile enrichment failed: {ex}")
     return messages

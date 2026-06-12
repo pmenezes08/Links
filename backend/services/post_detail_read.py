@@ -17,6 +17,8 @@ import json
 import logging
 from typing import Any, Dict, Tuple
 
+from backend.services.profile_pictures import fetch_profile_picture_map
+
 logger = logging.getLogger(__name__)
 
 
@@ -392,20 +394,9 @@ def _hydrate_fs_post_with_mysql(
                         _collect_authors(r.get("children", []))
 
                 _collect_authors(fs_post.get("replies", []))
-                pp_map: Dict[str, Any] = {}
-                if reply_authors:
-                    a_phs = ",".join([ph] * len(reply_authors))
-                    try:
-                        hc.execute(
-                            f"SELECT username, profile_picture FROM user_profiles WHERE username IN ({a_phs})",
-                            tuple(reply_authors),
-                        )
-                        for row in hc.fetchall():
-                            pp_map[row["username"] if hasattr(row, "keys") else row[0]] = (
-                                row["profile_picture"] if hasattr(row, "keys") else row[1]
-                            )
-                    except Exception:
-                        pass
+                # Case-insensitive map: Firestore reply docs carry the session
+                # spelling, which can differ from user_profiles.username.
+                pp_map = fetch_profile_picture_map(hc, reply_authors)
 
                 reply_rxs: Dict[int, Dict[str, int]] = {}
                 user_reply_rxs: Dict[int, str] = {}
