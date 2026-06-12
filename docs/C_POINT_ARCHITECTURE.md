@@ -255,6 +255,7 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 | `networking_directory.py` | Member directory: single-JOIN tree roster with a community-keyed short-TTL cache (membership gate runs per-request before the cache read; viewer excluded at serve time). |
 | `networking_mentions.py` | Mention hygiene for Steve replies: bold-name→@username injection (unique names only), non-roster handle sanitizer, log-only wrong-name detector. Names shown to users are resolved client-side from the members endpoint, never from model prose. |
 | `embedding_index_snapshot.py` | Cold-start accelerator: private R2 snapshot of the profile embedding index (keys + vectors). Loaded snapshot-first by networking (`/api/cron/refresh_embedding_index` rewrites it); Firestore stream remains the fallback and source of truth. |
+| `networking_name_lookup.py` | Deterministic fast path: ultra-conservative classifier for "just a name lookup" messages (bare @handles, who-is templates, first-turn bare names; exact+unique resolution only). No Grok call → logs a zero-cost `networking_name_lookup` ai_usage row (distinct request_type keeps it out of the weekly cap) and records no recommendations. |
 
 ### Embeddings & search
 

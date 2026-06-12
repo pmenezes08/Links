@@ -13109,6 +13109,44 @@ def api_networking_steve_match():
             member_rows = c.fetchall()
             all_member_usernames = [str(_v(r, 0)) for r in member_rows]
             member_names = [(str(_v(r, 0)), str(_v(r, 1))) for r in member_rows]
+
+            # Deterministic fast path: a message that is just a name lookup
+            # resolves from the roster with NO Grok calls (sub-second instead
+            # of the full planner+completion pipeline). No model call → no
+            # weekly-cap consumption (the cap counts networking_match /
+            # networking_auto_match success rows; this logs a zero-cost
+            # networking_name_lookup row for analytics visibility only), and
+            # no recommendation recording — a lookup is not a recommendation.
+            from backend.services.networking_name_lookup import try_name_lookup
+            _name_hit = try_name_lookup(
+                message, member_rows, _v,
+                has_history=bool(conversation_history),
+            )
+            if _name_hit:
+                from backend.services.i18n import t as _i18n_t
+                from backend.services.user_locale import resolve_request_locale
+                _locale = resolve_request_locale(request, username)
+                _found = _name_hit['usernames']
+                if len(_found) == 1:
+                    _fast_text = _i18n_t('networking.name_lookup_found_one', _locale, username=_found[0])
+                else:
+                    _fast_text = _i18n_t(
+                        'networking.name_lookup_found_many', _locale,
+                        mentions=' '.join(f'@{u}' for u in _found),
+                    )
+                _networking_ai_usage.log_usage(
+                    username,
+                    surface=_networking_ai_usage.SURFACE_NETWORKING_STEVE,
+                    request_type='networking_name_lookup',
+                    tokens_in=0, tokens_out=0, cost_usd=0.0,
+                    community_id=community_id, model='deterministic',
+                )
+                logger.info(
+                    "Steve networking fast path: name lookup resolved %s for %s (community %s)",
+                    _found, username, community_id,
+                )
+                return jsonify({'success': True, 'response': _fast_text})
+
             retrieval_policy = networking_policy_for_size(len(all_member_usernames))
             from openai import OpenAI
             client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")

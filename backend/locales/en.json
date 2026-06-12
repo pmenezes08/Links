@@ -479,5 +479,9 @@
       "rsvp_unknown_error": "Unknown error",
       "rsvp_network_error": "An error occurred while submitting your RSVP"
     }
+  },
+  "networking": {
+    "name_lookup_found_one": "Found @{username} in this community — tap below to open their profile or send a message.",
+    "name_lookup_found_many": "Found {mentions} in this community — tap below to open a profile or send a message."
   }
 }

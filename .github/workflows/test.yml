@@ -104,6 +104,7 @@ jobs:
             tests/test_networking_directory.py \
             tests/test_networking_mentions.py \
             tests/test_embedding_index_snapshot.py \
+            tests/test_networking_name_lookup.py \
             tests/test_post_summary.py \
             tests/test_community_handles.py \
             tests/test_community_join_requests.py \

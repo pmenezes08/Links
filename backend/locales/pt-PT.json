@@ -479,5 +479,9 @@
       "rsvp_unknown_error": "Erro desconhecido",
       "rsvp_network_error": "Ocorreu um erro ao enviar o teu RSVP"
     }
+  },
+  "networking": {
+    "name_lookup_found_one": "Encontrei @{username} nesta comunidade — toca abaixo para abrir o perfil ou enviar mensagem.",
+    "name_lookup_found_many": "Encontrei {mentions} nesta comunidade — toca abaixo para abrir um perfil ou enviar mensagem."
   }
 }
