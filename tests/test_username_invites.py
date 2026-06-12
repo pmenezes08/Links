@@ -52,7 +52,10 @@ def test_username_invite_accepts_into_community(mysql_dsn, monkeypatch):
     assert create_data["success"] is True
     assert "username" not in create_data
     assert "invite_id" not in create_data
-    assert create_data["message"] == "If that user exists, we will send an invite."
+    # Canonical copy lives in the i18n catalog — assert through it so a
+    # copy edit can't silently drift this test again.
+    from backend.services.i18n import t as i18n_t
+    assert create_data["message"] == i18n_t("communities.invite.if_exists", "en")
     assert pushed and pushed[0][0] == "target_username_invite"
     assert "You've been invited to community username-invite-accept by username owner_username_invite" in pushed[0][1]["body"]
     assert not _member_exists("target_username_invite", community_id)
@@ -357,7 +360,8 @@ def test_username_invite_does_not_enumerate_missing_user(mysql_dsn, monkeypatch)
     assert resp.status_code == 200
     body = resp.get_json()
     assert body["success"] is True
-    assert body["message"] == "If that user exists, we will send an invite."
+    from backend.services.i18n import t as i18n_t
+    assert body["message"] == i18n_t("communities.invite.if_exists", "en")
     assert "username" not in body
     assert "invite_id" not in body
     assert pushed == []

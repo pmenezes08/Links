@@ -389,6 +389,7 @@ _TRUNCATE_TABLES: List[str] = [
     "communities",
     "user_communities",
     "community_admins",
+    "community_invitations",
     "post_views",
     "posts",
     "replies",
@@ -455,6 +456,16 @@ def _clean_db():
     # between tests would just pay the ALTER-TABLE roundtrip cost for no
     # benefit. The guard is reset only if a test explicitly needs to
     # simulate a fresh-install schema.
+
+    # Flush the process-wide cache (redis_cache.MemoryCache in tests).
+    # TRUNCATE resets AUTO_INCREMENT, so a later test's community/post can
+    # reuse an earlier test's id — any id-keyed cache entry (e.g. the
+    # networking directory roster) would then serve stale cross-test data.
+    try:
+        from redis_cache import cache as _redis_cache
+        _redis_cache.flush_all()
+    except Exception:
+        pass
 
 
 # ── Public fixtures ─────────────────────────────────────────────────────
