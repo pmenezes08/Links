@@ -919,6 +919,35 @@ def cron_purge_underage():
     return jsonify(body)
 
 
+@me_bp.route("/api/me/spotlight-ask", methods=["GET", "POST"])
+def me_spotlight_ask():
+    """Steve's dashboard spotlight question.
+
+    GET → ``{ask: {id} | null}`` (cadence/budget enforced server-side).
+    POST ``{id, action: 'answer'|'skip', text?}`` — answers merge into the
+    single key of ``personal_highlight_answers`` (never the whole blob);
+    skips run the once-more-in-30-days lifecycle.
+    """
+    username = _session_username()
+    if not username:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    from backend.services.spotlight_asks import get_spotlight_ask, resolve_spotlight_ask
+
+    if request.method == "GET":
+        body, status = get_spotlight_ask(username)
+        return jsonify(body), status
+
+    data = request.get_json(silent=True) or {}
+    body, status = resolve_spotlight_ask(
+        username,
+        str(data.get("id") or ""),
+        str(data.get("action") or ""),
+        text=data.get("text"),
+    )
+    return jsonify(body), status
+
+
 @me_bp.route("/api/me/communities-spotlight-tour-seen", methods=["POST"])
 def mark_communities_spotlight_tour_seen():
     """Persist that the signed-in user finished the Communities page spotlight tour."""

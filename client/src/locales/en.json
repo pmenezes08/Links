@@ -435,7 +435,12 @@
     "about_dms_para_1": "Beyond the feed, use one-to-one DMs and smaller group chats for side conversations, planning and coordination.",
     "about_dms_para_2": "They sit alongside your communities, so the relationships stay private and intentional.",
     "about_steve_para_1": "Steve is C-Point's built-in intelligent presence: an always-on member focused on making the platform easier to use.",
-    "about_steve_para_2": "Ask Steve for product help, discussion context, or summaries where your plan allows."
+    "about_steve_para_2": "Ask Steve for product help, discussion context, or summaries where your plan allows.",
+    "spotlight_open_aria": "Answer Steve's question",
+    "spotlight_add": "Add to my profile",
+    "spotlight_skip": "Not this one",
+    "spotlight_saving": "Saving…",
+    "spotlight_saved": "On your profile."
   },
   "about_page": {
     "title": "About C-Point",

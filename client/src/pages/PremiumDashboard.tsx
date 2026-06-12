@@ -5,6 +5,7 @@ import type { TFunction } from 'i18next'
 import { useHeader } from '../contexts/HeaderContext'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { normalizeHandleInput } from '../components/community/HandleSettings'
+import SpotlightAsk from '../components/dashboard/SpotlightAsk'
 import JoinByHandlePanel from '../components/community/JoinByHandlePanel'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
@@ -1235,6 +1236,10 @@ export default function PremiumDashboard() {
 
                 return (
                   <div className="space-y-4">
+                    {/* Steve's spotlight question — at most one ask per screen:
+                        the reminder card outranks it. */}
+                    {!showOnboardingCompletionCard && <SpotlightAsk />}
+
                     {/* Find a community — the door for handles shared outside
                         the app (the Join modal opens handle-first). */}
                     <button

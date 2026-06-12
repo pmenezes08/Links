@@ -435,7 +435,12 @@
     "about_dms_para_1": "Para além do feed, usa DMs individuais e chats de grupo mais pequenos para conversas paralelas, planeamento e coordenação.",
     "about_dms_para_2": "Convivem com as tuas comunidades, para que as relações se mantenham privadas e intencionais.",
     "about_steve_para_1": "O Steve é a presença inteligente integrada no C-Point: um membro sempre disponível focado em tornar a plataforma mais fácil de usar.",
-    "about_steve_para_2": "Pergunta ao Steve por ajuda com o produto, contexto de discussões ou resumos, consoante o teu plano."
+    "about_steve_para_2": "Pergunta ao Steve por ajuda com o produto, contexto de discussões ou resumos, consoante o teu plano.",
+    "spotlight_open_aria": "Responder à pergunta do Steve",
+    "spotlight_add": "Adicionar ao meu perfil",
+    "spotlight_skip": "Esta não",
+    "spotlight_saving": "A guardar…",
+    "spotlight_saved": "No teu perfil."
   },
   "about_page": {
     "title": "Sobre o C-Point",
