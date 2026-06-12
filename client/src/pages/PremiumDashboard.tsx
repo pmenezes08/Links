@@ -1210,6 +1210,16 @@ export default function PremiumDashboard() {
                       >
                         {t('dashboard.create_first_community')}
                       </button>
+                      {/* Finding is co-equal with creating — a new member who
+                          arrived with a handle on a business card must be able
+                          to use it before anything else (no profile needed). */}
+                      <button
+                        type="button"
+                        className="rounded-full border border-cpoint-turquoise/40 px-5 py-2.5 font-medium text-c-accent-ink transition hover:bg-cpoint-turquoise/10 touch-manipulation"
+                        onClick={() => setShowJoinModal(true)}
+                      >
+                        {t('communities.find_entry_label')}
+                      </button>
                       <button
                         type="button"
                         className="rounded-full border border-c-border px-5 py-2.5 font-medium text-c-text-secondary transition hover:bg-c-hover-bg touch-manipulation"
