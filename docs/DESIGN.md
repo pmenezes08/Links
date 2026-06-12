@@ -44,12 +44,27 @@ Stack (from [`client/src/index.css`](../client/src/index.css)):
 
 | Token | Value | Use |
 |-------|-------|-----|
-| `PAGE_TRANSITION_MS` | 250ms | Push/pop route transitions (chat threads) |
+| `PAGE_TRANSITION_MS` | 340ms | Push/pop route transitions (chat threads) |
+| `TAB_CROSSFADE_MS` | 120ms | Tab cross-fade (Dashboard ↔ Feed ↔ About) |
 | `CHAT_KEYBOARD_ANIMATION_MS` | 250ms | Composer / list inset smoothing |
 | `CPOINT_EASE_OUT` | `cubic-bezier(0.32, 0.72, 0, 1)` | Native-style deceleration |
+| `REDUCED_MOTION_FADE_MS` | 80ms | Reduced-motion fallback: quick opacity fade instead of slide |
+| `STEVE_REPLY_DELAY_BASE_MS` / `_PER_CHAR_MS` / `_MIN_MS` / `_MAX_MS` / `_JITTER_MS` / `STEVE_REPLY_BURST_DISCOUNT` | 180ms / 4ms·char / 350ms / 1100ms / 120ms / 0.6 | Steve onboarding reply pacing — length-scaled typing delay: `clamp(BASE + chars×PER_CHAR, MIN, MAX) × (burst ? DISCOUNT : 1) + jitter`. Short acks land fast; long questions read as composed; consecutive bubbles in one burst pay a discounted price so multi-bubble stages never drag. |
 | `STEVE_THINKING_SEARCHING_MS` / `_NARROWING_MS` / `_LONG_MS` | 2.5s / 7s / 14s | Networking "Steve is thinking" staged wait line — advance-only, labels crossfade at `TAB_CROSSFADE_MS`, fixed-height so the page scroller never jitters. Recalibrate from `ai_usage_log.response_time_ms`, never by feel; copy must not claim progress the client can't know. |
 
+Canonical values live in [`client/src/design/motion.ts`](../client/src/design/motion.ts) — keep this table in sync when tokens change.
+
 Chat surfaces must not add decorative bubble entrance animations. Layout motion only (keyboard, inset, page stack).
+
+## Asks & CTAs
+
+The ask register. Canonical implementations: the dashboard onboarding reminder card ([`PremiumDashboard.tsx`](../client/src/pages/PremiumDashboard.tsx)) and [`SpotlightAsk.tsx`](../client/src/components/dashboard/SpotlightAsk.tsx).
+
+- **At most one ask per screen.** The onboarding reminder card outranks Steve's spotlight ask; everything else waits its turn.
+- **Ask shape is title + one line + one CTA.** No countdowns or deadlines, no progress pills, no per-section status — manufactured urgency and progress framing are banned.
+- **Skip/decline is one guilt-free tap** and never re-prompts in the same session.
+- **Turquoise fill marks the single primary action per surface.** Secondary doors are turquoise outlines; explainers and reference links are plain text, underlined at rest (touch surfaces have no hover to reveal interactivity). Never dress an explainer as an action pill.
+- **Non-interactive content must not wear control grammar.** On this canvas a bordered rounded card with a turquoise icon chip reads as tappable; informational content rendered next to real controls is typography only.
 
 ## Navigation
 

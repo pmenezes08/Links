@@ -6,6 +6,7 @@ import { useHeader } from '../contexts/HeaderContext'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { normalizeHandleInput } from '../components/community/HandleSettings'
 import SpotlightAsk from '../components/dashboard/SpotlightAsk'
+import DashboardEmptyState from '../components/dashboard/DashboardEmptyState'
 import JoinByHandlePanel from '../components/community/JoinByHandlePanel'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
@@ -264,6 +265,12 @@ export default function PremiumDashboard() {
   const navigate = useNavigate()
   const location = useLocation()
   const isWeb = Capacitor.getPlatform() === 'web'
+  // The pull-to-refresh gesture is touch-only (touchstart/touchmove below),
+  // so its hint pill would be an unactionable instruction on fine-pointer
+  // devices — render it only where the gesture can actually fire.
+  const [hasCoarsePointer] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches,
+  )
   const invitePromptRequested = new URLSearchParams(location.search).get('invite_prompt') === '1'
 
   // B2B landing: single-community members open the app inside their community.
@@ -1105,13 +1112,16 @@ export default function PremiumDashboard() {
               </div>
             </div>
           )}
-          <div 
+          {hasCoarsePointer && (
+          <div
             className="sticky top-0 z-20 mb-3 flex justify-center pointer-events-none transition-transform duration-150"
             style={{ transform: `translateY(${Math.min(pullPx * 0.5, 30)}px)` }}
           >
+            {/* Revealed by the pull itself — invisible at rest so the hint
+                never competes with content as a permanent instruction. */}
             <span
               className={`rounded-full border border-c-border bg-c-bg-app/70 px-4 py-1 text-[11px] text-c-text-tertiary transition-opacity flex items-center gap-2 ${
-                pullHint === 'idle' ? 'opacity-60' : 'opacity-100'
+                pullHint === 'idle' ? 'opacity-0' : 'opacity-100'
               }`}
             >
               {pullHint === 'refreshing' ? (
@@ -1135,6 +1145,7 @@ export default function PremiumDashboard() {
               )}
             </span>
           </div>
+          )}
             {!communitiesLoaded ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <SkeletonCommunityCard />
@@ -1142,66 +1153,11 @@ export default function PremiumDashboard() {
                 <SkeletonCommunityCard />
               </div>
             ) : communities.length === 0 ? (
-              <div className="px-3 py-6">
-                <div className="mx-auto max-w-xl space-y-4">
-                  <div className="liquid-glass-surface overflow-hidden rounded-3xl border border-c-border p-5 text-center shadow-c-glass">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cpoint-turquoise">
-                      {t('dashboard.welcome_badge')}
-                    </div>
-                    <h2 className="mt-2 text-xl font-semibold leading-tight tracking-[-0.025em] text-c-text-primary sm:text-[22px]">
-                      {t('dashboard.welcome_headline')}
-                    </h2>
-                    <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-c-text-tertiary">
-                      {t('dashboard.welcome_body')}
-                    </p>
-                    <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
-                      <button
-                        className="rounded-full bg-cpoint-turquoise px-5 py-2.5 font-semibold text-black shadow-lg transition-transform hover:brightness-110 active:scale-95 touch-manipulation"
-                        onClick={() => { setNewCommType('General'); setShowCreateModal(true) }}
-                        style={{ WebkitTapHighlightColor: 'transparent' }}
-                      >
-                        {t('dashboard.create_first_community')}
-                      </button>
-                      {/* Finding is co-equal with creating — a new member who
-                          arrived with a handle on a business card must be able
-                          to use it before anything else (no profile needed). */}
-                      <button
-                        type="button"
-                        className="rounded-full border border-cpoint-turquoise/40 px-5 py-2.5 font-medium text-c-accent-ink transition hover:bg-cpoint-turquoise/10 touch-manipulation"
-                        onClick={() => setShowJoinModal(true)}
-                      >
-                        {t('communities.find_entry_label')}
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-full border border-c-border px-5 py-2.5 font-medium text-c-text-secondary transition hover:bg-c-hover-bg touch-manipulation"
-                        onClick={() => setShowAboutCPointModal(true)}
-                      >
-                        {t('dashboard.how_it_works')}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { icon: 'fa-solid fa-lock', titleKey: 'dashboard.tile_private_feeds_title', textKey: 'dashboard.tile_private_feeds_text' },
-                      { icon: 'fa-regular fa-comments', titleKey: 'dashboard.tile_member_chats_title', textKey: 'dashboard.tile_member_chats_text' },
-                      { icon: 'fa-solid fa-user-group', titleKey: 'dashboard.tile_networking_title', textKey: 'dashboard.tile_networking_text' },
-                    ].map((tile) => (
-                      <div key={tile.titleKey} className="rounded-2xl border border-c-border bg-c-bg-surface p-3">
-                        <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-cpoint-turquoise/10 text-cpoint-turquoise">
-                          <i className={`${tile.icon} text-sm`} />
-                        </div>
-                        <div className="text-sm font-semibold text-c-text-primary">{t(tile.titleKey)}</div>
-                        <div className="mt-1 text-xs text-c-text-tertiary">{t(tile.textKey)}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* B2B pivot (June 2026): "Meet Steve / Talk to Steve" card removed â€”
-                      Steve is a community feature now. */}
-                </div>
-              </div>
+              <DashboardEmptyState
+                onCreate={() => { setNewCommType('General'); setShowCreateModal(true) }}
+                onJoin={() => setShowJoinModal(true)}
+                onAbout={() => setShowAboutCPointModal(true)}
+              />
             ) : (
             <>
               {searchOpen && (

@@ -16,7 +16,7 @@ Read **[docs/DESIGN.md](../../docs/DESIGN.md)** for brand narrative, colors, mot
 
 ## Motion
 
-- Page stack push/pop: **`PAGE_TRANSITION_MS` (250ms)** from `client/src/design/motion.ts`.
+- Page stack push/pop: **`PAGE_TRANSITION_MS` (340ms)** from `client/src/design/motion.ts`.
 - Composer/inset: **`CHAT_KEYBOARD_ANIMATION_MS` (250ms)** — align with chat kernel.
 - Easing: **`CPOINT_EASE_OUT`** — no bouncy or linear page transitions.
 
