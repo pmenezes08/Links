@@ -172,3 +172,38 @@ def test_state_payload_effective_sections_use_durable_profile_fields():
     assert payload["onboardingProgress"]["professionalSectionComplete"] is False
     assert payload["onboardingProgress"]["personalSectionCompleteEffective"] is True
     assert payload["onboardingProgress"]["professionalSectionCompleteEffective"] is True
+
+
+# ── Poisoned section flags (scoped-builder runs faked the other section) ──
+
+
+def test_personal_flag_alone_does_not_complete_section():
+    """A bare personalSectionComplete flag with no answers behind it is the
+    scoped-builder poisoning signature — it must not count."""
+    assert osess.collected_personal_section_complete({"personalSectionComplete": True}) is False
+
+
+def test_personal_flag_with_content_completes_section():
+    assert (
+        osess.collected_personal_section_complete(
+            {"personalSectionComplete": True, "talkAllDay": "olive farming"}
+        )
+        is True
+    )
+
+
+def test_personal_content_without_flag_completes_section():
+    assert osess.collected_personal_section_complete({"bio": "I grow olives."}) is True
+
+
+def test_professional_flag_alone_does_not_complete_section():
+    assert (
+        osess.collected_professional_section_complete({"professionalSectionComplete": True})
+        is False
+    )
+
+
+def test_professional_content_completes_section():
+    assert (
+        osess.collected_professional_section_complete({"role": "CTO", "company": "Acme"}) is True
+    )

@@ -104,24 +104,34 @@ def durable_professional_section_complete_from_row(row: Optional[Any]) -> bool:
 
 def collected_personal_section_complete(collected: Optional[Dict[str, Any]]) -> bool:
     data = collected or {}
-    if data.get("personalSectionComplete"):
-        return True
-    return _filled(data.get("bio")) or any(
+    # The completion flag alone is not trusted: section-only builder runs
+    # historically persisted a faked flag for the section they skipped
+    # (poisoned docs exist in the wild). The flag only counts when at
+    # least one actual personal answer backs it up.
+    has_content = _filled(data.get("bio")) or any(
         _filled(data.get(key))
         for key in ("talkAllDay", "reachOut", "journey", "recommend")
     )
+    if data.get("personalSectionComplete") and has_content:
+        return True
+    return has_content
 
 
 def collected_professional_section_complete(collected: Optional[Dict[str, Any]]) -> bool:
     data = collected or {}
-    if data.get("professionalSectionComplete"):
-        return True
-    if _filled(data.get("professionalBio")):
-        return True
     role = data.get("role")
     company = data.get("company")
     linkedin = data.get("linkedin")
-    return (_filled(role) and _filled(company)) or (_filled(role) and _filled(linkedin))
+    has_content = (
+        _filled(data.get("professionalBio"))
+        or (_filled(role) and _filled(company))
+        or (_filled(role) and _filled(linkedin))
+    )
+    # Same poisoned-flag rule as the personal section: the flag needs
+    # content behind it.
+    if data.get("professionalSectionComplete") and has_content:
+        return True
+    return has_content
 
 
 def firestore_onboarding_complete(doc: Optional[Dict[str, Any]]) -> bool:

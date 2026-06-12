@@ -455,7 +455,13 @@ def merge_onboarding_identity_to_steve_profile(username: str, collected: Optiona
         ob_id = dict(existing_ob)
         for k in ('journey', 'talkAllDay', 'reachOut', 'recommend'):
             if k in collected:
-                ob_id[k] = (collected.get(k) or '').strip()
+                value = (collected.get(k) or '').strip()
+                # Never let an empty value erase a previously saved answer:
+                # section-only builder runs boot with the other section's
+                # answers blanked locally, and a '' here would wipe what
+                # Steve already knows. Empty only writes when nothing exists.
+                if value or k not in ob_id:
+                    ob_id[k] = value
         raw_social = collected.get('socialProvidedLinks')
         if isinstance(raw_social, list) and raw_social:
             cleaned = []

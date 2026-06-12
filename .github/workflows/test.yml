@@ -108,6 +108,8 @@ jobs:
             tests/test_post_summary.py \
             tests/test_community_handles.py \
             tests/test_community_join_requests.py \
+            tests/test_onboarding_session.py \
+            tests/test_spotlight_kb.py \
             -v --tb=short --maxfail=5
 
       - name: Upload test logs (on failure)

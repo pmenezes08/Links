@@ -501,9 +501,33 @@ export default function OnboardingChat({
 
   const saveState = useCallback(async (s: Stage, c: Collected) => {
     try {
+      // Section-only runs boot from /api/profile_me, not from the saved
+      // onboarding state: the other section's answers are locally '' and
+      // its completion flag is locally faked so the flow skips it. Those
+      // local conveniences must never persist — the Firestore merge would
+      // (a) mark the untouched section complete server-side, killing every
+      // future prompt for it, and (b) blank previously saved verbatim
+      // answers in Steve's KB (merge copies keys when present, '' included).
+      // Strip them from the payload; the server keeps what it already has.
+      let payloadCollected: Record<string, unknown> = c as unknown as Record<string, unknown>
+      if (isSectionOnly) {
+        const sanitized: Record<string, unknown> = { ...payloadCollected }
+        if (sectionOnlyTarget === 'professional') {
+          delete sanitized.personalSectionComplete
+          for (const key of ['talkAllDay', 'reachOut', 'journey', 'recommend'] as const) {
+            if (!String(sanitized[key] ?? '').trim()) delete sanitized[key]
+          }
+        } else {
+          delete sanitized.professionalSectionComplete
+          for (const key of ['professionalAssociations', 'professionalStrengths'] as const) {
+            if (!String(sanitized[key] ?? '').trim()) delete sanitized[key]
+          }
+        }
+        payloadCollected = sanitized
+      }
       const body: Record<string, unknown> = {
         stage: s,
-        collected: c,
+        collected: payloadCollected,
         onboarding_auto_open_suppressed: false,
       }
       if (onboardingIntentRef.current) body.onboarding_intent = onboardingIntentRef.current
@@ -514,7 +538,7 @@ export default function OnboardingChat({
         body: JSON.stringify(body),
       })
     } catch {}
-  }, [])
+  }, [isSectionOnly, sectionOnlyTarget])
 
   // â”€â”€ Initialize: load saved state or start fresh â”€â”€
   useEffect(() => {

@@ -1823,9 +1823,9 @@
       "title": "Destaque e cronologia",
       "subtitle": "Respostas de destaque opcionais e o teu histórico de experiência ou formação. Dois passos rápidos com dicas do Steve — usa o perfil principal acima para bio e detalhes de cargo.",
       "open": "Abrir destaque e cronologia",
-      "five_minutes": "Se só tivéssemos cinco minutos, sobre o que devia perguntar-te?",
-      "outside_work": "Fora do trabalho, onde é mais provável encontrar-te?",
-      "cpoint_goals": "O que esperas obter com o C-Point?"
+      "five_minutes": "Se só tivéssemos cinco minutos, o que é que eu te devia perguntar?",
+      "outside_work": "Fora do trabalho, onde é mais fácil encontrar-te?",
+      "cpoint_goals": "O que é que esperas tirar do C-Point?"
     },
     "interests": {
       "title": "Interesses pessoais",

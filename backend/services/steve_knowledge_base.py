@@ -1303,6 +1303,46 @@ def _extract_admin_corrections(existing_kb: Dict[str, Any]) -> str:
     return "\n\n".join(parts)
 
 
+def fetch_spotlight_answers_for_synthesis(username: str):
+    """Answered spotlight questions as verbatim (question, answer) pairs.
+
+    Reads users.personal_highlight_answers (the profile Q&A blob). Never
+    raises — synthesis must not fail because a profile read hiccuped.
+    """
+    try:
+        import json as _json
+
+        from backend.services.database import get_db_connection, get_sql_placeholder
+        from backend.services.profile_structured_fields import (
+            PERSONAL_HIGHLIGHT_ORDER,
+            PERSONAL_QUESTION_LABELS,
+        )
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(
+                f"SELECT personal_highlight_answers FROM users WHERE username = {ph}",
+                (username,),
+            )
+            row = c.fetchone()
+        raw = (row["personal_highlight_answers"] if hasattr(row, "keys") else row[0]) if row else None
+        if not raw:
+            return []
+        data = _json.loads(raw) if isinstance(raw, str) else raw
+        if not isinstance(data, dict):
+            return []
+        pairs = []
+        for qid in PERSONAL_HIGHLIGHT_ORDER:
+            answer = str(data.get(qid) or "").strip()
+            if answer:
+                pairs.append((PERSONAL_QUESTION_LABELS[qid], answer))
+        return pairs
+    except Exception as err:
+        logger.debug("spotlight fetch for synthesis failed for %s: %s", username, err)
+        return []
+
+
 def _assemble_raw_text_for_synthesis(
     username: str,
     profile_data: Dict[str, Any],
@@ -1440,6 +1480,13 @@ def _assemble_raw_text_for_synthesis(
         parts.append(f"ONBOARDING — WANTS REACH-OUTS ABOUT: {ob['reachOut']}")
     if ob.get("recommend"):
         parts.append(f"ONBOARDING — RECOMMENDS: {ob['recommend']}")
+
+    # Spotlight answers (users.personal_highlight_answers) — the member's
+    # own words from the profile Q&A. Verbatim, mirroring the onboarding
+    # identity block above: without this, answering "make your profile
+    # richer" questions never actually reached Steve's knowledge.
+    for question, answer in fetch_spotlight_answers_for_synthesis(username):
+        parts.append(f"SPOTLIGHT — {question}: {answer}")
 
     platform = profile_data.get("profilingPlatformActivity") or {}
     authored = platform.get("authoredPosts") or []
