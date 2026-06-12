@@ -498,9 +498,15 @@ def add_cache_headers(response):
     """Add caching headers for static files to improve performance"""
     content_type = response.headers.get('Content-Type', '')
     if 'text/html' in content_type:
-        response.headers['Cache-Control'] = 'no-cache'
-        response.headers['Pragma'] = 'no-cache'
-        return response
+        # Flask redirect bodies are text/html; don't strip caching from the
+        # stable /uploads -> R2 CDN 302s or every media load re-traverses Flask.
+        is_uploads_redirect = (
+            request.path.startswith('/uploads/') and response.status_code in (301, 302, 308)
+        )
+        if not is_uploads_redirect:
+            response.headers['Cache-Control'] = 'no-cache'
+            response.headers['Pragma'] = 'no-cache'
+            return response
     
     if request.path.endswith('sw.js'):
         response.headers['Cache-Control'] = 'no-cache'
