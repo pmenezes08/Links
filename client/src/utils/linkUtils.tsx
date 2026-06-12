@@ -218,8 +218,11 @@ export function replaceFaIcons(nodes: React.ReactNode[]): React.ReactNode[] {
 /**
  * Colorizes @mentions in an array of React nodes.
  * When onMentionClick is provided, mentions become clickable (e.g. navigate to public profile).
+ * When mentionLabel returns a display name for a handle, the mention renders as
+ * "Display Name (@username)" — the name comes from the caller's own member data
+ * (DB truth), never from the surrounding text. The raw text is not modified.
  */
-export function colorizeMentions(nodes: React.ReactNode[], onMentionClick?: (username: string) => void, isSent: boolean = false): React.ReactNode[] {
+export function colorizeMentions(nodes: React.ReactNode[], onMentionClick?: (username: string) => void, isSent: boolean = false, mentionLabel?: (username: string) => string | null | undefined): React.ReactNode[] {
   const out: React.ReactNode[] = []
   const mentionRe = /(^|\s)(@([a-zA-Z0-9_]{1,30}))/g
   nodes.forEach((n, idx) => {
@@ -234,6 +237,10 @@ export function colorizeMentions(nodes: React.ReactNode[], onMentionClick?: (use
       const username = m[3]
       if (start > last) { segs.push(n.slice(last, start)) }
       if (lead) { segs.push(lead) }
+      const resolved = mentionLabel ? mentionLabel(username) : null
+      const shown = resolved && resolved.toLowerCase() !== username.toLowerCase()
+        ? `${resolved} (@${username})`
+        : full
       if (onMentionClick) {
         segs.push(
           <span
@@ -242,10 +249,10 @@ export function colorizeMentions(nodes: React.ReactNode[], onMentionClick?: (use
             onClick={(e) => { e.stopPropagation(); onMentionClick(username) }}
             role="link"
             tabIndex={0}
-          >{full}</span>
+          >{shown}</span>
         )
       } else {
-        segs.push(<span key={`men-${idx}-${start}`} className={isSent ? "text-white font-semibold" : "text-cpoint-turquoise"}>{full}</span>)
+        segs.push(<span key={`men-${idx}-${start}`} className={isSent ? "text-white font-semibold" : "text-cpoint-turquoise"}>{shown}</span>)
       }
       last = start + lead.length + full.length
     }
@@ -280,13 +287,14 @@ export function renderTextWithSourceLinks(
   onMentionClick?: (username: string) => void,
   onExternalClick?: (url: string) => void,
   isSent: boolean = false,
+  mentionLabel?: (username: string) => string | null | undefined,
 ): React.ReactNode {
   if (!text) return null
-  
+
   const parts: React.ReactNode[] = []
   let lastIndex = 0
   let sourceCounter = 0
-  
+
   // Match markdown links ([text](url) path or https), https/http URLs, and www. URLs
   const combinedRegex = /\[([^\]]+)\]\(([^)]+)\)|(https?:\/\/[^\s]+)|(?:^|\s)(www\.[^\s]+)/g
   let match
@@ -298,7 +306,7 @@ export function renderTextWithSourceLinks(
 
     if (effectiveStart > lastIndex) {
       const textBefore = text.substring(lastIndex, effectiveStart)
-      parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(textBefore, lastIndex))), onMentionClick, isSent))
+      parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(textBefore, lastIndex))), onMentionClick, isSent, mentionLabel))
     }
 
     let url: string
@@ -335,9 +343,9 @@ export function renderTextWithSourceLinks(
   
   if (lastIndex < text.length) {
     const remainingText = text.substring(lastIndex)
-    parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(remainingText, lastIndex))), onMentionClick, isSent))
+    parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(remainingText, lastIndex))), onMentionClick, isSent, mentionLabel))
   }
-  
+
   return parts.length > 0 ? <>{parts}</> : text
 }
 

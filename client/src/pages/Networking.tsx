@@ -402,6 +402,15 @@ export default function Networking() {
     return matches ? [...new Set(matches.map(m => m.slice(1)))] : []
   }, [])
 
+  // Render-time name resolution: the name shown next to each @mention comes
+  // from the members endpoint (DB truth keyed by username), never from the
+  // model's prose. Steve is prompted not to write names at all; this puts
+  // the verified one back for the reader.
+  const mentionLabel = useCallback((username: string): string | null => {
+    const member = steveMemberByName[username.toLowerCase()]
+    return member?.display_name || null
+  }, [steveMemberByName])
+
   const submitFeedback = useCallback((recUsername: string, feedback: 'up' | 'down', reasoning?: string) => {
     if (!steveSessionId) return
     const current = steveFeedback[recUsername]
@@ -686,7 +695,7 @@ export default function Networking() {
                       ) : (
                         <div className="space-y-2">
                           <div className="max-w-[92%] whitespace-pre-wrap text-[13px] leading-relaxed text-c-text-secondary">
-                            {renderTextWithSourceLinks(msg.text, false, handleMentionClick)}
+                            {renderTextWithSourceLinks(msg.text, false, handleMentionClick, undefined, false, mentionLabel)}
                           </div>
                           {mentions.length > 0 && (
                             <button

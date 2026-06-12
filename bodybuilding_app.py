@@ -13286,6 +13286,7 @@ HOW TO RESPOND:
 RULES:
 - Only reference members from the provided list.
 - Always use @username format.
+- NAMES (CRITICAL): Refer to members ONLY by their @username. NEVER write a member's display name or legal name in your reply — not even in parentheses next to the handle. The app renders each person's verified name from the database next to their @username; a name written by you risks being attached to the wrong person.
 - Speak naturally and conversationally — like a helpful friend, not a search engine.
 - NEVER reference internal data, field names, system terminology, or analysis methods. Don't say things like "City: Lisbon", "AI insight", "profile data", "structured data", "recommendation count", or "no members list X as their location". Just speak naturally about what you know.
 - ON-PLATFORM COHORTS (CRITICAL): A roster line may include "Shared cohorts with requester (C-Point, verified):" — those cohorts are verified in the database for BOTH people. If that segment is ABSENT for someone, you MUST NOT state or imply they belong to any named C-Point cohort or sub-community (e.g. do not say they are in "Kellogg Miami" unless that exact cohort appears there for them). Never infer cohort membership from geography, job, school brands, or AI insight alone.
@@ -13352,6 +13353,11 @@ RULES:
             logger.warning("Steve networking safety footer failed (non-fatal): %s", safety_err)
         ai_response = inject_member_mentions(ai_response, member_names)
         ai_response = _sanitize_networking_response_mentions(ai_response, member_names)
+        _log_networking_name_mismatches(
+            ai_response,
+            [(str(_v(r, 0)), str(_v(r, 1)), f"{_v(r, 11) or ''} {_v(r, 12) or ''}".strip()) for r in member_rows],
+            context="steve_match", username=username, community_id=community_id,
+        )
         response_payload = {'success': True, 'response': format_steve_response_links(ai_response)}
         if debug_allowed:
             response_payload['debug_trace'] = build_networking_debug_trace(
@@ -13553,6 +13559,7 @@ HOW TO RESPOND:
 RULES:
 - Only reference members from the provided list.
 - Always use @username format.
+- NAMES (CRITICAL): Refer to members ONLY by their @username. NEVER write a member's display name or legal name in your reply — not even in parentheses next to the handle. The app renders each person's verified name from the database next to their @username; a name written by you risks being attached to the wrong person.
 - NEVER reference internal data, field names, system terminology, or analysis methods. Don't say things like "AI insight", "profile data", "structured data", "recommendation count", or similar. Just speak naturally about what you know.
 - ON-PLATFORM COHORTS (CRITICAL): A roster line may include "Shared cohorts with requester (C-Point, verified):" for cohorts both people are in. If that segment is ABSENT for someone, you MUST NOT state or imply they belong to any named C-Point cohort or sub-community. Never infer cohort membership from geography, job, or AI insight alone.
 - C-POINT COMMUNITY PRIVACY: Do not name on-platform C-Point communities the requester does not share. External affiliations only when clearly grounded in roster text — never as a substitute for verified cohort lines.
@@ -13575,6 +13582,11 @@ RULES:
         _record_recommendations_background(recommended, username, community_id, context='auto_match')
         ai_response = inject_member_mentions(ai_response, member_names)
         ai_response = _sanitize_networking_response_mentions(ai_response, member_names)
+        _log_networking_name_mismatches(
+            ai_response,
+            [(str(_v(r, 0)), str(_v(r, 1)), f"{_v(r, 11) or ''} {_v(r, 12) or ''}".strip()) for r in member_rows],
+            context="steve_auto_match", username=username, community_id=community_id,
+        )
         return jsonify({'success': True, 'response': format_steve_response_links(ai_response)})
     except Exception as e:
         logger.error(f"Error in steve_auto_match: {e}", exc_info=True)
@@ -20308,34 +20320,14 @@ Keep it short, keep it BRUTAL, and make them regret tagging you. 💀🔥'''
     }
 }
 
-def _sanitize_networking_response_mentions(text: str, member_names: list) -> str:
-    """Strip @ from handles not in the community roster so the client does not link to fake profiles."""
-    import re
-    if not text or not member_names:
-        return text
-    valid = {u.lower() for u, _ in member_names}
-
-    def _repl(m):
-        handle = m.group(1)
-        if handle.lower() in valid:
-            return m.group(0)
-        return handle
-
-    return re.sub(r'@([a-zA-Z0-9_]{1,30})\b', _repl, text)
-
-
-def _extract_recommended_usernames(text: str, member_names: list) -> list:
-    """Extract the list of @usernames that Steve actually recommended in his response."""
-    import re
-    if not text or not member_names:
-        return []
-    valid = {u.lower(): u for u, _d in member_names}
-    found = set()
-    for m in re.finditer(r'@(\w+)', text):
-        uname = m.group(1)
-        if uname.lower() in valid:
-            found.add(valid[uname.lower()])
-    return list(found)
+# Mention hygiene lives in backend.services.networking_mentions (moved out of
+# the monolith; the duplicate-display-name collision fix landed there too).
+from backend.services.networking_mentions import (
+    inject_member_mentions,
+    sanitize_response_mentions as _sanitize_networking_response_mentions,
+    extract_recommended_usernames as _extract_recommended_usernames,
+    log_name_mismatches as _log_networking_name_mismatches,
+)
 
 
 def _record_recommendations_background(recommended: list, requested_by: str, community_id, context: str = ''):
@@ -20350,39 +20342,6 @@ def _record_recommendations_background(recommended: list, requested_by: str, com
         except Exception as e:
             logger.debug(f"Background recommendation recording failed: {e}")
     threading.Thread(target=_bg, daemon=True).start()
-
-
-def inject_member_mentions(text: str, member_names: list) -> str:
-    """Replace **username** or **display_name** bold markers with @username mentions.
-
-    Handles patterns Grok commonly produces:
-        **@jh1987**  |  **Jonas**  |  **@jh1987 (Jonas)**  |  **Jonas (jh1987)**
-    """
-    import re
-    if not text or not member_names:
-        return text
-    name_to_username = {}
-    for uname, dname in member_names:
-        name_to_username[uname.lower()] = uname
-        if dname and dname.lower() != uname.lower():
-            name_to_username[dname.lower()] = uname
-    def _replace_bold(match):
-        raw = match.group(1).strip()
-        name = raw.lstrip('@')
-        lower = name.lower()
-        if lower in name_to_username:
-            return f"@{name_to_username[lower]}"
-        # Handle "@username (DisplayName)" or "DisplayName (username)"
-        paren_match = re.match(r'^(.+?)\s*\(([^)]+)\)$', name)
-        if paren_match:
-            part1 = paren_match.group(1).strip().lstrip('@')
-            part2 = paren_match.group(2).strip().lstrip('@')
-            if part1.lower() in name_to_username:
-                return f"@{name_to_username[part1.lower()]}"
-            if part2.lower() in name_to_username:
-                return f"@{name_to_username[part2.lower()]}"
-        return match.group(0)
-    return re.sub(r'\*\*([^*]+)\*\*', _replace_bold, text)
 
 
 def format_steve_response_links(response_text: str) -> str:

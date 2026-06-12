@@ -253,6 +253,7 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 | `networking_retrieval.py` | Retrieval / context assembly. |
 | `networking_debug_trace.py` | Debug trace for support. |
 | `networking_directory.py` | Member directory: single-JOIN tree roster with a community-keyed short-TTL cache (membership gate runs per-request before the cache read; viewer excluded at serve time). |
+| `networking_mentions.py` | Mention hygiene for Steve replies: bold-name→@username injection (unique names only), non-roster handle sanitizer, log-only wrong-name detector. Names shown to users are resolved client-side from the members endpoint, never from model prose. |
 
 ### Embeddings & search
 
