@@ -28,9 +28,12 @@ def _member_exists(username: str, community_id: int) -> bool:
 
 def test_username_invite_accepts_into_community(mysql_dsn, monkeypatch):
     import bodybuilding_app
+    from backend.services import community_invites as invites_svc
 
     pushed = []
-    monkeypatch.setattr(bodybuilding_app, "send_push_to_user", lambda username, payload: pushed.append((username, payload)))
+    # The invite service imports send_push_to_user into its own namespace —
+    # patch it there, not on the monolith.
+    monkeypatch.setattr(invites_svc, "send_push_to_user", lambda username, payload: pushed.append((username, payload)))
 
     make_user("owner_username_invite", subscription="premium")
     make_user("target_username_invite", subscription="free")
@@ -57,7 +60,7 @@ def test_username_invite_accepts_into_community(mysql_dsn, monkeypatch):
     from backend.services.i18n import t as i18n_t
     assert create_data["message"] == i18n_t("communities.invite.if_exists", "en")
     assert pushed and pushed[0][0] == "target_username_invite"
-    assert "You've been invited to community username-invite-accept by username owner_username_invite" in pushed[0][1]["body"]
+    assert pushed[0][1]["body"] == "owner_username_invite invited you to username-invite-accept"
     assert not _member_exists("target_username_invite", community_id)
 
     _login(client, "target_username_invite")
@@ -339,9 +342,10 @@ def test_non_admin_cannot_create_username_invite(mysql_dsn):
 
 def test_username_invite_does_not_enumerate_missing_user(mysql_dsn, monkeypatch):
     import bodybuilding_app
+    from backend.services import community_invites as invites_svc
 
     pushed = []
-    monkeypatch.setattr(bodybuilding_app, "send_push_to_user", lambda username, payload: pushed.append((username, payload)))
+    monkeypatch.setattr(invites_svc, "send_push_to_user", lambda username, payload: pushed.append((username, payload)))
 
     make_user("owner_username_missing", subscription="premium")
     community_id = make_community(

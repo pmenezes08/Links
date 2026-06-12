@@ -390,6 +390,7 @@ _TRUNCATE_TABLES: List[str] = [
     "user_communities",
     "community_admins",
     "community_invitations",
+    "community_join_requests",
     "post_views",
     "posts",
     "replies",
