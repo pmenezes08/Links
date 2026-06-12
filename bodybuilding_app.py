@@ -22903,8 +22903,10 @@ def create_community():
                 if not is_app_admin(username):
                     return jsonify({'success': False, 'error': 'Only app admin can create Business communities'}), 403
         
-        # Generate a dummy join_code to satisfy database UNIQUE constraint
-        # (Not used for joining anymore, but column still exists)
+        # join_code is a dead column kept only because the legacy schema is
+        # NOT NULL UNIQUE — no join path reads it anywhere (join-by-code UI
+        # and route are removed; @handles are the join identity). This dummy
+        # filler can go once a nullable migration lands.
         import random
         import string
         join_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))

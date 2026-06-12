@@ -45,7 +45,6 @@ interface Community {
   name: string
   type: string
   creator_username: string
-  join_code: string
   member_count: number
   is_active: boolean
   parent_community_id?: number | null
@@ -2159,7 +2158,6 @@ export default function AdminDashboard() {
                   </div>
                   <div className="text-xs text-c-text-tertiary mb-3">
                     <div>Creator: {community.creator_username}</div>
-                    <div>Code: {community.join_code}</div>
                   </div>
                   
                   {/* Show child communities if any */}

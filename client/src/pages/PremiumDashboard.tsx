@@ -197,7 +197,6 @@ export default function PremiumDashboard() {
   const [searchOpen, setSearchOpen] = useState(false)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const [showJoinModal, setShowJoinModal] = useState(false)
-  const [joinCode, setJoinCode] = useState('')
   const [showAboutCPointModal, setShowAboutCPointModal] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newCommName, setNewCommName] = useState('')
@@ -237,10 +236,8 @@ export default function PremiumDashboard() {
   const prevPathnameForDashboardRef = useRef<string | null>(null)
   const [pullHint, setPullHint] = useState<'idle' | 'ready' | 'refreshing'>('idle')
   const [pullPx, setPullPx] = useState(0)
-  const [joinedCommunityName, setJoinedCommunityName] = useState<string | null>(null)
   const [joinedCommunityId, setJoinedCommunityId] = useState<number | null>(null)
   const [pendingInviteTarget, setPendingInviteTarget] = useState<{ communityId: number; communityName?: string | null } | null>(null)
-  const [showSuccessModal, setShowSuccessModal] = useState(false)  // Success modal for join
   const [pendingCommunityInvites, setPendingCommunityInvites] = useState<PendingCommunityInvite[]>([])
   const [activeInvitePrompt, setActiveInvitePrompt] = useState<PendingCommunityInvite | null>(null)
   const [invitesChecked, setInvitesChecked] = useState(false)
@@ -335,19 +332,6 @@ export default function PremiumDashboard() {
     setHandleEdited(false)
     setNewCommType('General')
     setIsCreatingCommunity(false)
-  }
-
-  const storePendingInviteTarget = (info: { communityId?: number | null; communityName?: string | null }) => {
-    if (!info?.communityId) return
-    setPendingInviteTarget({ communityId: Number(info.communityId), communityName: info.communityName ?? null })
-    try {
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem(
-          PENDING_INVITE_KEY,
-          JSON.stringify({ communityId: Number(info.communityId), communityName: info.communityName ?? null }),
-        )
-      }
-    } catch {}
   }
 
   useEffect(() => {
@@ -1049,7 +1033,6 @@ export default function PremiumDashboard() {
   const communityFallback = t('dashboard.community_fallback')
   const resolvedCommunityName = (() => {
     if (pendingInviteTarget?.communityName) return pendingInviteTarget.communityName
-    if (joinedCommunityName) return joinedCommunityName
     const targetId = pendingInviteTarget?.communityId ?? joinedCommunityId
     if (targetId) {
       const found = communities.find(c => c.id === targetId)
@@ -1557,16 +1540,6 @@ export default function PremiumDashboard() {
         </div>
       )}
 
-      {/* Success Toast - Subtle notification */}
-      {showSuccessModal && (
-        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[60] pointer-events-none">
-          <div className="px-6 py-3 rounded-full border border-cpoint-turquoise/40 bg-c-bg-elevated backdrop-blur-sm shadow-lg animate-fade-in">
-            <div className="text-sm font-medium text-c-text-primary">
-              {t('dashboard.joined_community', { name: joinedCommunityName ?? '' })}
-            </div>
-          </div>
-        </div>
-      )}
       {/* Verify email first modal */}
       {showVerifyFirstModal && (
         <div className="fixed inset-0 z-50 bg-c-bg-app/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowVerifyFirstModal(false)}>
@@ -1681,52 +1654,9 @@ export default function PremiumDashboard() {
               <div className="font-semibold text-sm">{t('dashboard.join_community_title')}</div>
               <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowJoinModal(false)} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
             </div>
-            <div className="space-y-3">
-              {/* Find by handle — the primary way in. The legacy code path
-                  stays below as fallback for older invites. */}
-              <JoinByHandlePanel onJoinedNavigate={() => setShowJoinModal(false)} />
-              <div className="flex items-center gap-2 text-[11px] text-c-text-tertiary">
-                <span className="h-px flex-1 bg-c-border" />
-                {t('communities.find_or_code')}
-                <span className="h-px flex-1 bg-c-border" />
-              </div>
-              <input value={joinCode} onChange={e=> setJoinCode(e.target.value)} placeholder={t('dashboard.join_code_placeholder')} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border:white/15 text-sm text-c-text-primary" />
-              <div className="flex items-center justify-end gap-2">
-                <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowJoinModal(false)}>{t('common.cancel')}</button>
-                <button className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black hover:brightness-110" onClick={async()=> {
-                  if (!joinCode.trim()) { alert(t('dashboard.code_required')); return }
-                  // If not verified, gate join with verification
-                  if (emailVerified === false){
-                    setShowJoinModal(false)
-                    setShowVerifyFirstModal(true)
-                    return
-                  }
-                  try{
-                    const fd = new URLSearchParams({ community_code: joinCode.trim() })
-                    const r = await fetch('/join_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
-                    const j = await r.json().catch(()=>null)
-                    
-                      if (j?.success){ 
-                        setJoinedCommunityName(j.community_name || 'community')
-                        setJoinedCommunityId(j.community_id ?? null)
-                        storePendingInviteTarget({ communityId: j.community_id ?? null, communityName: j.community_name ?? null })
-                        setShowJoinModal(false); 
-                      setJoinCode('');
-                      setShowSuccessModal(true);
-                      await triggerDashboardServerPull()
-                      const refreshed = await refreshDashboardCommunities()
-                      if (refreshed) {
-                        setCommunities(refreshed)
-                        setCommunitiesLoaded(true)
-                      }
-                    }
-                      else alert(j?.error || t('dashboard.join_community_failed'))
-                  }catch{ 
-                    alert(t('dashboard.join_community_failed')) 
-                  }
-                }}>{t('dashboard.join_action')}</button>
-              </div>
-            </div>
+            {/* Handle-only: the legacy join-by-code path is gone (its
+                endpoint never existed in this backend). */}
+            <JoinByHandlePanel onJoinedNavigate={() => setShowJoinModal(false)} />
           </div>
         </div>
       )}
