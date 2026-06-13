@@ -1507,16 +1507,12 @@ export default function PostDetail(){
   }
 
 
-  // Full-height loading + error shells in NORMAL flow (min-h-screen) — NOT
-  // position:fixed. iOS WebKit will not move a position:fixed element with an
-  // ancestor's animated transform, so a fixed shell pins to the viewport and the
-  // page-push slide never plays ("instant cut to black"). A min-h-screen shell
-  // fills the pane (no black gap) AND slides with the transition like the feed.
-  if (loading) return (
-    <div className="min-h-screen bg-c-bg-app text-c-text-primary" style={{ paddingTop: 'var(--sat-px, 0px)' }}>
-      <SkeletonPostDetail />
-    </div>
-  )
+  // Loading + error states stay in NORMAL flow (min-h-screen, NOT position:fixed)
+  // so they slide with the page transition on iOS — a fixed root would pin to the
+  // viewport and the slide would not play. SkeletonPostDetail renders its own
+  // full-screen shell (header + body + composer), a structural twin of the loaded
+  // page, so it swipes in cleanly with matching chrome.
+  if (loading) return <SkeletonPostDetail />
   if (error || !post) return (
     <div className="min-h-screen bg-c-bg-app text-c-text-primary" style={{ paddingTop: 'var(--sat-px, 0px)' }}>
       <div className="p-4 text-center text-c-text-tertiary">

@@ -190,8 +190,9 @@
   --c-accent-ink: #8ff4e9;
 
   /* Skeleton Loading */
-  --c-skeleton-strong: rgba(255, 255, 255, 0.08);
-  --c-skeleton-subtle: rgba(255, 255, 255, 0.04);
+  --c-skeleton-strong: rgba(255, 255, 255, 0.12);
+  --c-skeleton-subtle: rgba(255, 255, 255, 0.07);
+  --c-skeleton-shimmer: rgba(0, 206, 200, 0.16);
 
   /* Reply snippet */
   --c-reply-snippet-bg: rgba(0, 0, 0, 0.22);
@@ -305,8 +306,9 @@
   --c-shadow-card: 0 2px 8px rgba(15, 23, 42, 0.06);
 
   /* Skeleton Loading */
-  --c-skeleton-strong: rgba(15, 20, 25, 0.09);
-  --c-skeleton-subtle: rgba(15, 20, 25, 0.05);
+  --c-skeleton-strong: rgba(15, 20, 25, 0.11);
+  --c-skeleton-subtle: rgba(15, 20, 25, 0.06);
+  --c-skeleton-shimmer: rgba(0, 158, 153, 0.12);
 
   /* Reply snippet */
   --c-reply-snippet-bg: rgba(0, 125, 119, 0.12);
@@ -362,8 +364,9 @@ textarea::placeholder {
   --c-glass-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
   --c-page-transition-shadow: 0 22px 64px rgba(0, 0, 0, 0.42);
   --c-page-transition-overlay: transparent;
-  --c-skeleton-strong: rgba(255, 255, 255, 0.08);
-  --c-skeleton-subtle: rgba(255, 255, 255, 0.04);
+  --c-skeleton-strong: rgba(255, 255, 255, 0.12);
+  --c-skeleton-subtle: rgba(255, 255, 255, 0.07);
+  --c-skeleton-shimmer: rgba(0, 206, 200, 0.16);
   --c-reply-snippet-bg: rgba(0, 0, 0, 0.22);
   --c-shadow-card: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
@@ -743,6 +746,33 @@ html[data-theme='light'] .chat-search-highlight {
 @keyframes ptFadeOut {
   from { opacity: 1; }
   to { opacity: 0; }
+}
+
+/* Skeleton placeholders: a directional shimmer sweep (faint turquoise tint that
+   echoes the wave→point logo) instead of Tailwind's opacity-pulse. Drives off
+   the --c-skeleton-* tokens. Apply `skeleton-box` to a placeholder; add
+   `skeleton-box--soft` for a dimmer secondary one. */
+@keyframes skeletonShimmer {
+  0% { background-position: 180% 0; }
+  100% { background-position: -80% 0; }
+}
+.skeleton-box {
+  background-color: var(--c-skeleton-strong);
+  background-image: linear-gradient(
+    100deg,
+    transparent 20%,
+    var(--c-skeleton-shimmer) 50%,
+    transparent 80%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: skeletonShimmer 1.5s ease-in-out infinite;
+}
+.skeleton-box--soft {
+  background-color: var(--c-skeleton-subtle);
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-box { animation: none; }
 }
 
 /* Chat search: highlight a message after jump-to */
