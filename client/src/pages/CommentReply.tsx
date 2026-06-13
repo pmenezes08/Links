@@ -168,6 +168,23 @@ export default function CommentReply() {
       }
     },
   })
+
+  // When the keyboard opens, shift the content up by the keyboard height so what
+  // you're replying to stays visible above the composer instead of hiding behind
+  // it (same fix as PostDetail; the composer lifts on its own).
+  const prevKeyboardLiftRef = useRef(0)
+  useEffect(() => {
+    const prev = prevKeyboardLiftRef.current
+    prevKeyboardLiftRef.current = keyboardLift
+    const delta = keyboardLift - prev
+    if (delta <= 0) return
+    const el = scrollAreaRef.current
+    if (!el) return
+    const raf = requestAnimationFrame(() => {
+      try { el.scrollBy({ top: delta, left: 0, behavior: 'auto' }) } catch { /* ignore */ }
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [keyboardLift])
   const [replyComposerExpanded, setReplyComposerExpanded] = useState(false)
   const [expandedComposerViewportLift, setExpandedComposerViewportLift] = useState(0)
   const expandedComposerRef = useRef<HTMLDivElement | null>(null)
