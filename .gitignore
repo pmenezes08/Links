@@ -12,10 +12,12 @@ templates/build_workout.html
 templates/choose_workout_type.html
 
 # Local environment files — real secrets must never be committed.
-# (.env.local is tracked but holds only placeholders; real values belong in
-#  Secret Manager / Cloud Run env vars, never in the repo.)
+# (.env.example is the tracked placeholder template; copy it to .env.local
+#  and fill real values there. Real secrets belong in Secret Manager /
+#  Cloud Run env vars, never in the repo.)
 .env
 .env.*
+!.env.example
 
 # Deploy / CI / diagnostic logs (generated during scripts, never commit)
 *-deploy.log
