@@ -73,7 +73,7 @@ CHAT_THREADS_TTL = int(os.environ.get('CACHE_TTL_CHAT_THREADS', '120')) # 2 minu
 IMAGE_CACHE_TTL = int(os.environ.get('CACHE_TTL_IMAGES', '7200'))    # 2 hours
 # Post detail cache (viewer-scoped, versioned prefix). Tight TTL so a stale
 # blob is short-lived; explicit invalidation runs at mutation sites.
-CACHE_TTL_POST_DETAIL = int(os.environ.get('CACHE_TTL_POST_DETAIL', '60'))
+CACHE_TTL_POST_DETAIL = int(os.environ.get('CACHE_TTL_POST_DETAIL', '180'))
 CACHE_TTL_POST_DETAIL_METRICS = int(os.environ.get('CACHE_TTL_POST_DETAIL_METRICS', '30'))
 POST_DETAIL_CACHE_VERSION = os.environ.get('POST_DETAIL_CACHE_VERSION', 'v1')
 

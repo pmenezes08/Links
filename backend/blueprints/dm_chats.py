@@ -29,7 +29,11 @@ from backend.services.dm_send_media import (
 from backend.services.dm_send_message import send_dm_text_message
 from backend.services.dm_thread_archive import archive_dm_thread, list_archived_dm_threads, unarchive_dm_thread
 from backend.services.dm_thread_preferences import apply_dm_thread_mute
-from backend.services.dm_unread import count_dm_unread_excluding_cleared, mark_dm_received_before_clear_as_read
+from backend.services.dm_unread import (
+    count_dm_unread_excluding_cleared,
+    count_group_unread_excluding_cleared,
+    mark_dm_received_before_clear_as_read,
+)
 from redis_cache import cache, invalidate_message_cache
 
 logger = logging.getLogger(__name__)
@@ -96,36 +100,14 @@ def check_unread_messages():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            ph = get_sql_placeholder()
 
             dm_unread = count_dm_unread_excluding_cleared(c, username)
 
             group_unread = 0
             try:
-                c.execute(
-                    f"""
-                    SELECT gcm.group_id, COALESCE(gcr.last_read_message_id, 0) as last_read
-                    FROM group_chat_members gcm
-                    LEFT JOIN group_chat_read_receipts gcr
-                        ON gcm.group_id = gcr.group_id AND gcm.username = gcr.username
-                    WHERE gcm.username = {ph}
-                    """,
-                    (username,),
-                )
-
-                for row in c.fetchall():
-                    group_id = row["group_id"] if hasattr(row, "keys") else row[0]
-                    last_read_id = row["last_read"] if hasattr(row, "keys") else row[1]
-
-                    c.execute(
-                        f"""
-                        SELECT COUNT(*) as cnt FROM group_chat_messages
-                        WHERE group_id = {ph} AND id > {ph} AND is_deleted = 0 AND sender_username != {ph}
-                        """,
-                        (group_id, last_read_id, username),
-                    )
-                    cnt_row = c.fetchone()
-                    group_unread += cnt_row["cnt"] if hasattr(cnt_row, "keys") else cnt_row[0]
+                # Single batched JOIN — replaces the former per-group COUNT loop
+                # (N+1 on a badge endpoint polled on every feed/post/group mount).
+                group_unread = count_group_unread_excluding_cleared(c, username)
             except Exception as ge:
                 logger.warning("Could not count group unread: %s", ge)
 
