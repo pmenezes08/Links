@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
-import ImageLoader from '../components/ImageLoader'
 import ProfileUnavailable from '../components/profile/ProfileUnavailable'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
@@ -877,11 +876,14 @@ export default function PublicProfile() {
           >
             <i className="fa-solid fa-xmark" />
           </button>
-          <div className="w-[90vw] max-w-3xl">
-            <ImageLoader
+          <div
+            className="flex items-center justify-center w-[90vw] max-w-3xl"
+            style={{ maxHeight: 'calc(100vh - 6rem)' }}
+          >
+            <img
               src={previewImage}
               alt={t('profile.alt.profile')}
-              className="w-full h-full object-contain rounded-lg border border-c-border"
+              className="max-w-full max-h-full object-contain rounded-lg border border-c-border"
             />
           </div>
         </div>
