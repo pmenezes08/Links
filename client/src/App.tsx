@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { App as CapacitorApp } from '@capacitor/app'
@@ -32,53 +32,49 @@ import BrandAssetsInit from './components/BrandAssetsInit'
 import BasicProfileGateProvider from './components/basic-profile/BasicProfileGateProvider'
 import AgeGateController from './components/onboarding/AgeGate'
 import LocaleBootstrap from './components/LocaleBootstrap'
-// Route components are lazy-loaded (code-split) so the initial bundle only
-// parses the first-paint screens; each page's chunk loads on first navigation
-// and is then service-worker-cached. The first-paint set (login, dashboard,
-// feed tab, onboarding) stays eagerly imported.
-const CrossfitExact = lazy(() => import('./pages/CrossfitExact'))
-const CommunityFeed = lazy(() => import('./pages/CommunityFeed'))
-const CommunityCalendar = lazy(() => import('./pages/CommunityCalendar'))
-const CommunityTasks = lazy(() => import('./pages/CommunityTasks'))
-const CommunityPolls = lazy(() => import('./pages/CommunityPolls'))
-const CommunityResources = lazy(() => import('./pages/CommunityResources'))
-const UsefulLinks = lazy(() => import('./pages/UsefulLinks'))
-const CommunityPhotos = lazy(() => import('./pages/CommunityPhotos'))
-const PostDetail = lazy(() => import('./pages/PostDetail'))
-const CreatePost = lazy(() => import('./pages/CreatePost'))
-const Members = lazy(() => import('./pages/Members'))
-const EditCommunity = lazy(() => import('./pages/EditCommunity'))
-const Communities = lazy(() => import('./pages/Communities'))
-const Followers = lazy(() => import('./pages/Followers'))
-const Networking = lazy(() => import('./pages/Networking'))
+import CrossfitExact from './pages/CrossfitExact'
+import CommunityFeed from './pages/CommunityFeed'
+import CommunityCalendar from './pages/CommunityCalendar'
+import CommunityTasks from './pages/CommunityTasks'
+import CommunityPolls from './pages/CommunityPolls'
+import CommunityResources from './pages/CommunityResources'
+import UsefulLinks from './pages/UsefulLinks'
+import CommunityPhotos from './pages/CommunityPhotos'
+import PostDetail from './pages/PostDetail'
+import CreatePost from './pages/CreatePost'
+import Members from './pages/Members'
+import EditCommunity from './pages/EditCommunity'
+import Communities from './pages/Communities'
+import Followers from './pages/Followers'
+import Networking from './pages/Networking'
 import HomeTimeline from './pages/HomeTimeline'
-const WorkoutTracking = lazy(() => import('./pages/WorkoutTracking'))
-const Gym = lazy(() => import('./pages/Gym'))
-const YourSports = lazy(() => import('./pages/YourSports'))
-const Messages = lazy(() => import('./pages/Messages'))
-const NewMessage = lazy(() => import('./pages/NewMessage'))
-const ChatThread = lazy(() => import('./pages/ChatThread'))
-const GroupChatThread = lazy(() => import('./pages/GroupChatThread'))
-const GroupChatMedia = lazy(() => import('./pages/GroupChatMedia'))
-const ChatMedia = lazy(() => import('./pages/ChatMedia'))
-const GroupChatDocuments = lazy(() => import('./pages/GroupChatDocuments'))
-const ChatDocuments = lazy(() => import('./pages/ChatDocuments'))
-const Profile = lazy(() => import('./pages/Profile'))
-const PublicProfile = lazy(() => import('./pages/PublicProfile'))
-const AccountSettings = lazy(() => import('./pages/AccountSettings'))
-const AccountSecurity = lazy(() => import('./pages/AccountSecurity'))
-const AccountDangerZone = lazy(() => import('./pages/AccountDangerZone'))
-const SubscriptionPlans = lazy(() => import('./pages/SubscriptionPlans'))
-const Success = lazy(() => import('./pages/Success'))
-const Signup = lazy(() => import('./pages/Signup'))
-const InvitePreview = lazy(() => import('./pages/InvitePreview'))
-const Notifications = lazy(() => import('./pages/Notifications'))
-const AdminDashboard = lazy(() => import('./pages/AdminDashboard'))
-const AdminProfile = lazy(() => import('./pages/AdminProfile'))
-const KeyPosts = lazy(() => import('./pages/KeyPosts'))
-const AboutCPoint = lazy(() => import('./pages/AboutCPoint'))
+import WorkoutTracking from './pages/WorkoutTracking'
+import Gym from './pages/Gym'
+import YourSports from './pages/YourSports'
+import Messages from './pages/Messages'
+import NewMessage from './pages/NewMessage'
+import ChatThread from './pages/ChatThread'
+import GroupChatThread from './pages/GroupChatThread'
+import GroupChatMedia from './pages/GroupChatMedia'
+import ChatMedia from './pages/ChatMedia'
+import GroupChatDocuments from './pages/GroupChatDocuments'
+import ChatDocuments from './pages/ChatDocuments'
+import Profile from './pages/Profile'
+import PublicProfile from './pages/PublicProfile'
+import AccountSettings from './pages/AccountSettings'
+import AccountSecurity from './pages/AccountSecurity'
+import AccountDangerZone from './pages/AccountDangerZone'
+import SubscriptionPlans from './pages/SubscriptionPlans'
+import Success from './pages/Success'
+import Signup from './pages/Signup'
+import InvitePreview from './pages/InvitePreview'
+import Notifications from './pages/Notifications'
+import AdminDashboard from './pages/AdminDashboard'
+import AdminProfile from './pages/AdminProfile'
+import KeyPosts from './pages/KeyPosts'
+import AboutCPoint from './pages/AboutCPoint'
 import OnboardingWelcome from './pages/OnboardingWelcome'
-const ScopedProfileBuilder = lazy(() => import('./pages/ScopedProfileBuilder'))
+import ScopedProfileBuilder from './pages/ScopedProfileBuilder'
 import VerifyOverlay from './components/VerifyOverlay'
 import { isPremiumDashboardPath } from './components/DashboardBottomNav'
 import { isDashboardTabPath } from './components/pageTransitionUtils'
@@ -90,11 +86,11 @@ const TRANSITIONS_ENABLED = import.meta.env.VITE_PAGE_TRANSITIONS === 'true'
 import { useSafeAreaSync } from './hooks/useSafeAreaSync'
 import { useThemedNativeChrome } from './hooks/useThemedNativeChrome'
 import { useMediaUploadResume } from './hooks/useMediaUploadResume'
-const EventDetail = lazy(() => import('./pages/EventDetail'))
-const GroupFeed = lazy(() => import('./pages/GroupFeed'))
-const EditGroup = lazy(() => import('./pages/EditGroup'))
-const CommentReply = lazy(() => import('./pages/CommentReply'))
-const ShareIncomingRouteRedirect = lazy(() => import('./pages/ShareIncomingRouteRedirect'))
+import EventDetail from './pages/EventDetail'
+import GroupFeed from './pages/GroupFeed'
+import EditGroup from './pages/EditGroup'
+import CommentReply from './pages/CommentReply'
+import ShareIncomingRouteRedirect from './pages/ShareIncomingRouteRedirect'
 import { isOnboardingFullscreenOverlayActive } from './utils/fullscreenOverlay'
 import { ensureAccountIsolationForUsername } from './utils/accountStateReset'
 import {
@@ -104,17 +100,6 @@ import {
 } from './constants/googleOAuth'
 
 const queryClient = new QueryClient()
-
-/** Brief fallback while a lazy route's chunk loads (first visit only — chunks are
- *  service-worker-cached after). min-h-screen normal flow so it slides with the
- *  page transition instead of pinning to the viewport (iOS). */
-function RouteSuspenseFallback() {
-  return (
-    <div className="min-h-screen bg-c-bg-app flex items-center justify-center" aria-busy="true">
-      <div className="h-7 w-7 rounded-full border-2 border-cpoint-turquoise/25 border-t-cpoint-turquoise animate-spin" />
-    </div>
-  )
-}
 
 function ChatThreadRoute() {
   const { username } = useParams()
@@ -898,7 +883,6 @@ function AppRoutes(){
         >
             <ErrorBoundary>
               <PageTransitionStack onTransitionEnd={flushDeferredScrollReset}>
-              <Suspense fallback={<RouteSuspenseFallback />}>
               <Routes>
                 <Route path="/" element={rootRouteElement} />
                 <Route path="/welcome" element={<OnboardingWelcome />} />
@@ -966,7 +950,6 @@ function AppRoutes(){
                 <Route path="/group/:group_id/edit" element={<EditGroup />} />
                 <Route path="*" element={<PremiumDashboard />} />
               </Routes>
-              </Suspense>
               </PageTransitionStack>
             </ErrorBoundary>
         </main>

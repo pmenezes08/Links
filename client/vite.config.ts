@@ -53,18 +53,6 @@ export default defineConfig({
           if (id.includes('@fortawesome') || id.includes('fontawesome')) {
             return 'fontawesome'
           }
-          if (id.includes('node_modules')) {
-            // Split stable vendor libs into their own chunks so they stay
-            // service-worker-cached across app-code deploys (the app chunk
-            // changes, vendors don't) and download in parallel on first load.
-            if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id)) {
-              return 'react-vendor'
-            }
-            if (id.includes('@capacitor')) return 'capacitor'
-            if (id.includes('@tanstack')) return 'tanstack'
-            if (id.includes('i18next') || id.includes('react-i18next')) return 'i18n'
-            return 'vendor'
-          }
         },
       },
     },
