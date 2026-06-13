@@ -12,7 +12,7 @@ os.environ['DB_BACKEND'] = 'mysql'
 os.environ['MYSQL_HOST'] = 'YOUR_CLOUD_SQL_HOST'
 os.environ['MYSQL_DB'] = 'puntz08$C-Point'
 os.environ['MYSQL_USER'] = 'puntz08'
-os.environ['MYSQL_PASSWORD'] = 'Trying123456'
+os.environ.setdefault('MYSQL_PASSWORD', '')  # provide via env / Secret Manager — never hard-code
 
 print("="*60)
 print("🔥 Firebase Initialization Test")

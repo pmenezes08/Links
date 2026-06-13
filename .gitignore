@@ -11,6 +11,12 @@ static/community_files/
 templates/build_workout.html
 templates/choose_workout_type.html
 
+# Local environment files — real secrets must never be committed.
+# (.env.local is tracked but holds only placeholders; real values belong in
+#  Secret Manager / Cloud Run env vars, never in the repo.)
+.env
+.env.*
+
 # Deploy / CI / diagnostic logs (generated during scripts, never commit)
 *-deploy.log
 ci-job-*.log

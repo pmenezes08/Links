@@ -77,9 +77,6 @@ optimize_*.py
 force_*.py
 complete_revert.py
 direct_migration.py
-emergency_fix.py
-final_fix.py
-find_mysql_password.py
 revert_chat_changes.py
 
 # Ignore misc files

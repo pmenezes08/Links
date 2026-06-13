@@ -13,7 +13,7 @@ os.environ.setdefault('DB_BACKEND', 'mysql')
 os.environ.setdefault('MYSQL_HOST', 'YOUR_CLOUD_SQL_HOST')
 os.environ.setdefault('MYSQL_DB', 'puntz08$C-Point')
 os.environ.setdefault('MYSQL_USER', 'puntz08')
-os.environ.setdefault('MYSQL_PASSWORD', 'Trying123456')
+os.environ.setdefault('MYSQL_PASSWORD', '')  # provide via env / Secret Manager — never hard-code
 
 from backend.services.firebase_notifications import (
     initialize_firebase,
