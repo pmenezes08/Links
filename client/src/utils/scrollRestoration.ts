@@ -1,10 +1,11 @@
 /**
- * Per-history-entry scroll memory for native-style back navigation.
+ * Per-route scroll memory for native-style back navigation.
  *
- * Keyed by react-router's `location.key` (stable per history entry and re-used
- * on POP), so backing out of a drill-down restores the exact scroll offset the
- * user left — the single most-felt "native vs web" behaviour the app was
- * missing (every back-tap otherwise dumps you at the top of the list).
+ * Keyed by route PATH (`location.pathname + search`), NOT `location.key`: the
+ * app's in-app "smart back" PUSHes the feed path rather than popping history, so
+ * a per-history-entry key would never match on return. Keying by path means
+ * returning to a list/feed — by browser POP or smart-back PUSH — restores the
+ * exact offset the user left, instead of dumping them at the top.
  *
  * Kept in memory (fast, survives client-side navigation) and mirrored to
  * `sessionStorage` so an in-session reload can still restore. Bounded to the

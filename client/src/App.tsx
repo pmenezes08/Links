@@ -4,7 +4,7 @@ import type { PluginListenerHandle } from '@capacitor/core'
 import { App as CapacitorApp } from '@capacitor/app'
 import { Keyboard, KeyboardResize } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
-import { BrowserRouter, Routes, Route, useLocation, useNavigate, useNavigationType, Navigate, useParams } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { extractInviteToken, isInternalLink } from './utils/internalLinkHandler'
 import {
@@ -125,12 +125,13 @@ function AppRoutes(){
   const location = useLocation()
   const isFirstPage = location.pathname === '/'
   const navigate = useNavigate()
-  // Native-style scroll restoration: track the current history entry's key so a
-  // scroll listener can stamp offsets against it, and remember a pending restore
-  // to apply once a back-transition settles.
-  const navigationType = useNavigationType()
-  const currentLocationKeyRef = useRef(location.key)
-  currentLocationKeyRef.current = location.key
+  // Native-style scroll restoration: track the current route's scroll key (path +
+  // search) so a scroll listener can stamp offsets against it, and remember a
+  // pending restore to apply once a back-transition settles. Keyed by PATH (not
+  // history key) because the in-app "smart back" PUSHes the feed path rather than
+  // popping history, so a per-entry key would never match on return.
+  const currentScrollKeyRef = useRef(location.pathname + location.search)
+  currentScrollKeyRef.current = location.pathname + location.search
   const pendingScrollRestoreRef = useRef<number | null>(null)
   const [authLoaded, setAuthLoaded] = useState(false)
   const [isVerified, setIsVerified] = useState<boolean | null>(null)
@@ -565,42 +566,56 @@ function AppRoutes(){
 
   const applyScrollTop = useCallback((top: number) => {
     if (typeof window === 'undefined') return
-    const el = scrollRegionRef.current
-    const set = () => {
-      if (!el) return
-      if (typeof el.scrollTo === 'function') {
-        try { el.scrollTo({ top, left: 0, behavior: 'auto' }) } catch { el.scrollTop = top }
+    const main = scrollRegionRef.current
+    const setOn = (node: HTMLElement | null) => {
+      if (!node) return
+      if (typeof node.scrollTo === 'function') {
+        try { node.scrollTo({ top, left: 0, behavior: 'auto' }) } catch { node.scrollTop = top }
       } else {
-        el.scrollTop = top
+        node.scrollTop = top
       }
     }
-    set()
+    const apply = () => {
+      // Apply to <main> AND the page's inner scroll container (e.g. the feed
+      // scrolls an inner [data-preserve-scroll] div, not <main>). Whichever isn't
+      // actually scrollable simply clamps the assignment back to 0 and ignores it.
+      setOn(main)
+      setOn(main?.querySelector<HTMLElement>('[data-preserve-scroll="true"]') ?? null)
+    }
+    apply()
     // Cached pages paint synchronously but layout can settle a frame late;
     // re-apply next frame so a slightly-taller list doesn't clamp us short.
-    window.requestAnimationFrame(set)
+    window.requestAnimationFrame(apply)
   }, [])
 
-  // Stamp the live scroll offset against the current history entry so a later
-  // POP back to it restores exactly. rAF-throttled; key + offset are captured at
-  // event time so a navigation mid-frame can't misattribute the offset.
+  // Stamp the live scroll offset against the current route (by path) so a later
+  // return to it restores exactly. Capture phase (scroll doesn't bubble) so we
+  // also see the page's INNER scroll container — pages like CommunityFeed scroll
+  // an inner [data-preserve-scroll] div, not <main>. rAF-throttled; key + offset
+  // are captured at event time so a navigation mid-frame can't misattribute it.
   useEffect(() => {
-    const el = scrollRegionRef.current
-    if (!el) return
+    const main = scrollRegionRef.current
+    if (!main) return
     let rafId = 0
     let pendingTop = 0
     let pendingKey = ''
-    const onScroll = () => {
-      pendingTop = el.scrollTop
-      pendingKey = currentLocationKeyRef.current
+    const isTrackedScroller = (node: EventTarget | null): node is HTMLElement =>
+      node === main ||
+      (node instanceof HTMLElement && node.matches('[data-preserve-scroll="true"]'))
+    const onScroll = (ev: Event) => {
+      const target = ev.target
+      if (!isTrackedScroller(target)) return
+      pendingTop = target.scrollTop
+      pendingKey = currentScrollKeyRef.current
       if (rafId) return
       rafId = window.requestAnimationFrame(() => {
         rafId = 0
         saveScrollPosition(pendingKey, pendingTop)
       })
     }
-    el.addEventListener('scroll', onScroll, { passive: true })
+    main.addEventListener('scroll', onScroll, { capture: true, passive: true })
     return () => {
-      el.removeEventListener('scroll', onScroll)
+      main.removeEventListener('scroll', onScroll, { capture: true } as any)
       if (rafId) window.cancelAnimationFrame(rafId)
     }
   }, [])
@@ -717,9 +732,11 @@ function AppRoutes(){
     const prev = prevPathnameRef.current
     prevPathnameRef.current = location.pathname
     if (isDashboardTabPath(prev) && isDashboardTabPath(location.pathname)) return
-    // On POP with a remembered offset for the destination history entry, restore
-    // it; otherwise reset to top (forward drill-downs and first visits).
-    const restoreTo = navigationType === 'POP' ? getScrollPosition(location.key) : null
+    // If we have a remembered offset for the destination route (keyed by path),
+    // restore it — this covers browser POP AND the in-app "smart back" that
+    // PUSHes the feed path instead of popping history. New routes have none and
+    // fall through to a reset-to-top.
+    const restoreTo = getScrollPosition(location.pathname + location.search)
     if (restoreTo != null && restoreTo > 0) {
       pendingScrollRestoreRef.current = restoreTo
       pendingScrollResetRef.current = false
@@ -733,7 +750,7 @@ function AppRoutes(){
       })
       return () => window.cancelAnimationFrame(raf)
     }
-  }, [location.pathname, location.search, location.key, navigationType, flushDeferredScrollReset])
+  }, [location.pathname, location.search, flushDeferredScrollReset])
 
   useEffect(() => {
     if (profileData) {
