@@ -1507,23 +1507,18 @@ export default function PostDetail(){
   }
 
 
-  // Full-screen opaque shell for the loading + error states so they match the
-  // loaded page's fixed container. Without this the bare skeleton is short and
-  // transparent, so during the page-push transition the outgoing feed slides
-  // away and leaves a black gap below it until the post loads ("flashes black").
+  // Full-height loading + error shells in NORMAL flow (min-h-screen) — NOT
+  // position:fixed. iOS WebKit will not move a position:fixed element with an
+  // ancestor's animated transform, so a fixed shell pins to the viewport and the
+  // page-push slide never plays ("instant cut to black"). A min-h-screen shell
+  // fills the pane (no black gap) AND slides with the transition like the feed.
   if (loading) return (
-    <div
-      className="bg-c-bg-app text-c-text-primary"
-      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, paddingTop: 'var(--sat-px, 0px)', overflow: 'hidden' }}
-    >
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary" style={{ paddingTop: 'var(--sat-px, 0px)' }}>
       <SkeletonPostDetail />
     </div>
   )
   if (error || !post) return (
-    <div
-      className="bg-c-bg-app text-c-text-primary"
-      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, paddingTop: 'var(--sat-px, 0px)' }}
-    >
+    <div className="min-h-screen bg-c-bg-app text-c-text-primary" style={{ paddingTop: 'var(--sat-px, 0px)' }}>
       <div className="p-4 text-center text-c-text-tertiary">
         <div className="text-red-400 mb-3">{error || t('errors.generic')}</div>
         <button
