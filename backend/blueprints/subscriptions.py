@@ -184,13 +184,34 @@ def _steve_pool_snapshot(root_community_id: int, state: Dict[str, Any]) -> Dict[
     active = bool(state.get("steve_package_subscription_active"))
     fields = _kb_field_map("community-tiers")
     cap = max(0, get_paid_steve_package_config(fields).monthly_credit_pool)
-    used = ai_usage.community_monthly_steve_pool_usage(root_community_id) if active and cap > 0 else 0
+    live = active and cap > 0
+    used = ai_usage.community_monthly_steve_pool_usage(root_community_id) if live else 0
+    # Per-surface breakdown for the owner legibility panel. Networking is TBD
+    # (not a pool surface yet — see networking_billing); the client renders it
+    # as "coming soon" rather than a number.
+    breakdown = (
+        ai_usage.community_monthly_steve_pool_breakdown(root_community_id)
+        if live
+        else {"chat_feed": 0, "voice_summaries": 0}
+    )
+    breakdown = {**breakdown, "networking": None}
+    # Trial flag so the panel can show "14-day trial · day N"; the client
+    # derives the day from the (already returned) period_end + total days.
+    try:
+        is_trial = bool(community_billing.is_synthetic_steve_package_trial(state))
+        trial_total_days = int(getattr(community_billing, "STEVE_PACKAGE_TRIAL_DAYS", 14))
+    except Exception:
+        is_trial = False
+        trial_total_days = 14
     return {
         "steve_package_subscription_active": active,
         "steve_package_current_period_end": state.get("steve_package_current_period_end"),
+        "steve_package_is_trial": is_trial and active,
+        "steve_trial_total_days": trial_total_days,
         "steve_pool_cap": cap,
         "steve_pool_used": used,
         "steve_pool_remaining": max(0, cap - used) if cap > 0 else None,
+        "steve_pool_breakdown": breakdown,
     }
 
 

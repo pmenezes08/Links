@@ -46,6 +46,8 @@ FALLBACK_MODELS = frozenset({
 class NetworkingAiConfig:
     enabled: bool = True
     weekly_prompts_per_user: int = 20
+    requires_steve_package: bool = True
+    trial_weekly_prompts_per_user: int = 5
     planner_model: str = MODEL_GROK_43
     final_answer_model: str = MODEL_GROK_43
     kb_synthesis_model: str = MODEL_GROK_43
@@ -192,6 +194,17 @@ def _build_config(page: Optional[Mapping[str, Any]]) -> NetworkingAiConfig:
             fields,
             "weekly_prompts_per_user",
             defaults.weekly_prompts_per_user,
+            minimum=1,
+        ),
+        requires_steve_package=_bool(
+            fields,
+            "networking_requires_steve_package",
+            defaults.requires_steve_package,
+        ),
+        trial_weekly_prompts_per_user=_int(
+            fields,
+            "networking_trial_weekly_prompts",
+            defaults.trial_weekly_prompts_per_user,
             minimum=1,
         ),
         planner_model=_model(fields, "planner_model", defaults.planner_model, PLANNER_MODELS),

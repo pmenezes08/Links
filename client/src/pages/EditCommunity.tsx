@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import ContentGenerationModal from '../components/ContentGenerationModal'
 import DeleteCommunityModal, { type DeleteCommunityResult } from '../components/DeleteCommunityModal'
 import HandleSettings from '../components/community/HandleSettings'
+import SteveActionsPanel from '../components/community/SteveActionsPanel'
 import ImageLoader from '../components/ImageLoader'
 import { clearDeviceCache } from '../utils/deviceCache'
 import { invalidateDashboardCache } from '../utils/dashboardCache'
@@ -41,9 +42,12 @@ interface CommunityBilling {
   }
   steve_package_subscription_active: boolean
   steve_package_current_period_end: string | null
+  steve_package_is_trial: boolean
+  steve_trial_total_days: number
   steve_pool_cap: number | null
   steve_pool_used: number
   steve_pool_remaining: number | null
+  steve_pool_breakdown: { chat_feed: number; voice_summaries: number; networking: number | null }
 }
 
 const TIER_LABEL: Record<string, string> = {
@@ -213,6 +217,8 @@ export default function EditCommunity(){
             },
             steve_package_subscription_active: !!j.steve_package_subscription_active,
             steve_package_current_period_end: j.steve_package_current_period_end || null,
+            steve_package_is_trial: !!j.steve_package_is_trial,
+            steve_trial_total_days: Number(j.steve_trial_total_days || 14),
             steve_pool_cap: j.steve_pool_cap === null || j.steve_pool_cap === undefined
               ? null
               : Number(j.steve_pool_cap),
@@ -220,6 +226,13 @@ export default function EditCommunity(){
             steve_pool_remaining: j.steve_pool_remaining === null || j.steve_pool_remaining === undefined
               ? null
               : Number(j.steve_pool_remaining),
+            steve_pool_breakdown: {
+              chat_feed: Number(j.steve_pool_breakdown?.chat_feed || 0),
+              voice_summaries: Number(j.steve_pool_breakdown?.voice_summaries || 0),
+              networking: j.steve_pool_breakdown?.networking === null || j.steve_pool_breakdown?.networking === undefined
+                ? null
+                : Number(j.steve_pool_breakdown.networking),
+            },
           })
         }
       } catch {
@@ -512,31 +525,15 @@ export default function EditCommunity(){
         </div>
 
         {billing.steve_package_subscription_active && billing.steve_pool_cap !== null && billing.steve_pool_cap > 0 && (
-          <div className="rounded-lg border border-cpoint-turquoise/25 bg-cpoint-turquoise/5 p-3">
-            <div className="flex items-baseline justify-between gap-3 text-xs">
-              <span className="font-medium text-cpoint-turquoise">{t('communities.steve_community_calls')}</span>
-              <span className="text-c-text-secondary">
-                {t('communities.steve_pool_available_short', { remaining: billing.steve_pool_remaining ?? 0, cap: billing.steve_pool_cap })}
-              </span>
-            </div>
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-c-active-bg">
-              <div
-                className="h-full bg-cpoint-turquoise"
-                style={{
-                  width: `${Math.min(
-                    100,
-                    ((billing.steve_pool_remaining ?? 0) / billing.steve_pool_cap) * 100,
-                  )}%`,
-                }}
-              />
-            </div>
-            <div className="mt-1 text-[11px] text-c-text-tertiary">
-              {t('communities.steve_used_this_month', { used: billing.steve_pool_used })}
-              {billing.steve_package_current_period_end
-                ? ` · ${t('communities.steve_renews', { date: formatBillingDate(billing.steve_package_current_period_end) })}`
-                : ''}
-            </div>
-          </div>
+          <SteveActionsPanel
+            cap={billing.steve_pool_cap}
+            used={billing.steve_pool_used}
+            remaining={billing.steve_pool_remaining ?? Math.max(0, billing.steve_pool_cap - billing.steve_pool_used)}
+            breakdown={billing.steve_pool_breakdown}
+            isTrial={billing.steve_package_is_trial}
+            trialTotalDays={billing.steve_trial_total_days}
+            periodEnd={billing.steve_package_current_period_end}
+          />
         )}
 
         <button

@@ -455,6 +455,22 @@ export default function Networking() {
       .catch(() => {})
   }, [steveSessionId])
 
+  // Map a networking denial to a Steve-voice line. The B2B "needs a Steve
+  // Package" wall and the reduced trial cap join the existing weekly cap; all
+  // stay in Steve's voice rather than surfacing the backend's English text.
+  const steveDenialReply = (data: { reason?: string; error?: string; usage?: { limit?: number } }): string => {
+    switch (data.reason) {
+      case 'steve_package_required':
+        return t('networking.package_required_reply')
+      case 'networking_trial_cap':
+        return t('networking.trial_limit_reply', { limit: data?.usage?.limit ?? 5 })
+      case 'weekly_networking_prompt_cap':
+        return t('networking.weekly_limit_reply')
+      default:
+        return data.error || t('networking.error_generic')
+    }
+  }
+
   const sendSteveMessage = async (overrideText?: string) => {
     const msg = (overrideText ?? steveInput).trim()
     if (!msg || !steveCommunity || steveSending) return
@@ -477,13 +493,7 @@ export default function Networking() {
         body: JSON.stringify({ community_id: steveCommunity, message: msg, history, debug: isAppAdmin && steveDebugEnabled }),
       })
       const data = await res.json()
-      // Server copy stays in Steve's voice: the weekly cap reason maps to a
-      // localized line instead of surfacing the backend's English quota text.
-      const reply = data.success
-        ? data.response
-        : data.reason === 'weekly_networking_prompt_cap'
-          ? t('networking.weekly_limit_reply')
-          : (data.error || t('networking.error_generic'))
+      const reply = data.success ? data.response : steveDenialReply(data)
       setSteveMessages(prev => [...prev, { role: 'steve', text: reply }])
       setLastSteveDebugTrace(data.debug_trace || null)
       if (!data.debug_trace) setShowDebugModal(false)
@@ -510,11 +520,7 @@ export default function Networking() {
     try {
       const res = await fetch('/api/networking/steve_auto_match', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ community_id: steveCommunity }) })
       const data = await res.json()
-      const reply = data.success
-        ? data.response
-        : data.reason === 'weekly_networking_prompt_cap'
-          ? t('networking.weekly_limit_reply')
-          : (data.error || t('networking.error_generic'))
+      const reply = data.success ? data.response : steveDenialReply(data)
       setSteveMessages(prev => [...prev, { role: 'steve', text: reply }])
       if (sid) saveMessage(sid, 'steve', reply)
     } catch {

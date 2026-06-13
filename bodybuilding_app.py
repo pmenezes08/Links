@@ -13022,7 +13022,7 @@ def api_networking_steve_match():
             if not user_is_member_of_community_tree(_auth_conn.cursor(), get_sql_placeholder(), username, community_id):
                 return jsonify({'success': False, 'error': 'Not a member of this community'}), 403
     from backend.services import ai_usage as _networking_ai_usage
-    from backend.services.networking_ai_config import get_networking_ai_config, networking_cap_exempt
+    from backend.services.networking_ai_config import get_networking_ai_config
 
     networking_ai_config = get_networking_ai_config()
     if not networking_ai_config.enabled:
@@ -13033,28 +13033,48 @@ def api_networking_steve_match():
             community_id=community_id,
         )
         return jsonify({'success': False, 'error': 'Steve networking search is currently disabled.'}), 403
-    # Admin, founder, and Special-tier users get unlimited networking search:
-    # people-search is a business entitlement, so Special's unlimited-business
-    # rule applies. Membership is KB-sourced (special-users page) — no names
-    # hardcoded here. Exempt users skip the counter query and the cap entirely;
-    # their calls still log on success, so cost visibility is preserved.
-    if not networking_cap_exempt(username):
+    # B2B gate: networking requires the searched community's root to have an
+    # active Steve Package (paid or the synthetic 14-day trial). Admin/founder/
+    # Special are exempt (unlimited); trial communities get a smaller weekly cap
+    # than paid. Membership/special lists are KB-sourced — no names hardcoded.
+    # The package requirement itself is KB-toggleable (networking-ai page).
+    from backend.services.networking_billing import (
+        networking_gate_decision, MODE_EXEMPT, MODE_NO_PACKAGE, REASON_TRIAL_CAP, REASON_WEEKLY_CAP,
+    )
+    _net_gate = networking_gate_decision(username, community_id, networking_ai_config)
+    if _net_gate['mode'] == MODE_NO_PACKAGE:
+        _networking_ai_usage.log_block(
+            username,
+            surface=_networking_ai_usage.SURFACE_NETWORKING_STEVE,
+            reason="steve_package_required",
+            community_id=community_id,
+        )
+        return jsonify({
+            'success': False,
+            'error': 'Steve networking is available to communities with an active Steve Package.',
+            'reason': 'steve_package_required',
+        }), 403
+    if _net_gate['mode'] != MODE_EXEMPT:
+        _net_cap = _net_gate['effective_cap']
+        _net_in_trial = _net_gate['in_trial']
         used_this_week = _networking_ai_usage.networking_prompts_last_7_days(username)
-        if used_this_week >= networking_ai_config.weekly_prompts_per_user:
+        if used_this_week >= _net_cap:
+            _net_reason = REASON_TRIAL_CAP if _net_in_trial else REASON_WEEKLY_CAP
             _networking_ai_usage.log_block(
                 username,
                 surface=_networking_ai_usage.SURFACE_NETWORKING_STEVE,
-                reason="weekly_networking_prompt_cap",
+                reason=_net_reason,
                 community_id=community_id,
             )
             return jsonify({
                 'success': False,
-                'error': f'Weekly Steve networking limit reached ({networking_ai_config.weekly_prompts_per_user} prompts).',
-                'reason': 'weekly_networking_prompt_cap',
+                'error': f'Weekly Steve networking limit reached ({_net_cap} prompts).',
+                'reason': _net_reason,
                 'usage': {
                     'used': used_this_week,
-                    'limit': networking_ai_config.weekly_prompts_per_user,
+                    'limit': _net_cap,
                     'window': 'rolling_7_days',
+                    'trial': _net_in_trial,
                 },
             }), 429
     if not XAI_API_KEY:
@@ -13458,7 +13478,7 @@ def api_networking_steve_auto_match():
             if not user_is_member_of_community_tree(_auth_conn.cursor(), get_sql_placeholder(), username, community_id):
                 return jsonify({'success': False, 'error': 'Not a member of this community'}), 403
     from backend.services import ai_usage as _networking_ai_usage
-    from backend.services.networking_ai_config import get_networking_ai_config, networking_cap_exempt
+    from backend.services.networking_ai_config import get_networking_ai_config
 
     networking_ai_config = get_networking_ai_config()
     if not networking_ai_config.enabled:
@@ -13469,28 +13489,48 @@ def api_networking_steve_auto_match():
             community_id=community_id,
         )
         return jsonify({'success': False, 'error': 'Steve networking search is currently disabled.'}), 403
-    # Admin, founder, and Special-tier users get unlimited networking search:
-    # people-search is a business entitlement, so Special's unlimited-business
-    # rule applies. Membership is KB-sourced (special-users page) — no names
-    # hardcoded here. Exempt users skip the counter query and the cap entirely;
-    # their calls still log on success, so cost visibility is preserved.
-    if not networking_cap_exempt(username):
+    # B2B gate: networking requires the searched community's root to have an
+    # active Steve Package (paid or the synthetic 14-day trial). Admin/founder/
+    # Special are exempt (unlimited); trial communities get a smaller weekly cap
+    # than paid. Membership/special lists are KB-sourced — no names hardcoded.
+    # The package requirement itself is KB-toggleable (networking-ai page).
+    from backend.services.networking_billing import (
+        networking_gate_decision, MODE_EXEMPT, MODE_NO_PACKAGE, REASON_TRIAL_CAP, REASON_WEEKLY_CAP,
+    )
+    _net_gate = networking_gate_decision(username, community_id, networking_ai_config)
+    if _net_gate['mode'] == MODE_NO_PACKAGE:
+        _networking_ai_usage.log_block(
+            username,
+            surface=_networking_ai_usage.SURFACE_NETWORKING_STEVE,
+            reason="steve_package_required",
+            community_id=community_id,
+        )
+        return jsonify({
+            'success': False,
+            'error': 'Steve networking is available to communities with an active Steve Package.',
+            'reason': 'steve_package_required',
+        }), 403
+    if _net_gate['mode'] != MODE_EXEMPT:
+        _net_cap = _net_gate['effective_cap']
+        _net_in_trial = _net_gate['in_trial']
         used_this_week = _networking_ai_usage.networking_prompts_last_7_days(username)
-        if used_this_week >= networking_ai_config.weekly_prompts_per_user:
+        if used_this_week >= _net_cap:
+            _net_reason = REASON_TRIAL_CAP if _net_in_trial else REASON_WEEKLY_CAP
             _networking_ai_usage.log_block(
                 username,
                 surface=_networking_ai_usage.SURFACE_NETWORKING_STEVE,
-                reason="weekly_networking_prompt_cap",
+                reason=_net_reason,
                 community_id=community_id,
             )
             return jsonify({
                 'success': False,
-                'error': f'Weekly Steve networking limit reached ({networking_ai_config.weekly_prompts_per_user} prompts).',
-                'reason': 'weekly_networking_prompt_cap',
+                'error': f'Weekly Steve networking limit reached ({_net_cap} prompts).',
+                'reason': _net_reason,
                 'usage': {
                     'used': used_this_week,
-                    'limit': networking_ai_config.weekly_prompts_per_user,
+                    'limit': _net_cap,
                     'window': 'rolling_7_days',
+                    'trial': _net_in_trial,
                 },
             }), 429
     if not XAI_API_KEY:

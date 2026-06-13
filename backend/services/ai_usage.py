@@ -596,6 +596,54 @@ def community_monthly_steve_pool_usage(root_community_id: int) -> int:
     return display_credits_used(community_monthly_steve_pool_credits_used(root_community_id))
 
 
+def community_monthly_steve_pool_breakdown(root_community_id: int) -> Dict[str, int]:
+    """Display credits used per surface group from the community pool this month.
+
+    Returns ``{"chat_feed": int, "voice_summaries": int}`` using the SAME
+    weighting as ``community_monthly_steve_pool_usage`` so the parts are
+    comparable to the "X of cap" headline. Networking is intentionally absent —
+    it is not a Steve pool surface yet (see ``networking_billing``); the UI shows
+    it as TBD. Voice-note summaries are split out; everything else text
+    (DM / group / feed / post-summary / translation) rolls up into chat_feed.
+    """
+    from backend.services.steve_credit_weights import display_credits_used
+
+    empty = {"chat_feed": 0, "voice_summaries": 0}
+    if not root_community_id:
+        return empty
+    ensure_tables()
+    ph = get_sql_placeholder()
+    placeholders = ",".join([ph] * len(STEVE_SURFACES))
+    metric = _steve_credits_sum_sql() if _use_weighted_steve_credits() else "COUNT(*)"
+    sql = f"""
+        SELECT surface, {metric} AS cnt FROM ai_usage_log
+        WHERE community_id = {ph}
+          AND surface IN ({placeholders})
+          AND success = 1
+          AND created_at >= {ph}
+        GROUP BY surface
+    """
+    per: Dict[str, float] = {}
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(sql, (int(root_community_id), *STEVE_SURFACES, _first_of_current_month_utc()))
+            for row in c.fetchall():
+                surf = row["surface"] if hasattr(row, "keys") else row[0]
+                val = row["cnt"] if hasattr(row, "keys") else row[1]
+                if surf:
+                    per[surf] = float(val or 0)
+    except Exception:
+        logger.debug("community_monthly_steve_pool_breakdown query failed", exc_info=True)
+        return empty
+    voice = per.get(SURFACE_VOICE_SUMMARY, 0.0)
+    chat_feed = sum(v for k, v in per.items() if k != SURFACE_VOICE_SUMMARY)
+    return {
+        "chat_feed": display_credits_used(chat_feed),
+        "voice_summaries": display_credits_used(voice),
+    }
+
+
 def monthly_count(username: str, surface: Optional[str] = None) -> int:
     """Generic monthly count, optionally scoped to a single surface."""
     if not username:

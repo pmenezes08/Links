@@ -26,9 +26,22 @@ def test_networking_ai_config_defaults_without_page():
 
     assert config.enabled is True
     assert config.weekly_prompts_per_user == 20
+    assert config.requires_steve_package is True
+    assert config.trial_weekly_prompts_per_user == 5
     assert config.planner_model == "grok-4.3"
     assert config.final_answer_model == "grok-4.3"
     assert config.kb_synthesis_model == "grok-4.3"
+
+
+def test_networking_ai_config_reads_b2b_gate_fields():
+    config = get_networking_ai_config(
+        _page({
+            "networking_requires_steve_package": False,
+            "networking_trial_weekly_prompts": 3,
+        })
+    )
+    assert config.requires_steve_package is False
+    assert config.trial_weekly_prompts_per_user == 3
 
 
 def test_networking_ai_config_accepts_allowed_models_and_caps():
