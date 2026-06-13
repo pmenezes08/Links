@@ -47,8 +47,20 @@ REDIS_DB = int(os.environ.get('REDIS_DB', 0))
 # the REDIS_MAX_CONNECTIONS env var without a code change.
 REDIS_MAX_CONNECTIONS = int(os.environ.get('REDIS_MAX_CONNECTIONS', '8'))
 # Seconds a caller blocks waiting for a free pooled connection before erroring
-# (degrades to a cache miss) instead of opening an unbounded extra socket.
-REDIS_POOL_TIMEOUT = int(os.environ.get('REDIS_POOL_TIMEOUT', '5'))
+# (degrades to a cache miss) instead of opening an unbounded extra socket. Kept
+# SHORT on purpose: the pool cap equals the gunicorn thread count (Dockerfile
+# runs --threads 8) and the SAME pool is drawn by ~12 background daemon threads
+# (imagine-job executor, backfills, per-DM Steve typing heartbeats). When they
+# contend, a *request* thread must not stall for a connection — it degrades to a
+# fast cache-miss instead. Only raise this together with REDIS_MAX_CONNECTIONS,
+# and only if --max-instances headroom keeps cap x instances under the plan's
+# connection ceiling.
+REDIS_POOL_TIMEOUT = int(os.environ.get('REDIS_POOL_TIMEOUT', '1'))
+# After a connection failure the client is disabled and serves cache-misses; it
+# retries connecting at most once per this cooldown (seconds), so a transient
+# Redis blip self-heals instead of condemning the whole instance to no-cache for
+# the rest of its life. See RedisCache._ensure_connected.
+REDIS_RECONNECT_COOLDOWN = int(os.environ.get('REDIS_RECONNECT_COOLDOWN', '30'))
 
 # Cache settings (optimized for performance)
 DEFAULT_CACHE_TTL = int(os.environ.get('CACHE_TTL_DEFAULT', '300'))  # 5 minutes
@@ -168,6 +180,9 @@ class RedisCache:
     def __init__(self):
         self.redis_client = None
         self.enabled = False
+        # Timestamp of the last connect() attempt, used to rate-limit reconnects
+        # after a failure (see _ensure_connected). 0.0 = never attempted.
+        self._last_connect_attempt = 0.0
         if REDIS_ENABLED:
             self.connect()
     
@@ -181,6 +196,14 @@ class RedisCache:
         is what keeps the cluster-wide count under the managed Redis plan's
         connection ceiling. See the REDIS_MAX_CONNECTIONS note above.
         """
+        self._last_connect_attempt = time.time()
+        # Tear down any prior (dead) pool before building a fresh one, so a
+        # reconnect never leaks the old sockets against the connection ceiling.
+        if self.redis_client is not None:
+            try:
+                self.redis_client.connection_pool.disconnect()
+            except Exception:
+                pass
         try:
             # Redis Cloud connection with username support
             connection_kwargs = {
@@ -218,18 +241,36 @@ class RedisCache:
             
         except Exception as e:
             msg1 = f"WARNING Redis connection failed: {e}"
-            msg2 = "Falling back to in-memory cache"
+            msg2 = f"Cache disabled; serving cache-misses and retrying every {REDIS_RECONNECT_COOLDOWN}s"
             logger.warning(msg1)
             logger.warning(msg2)
             print(msg1, flush=True)
             print(msg2, flush=True)
             self.enabled = False
-    
+
+    def _ensure_connected(self):
+        """Return True if the pooled client is usable, attempting one rate-limited
+        reconnect if it isn't.
+
+        A connection failure (at boot or mid-life) sets ``enabled=False`` and the
+        client serves cache-misses. Rather than leave the whole instance without
+        a shared cache for the rest of its life — which would split cache
+        coherence across Cloud Run instances — this retries ``connect()`` at most
+        once per ``REDIS_RECONNECT_COOLDOWN`` so a transient blip self-heals. The
+        hot path (already connected) is a single attribute check.
+        """
+        if self.enabled:
+            return True
+        if (time.time() - self._last_connect_attempt) < REDIS_RECONNECT_COOLDOWN:
+            return False
+        self.connect()  # updates _last_connect_attempt; flips enabled on success
+        return self.enabled
+
     def get(self, key):
         """Get value from cache"""
-        if not self.enabled:
+        if not self._ensure_connected():
             return None
-        
+
         try:
             value = self.redis_client.get(key)
             if value:
@@ -241,9 +282,9 @@ class RedisCache:
     
     def set(self, key, value, ttl=DEFAULT_CACHE_TTL):
         """Set value in cache with TTL"""
-        if not self.enabled:
+        if not self._ensure_connected():
             return False
-        
+
         try:
             json_value = json.dumps(value, default=str)
             self.redis_client.setex(key, ttl, json_value)
@@ -254,9 +295,9 @@ class RedisCache:
     
     def delete(self, key):
         """Delete key from cache"""
-        if not self.enabled:
+        if not self._ensure_connected():
             return False
-        
+
         try:
             self.redis_client.delete(key)
             return True
@@ -266,9 +307,9 @@ class RedisCache:
     
     def delete_pattern(self, pattern):
         """Delete all keys matching pattern"""
-        if not self.enabled:
+        if not self._ensure_connected():
             return False
-        
+
         try:
             keys = self.redis_client.keys(pattern)
             if keys:
@@ -280,9 +321,9 @@ class RedisCache:
     
     def flush_all(self):
         """Clear all cache"""
-        if not self.enabled:
+        if not self._ensure_connected():
             return False
-        
+
         try:
             self.redis_client.flushdb()
             logger.info("🗑️ Redis cache cleared")
@@ -291,36 +332,42 @@ class RedisCache:
             logger.warning(f"Redis flush error: {e}")
             return False
 
-# Smart cache selection based on performance
+# Smart cache selection
 def create_optimal_cache():
-    """Create the fastest cache available"""
+    """Return the cache backend.
+
+    When Redis is configured (REDIS_ENABLED) we ALWAYS return the RedisCache —
+    even if the initial connect failed or the first ping was slow. A RedisCache
+    degrades to a per-op cache-miss while disabled and lazily reconnects (see
+    RedisCache._ensure_connected), so a transient boot-time blip never condemns a
+    whole instance to a non-shared in-memory cache for its entire lifetime, which
+    would split cache coherence across Cloud Run instances (one instance has a
+    post, another doesn't). MemoryCache is only used when Redis isn't configured
+    at all (local/dev).
+    """
     if REDIS_ENABLED:
         redis_cache = RedisCache()
         if redis_cache.enabled:
-            # Test Redis performance
-            import time
+            # Observe ping latency for the log, but never downgrade on it — a slow
+            # one-shot ping during a contended cold start is not a reason to drop
+            # the whole instance off the shared cache.
             try:
                 start = time.time()
                 redis_cache.redis_client.ping()
-                ping_time = (time.time() - start) * 1000
-                
-                if ping_time < 100:  # If Redis is fast (< 100ms)
-                    msg = f"🚀 Using Redis cache (ping: {ping_time:.1f}ms)"
-                    logger.info(msg)
-                    print(msg, flush=True)
-                    return redis_cache
-                else:
-                    msg = f"WARNING Redis too slow (ping: {ping_time:.1f}ms), using in-memory cache"
-                    logger.warning(msg)
-                    print(msg, flush=True)
-                    return MemoryCache()
-            except:
-                msg = "Redis performance test failed, using in-memory cache"
-                logger.warning(msg)
-                print(msg, flush=True)
-                return MemoryCache()
-    
-    msg = "Using optimized in-memory cache"
+                ping_ms = (time.time() - start) * 1000
+                msg = f"OK Using Redis cache (ping: {ping_ms:.1f}ms)"
+            except Exception:
+                msg = "OK Using Redis cache (ping check skipped)"
+            logger.info(msg)
+            print(msg, flush=True)
+        else:
+            msg = ("WARNING Redis configured but initial connect failed; serving "
+                   "cache-misses and retrying — NOT downgrading to a per-instance cache")
+            logger.warning(msg)
+            print(msg, flush=True)
+        return redis_cache
+
+    msg = "Using optimized in-memory cache (Redis not enabled)"
     logger.info(msg)
     print(msg, flush=True)
     return MemoryCache()
