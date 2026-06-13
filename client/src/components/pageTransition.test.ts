@@ -49,6 +49,16 @@ describe('detectTransitionType', () => {
     expect(detectTransitionType('/community_feed_react/1', '/steve/profile-builder/professional', 'PUSH', true)).toBe('push')
   })
 
+  // "Smart back": PostDetail's back button PUSHes the feed path rather than
+  // popping history, so a post -> community feed PUSH animates as a pop (slide
+  // from the left). Forward feed -> post stays a push. The rule sits after the
+  // pilot gate, so non-pilot routes (reply, group feed) keep returning none.
+  it('returns pop for smart-back Post -> community feed (PUSH)', () => {
+    expect(detectTransitionType('/post/42', '/community_feed_react/1', 'PUSH', true)).toBe('pop')
+    expect(detectTransitionType('/community_feed_react/1', '/post/42', 'PUSH', true)).toBe('push')
+    expect(detectTransitionType('/reply/5', '/community_feed_react/1', 'PUSH', true)).toBe('none')
+  })
+
   // Multi-step pop: a back-tap from a deep drill-down route may jump several
   // history levels (e.g. Post → Tab, skipping the Community feed). These
   // should still animate as `pop` rather than snap.

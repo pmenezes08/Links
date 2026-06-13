@@ -579,8 +579,14 @@ function AppRoutes(){
       // Apply to <main> AND the page's inner scroll container (e.g. the feed
       // scrolls an inner [data-preserve-scroll] div, not <main>). Whichever isn't
       // actually scrollable simply clamps the assignment back to 0 and ignores it.
+      // Prefer the INCOMING route's container during a transition so we position
+      // the page sliding in, never the outgoing snapshot.
       setOn(main)
-      setOn(main?.querySelector<HTMLElement>('[data-preserve-scroll="true"]') ?? null)
+      const inner =
+        main?.querySelector<HTMLElement>('.page-transition-incoming [data-preserve-scroll="true"]') ??
+        main?.querySelector<HTMLElement>('[data-preserve-scroll="true"]') ??
+        null
+      setOn(inner)
     }
     apply()
     // Cached pages paint synchronously but layout can settle a frame late;
@@ -740,6 +746,11 @@ function AppRoutes(){
     if (restoreTo != null && restoreTo > 0) {
       pendingScrollRestoreRef.current = restoreTo
       pendingScrollResetRef.current = false
+      // Restore NOW — this is a layout effect, so it runs before paint and the
+      // page slides in already at the right offset instead of snapping down
+      // after the transition settles (which read as a flash). The deferred flush
+      // at transition-end re-applies as a backstop for content that grows late.
+      applyScrollTop(restoreTo)
     } else {
       pendingScrollRestoreRef.current = null
       pendingScrollResetRef.current = true
@@ -750,7 +761,7 @@ function AppRoutes(){
       })
       return () => window.cancelAnimationFrame(raf)
     }
-  }, [location.pathname, location.search, flushDeferredScrollReset])
+  }, [location.pathname, location.search, applyScrollTop, flushDeferredScrollReset])
 
   useEffect(() => {
     if (profileData) {

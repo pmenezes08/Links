@@ -90,6 +90,19 @@ export function detectTransitionType(
   }
 
   if (!isPilotRoute(prevPath) || !isPilotRoute(nextPath)) return 'none'
+
+  // The in-app "smart back" from a post/reply to its feed PUSHes the feed path
+  // instead of popping history (PostDetail's back button navigates to the
+  // community/group feed). Animate it as a pop so it slides in from the left
+  // like a real back, not a forward push.
+  if (
+    navType === 'PUSH' &&
+    /^\/(post|reply|group_reply)\//.test(prevPath) &&
+    /^\/(community_feed_react|group_feed_react)\//.test(nextPath)
+  ) {
+    return 'pop'
+  }
+
   if (navType === 'POP') return 'pop'
   return 'push'
 }
