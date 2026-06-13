@@ -146,6 +146,42 @@ def get_networking_ai_config(page: Optional[Mapping[str, Any]] = None) -> Networ
     return _build_config(page)
 
 
+def networking_cap_exempt(username, *, resolve=None, is_admin=None) -> bool:
+    """True if ``username`` bypasses the weekly networking prompt cap.
+
+    Networking people-search is a *business* entitlement, so Special-tier users
+    get unlimited access — exactly as the Special tier grants unlimited Steve and
+    community business caps elsewhere. The special-user list is the KB
+    ``special-users`` page (which seeds ``admin`` and the founder), mirrored into
+    ``users.is_special`` and read by ``resolve_entitlements`` — so this needs no
+    hardcoded name list. App admins are honored directly too, as a
+    sync-independent safety net. Never raises (a broken KB must not block, nor
+    silently un-cap, beyond these checks).
+
+    ``resolve``/``is_admin`` are injectable for tests; production uses the real
+    entitlements resolver and the app-admin primitive via lazy import (keeps this
+    module import-cheap and avoids a circular dependency).
+    """
+    if not username:
+        return False
+    try:
+        if resolve is None:
+            from backend.services.entitlements import resolve_entitlements as resolve
+        ent = resolve(username) or {}
+        if ent.get("tier") == "special" or ent.get("is_special"):
+            return True
+    except Exception:
+        logger.warning("networking_cap_exempt: entitlements check failed for %s", username, exc_info=True)
+    try:
+        if is_admin is None:
+            from backend.services.community import is_app_admin as is_admin
+        if is_admin(username):
+            return True
+    except Exception:
+        logger.warning("networking_cap_exempt: admin check failed for %s", username, exc_info=True)
+    return False
+
+
 def _build_config(page: Optional[Mapping[str, Any]]) -> NetworkingAiConfig:
 
     fields = _field_map(page)

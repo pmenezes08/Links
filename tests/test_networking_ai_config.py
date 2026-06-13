@@ -6,6 +6,7 @@ from backend.services.networking_ai_config import (
     DEFAULT_CONFIG,
     estimate_cost_usd,
     get_networking_ai_config,
+    networking_cap_exempt,
     usage_tokens,
 )
 
@@ -66,6 +67,35 @@ def test_networking_ai_config_rejects_invalid_models():
     assert config.final_answer_model == DEFAULT_CONFIG.final_answer_model
     assert config.kb_synthesis_model == DEFAULT_CONFIG.kb_synthesis_model
     assert config.weekly_prompts_per_user == 1
+
+
+def test_networking_cap_exempt_special_admin_and_founder():
+    """Admin, founder, and Special-tier users bypass the weekly networking cap;
+    ordinary users do not, and a broken entitlements read must not un-cap."""
+    special = lambda u: {"tier": "special", "is_special": True}
+    free = lambda u: {"tier": "free", "is_special": False}
+    free_but_flagged = lambda u: {"tier": "free", "is_special": True}
+
+    # Special tier (and the is_special flag on its own) is exempt.
+    assert networking_cap_exempt("alice", resolve=special, is_admin=lambda u: False) is True
+    assert networking_cap_exempt("bob", resolve=free_but_flagged, is_admin=lambda u: False) is True
+
+    # App admin is exempt even when entitlements resolve to free (sync-independent).
+    assert networking_cap_exempt("admin", resolve=free, is_admin=lambda u: True) is True
+
+    # Ordinary free, non-admin user is NOT exempt — the cap still applies.
+    assert networking_cap_exempt("carol", resolve=free, is_admin=lambda u: False) is False
+
+    # Anonymous / missing username is never exempt.
+    assert networking_cap_exempt(None, resolve=special, is_admin=lambda u: True) is False
+
+    # A failing entitlements read must not raise and must not grant exemption by
+    # itself — it falls through to the admin check only.
+    def boom(_u):
+        raise RuntimeError("kb down")
+
+    assert networking_cap_exempt("dave", resolve=boom, is_admin=lambda u: True) is True
+    assert networking_cap_exempt("erin", resolve=boom, is_admin=lambda u: False) is False
 
 
 def test_usage_tokens_and_cost_estimate_support_responses_usage_shape():
