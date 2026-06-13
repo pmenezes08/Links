@@ -1507,17 +1507,33 @@ export default function PostDetail(){
   }
 
 
-  if (loading) return <SkeletonPostDetail />
+  // Full-screen opaque shell for the loading + error states so they match the
+  // loaded page's fixed container. Without this the bare skeleton is short and
+  // transparent, so during the page-push transition the outgoing feed slides
+  // away and leaves a black gap below it until the post loads ("flashes black").
+  if (loading) return (
+    <div
+      className="bg-c-bg-app text-c-text-primary"
+      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, paddingTop: 'var(--sat-px, 0px)', overflow: 'hidden' }}
+    >
+      <SkeletonPostDetail />
+    </div>
+  )
   if (error || !post) return (
-    <div className="p-4 text-center text-c-text-tertiary">
-      <div className="text-red-400 mb-3">{error || t('errors.generic')}</div>
-      <button
-        type="button"
-        onClick={() => { setError(null); setLoading(true); setRetryNonce(n => n + 1) }}
-        className="px-3 py-1.5 rounded-md border border-c-border text-sm hover:bg-c-hover-bg"
-      >
-        {t('common.retry')}
-      </button>
+    <div
+      className="bg-c-bg-app text-c-text-primary"
+      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, paddingTop: 'var(--sat-px, 0px)' }}
+    >
+      <div className="p-4 text-center text-c-text-tertiary">
+        <div className="text-red-400 mb-3">{error || t('errors.generic')}</div>
+        <button
+          type="button"
+          onClick={() => { setError(null); setLoading(true); setRetryNonce(n => n + 1) }}
+          className="px-3 py-1.5 rounded-md border border-c-border text-sm hover:bg-c-hover-bg"
+        >
+          {t('common.retry')}
+        </button>
+      </div>
     </div>
   )
 
