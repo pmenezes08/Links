@@ -711,6 +711,25 @@ function AppRoutes(){
     }
   }, [])
 
+  // Optimistic boot: paint the shell immediately from the cached profile so cold
+  // start isn't gated on the /api/profile_me round-trip. The cached profile is the
+  // user's OWN last-known profile (self-access only); all viewer-scoped CONTENT is
+  // still fetched with the live session, so no other user's data can render here.
+  // loadProfile (below) then revalidates against the server and
+  // applyProfileFromServer reconciles — running ensureAccountIsolationForUsername
+  // if the server identity differs, and a 401 still clears + redirects. Runs once.
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined' || !navigator.onLine) return
+    try {
+      const cached = JSON.parse(localStorage.getItem('cached_profile') || 'null')
+      if (cached && cached.username) {
+        setProfileData(cached)
+        setIsVerified(!!cached.email_verified)
+        setAuthLoaded(true)
+      }
+    } catch { /* no cached profile — fall through to the blocking load */ }
+  }, [])
+
   useEffect(() => {
     loadProfile()
   }, [loadProfile])
