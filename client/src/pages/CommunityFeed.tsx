@@ -894,7 +894,8 @@ export default function CommunityFeed() {
     
     setIsRefreshing(true)
     lastRefreshRef.current = now
-    
+    void triggerHaptic('light')  // confirm the pull-to-refresh fired
+
     try {
       // Clear device cache first
       if (deviceFeedCacheKey) {
@@ -3101,6 +3102,7 @@ export default function CommunityFeed() {
                   enforcement_enabled={feedEnforcementEnabled}
                   entitlementsLoading={feedEntitlementsLoading}
                   onOpen={() => {
+                    void triggerHaptic('selection')
                     markPostViewed(p.id, p.has_viewed)
                     clearDeviceCache(`post-${p.id}`)
                     prefetchPostDetail(p.id)
