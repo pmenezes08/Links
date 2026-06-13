@@ -264,6 +264,21 @@ export function useChatComposerChrome({
     keyboardLift === 0 &&
     Math.abs(displayKeyboardLift) < 0.5
 
+  // When the keyboard fully closes, force one composer re-measure. Shrinks while
+  // the keyboard is open are intentionally ignored above (anti-jitter), but the
+  // ResizeObserver won't re-fire on close (the composer already settled to its
+  // smaller size), so composerHeight can stay stuck LARGE after sending a message
+  // — which over-pads the message list and leaves a gap above the composer. Read
+  // the real height directly once we're at rest.
+  useEffect(() => {
+    if (!insetMotionIdle) return
+    const node = composerCardRef.current
+    if (!node) return
+    const h = node.getBoundingClientRect().height
+    if (!h) return
+    setComposerHeight(prev => (Math.abs(prev - h) < 1 ? prev : h))
+  }, [insetMotionIdle])
+
   useEffect(() => {
     const nudgeLayout = () => {
       keyboardOffsetRef.current = 0
