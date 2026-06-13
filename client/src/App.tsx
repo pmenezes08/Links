@@ -4,7 +4,7 @@ import type { PluginListenerHandle } from '@capacitor/core'
 import { App as CapacitorApp } from '@capacitor/app'
 import { Keyboard, KeyboardResize } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
-import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate, useParams } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation, useNavigate, useNavigationType, Navigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { extractInviteToken, isInternalLink } from './utils/internalLinkHandler'
 import {
@@ -80,6 +80,7 @@ import { isPremiumDashboardPath } from './components/DashboardBottomNav'
 import { isDashboardTabPath } from './components/pageTransitionUtils'
 import DashboardLayout from './components/DashboardLayout'
 import PageTransitionStack from './components/PageTransitionStack'
+import { saveScrollPosition, getScrollPosition } from './utils/scrollRestoration'
 
 const TRANSITIONS_ENABLED = import.meta.env.VITE_PAGE_TRANSITIONS === 'true'
 import { useSafeAreaSync } from './hooks/useSafeAreaSync'
@@ -124,6 +125,13 @@ function AppRoutes(){
   const location = useLocation()
   const isFirstPage = location.pathname === '/'
   const navigate = useNavigate()
+  // Native-style scroll restoration: track the current history entry's key so a
+  // scroll listener can stamp offsets against it, and remember a pending restore
+  // to apply once a back-transition settles.
+  const navigationType = useNavigationType()
+  const currentLocationKeyRef = useRef(location.key)
+  currentLocationKeyRef.current = location.key
+  const pendingScrollRestoreRef = useRef<number | null>(null)
   const [authLoaded, setAuthLoaded] = useState(false)
   const [isVerified, setIsVerified] = useState<boolean | null>(null)
   const [requireVerification] = useState(() => (import.meta as any).env?.VITE_REQUIRE_VERIFICATION_CLIENT === 'true')
@@ -555,6 +563,48 @@ function AppRoutes(){
     }
   }, [])
 
+  const applyScrollTop = useCallback((top: number) => {
+    if (typeof window === 'undefined') return
+    const el = scrollRegionRef.current
+    const set = () => {
+      if (!el) return
+      if (typeof el.scrollTo === 'function') {
+        try { el.scrollTo({ top, left: 0, behavior: 'auto' }) } catch { el.scrollTop = top }
+      } else {
+        el.scrollTop = top
+      }
+    }
+    set()
+    // Cached pages paint synchronously but layout can settle a frame late;
+    // re-apply next frame so a slightly-taller list doesn't clamp us short.
+    window.requestAnimationFrame(set)
+  }, [])
+
+  // Stamp the live scroll offset against the current history entry so a later
+  // POP back to it restores exactly. rAF-throttled; key + offset are captured at
+  // event time so a navigation mid-frame can't misattribute the offset.
+  useEffect(() => {
+    const el = scrollRegionRef.current
+    if (!el) return
+    let rafId = 0
+    let pendingTop = 0
+    let pendingKey = ''
+    const onScroll = () => {
+      pendingTop = el.scrollTop
+      pendingKey = currentLocationKeyRef.current
+      if (rafId) return
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0
+        saveScrollPosition(pendingKey, pendingTop)
+      })
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      el.removeEventListener('scroll', onScroll)
+      if (rafId) window.cancelAnimationFrame(rafId)
+    }
+  }, [])
+
   const loadProfile = useCallback(async (path?: string): Promise<UserProfile> => {
     const currentPath = path ?? location.pathname
     setProfileLoading(true)
@@ -648,24 +698,42 @@ function AppRoutes(){
   const pendingScrollResetRef = useRef(false)
 
   const flushDeferredScrollReset = useCallback(() => {
+    // Restore takes priority over reset: a back-navigation lands where the user
+    // left, everything else snaps to top.
+    if (pendingScrollRestoreRef.current != null) {
+      const top = pendingScrollRestoreRef.current
+      pendingScrollRestoreRef.current = null
+      pendingScrollResetRef.current = false
+      applyScrollTop(top)
+      return
+    }
     if (!pendingScrollResetRef.current) return
     pendingScrollResetRef.current = false
     resetScrollPosition()
-  }, [resetScrollPosition])
+  }, [resetScrollPosition, applyScrollTop])
 
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return
     const prev = prevPathnameRef.current
     prevPathnameRef.current = location.pathname
     if (isDashboardTabPath(prev) && isDashboardTabPath(location.pathname)) return
-    pendingScrollResetRef.current = true
+    // On POP with a remembered offset for the destination history entry, restore
+    // it; otherwise reset to top (forward drill-downs and first visits).
+    const restoreTo = navigationType === 'POP' ? getScrollPosition(location.key) : null
+    if (restoreTo != null && restoreTo > 0) {
+      pendingScrollRestoreRef.current = restoreTo
+      pendingScrollResetRef.current = false
+    } else {
+      pendingScrollRestoreRef.current = null
+      pendingScrollResetRef.current = true
+    }
     if (!TRANSITIONS_ENABLED) {
       const raf = window.requestAnimationFrame(() => {
         flushDeferredScrollReset()
       })
       return () => window.cancelAnimationFrame(raf)
     }
-  }, [location.pathname, location.search, flushDeferredScrollReset])
+  }, [location.pathname, location.search, location.key, navigationType, flushDeferredScrollReset])
 
   useEffect(() => {
     if (profileData) {
