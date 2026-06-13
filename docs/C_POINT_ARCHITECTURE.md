@@ -25,13 +25,15 @@ Single reference for repository layout, HTTP surface, backend services, dependen
 | Web API | Flask 2.x | `bodybuilding_app.py` + `backend/blueprints/` |
 | Business logic | Python services | `backend/services/` |
 | Primary DB | MySQL (PyMySQL) | `backend/services/database.py`, migrations implicit in services |
-| Cache | Redis | `redis_cache.py` (repo root) |
+| Cache | Redis Cloud — Essentials 256 MB, europe-west1 | `redis_cache.py` (repo root) |
 | Realtime / legacy mirror | Google Firestore | `firestore_reads.py`, `firestore_writes.py` |
 | Web + mobile shell | React (Vite) + Capacitor | `client/` |
 | Internal admin UI | React (Vite) | `admin-web/` |
 | Marketing site | separate Vite app | `landing/` |
 | Object storage | Cloudflare R2 (S3 API) | `backend/services/r2_storage.py` |
 | Container build / deploy | Docker + Cloud Build → Cloud Run | `Dockerfile`, `cloudbuild.yaml` |
+
+**Redis connection budget.** The cache runs on **Redis Cloud Essentials 256 MB** (europe-west1), whose ceiling is a **256-connection limit** — not memory. It was upgraded **2026-06-13** from the 30 MB / 30-connection tier, whose tiny ceiling was tripped by Cloud Run autoscaling (and by old+new revisions overlapping during a deploy), firing recurring *"connections limit reached"* alerts. To stay under the ceiling, each process serves Redis from one **bounded `BlockingConnectionPool`** (`redis_cache.py`): cluster-wide connections ≈ `REDIS_MAX_CONNECTIONS` (default **8**) × live Cloud Run instances. Tune `REDIS_MAX_CONNECTIONS` / `REDIS_POOL_TIMEOUT` via env vars — do not remove the pool bound. If connection alerts ever return, lower the per-instance cap or `--max-instances` before considering a bigger plan.
 
 **Rule (from `AGENTS.md`):** New HTTP routes go in `backend/blueprints/`; new logic in `backend/services/`. Do not add new symbols to `bodybuilding_app.py` except maintenance of legacy paths.
 

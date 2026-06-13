@@ -35,6 +35,21 @@ REDIS_PORT = int(os.environ.get('REDIS_PORT', 6379))
 REDIS_PASSWORD = os.environ.get('REDIS_PASSWORD', None)
 REDIS_DB = int(os.environ.get('REDIS_DB', 0))
 
+# Per-process connection-pool bound. Each web process serves every Redis op from
+# one bounded BlockingConnectionPool, so cluster-wide connections are roughly
+# REDIS_MAX_CONNECTIONS x (live Cloud Run instances). Keep this comfortably under
+# the managed Redis plan's connection ceiling.
+#
+# Plan: Redis Cloud Essentials, 256 MB tier (europe-west1) — 256-connection limit
+# (upgraded 2026-06-13 from the 30 MB / 30-connection tier, whose ceiling was
+# tripped by Cloud Run autoscaling and produced "connections limit" alerts).
+# With the default cap of 8, ~30 concurrent instances fit inside 256. Tune via
+# the REDIS_MAX_CONNECTIONS env var without a code change.
+REDIS_MAX_CONNECTIONS = int(os.environ.get('REDIS_MAX_CONNECTIONS', '8'))
+# Seconds a caller blocks waiting for a free pooled connection before erroring
+# (degrades to a cache miss) instead of opening an unbounded extra socket.
+REDIS_POOL_TIMEOUT = int(os.environ.get('REDIS_POOL_TIMEOUT', '5'))
+
 # Cache settings (optimized for performance)
 DEFAULT_CACHE_TTL = int(os.environ.get('CACHE_TTL_DEFAULT', '300'))  # 5 minutes
 USER_CACHE_TTL = int(os.environ.get('CACHE_TTL_PROFILES', '900'))    # 15 minutes
@@ -157,26 +172,43 @@ class RedisCache:
             self.connect()
     
     def connect(self):
-        """Connect to Redis server"""
+        """Connect to Redis server.
+
+        Connections are served from a bounded ``BlockingConnectionPool`` so a
+        single process can never exceed ``REDIS_MAX_CONNECTIONS`` open sockets.
+        Under thread concurrency a caller blocks (up to ``REDIS_POOL_TIMEOUT``s)
+        for a free connection rather than opening unbounded extra sockets — this
+        is what keeps the cluster-wide count under the managed Redis plan's
+        connection ceiling. See the REDIS_MAX_CONNECTIONS note above.
+        """
         try:
             # Redis Cloud connection with username support
-            redis_kwargs = {
+            connection_kwargs = {
                 'host': REDIS_HOST,
                 'port': REDIS_PORT,
                 'password': REDIS_PASSWORD,
                 'db': REDIS_DB,
                 'decode_responses': True,
                 'socket_connect_timeout': 5,
-                'socket_timeout': 5
+                'socket_timeout': 5,
+                # Recycle half-open connections instead of leaking them as stale
+                # sockets that still count against the plan's connection limit.
+                'socket_keepalive': True,
+                'health_check_interval': 30,
             }
-            
+
             # Add username if provided (Redis Cloud requires this)
             redis_username = os.environ.get('REDIS_USERNAME')
             if redis_username:
-                redis_kwargs['username'] = redis_username
-            
-            self.redis_client = redis.Redis(**redis_kwargs)
-            
+                connection_kwargs['username'] = redis_username
+
+            pool = redis.BlockingConnectionPool(
+                max_connections=REDIS_MAX_CONNECTIONS,
+                timeout=REDIS_POOL_TIMEOUT,
+                **connection_kwargs,
+            )
+            self.redis_client = redis.Redis(connection_pool=pool)
+
             # Test connection
             self.redis_client.ping()
             self.enabled = True
