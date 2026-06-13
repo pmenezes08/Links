@@ -5681,7 +5681,19 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
       {/* Inline quick reply composer - sleek, full-width, low-distraction */}
       {/* Hidden when child reply is active or the GIF picker is open */}
       {!post.poll && activeChildReplyFor === null && !isGifPickerOpen && (
-        <div className="px-3 pb-3" onClick={(e)=> e.stopPropagation()}>
+        <div
+          className="px-3 pb-3"
+          onClick={(e)=> e.stopPropagation()}
+          onFocusCapture={(e) => {
+            // The keyboard covers this inline reply box (the feed has no fixed
+            // composer to lift). Once the keyboard has opened, scroll the focused
+            // input into the still-visible area above it.
+            const el = e.target as HTMLElement
+            window.setTimeout(() => {
+              try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }) } catch { /* ignore */ }
+            }, 300)
+          }}
+        >
           <div className="rounded-xl border border-c-border bg-c-hover-bg px-2 pt-2 pb-2 space-y-2">
               <MentionTextarea
                 value={replyText}
