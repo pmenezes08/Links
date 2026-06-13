@@ -1538,13 +1538,18 @@ export default function PostDetail(){
 
   return (
     <div
-      className="min-h-screen bg-c-bg-app text-c-text-primary flex flex-col overflow-hidden"
+      className="bg-c-bg-app text-c-text-primary flex flex-col overflow-hidden"
       style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
+        // Normal flow with a definite viewport height so the page SLIDES with the
+        // iOS page transition. WebKit pins position:fixed elements under an
+        // animated-transform ancestor (that blocked the slide on cached posts);
+        // position:relative is not pinned and still gives a containing block for
+        // absolute children + stacking, and height:100dvh (viewport-relative, not
+        // %-of-parent) gives the inner content scroller a definite height through
+        // the height-less transition wrappers — so the scroller, pull-to-refresh,
+        // composer, and keyboard handling are all unchanged from the fixed shell.
+        position: 'relative',
+        height: '100dvh',
       }}
     >
       {/* Fixed Header */}
