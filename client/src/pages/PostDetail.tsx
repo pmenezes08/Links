@@ -269,7 +269,27 @@ export default function PostDetail(){
       }
     },
   })
-  
+
+  // When the keyboard opens, shift the post content up by the keyboard height so
+  // what you're replying to stays visible above the composer instead of hiding
+  // behind it. The composer lifts on its own (portaled, viewport-relative), but
+  // the content scroller did not follow — this closes that gap.
+  const prevKeyboardLiftRef = useRef(0)
+  useEffect(() => {
+    const prev = prevKeyboardLiftRef.current
+    prevKeyboardLiftRef.current = keyboardLift
+    const delta = keyboardLift - prev
+    if (delta <= 0) return
+    const el = contentRef.current
+    if (!el) return
+    // Next frame so the grown bottom padding (contentPaddingBottom) is applied
+    // first, giving the scroller room to move into.
+    const raf = requestAnimationFrame(() => {
+      try { el.scrollBy({ top: delta, left: 0, behavior: 'auto' }) } catch { /* ignore */ }
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [keyboardLift])
+
   // Report/Hide/Block post state
   const [showHideModal, setShowHideModal] = useState(false)
   const [showReportModal, setShowReportModal] = useState(false)
