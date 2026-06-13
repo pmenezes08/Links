@@ -44,7 +44,7 @@ Stack (from [`client/src/index.css`](../client/src/index.css)):
 
 | Token | Value | Use |
 |-------|-------|-----|
-| `PAGE_TRANSITION_MS` | 340ms | Push/pop route transitions (chat threads) |
+| `PAGE_TRANSITION_MS` | 340ms | Push/pop pilot route transitions (slide; pop is transform-only parallax; chat threads excluded) |
 | `TAB_CROSSFADE_MS` | 120ms | Tab cross-fade (Dashboard ↔ Feed ↔ About) |
 | `CHAT_KEYBOARD_ANIMATION_MS` | 250ms | Composer / list inset smoothing |
 | `CPOINT_EASE_OUT` | `cubic-bezier(0.32, 0.72, 0, 1)` | Native-style deceleration |
@@ -55,6 +55,8 @@ Stack (from [`client/src/index.css`](../client/src/index.css)):
 Canonical values live in [`client/src/design/motion.ts`](../client/src/design/motion.ts) — keep this table in sync when tokens change.
 
 Chat surfaces must not add decorative bubble entrance animations. Layout motion only (keyboard, inset, page stack).
+
+**Page-transition slide invariant (iOS — confirmed on device).** Pilot route transitions (`PageTransitionStack`, behind `VITE_PAGE_TRANSITIONS`, on for the iOS app via the remote staging/prod URL) animate the sliding panes with a CSS `transform`. **iOS WebKit will not move a `position: fixed` element under an animated-transform ancestor** — it pins to the viewport, so a fixed-root page does NOT slide (it "instant-cuts"). So any page that participates in the transition (a pilot route, or any route added to `pageTransitionUtils.isPilotRoute`) **must have a normal-flow root**: `min-h-screen` for document-scroll pages (e.g. `CommunityFeed`), or `position: relative; height: 100dvh` for pages that keep an inner scroller (e.g. `PostDetail`). Viewport-anchored chrome (composer, bottom-nav) must be **portaled to `document.body`** (`FixedComposerShell`, `DashboardBottomNav`), never the page root. **Do not "fix" a black / no-slide transition by adding `position: fixed`** — that is the cause, not the cure. Loading/skeleton states follow the same rule and render the destination's own chrome (`SkeletonPostDetail` is a structural twin of the loaded page). Skeletons use the `.skeleton-box` shimmer (driven by `--c-skeleton-*` tokens), not Tailwind `animate-pulse`.
 
 ## Asks & CTAs
 
