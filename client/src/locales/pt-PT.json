@@ -331,6 +331,7 @@
     "locked_cta": "Desbloquear a vista completa",
     "switch_aria": "Mudar de comunidade",
     "switch_title": "As tuas comunidades",
+    "switch_summary": "{{members}} membros · {{spaces}} espaços",
     "tier_free": "Grátis",
     "tier_paid": "Pago",
     "scope_network": "Toda a rede",

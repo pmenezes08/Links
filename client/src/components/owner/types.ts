@@ -40,6 +40,8 @@ export type OwnerManagedCommunity = {
   is_owner: boolean
   tier: string
   is_paid: boolean
+  members?: number
+  spaces?: number
 }
 
 export type OwnerReport = {

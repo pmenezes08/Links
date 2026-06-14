@@ -328,7 +328,10 @@ def list_managed_communities(username: str) -> Dict[str, Any]:
     if not norm:
         return {"success": True, "communities": []}
 
+    from backend.services.community import get_descendant_community_ids, get_parent_chain_ids
+
     found: Dict[int, Dict[str, Any]] = {}
+    tops: List[Dict[str, Any]] = []
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -380,12 +383,33 @@ def list_managed_communities(username: str) -> Dict[str, Any]:
                         found[cid] = {"id": cid, "name": name, "is_owner": False}
             except Exception as exc:  # pragma: no cover - defensive
                 logger.debug("list_managed_communities community_admins failed: %s", exc)
+
+            # One entry per NETWORK: keep only managed nodes that have no managed
+            # ancestor (a root the user manages absorbs the subs they manage).
+            # Each top carries a subtree summary for the switcher row.
+            managed_ids = set(found.keys())
+            for cid, info in found.items():
+                try:
+                    ancestors = get_parent_chain_ids(c, cid)
+                except Exception:
+                    ancestors = []
+                if any(a in managed_ids for a in ancestors):
+                    continue
+                try:
+                    subtree = [int(x) for x in get_descendant_community_ids(c, cid)] or [cid]
+                except Exception:
+                    subtree = [cid]
+                tops.append({
+                    "id": cid, "name": info["name"], "is_owner": info["is_owner"],
+                    "members": _distinct_members(c, ph, subtree),
+                    "spaces": max(0, len(subtree) - 1),
+                })
     except Exception as exc:  # pragma: no cover - defensive
         logger.debug("list_managed_communities failed: %s", exc)
         return {"success": True, "communities": []}
 
     communities: List[Dict[str, Any]] = []
-    for info in found.values():
+    for info in tops:
         tier_info = _resolve_tier(info["id"])
         communities.append({
             "id": info["id"],
@@ -394,6 +418,8 @@ def list_managed_communities(username: str) -> Dict[str, Any]:
             "role": "owner" if info["is_owner"] else "admin",
             "tier": tier_info["tier"],
             "is_paid": bool(tier_info["is_paid"]),
+            "members": info["members"],
+            "spaces": info["spaces"],
         })
     communities.sort(key=lambda x: str(x["name"] or "").lower())
     return {"success": True, "communities": communities}

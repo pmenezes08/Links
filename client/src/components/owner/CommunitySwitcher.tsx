@@ -61,7 +61,14 @@ export default function CommunitySwitcher({
                     c.id === currentId ? 'bg-c-hover-bg' : ''
                   }`}
                 >
-                  <span className="min-w-0 flex-1 truncate text-c-text-primary">{c.name}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-c-text-primary">{c.name}</span>
+                    {(typeof c.members === 'number' || typeof c.spaces === 'number') && (
+                      <span className="block truncate text-[11px] text-c-text-tertiary">
+                        {t('owner.switch_summary', { members: c.members ?? 0, spaces: c.spaces ?? 0 })}
+                      </span>
+                    )}
+                  </span>
                   <span className="ml-2 flex shrink-0 items-center gap-2">
                     <span
                       className={`rounded-full px-2 py-0.5 text-[10px] ${

@@ -310,6 +310,22 @@ def test_owner_communities_lists_owned_and_managed(mysql_dsn):
     assert by_id[a1]["role"] == "admin"
 
 
+def test_switcher_lists_root_networks_only(mysql_dsn):
+    import bodybuilding_app
+
+    make_user("ownerR")
+    client = bodybuilding_app.app.test_client()
+    root = make_community("Root Net", creator_username="ownerR")
+    sub = make_community("Sub One", creator_username="ownerR", parent_community_id=root)
+    make_community("Sub Deep", creator_username="ownerR", parent_community_id=sub)
+
+    _login(client, "ownerR")
+    communities = client.get("/api/owner/communities").get_json()["communities"]
+    ids = {c["id"] for c in communities}
+    assert ids == {root}            # the two sub-communities are absorbed into the root entry
+    assert communities[0]["spaces"] == 2   # subtree summary counts both descendants
+
+
 _INVITES_DDL = """
 CREATE TABLE community_invitations (
     id INT PRIMARY KEY AUTO_INCREMENT,

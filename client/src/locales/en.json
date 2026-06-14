@@ -331,6 +331,7 @@
     "locked_cta": "Unlock the full read",
     "switch_aria": "Switch community",
     "switch_title": "Your communities",
+    "switch_summary": "{{members}} members · {{spaces}} spaces",
     "tier_free": "Free",
     "tier_paid": "Paid",
     "scope_network": "Whole network",
