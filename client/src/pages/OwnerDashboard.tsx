@@ -5,7 +5,7 @@ import OverviewTab from '../components/owner/OverviewTab'
 import SpacesTab from '../components/owner/SpacesTab'
 import ReportsTab from '../components/owner/ReportsTab'
 import CommunitySwitcher from '../components/owner/CommunitySwitcher'
-import type { OwnerOverview, OwnerManagedCommunity } from '../components/owner/types'
+import type { OwnerOverview, OwnerManagedCommunity, OwnerScope } from '../components/owner/types'
 
 type Tab = 'overview' | 'reports' | 'spaces'
 const TABS: Tab[] = ['overview', 'reports', 'spaces']
@@ -20,6 +20,43 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
       }`}
     >
       {children}
+    </button>
+  )
+}
+
+function ScopeChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-full px-3 py-1 text-[11px] ${
+        active ? 'bg-cpoint-turquoise text-[#063b39]' : 'border border-c-border text-c-text-secondary'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+function NetworkLockedCard({ teaser, onUpgrade }: { teaser: number | null; onUpgrade: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <button
+      type="button"
+      onClick={onUpgrade}
+      className="mb-3.5 w-full rounded-2xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/[0.06] p-4 text-left"
+    >
+      <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-cpoint-turquoise">
+        <i className="fa-solid fa-lock text-[11px]" />
+        {t('owner.scope_network')}
+      </div>
+      {typeof teaser === 'number' && (
+        <div className="mt-1.5 text-[15px] text-c-text-primary">{t('owner.network_teaser', { count: teaser })}</div>
+      )}
+      <div className="mt-1.5 flex items-center gap-1.5 text-[12px] text-cpoint-turquoise">
+        {t('owner.locked_cta')}
+        <i className="fa-solid fa-chevron-right text-[9px]" />
+      </div>
     </button>
   )
 }
@@ -40,6 +77,7 @@ export default function OwnerDashboard() {
   const [tab, setTab] = useState<Tab>(requested && TABS.includes(requested) ? requested : 'overview')
   const [data, setData] = useState<OwnerOverview | null>(null)
   const [managed, setManaged] = useState<OwnerManagedCommunity[]>([])
+  const [scope, setScope] = useState<OwnerScope>('network')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
@@ -57,7 +95,7 @@ export default function OwnerDashboard() {
     let mounted = true
     setLoading(true)
     setError(false)
-    fetch(`/api/community/${communityId}/analytics/overview`, {
+    fetch(`/api/community/${communityId}/analytics/overview?scope=${scope}`, {
       credentials: 'include',
       headers: { Accept: 'application/json' },
     })
@@ -68,7 +106,7 @@ export default function OwnerDashboard() {
       .then(j => { if (mounted) { setData(j); setLoading(false) } })
       .catch(() => { if (mounted) { setError(true); setLoading(false) } })
     return () => { mounted = false }
-  }, [communityId])
+  }, [communityId, scope])
 
   const changeTab = (next: Tab) => {
     setTab(next)
@@ -115,7 +153,20 @@ export default function OwnerDashboard() {
 
         {!loading && !error && data && (
           <>
-            {tab === 'overview' && <OverviewTab data={data} onUpgrade={onUpgrade} />}
+            {tab === 'overview' && (
+              <>
+                {data.network?.available && (
+                  <div className="mb-3.5 flex gap-2">
+                    <ScopeChip active={scope === 'network'} onClick={() => setScope('network')}>{t('owner.scope_network')}</ScopeChip>
+                    <ScopeChip active={scope === 'self'} onClick={() => setScope('self')}>{t('owner.scope_self')}</ScopeChip>
+                  </div>
+                )}
+                {data.network?.locked && scope === 'network' && (
+                  <NetworkLockedCard teaser={data.network.teaser_members} onUpgrade={onUpgrade} />
+                )}
+                <OverviewTab data={data} onUpgrade={onUpgrade} />
+              </>
+            )}
             {tab === 'reports' && communityId != null && <ReportsTab communityId={communityId} />}
             {tab === 'spaces' && communityId != null && <SpacesTab communityId={communityId} />}
           </>

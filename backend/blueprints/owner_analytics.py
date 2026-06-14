@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 
-from flask import Blueprint, jsonify, session
+from flask import Blueprint, jsonify, request, session
 
 from backend.services import api_errors
 
@@ -46,7 +46,11 @@ def analytics_overview(community_id: int):
 
     from backend.services.community_analytics import build_overview
 
-    payload = build_overview(community_id)
+    # scope = network (this community + all nested sub-communities) | self.
+    # Authorization is on the apex (community_id) above, so a network rollup can
+    # only ever span the subtree the caller already manages.
+    scope = request.args.get("scope", "network")
+    payload = build_overview(community_id, scope=scope)
     if payload is None:
         return api_errors.not_found()
     return jsonify(payload), 200

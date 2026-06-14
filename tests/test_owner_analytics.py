@@ -109,6 +109,32 @@ def _overview(client, community_id: int):
     return client.get(f"/api/community/{community_id}/analytics/overview")
 
 
+def _overview_scoped(client, community_id: int, scope: str):
+    return client.get(f"/api/community/{community_id}/analytics/overview?scope={scope}")
+
+
+def _set_paid(community_id: int) -> None:
+    """Make a community resolve as paid (network rollup is a paid feature)."""
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute("ALTER TABLE communities ADD COLUMN subscription_status VARCHAR(32) NULL")
+        except Exception:
+            pass
+        try:
+            c.execute(
+                f"UPDATE communities SET tier = 'paid_l1', subscription_status = 'active' WHERE id = {ph}",
+                (community_id,),
+            )
+        except Exception:
+            pass
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+
 def _by_id(body):
     return {m["id"]: m for m in body["metrics"]}
 
@@ -340,3 +366,89 @@ def test_invites_are_unique_and_exclude_admin_and_qr(mysql_dsn):
     invites = _by_id(_overview(client, a).get_json())["invites"]["value"]
     assert invites["sent"] == 2       # bob + carol (QR + admin excluded, dupes collapsed)
     assert invites["accepted"] == 2   # bob + carol accepted (admin excluded)
+
+
+def test_paid_network_scope_rolls_up_subtree_deduped(mysql_dsn):
+    import bodybuilding_app
+
+    _ensure_profile_columns()
+    for u in ("ownerR", "u_root", "u_sub", "u_both"):
+        make_user(u)
+    client = bodybuilding_app.app.test_client()
+    root = make_community("Root Net", creator_username="ownerR")
+    sub = make_community("Sub One", creator_username="ownerR", parent_community_id=root)
+    _set_paid(root)
+    _add_member("u_root", root)
+    _add_member("u_sub", sub)
+    _add_member("u_both", root)
+    _add_member("u_both", sub)  # in both → must count once
+
+    _login(client, "ownerR")
+    body = _overview_scoped(client, root, "network").get_json()
+    assert body["scope"] == "network"
+    assert body["network"]["available"] is True
+    assert body["network"]["locked"] is False
+    assert _by_id(body)["members"]["value"]["count"] == 3        # deduped across subtree
+    assert _by_id(body)["spaces"]["value"]["subcommunities"] == 1
+
+    selfbody = _overview_scoped(client, root, "self").get_json()
+    assert selfbody["scope"] == "self"
+    assert _by_id(selfbody)["members"]["value"]["count"] == 2     # root only (sub members excluded)
+
+
+def test_free_network_scope_is_locked_with_teaser(mysql_dsn):
+    import bodybuilding_app
+
+    for u in ("ownerF", "u1", "u2"):
+        make_user(u)
+    client = bodybuilding_app.app.test_client()
+    root = make_community("Free Net", creator_username="ownerF")  # free (not paid)
+    sub = make_community("Free Sub", creator_username="ownerF", parent_community_id=root)
+    _add_member("u1", root)
+    _add_member("u2", sub)
+
+    _login(client, "ownerF")
+    body = _overview_scoped(client, root, "network").get_json()
+    assert body["scope"] == "self"                 # network is paid → falls back
+    assert body["network"]["available"] is True
+    assert body["network"]["locked"] is True
+    assert body["network"]["teaser_members"] == 2  # distinct across the subtree (upsell hook)
+    assert _by_id(body)["members"]["value"]["count"] == 1  # apex only
+
+
+def test_subadmin_cannot_aggregate_root(mysql_dsn):
+    import bodybuilding_app
+
+    for u in ("ownerR", "modS", "u_root"):
+        make_user(u)
+    client = bodybuilding_app.app.test_client()
+    root = make_community("Root", creator_username="ownerR")
+    sub = make_community("Sub", creator_username="ownerR", parent_community_id=root)
+    _set_paid(root)
+    _add_member("u_root", root)
+    _add_member("modS", sub, role="admin")  # delegated admin of the SUB only
+
+    _login(client, "modS")
+    assert _overview_scoped(client, root, "network").status_code == 404   # can't reach the root apex
+    subresp = _overview_scoped(client, sub, "network")
+    assert subresp.status_code == 200
+    # network scope on their own sub spans only the sub — never the root's members
+    assert _by_id(subresp.get_json())["members"]["value"]["count"] == 1
+
+
+def test_sibling_network_excluded_from_rollup(mysql_dsn):
+    import bodybuilding_app
+
+    for u in ("ownerA", "ownerB", "a1", "b1"):
+        make_user(u)
+    client = bodybuilding_app.app.test_client()
+    root_a = make_community("Root A", creator_username="ownerA")
+    sub_a = make_community("Sub A", creator_username="ownerA", parent_community_id=root_a)
+    root_b = make_community("Root B", creator_username="ownerB")  # separate network
+    _set_paid(root_a)
+    _add_member("a1", sub_a)
+    _add_member("b1", root_b)
+
+    _login(client, "ownerA")
+    body = _overview_scoped(client, root_a, "network").get_json()
+    assert _by_id(body)["members"]["value"]["count"] == 1  # a1 only — B's member never in the rollup

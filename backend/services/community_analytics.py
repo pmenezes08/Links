@@ -97,25 +97,52 @@ def _resolve_tier(community_id: int) -> Dict[str, Any]:
         return {"tier": "free", "is_paid": False, "member_cap": None}
 
 
-def _profile_completion(cursor, ph: str, community_id: int) -> Dict[str, int]:
-    """Aggregate member profile completion into none/partial/complete buckets.
+def _in_clause(ph: str, count: int) -> str:
+    return "(" + ", ".join([ph] * count) + ")"
 
-    Reuses the canonical per-member section logic from onboarding_session so
-    the dashboard and Steve's profile asks agree on what "complete" means.
-    Aggregate only — no member is named (privacy invariant).
+
+def _distinct_members(cursor, ph: str, ids: List[int], cutoff: Optional[str] = None) -> int:
+    """COUNT(DISTINCT user_id) across the scope's communities, 'admin' excluded.
+    Deduped: a person in several sub-communities counts once. With ``cutoff`` it
+    counts distinct users who have a join event in the window."""
+    if not ids:
+        return 0
+    sql = (
+        f"SELECT COUNT(DISTINCT uc.user_id) AS count FROM user_communities uc "
+        f"WHERE uc.community_id IN {_in_clause(ph, len(ids))} "
+        f"AND uc.user_id NOT IN (SELECT id FROM users WHERE LOWER(username) = 'admin')"
+    )
+    params: Tuple[Any, ...] = tuple(ids)
+    if cutoff is not None:
+        sql += f" AND uc.joined_at >= {ph}"
+        params = tuple(ids) + (cutoff,)
+    return _scalar(cursor, sql, params)
+
+
+def _profile_completion(cursor, ph: str, ids: List[int]) -> Dict[str, int]:
+    """Aggregate member profile completion into none/partial/complete buckets,
+    deduped across the scope's communities (one person counts once). Reuses the
+    canonical per-member section logic from onboarding_session. Aggregate only —
+    no member is named (privacy invariant).
     """
     complete = partial = none = 0
+    if not ids:
+        return {"complete": complete, "partial": partial, "none": none}
     try:
         cursor.execute(
             f"""
             SELECT u.role, u.company, p.bio, u.linkedin,
                    u.professional_about, u.personal_highlight_answers
-            FROM user_communities uc
-            JOIN users u ON uc.user_id = u.id
+            FROM (
+                SELECT DISTINCT uc.user_id
+                FROM user_communities uc
+                WHERE uc.community_id IN {_in_clause(ph, len(ids))}
+                  AND uc.user_id NOT IN (SELECT id FROM users WHERE LOWER(username) = 'admin')
+            ) ducs
+            JOIN users u ON ducs.user_id = u.id
             LEFT JOIN user_profiles p ON LOWER(u.username) = LOWER(p.username)
-            WHERE uc.community_id = {ph} AND LOWER(u.username) <> 'admin'
             """,
-            (community_id,),
+            tuple(ids),
         )
         for row in cursor.fetchall() or []:
             personal = durable_personal_section_complete_from_row(row)
@@ -131,11 +158,20 @@ def _profile_completion(cursor, ph: str, community_id: int) -> Dict[str, int]:
     return {"complete": complete, "partial": partial, "none": none}
 
 
-def build_overview(community_id: int) -> Optional[Dict[str, Any]]:
+def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[str, Any]]:
     """Build the Owner Dashboard overview payload, or ``None`` if the community
-    does not exist. Does NOT authorize — the route must do that first."""
+    does not exist. Does NOT authorize — the route authorizes the apex first.
+
+    ``scope`` = "network" (this community + all nested sub-communities, deduped)
+    or "self" (this community only). Network rollup is a paid feature: on a free
+    community that has sub-communities a network request falls back to self and
+    is returned ``locked`` with a subtree member teaser (the upsell hook).
+    """
+    scope = "network" if str(scope or "").strip().lower() == "network" else "self"
     tier_info = _resolve_tier(community_id)
     is_paid = bool(tier_info["is_paid"])
+
+    from backend.services.community import get_descendant_community_ids
 
     with get_db_connection() as conn:
         c = conn.cursor()
@@ -147,28 +183,38 @@ def build_overview(community_id: int) -> Optional[Dict[str, Any]]:
             return None
         name = row["name"] if hasattr(row, "keys") else row[1]
 
-        members = _scalar(
-            c,
-            f"SELECT COUNT(*) AS count FROM user_communities uc "
-            f"WHERE uc.community_id = {ph} AND {_NOT_ADMIN_MEMBER}",
-            (community_id,),
-        )
+        # The subtree is the apex + every descendant (multi-level). Authorization
+        # already happened on the apex, so this never reaches a sibling network.
+        try:
+            subtree_ids = [int(cid) for cid in get_descendant_community_ids(c, community_id)] or [community_id]
+        except Exception:
+            subtree_ids = [community_id]
+        has_descendants = len(subtree_ids) > 1
+
+        # Network rollup is paid: free + has subtree → fall back to self, locked.
+        network_locked = scope == "network" and has_descendants and not is_paid
+        effective_network = scope == "network" and (is_paid or not has_descendants)
+        ids = subtree_ids if effective_network else [community_id]
+        in_ids = _in_clause(ph, len(ids))
 
         cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
-        net_new_7d = _scalar(
-            c,
-            f"SELECT COUNT(*) AS count FROM user_communities uc "
-            f"WHERE uc.community_id = {ph} AND uc.joined_at >= {ph} AND {_NOT_ADMIN_MEMBER}",
-            (community_id, cutoff),
-        )
+        members = _distinct_members(c, ph, ids)
+        net_new_7d = _distinct_members(c, ph, ids, cutoff=cutoff)
 
-        subcommunities = _scalar(
-            c, f"SELECT COUNT(*) AS count FROM communities WHERE parent_community_id = {ph}",
-            (community_id,),
-        )
+        # Subtree member teaser (the upsell hook): distinct across the WHOLE
+        # subtree regardless of effective scope; only meaningful with sub-communities.
+        teaser_members = _distinct_members(c, ph, subtree_ids) if has_descendants else None
+
+        if effective_network:
+            subcommunities = len(subtree_ids) - 1
+        else:
+            subcommunities = _scalar(
+                c, f"SELECT COUNT(*) AS count FROM communities WHERE parent_community_id = {ph}",
+                (community_id,),
+            )
         groups = _scalar(
-            c, f"SELECT COUNT(*) AS count FROM `groups` WHERE community_id = {ph}",
-            (community_id,),
+            c, f"SELECT COUNT(*) AS count FROM `groups` WHERE community_id IN {in_ids}",
+            tuple(ids),
         )
 
         # Unique people, not rows: the same person invited (or re-joining)
@@ -178,25 +224,25 @@ def build_overview(community_id: int) -> Optional[Dict[str, Any]]:
             c,
             f"""SELECT COUNT(DISTINCT COALESCE(LOWER(invited_username), LOWER(invited_email))) AS count
                 FROM community_invitations
-                WHERE community_id = {ph}
+                WHERE community_id IN {in_ids}
                   AND NOT (invited_username IS NULL AND invited_email LIKE {ph})
                   AND COALESCE(LOWER(invited_username), LOWER(invited_email)) <> 'admin'""",
-            (community_id, _QR_INVITE_EMAIL_PATTERN),
+            tuple(ids) + (_QR_INVITE_EMAIL_PATTERN,),
         )
         invites_accepted = _scalar(
             c,
             f"""SELECT COUNT(DISTINCT COALESCE(LOWER(invited_username), LOWER(invited_email))) AS count
                 FROM community_invitations
-                WHERE community_id = {ph} AND LOWER(status) = 'accepted'
+                WHERE community_id IN {in_ids} AND LOWER(status) = 'accepted'
                   AND NOT (invited_username IS NULL AND invited_email LIKE {ph})
                   AND COALESCE(LOWER(invited_username), LOWER(invited_email)) <> 'admin'""",
-            (community_id, _QR_INVITE_EMAIL_PATTERN),
+            tuple(ids) + (_QR_INVITE_EMAIL_PATTERN,),
         )
 
-        completion = _profile_completion(c, ph, community_id)
+        completion = _profile_completion(c, ph, ids)
         has_posts = _scalar(
-            c, f"SELECT COUNT(*) AS count FROM posts WHERE community_id = {ph}",
-            (community_id,),
+            c, f"SELECT COUNT(*) AS count FROM posts WHERE community_id IN {in_ids}",
+            tuple(ids),
         )
 
     low_data = members <= LOW_DATA_MEMBER_THRESHOLD and has_posts == 0
@@ -243,6 +289,12 @@ def build_overview(community_id: int) -> Optional[Dict[str, Any]]:
         "success": True,
         "community": {"id": community_id, "name": name,
                       "tier": tier_info["tier"], "is_paid": is_paid},
+        "scope": "network" if effective_network else "self",
+        "network": {
+            "available": has_descendants,
+            "locked": network_locked,
+            "teaser_members": teaser_members,
+        },
         "metrics": metrics,
         "steve": steve,
         "generated_at": datetime.now(timezone.utc).isoformat(),

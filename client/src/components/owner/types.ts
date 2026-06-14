@@ -21,9 +21,13 @@ export type OwnerSteve = {
   low_data: boolean
 }
 
+export type OwnerScope = 'network' | 'self'
+
 export type OwnerOverview = {
   success: boolean
   community: { id: number; name: string; tier: string; is_paid: boolean }
+  scope: OwnerScope
+  network: { available: boolean; locked: boolean; teaser_members: number | null }
   metrics: OwnerMetric[]
   steve: OwnerSteve
   generated_at: string
