@@ -188,10 +188,20 @@ def _verify_google_confirm(
     return True, "", state
 
 
-def _apple_api_base(environment: Optional[str]) -> str:
+def _apple_api_bases(environment: Optional[str]) -> list:
+    """Ordered App Store Server API hosts to try for a transaction lookup.
+
+    The capgo ``native-purchases`` client does not report the StoreKit
+    environment, so a TestFlight / sandbox purchase reaches us with
+    ``environment=None`` and 404s against the production host. Apple's
+    guidance is to query production first and fall back to sandbox on a
+    not-found, so a single code path verifies both live and sandbox
+    transactions. When the environment is explicitly sandbox we try sandbox
+    first to save a round trip.
+    """
     if is_sandbox_environment(environment):
-        return _APPLE_SANDBOX
-    return _APPLE_PROD
+        return [_APPLE_SANDBOX, _APPLE_PROD]
+    return [_APPLE_PROD, _APPLE_SANDBOX]
 
 
 def _apple_bearer_token() -> Optional[str]:
@@ -219,32 +229,44 @@ def _apple_get_transaction(
     token = _apple_bearer_token()
     if not token:
         return {}
-    base = _apple_api_base(environment)
-    url = f"{base}/inApps/v1/transactions/{transaction_id}"
-    try:
-        res = requests.get(
-            url,
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=20,
-        )
-        if res.status_code != 200:
-            logger.warning(
-                "apple transaction lookup failed: %s %s",
-                res.status_code,
-                res.text[:200],
+    for base in _apple_api_bases(environment):
+        url = f"{base}/inApps/v1/transactions/{transaction_id}"
+        try:
+            res = requests.get(
+                url,
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=20,
             )
-            return {}
-        body = res.json()
-        signed = body.get("signedTransactionInfo") or ""
-        if signed:
-            ok, payload = _verify_jws_signature(signed)
-            if ok:
-                return payload
-            return decode_jws_payload_unverified(signed)
-        return body if isinstance(body, dict) else {}
-    except Exception:
-        logger.exception("apple transaction lookup error")
-        return {}
+        except Exception:
+            logger.exception("apple transaction lookup error (%s)", base)
+            continue
+        if res.status_code == 200:
+            body = res.json()
+            signed = body.get("signedTransactionInfo") or ""
+            if signed:
+                ok, payload = _verify_jws_signature(signed)
+                if ok:
+                    return payload
+                return decode_jws_payload_unverified(signed)
+            return body if isinstance(body, dict) else {}
+        if res.status_code == 404:
+            # The transaction lives in the other environment — fall back to the
+            # next host before giving up. TestFlight / sandbox purchases land
+            # here because the client never tells us the StoreKit environment.
+            logger.info(
+                "apple transaction %s not found in %s; trying next host",
+                transaction_id,
+                base,
+            )
+            continue
+        # 400 (malformed id) / 401 (auth) won't be fixed by another host.
+        logger.warning(
+            "apple transaction lookup failed: %s %s",
+            res.status_code,
+            res.text[:200],
+        )
+        break
+    return {}
 
 
 def _google_access_token() -> Optional[str]:
