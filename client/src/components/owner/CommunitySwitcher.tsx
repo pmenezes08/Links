@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { OwnerManagedCommunity } from './types'
@@ -8,6 +9,10 @@ import type { OwnerManagedCommunity } from './types'
  * one community it becomes a tappable switcher (bottom sheet) with a tier badge
  * per community; selecting one routes to that community's dashboard, which
  * re-fetches and shows basic or full analytics by its own tier.
+ *
+ * The sheet is rendered through a portal to <body>: the dashboard header uses
+ * backdrop-blur, which creates a containing block that would otherwise trap a
+ * position:fixed overlay inside the (clipped) header instead of the viewport.
  */
 export default function CommunitySwitcher({
   communities,
@@ -31,37 +36,22 @@ export default function CommunitySwitcher({
     if (id !== currentId) navigate(`/community/${id}/owner`)
   }
 
-  return (
-    <div className="min-w-0 flex-1">
-      {multiple ? (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-label={t('owner.switch_aria')}
-          className="flex max-w-full items-center gap-1.5"
-        >
-          <span className="truncate text-[15px] font-medium">{name}</span>
-          <i className="fa-solid fa-chevron-down text-[10px] text-c-text-tertiary" />
-        </button>
-      ) : (
-        <div className="truncate text-[15px] font-medium">{name}</div>
-      )}
-      <div className="text-[11px] text-c-text-tertiary">{t('navigation.owner_tools')}</div>
-
-      {open && (
+  const sheet = open
+    ? createPortal(
         <div
-          className="fixed inset-0 z-[1100] flex items-end justify-center bg-black/55"
+          className="fixed inset-0 z-[1200] flex items-end justify-center bg-black/55"
           onClick={e => { if (e.currentTarget === e.target) setOpen(false) }}
         >
           <div
-            className="w-full max-w-xl rounded-t-2xl border-t border-c-border bg-c-bg-elevated px-3 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] sm:mb-4 sm:rounded-2xl sm:border"
+            className="flex w-full max-w-xl flex-col rounded-t-2xl border-t border-c-border bg-c-bg-elevated pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.5rem)] sm:mb-4 sm:rounded-2xl sm:border"
+            style={{ maxHeight: '80vh' }}
             onClick={e => e.stopPropagation()}
           >
-            <div className="mx-auto mb-3 h-1 w-11 rounded-full bg-c-text-tertiary/40" aria-hidden="true" />
-            <div className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-cpoint-turquoise">
+            <div className="mx-auto mb-3 h-1 w-11 shrink-0 rounded-full bg-c-text-tertiary/40" aria-hidden="true" />
+            <div className="shrink-0 px-4 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-cpoint-turquoise">
               {t('owner.switch_title')}
             </div>
-            <div className="space-y-1">
+            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 pb-2">
               {communities.map(c => (
                 <button
                   key={c.id}
@@ -88,8 +78,28 @@ export default function CommunitySwitcher({
               ))}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
+      )
+    : null
+
+  return (
+    <div className="min-w-0 flex-1">
+      {multiple ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label={t('owner.switch_aria')}
+          className="flex max-w-full items-center gap-1.5"
+        >
+          <span className="truncate text-[15px] font-medium">{name}</span>
+          <i className="fa-solid fa-chevron-down text-[10px] text-c-text-tertiary" />
+        </button>
+      ) : (
+        <div className="truncate text-[15px] font-medium">{name}</div>
       )}
+      <div className="text-[11px] text-c-text-tertiary">{t('navigation.owner_tools')}</div>
+      {sheet}
     </div>
   )
 }

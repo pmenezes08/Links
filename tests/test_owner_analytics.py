@@ -153,6 +153,11 @@ def test_owner_sees_correct_aggregates_and_locked_teasers(mysql_dsn):
     _set_professional("m_both")
     _set_personal_bio("m_both")
 
+    # The platform 'admin' is a silent member of every community and must be
+    # excluded from every stat.
+    make_user("admin")
+    _add_member("admin", A)
+
     _login(client, "ownerA")
     resp = _overview(client, A)
     assert resp.status_code == 200
@@ -162,7 +167,7 @@ def test_owner_sees_correct_aggregates_and_locked_teasers(mysql_dsn):
     assert body["community"]["is_paid"] is False
 
     metrics = _by_id(body)
-    assert metrics["members"]["value"]["count"] == 3
+    assert metrics["members"]["value"]["count"] == 3   # admin excluded
 
     comp = metrics["profile_completion"]["value"]
     assert comp["total"] == 3
@@ -277,3 +282,61 @@ def test_owner_communities_lists_owned_and_managed(mysql_dsn):
     assert a1 in by_id                     # delegated admin sees the community
     assert by_id[a1]["is_owner"] is False
     assert by_id[a1]["role"] == "admin"
+
+
+_INVITES_DDL = """
+CREATE TABLE community_invitations (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    community_id INT,
+    invited_username VARCHAR(191) NULL,
+    invited_email VARCHAR(255) NULL,
+    invited_by_username VARCHAR(191) NULL,
+    token VARCHAR(255) NULL,
+    status VARCHAR(50) DEFAULT 'pending',
+    used TINYINT(1) DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
+
+def _seed_invitations(community_id, rows):
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute("DROP TABLE IF EXISTS community_invitations")
+        except Exception:
+            pass
+        c.execute(_INVITES_DDL)
+        for uname, email, status in rows:
+            c.execute(
+                f"INSERT INTO community_invitations (community_id, invited_username, invited_email, status) "
+                f"VALUES ({ph}, {ph}, {ph}, {ph})",
+                (community_id, uname, email, status),
+            )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+
+def test_invites_are_unique_and_exclude_admin_and_qr(mysql_dsn):
+    import bodybuilding_app
+
+    make_user("ownerA")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")
+
+    _seed_invitations(a, [
+        ("bob", None, "pending"),                                  # bob invited twice...
+        ("bob", None, "accepted"),                                 # ...and accepted
+        (None, "carol@x.com", "pending"),                          # carol invited twice...
+        (None, "carol@x.com", "accepted"),                         # ...and accepted
+        (None, "qr-invite-abcd1234@placeholder.local", "pending"),  # open link → not a person
+        ("admin", None, "accepted"),                               # admin → excluded
+    ])
+
+    _login(client, "ownerA")
+    invites = _by_id(_overview(client, a).get_json())["invites"]["value"]
+    assert invites["sent"] == 2       # bob + carol (QR + admin excluded, dupes collapsed)
+    assert invites["accepted"] == 2   # bob + carol accepted (admin excluded)

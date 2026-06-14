@@ -42,6 +42,13 @@ logger = logging.getLogger(__name__)
 # instead of a wall of zeros (members at/under this, and no posts yet).
 LOW_DATA_MEMBER_THRESHOLD = 5
 
+# The platform "admin" account is a silent member of every community; it must
+# never be counted in any owner-facing stat. Expects a ``uc`` alias on
+# user_communities. The open QR/link invite placeholder is excluded from invite
+# stats (it represents a shareable link, not a specific person invited).
+_NOT_ADMIN_MEMBER = "uc.user_id NOT IN (SELECT id FROM users WHERE LOWER(username) = 'admin')"
+_QR_INVITE_EMAIL_PATTERN = "qr-invite-%@placeholder.local"
+
 # Paid teaser metrics shown locked-but-visible on the free tier. These are
 # *built* in a later phase; here they only carry their shell so the client can
 # render the blurred upgrade teaser. Add/rename freely — additive.
@@ -106,7 +113,7 @@ def _profile_completion(cursor, ph: str, community_id: int) -> Dict[str, int]:
             FROM user_communities uc
             JOIN users u ON uc.user_id = u.id
             LEFT JOIN user_profiles p ON LOWER(u.username) = LOWER(p.username)
-            WHERE uc.community_id = {ph}
+            WHERE uc.community_id = {ph} AND LOWER(u.username) <> 'admin'
             """,
             (community_id,),
         )
@@ -141,15 +148,17 @@ def build_overview(community_id: int) -> Optional[Dict[str, Any]]:
         name = row["name"] if hasattr(row, "keys") else row[1]
 
         members = _scalar(
-            c, f"SELECT COUNT(*) AS count FROM user_communities WHERE community_id = {ph}",
+            c,
+            f"SELECT COUNT(*) AS count FROM user_communities uc "
+            f"WHERE uc.community_id = {ph} AND {_NOT_ADMIN_MEMBER}",
             (community_id,),
         )
 
         cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
         net_new_7d = _scalar(
             c,
-            f"SELECT COUNT(*) AS count FROM user_communities "
-            f"WHERE community_id = {ph} AND joined_at >= {ph}",
+            f"SELECT COUNT(*) AS count FROM user_communities uc "
+            f"WHERE uc.community_id = {ph} AND uc.joined_at >= {ph} AND {_NOT_ADMIN_MEMBER}",
             (community_id, cutoff),
         )
 
@@ -162,15 +171,26 @@ def build_overview(community_id: int) -> Optional[Dict[str, Any]]:
             (community_id,),
         )
 
+        # Unique people, not rows: the same person invited (or re-joining)
+        # multiple times counts once. Dedup on the invitee identity
+        # (username, else email); skip open QR/link invites and 'admin'.
         invites_sent = _scalar(
-            c, f"SELECT COUNT(*) AS count FROM community_invitations WHERE community_id = {ph}",
-            (community_id,),
+            c,
+            f"""SELECT COUNT(DISTINCT COALESCE(LOWER(invited_username), LOWER(invited_email))) AS count
+                FROM community_invitations
+                WHERE community_id = {ph}
+                  AND NOT (invited_username IS NULL AND invited_email LIKE {ph})
+                  AND COALESCE(LOWER(invited_username), LOWER(invited_email)) <> 'admin'""",
+            (community_id, _QR_INVITE_EMAIL_PATTERN),
         )
         invites_accepted = _scalar(
             c,
-            f"SELECT COUNT(*) AS count FROM community_invitations "
-            f"WHERE community_id = {ph} AND LOWER(status) = 'accepted'",
-            (community_id,),
+            f"""SELECT COUNT(DISTINCT COALESCE(LOWER(invited_username), LOWER(invited_email))) AS count
+                FROM community_invitations
+                WHERE community_id = {ph} AND LOWER(status) = 'accepted'
+                  AND NOT (invited_username IS NULL AND invited_email LIKE {ph})
+                  AND COALESCE(LOWER(invited_username), LOWER(invited_email)) <> 'admin'""",
+            (community_id, _QR_INVITE_EMAIL_PATTERN),
         )
 
         completion = _profile_completion(c, ph, community_id)
@@ -342,6 +362,7 @@ def list_spaces(community_id: int) -> Dict[str, Any]:
                     SELECT sc.id, sc.name, COUNT(uc.id) AS member_count
                     FROM communities sc
                     LEFT JOIN user_communities uc ON uc.community_id = sc.id
+                        AND uc.user_id NOT IN (SELECT id FROM users WHERE LOWER(username) = 'admin')
                     WHERE sc.parent_community_id = {ph}
                     GROUP BY sc.id, sc.name
                     ORDER BY sc.name
