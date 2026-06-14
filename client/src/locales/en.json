@@ -318,7 +318,45 @@
     "logout": "Logout",
     "account_settings": "Account Settings",
     "admin_profile": "Admin Profile",
-    "admin_dashboard": "Admin Dashboard"
+    "admin_dashboard": "Admin Dashboard",
+    "owner_tools": "Owner tools"
+  },
+  "owner": {
+    "header": "Your community at a glance",
+    "tab_overview": "Overview",
+    "tab_reports": "Reports",
+    "tab_spaces": "Spaces & groups",
+    "error": "Couldn't load your dashboard just now.",
+    "owner_only": "Only you can see this.",
+    "locked_cta": "Unlock the full read",
+    "members_delta": "+{{n}} this week",
+    "members_cap": "{{count}} of {{cap}}",
+    "spaces_value": "{{subs}} spaces · {{groups}} groups",
+    "invites_value": "{{accepted}} joined of {{sent}} sent",
+    "completion_full": "Fully set up",
+    "completion_partial": "Getting started",
+    "completion_none": "Not started yet",
+    "reports_soon_title": "Nothing to review",
+    "reports_soon_body": "When members flag a post or comment, it'll show up here for you to look at.",
+    "spaces_subcommunities": "Spaces",
+    "spaces_groups": "Groups",
+    "spaces_members": "{{n}} members",
+    "spaces_empty": "No spaces or groups yet.",
+    "metric": {
+      "members": "Members",
+      "spaces": "Spaces & groups",
+      "invites": "Invites",
+      "profile_completion": "Profiles members filled in",
+      "activation": "New-member activation",
+      "activation_hint": "How many new people start posting",
+      "sticking": "Who's sticking around",
+      "sticking_hint": "See who stays active after joining"
+    },
+    "steve": {
+      "greeting": "Here's how {{community}} is doing — I've been keeping an eye on it.",
+      "read_default": "You're up {{delta}} this week, and {{complete}} of {{total}} have set up their profile. I'll keep watching.",
+      "read_empty": "Your community is just getting started. Invite a few people and post a welcome to get things going."
+    }
   },
   "steve": {
     "label": "Steve",

@@ -77,6 +77,8 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/event/<int:event_id>/rsvp` | DELETE | `cancel_rsvp` | `backend/blueprints/community_calendar.py:194` | cancel rsvp | *(no exact string match — may use helpers)* |
 | `/event/<int:event_id>/rsvps` | GET (default) | `get_event_rsvps` | `backend/blueprints/community_calendar.py:204` | get event rsvps | *(no exact string match — may use helpers)* |
 | `/get_event_rsvp_details` | GET (default) | `get_event_rsvp_details` | `backend/blueprints/community_calendar.py:224` | get event rsvp details | `client/src/pages/EventDetail.tsx` (1) |
+| `/api/community/<int:community_id>/analytics/overview` | GET | `analytics_overview` | `backend/blueprints/owner_analytics.py:33` | Owner Dashboard overview metrics (owner/admin-gated, non-enumerating) | `client/src/pages/OwnerDashboard.tsx` (1) |
+| `/api/community/<int:community_id>/analytics/spaces` | GET | `analytics_spaces` | `backend/blueprints/owner_analytics.py:56` | Owner Dashboard sub-communities + groups list | `client/src/components/owner/SpacesTab.tsx` (1) |
 | `/api/community/<int:community_id>/handle_settings` | GET | `handle_settings_get` | `backend/blueprints/community_handles.py:20` | handle settings get | *(no exact string match — may use helpers)* |
 | `/api/community/<int:community_id>/handle_settings` | POST | `handle_settings_post` | `backend/blueprints/community_handles.py:33` | handle settings post | *(no exact string match — may use helpers)* |
 | `/api/community/by_handle/<handle>` | GET | `lookup_by_handle` | `backend/blueprints/community_handles.py:55` | lookup by handle | *(no exact string match — may use helpers)* |

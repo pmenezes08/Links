@@ -44,6 +44,7 @@ import PostDetail from './pages/PostDetail'
 import CreatePost from './pages/CreatePost'
 import Members from './pages/Members'
 import EditCommunity from './pages/EditCommunity'
+import OwnerDashboard from './pages/OwnerDashboard'
 import Communities from './pages/Communities'
 import Followers from './pages/Followers'
 import Networking from './pages/Networking'
@@ -959,6 +960,7 @@ function AppRoutes(){
                 <Route path="/community/:community_id/key_posts" element={<KeyPosts />} />
                 <Route path="/community/:community_id/members" element={<Members />} />
                 <Route path="/community/:community_id/edit" element={<EditCommunity />} />
+                <Route path="/community/:community_id/owner" element={<OwnerDashboard />} />
                 <Route path="/event/:event_id" element={<EventDetail />} />
                 <Route path="/post/:post_id" element={<PostDetail />} />
                 <Route path="/reply/:reply_id" element={<CommentReply />} />

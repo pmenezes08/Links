@@ -318,7 +318,45 @@
     "logout": "Sair",
     "account_settings": "Definições da conta",
     "admin_profile": "Perfil de admin",
-    "admin_dashboard": "Painel de admin"
+    "admin_dashboard": "Painel de admin",
+    "owner_tools": "Gestão da comunidade"
+  },
+  "owner": {
+    "header": "A tua comunidade, num relance",
+    "tab_overview": "Vista geral",
+    "tab_reports": "Denúncias",
+    "tab_spaces": "Espaços e grupos",
+    "error": "Não foi possível carregar o teu painel agora.",
+    "owner_only": "Só tu vês isto.",
+    "locked_cta": "Desbloquear a vista completa",
+    "members_delta": "+{{n}} esta semana",
+    "members_cap": "{{count}} de {{cap}}",
+    "spaces_value": "{{subs}} espaços · {{groups}} grupos",
+    "invites_value": "{{accepted}} entraram de {{sent}} enviados",
+    "completion_full": "Completos",
+    "completion_partial": "A começar",
+    "completion_none": "Por começar",
+    "reports_soon_title": "Nada para rever",
+    "reports_soon_body": "Quando os membros sinalizarem uma publicação ou comentário, vai aparecer aqui para tu veres.",
+    "spaces_subcommunities": "Espaços",
+    "spaces_groups": "Grupos",
+    "spaces_members": "{{n}} membros",
+    "spaces_empty": "Ainda não há espaços nem grupos.",
+    "metric": {
+      "members": "Membros",
+      "spaces": "Espaços e grupos",
+      "invites": "Convites",
+      "profile_completion": "Perfis que os membros preencheram",
+      "activation": "Ativação de novos membros",
+      "activation_hint": "Quantos novos membros começam a publicar",
+      "sticking": "Quem fica",
+      "sticking_hint": "Vê quem continua ativo depois de entrar"
+    },
+    "steve": {
+      "greeting": "Eis como vai {{community}} — tenho estado de olho.",
+      "read_default": "Estás a crescer +{{delta}} esta semana, e {{complete}} de {{total}} já preencheram o perfil. Continuo de olho.",
+      "read_empty": "A tua comunidade está mesmo a começar. Convida algumas pessoas e publica umas boas-vindas para arrancar."
+    }
   },
   "steve": {
     "label": "Steve",
