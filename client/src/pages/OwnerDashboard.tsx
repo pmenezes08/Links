@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import OverviewTab from '../components/owner/OverviewTab'
 import SpacesTab from '../components/owner/SpacesTab'
+import ReportsTab from '../components/owner/ReportsTab'
 import CommunitySwitcher from '../components/owner/CommunitySwitcher'
 import type { OwnerOverview, OwnerManagedCommunity } from '../components/owner/types'
 
@@ -115,12 +116,7 @@ export default function OwnerDashboard() {
         {!loading && !error && data && (
           <>
             {tab === 'overview' && <OverviewTab data={data} onUpgrade={onUpgrade} />}
-            {tab === 'reports' && (
-              <div className="py-12 text-center">
-                <div className="text-base font-medium text-c-text-primary">{t('owner.reports_soon_title')}</div>
-                <div className="mx-auto mt-1.5 max-w-xs text-[13px] text-c-text-tertiary">{t('owner.reports_soon_body')}</div>
-              </div>
-            )}
+            {tab === 'reports' && communityId != null && <ReportsTab communityId={communityId} />}
             {tab === 'spaces' && communityId != null && <SpacesTab communityId={communityId} />}
           </>
         )}

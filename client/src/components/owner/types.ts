@@ -38,6 +38,23 @@ export type OwnerManagedCommunity = {
   is_paid: boolean
 }
 
+export type OwnerReport = {
+  report_id: number
+  post_id: number
+  reporter_username: string
+  reason: string
+  details?: string | null
+  status: string
+  reviewed_by?: string | null
+  reviewed_at?: string | null
+  reported_at?: string | null
+  post_author: string
+  post_content: string
+  post_timestamp?: string | null
+  report_count: number
+  type: string
+}
+
 export type OwnerSpaces = {
   success: boolean
   subcommunities: Array<{ id: number; name: string; member_count: number }>
