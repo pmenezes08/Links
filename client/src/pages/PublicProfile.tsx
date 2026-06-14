@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
@@ -11,6 +11,7 @@ import TranslateGlobeButton from '../components/TranslateGlobeButton'
 import { useEntitlements } from '../hooks/useEntitlements'
 import { SkeletonProfileShell } from '../components/SkeletonRow'
 import { hapticImpactLight } from '../utils/haptics'
+import { optimizeStoryImage, optimizeAvatar } from '../utils/imageOptimizer'
 import { SEP_EM_DASH, formatDateRange } from '../utils/typography'
 import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 
@@ -122,6 +123,15 @@ export default function PublicProfile() {
   const [error, setError] = useState<string | null>(null)
   const [profile, setProfile] = useState<PublicProfileResponse | null>(null)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [previewLoaded, setPreviewLoaded] = useState(false)
+  const previewImgRef = useRef<HTMLImageElement>(null)
+
+  // A browser-cached full image may be `complete` before onLoad fires — reveal it immediately so it never stays hidden behind the placeholder.
+  useEffect(() => {
+    if (!previewImage) return
+    const img = previewImgRef.current
+    if (img && img.complete && img.naturalWidth > 0) setPreviewLoaded(true)
+  }, [previewImage])
   const [followStatus, setFollowStatus] = useState<'none' | 'pending' | 'accepted'>('none')
   const [followersCount, setFollowersCount] = useState(0)
   const [followingCount, setFollowingCount] = useState(0)
@@ -446,7 +456,7 @@ export default function PublicProfile() {
               type="button"
               className="rounded-full focus:outline-none focus:ring-2 focus:ring-cpoint-turquoise"
               onClick={() => {
-                if (profilePictureUrl) setPreviewImage(profilePictureUrl)
+                if (profilePictureUrl) { setPreviewLoaded(false); setPreviewImage(profilePictureUrl) }
               }}
               aria-label={t('profile.aria.view_profile_picture')}
             >
@@ -863,27 +873,37 @@ export default function PublicProfile() {
       </div>
       {previewImage ? (
         <div
-          className="fixed inset-0 z-[1200] bg-black/90 backdrop-blur-sm flex items-center justify-center px-4"
+          className="fixed inset-0 z-[1200] overflow-hidden bg-black/90 backdrop-blur-sm flex items-center justify-center px-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) setPreviewImage(null)
           }}
         >
+          {/* Instant blurred backdrop from the already-cached avatar — fills the gap while the full image streams in */}
+          {profilePictureUrl ? (
+            <img
+              src={optimizeAvatar(profilePictureUrl, 64)}
+              aria-hidden="true"
+              className={`pointer-events-none absolute inset-0 w-full h-full object-cover scale-125 blur-3xl transition-opacity duration-500 ${previewLoaded ? 'opacity-0' : 'opacity-50'}`}
+            />
+          ) : null}
           <button
             type="button"
-            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-c-active-bg hover:bg-c-hover-bg border border-c-border text-c-text-primary flex items-center justify-center"
+            className="absolute top-4 right-4 z-10 w-10 h-10 rounded-full bg-c-active-bg hover:bg-c-hover-bg border border-c-border text-c-text-primary flex items-center justify-center"
             onClick={() => setPreviewImage(null)}
             aria-label={t('profile.aria.close_preview')}
           >
             <i className="fa-solid fa-xmark" />
           </button>
           <div
-            className="flex items-center justify-center w-[90vw] max-w-3xl"
+            className="relative flex items-center justify-center w-[90vw] max-w-3xl"
             style={{ maxHeight: 'calc(100vh - 6rem)' }}
           >
             <img
-              src={previewImage}
+              ref={previewImgRef}
+              src={optimizeStoryImage(previewImage)}
               alt={t('profile.alt.profile')}
-              className="max-w-full max-h-full object-contain rounded-lg border border-c-border"
+              onLoad={() => setPreviewLoaded(true)}
+              className={`max-w-full max-h-full object-contain rounded-lg border border-c-border transition-opacity duration-300 ${previewLoaded ? 'opacity-100' : 'opacity-0'}`}
             />
           </div>
         </div>
