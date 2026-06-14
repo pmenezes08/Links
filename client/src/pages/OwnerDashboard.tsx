@@ -3,7 +3,8 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import OverviewTab from '../components/owner/OverviewTab'
 import SpacesTab from '../components/owner/SpacesTab'
-import type { OwnerOverview } from '../components/owner/types'
+import CommunitySwitcher from '../components/owner/CommunitySwitcher'
+import type { OwnerOverview, OwnerManagedCommunity } from '../components/owner/types'
 
 type Tab = 'overview' | 'reports' | 'spaces'
 const TABS: Tab[] = ['overview', 'reports', 'spaces']
@@ -37,8 +38,18 @@ export default function OwnerDashboard() {
   const requested = searchParams.get('tab') as Tab | null
   const [tab, setTab] = useState<Tab>(requested && TABS.includes(requested) ? requested : 'overview')
   const [data, setData] = useState<OwnerOverview | null>(null)
+  const [managed, setManaged] = useState<OwnerManagedCommunity[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+    fetch('/api/owner/communities', { credentials: 'include', headers: { Accept: 'application/json' } })
+      .then(r => r.json())
+      .then(j => { if (mounted && Array.isArray(j?.communities)) setManaged(j.communities) })
+      .catch(() => {})
+    return () => { mounted = false }
+  }, [])
 
   useEffect(() => {
     if (!communityId) return
@@ -76,10 +87,11 @@ export default function OwnerDashboard() {
         <button type="button" onClick={() => navigate(-1)} aria-label={t('navigation.back')} className="text-c-text-secondary">
           <i className="fa-solid fa-chevron-left" />
         </button>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[15px] font-medium">{data?.community?.name || t('owner.header')}</div>
-          <div className="text-[11px] text-c-text-tertiary">{t('navigation.owner_tools')}</div>
-        </div>
+        <CommunitySwitcher
+          communities={managed}
+          currentId={communityId}
+          fallbackName={data?.community?.name || t('owner.header')}
+        />
         {data && (
           <span className="rounded-full border border-cpoint-turquoise/40 px-2 py-0.5 text-[10px] text-cpoint-turquoise">
             Owner

@@ -52,6 +52,20 @@ def analytics_overview(community_id: int):
     return jsonify(payload), 200
 
 
+@owner_analytics_bp.route("/api/owner/communities", methods=["GET"])
+def owner_communities():
+    """Communities the caller owns or manages, with tier — for the dashboard's
+    community switcher. Scoped to the caller by construction (no community id),
+    so no per-community gate is needed beyond an authenticated session."""
+    username = session.get("username")
+    if not username:
+        return api_errors.auth_required()
+
+    from backend.services.community_analytics import list_managed_communities
+
+    return jsonify(list_managed_communities(username)), 200
+
+
 @owner_analytics_bp.route(
     "/api/community/<int:community_id>/analytics/spaces", methods=["GET"]
 )

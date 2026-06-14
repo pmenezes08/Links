@@ -246,6 +246,87 @@ def _steve_block(*, low_data: bool, net_new_7d: int, completion: Dict[str, int],
     }
 
 
+def list_managed_communities(username: str) -> Dict[str, Any]:
+    """Communities the user owns or is a delegated admin of, each with its tier
+    — backs the Owner Dashboard community switcher. Owned = ``creator_username``
+    match; delegated = an admin-ish role in ``user_communities`` or a row in
+    ``community_admins``. ``is_owner`` gates the owner-only upgrade CTA client-side.
+    """
+    norm = (username or "").strip().lower()
+    if not norm:
+        return {"success": True, "communities": []}
+
+    found: Dict[int, Dict[str, Any]] = {}
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            c.execute(
+                f"SELECT id, name FROM communities WHERE LOWER(creator_username) = {ph}",
+                (norm,),
+            )
+            for row in c.fetchall() or []:
+                cid = int(row["id"] if hasattr(row, "keys") else row[0])
+                name = row["name"] if hasattr(row, "keys") else row[1]
+                found[cid] = {"id": cid, "name": name, "is_owner": True}
+
+            try:
+                c.execute(
+                    f"""
+                    SELECT c.id, c.name
+                    FROM user_communities uc
+                    JOIN users u ON uc.user_id = u.id
+                    JOIN communities c ON uc.community_id = c.id
+                    WHERE LOWER(u.username) = {ph}
+                      AND LOWER(uc.role) IN ('admin', 'owner', 'moderator', 'manager')
+                    """,
+                    (norm,),
+                )
+                for row in c.fetchall() or []:
+                    cid = int(row["id"] if hasattr(row, "keys") else row[0])
+                    if cid not in found:
+                        name = row["name"] if hasattr(row, "keys") else row[1]
+                        found[cid] = {"id": cid, "name": name, "is_owner": False}
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.debug("list_managed_communities role join failed: %s", exc)
+
+            try:
+                c.execute(
+                    f"""
+                    SELECT c.id, c.name
+                    FROM community_admins ca
+                    JOIN communities c ON ca.community_id = c.id
+                    WHERE LOWER(ca.username) = {ph}
+                    """,
+                    (norm,),
+                )
+                for row in c.fetchall() or []:
+                    cid = int(row["id"] if hasattr(row, "keys") else row[0])
+                    if cid not in found:
+                        name = row["name"] if hasattr(row, "keys") else row[1]
+                        found[cid] = {"id": cid, "name": name, "is_owner": False}
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.debug("list_managed_communities community_admins failed: %s", exc)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("list_managed_communities failed: %s", exc)
+        return {"success": True, "communities": []}
+
+    communities: List[Dict[str, Any]] = []
+    for info in found.values():
+        tier_info = _resolve_tier(info["id"])
+        communities.append({
+            "id": info["id"],
+            "name": info["name"],
+            "is_owner": info["is_owner"],
+            "role": "owner" if info["is_owner"] else "admin",
+            "tier": tier_info["tier"],
+            "is_paid": bool(tier_info["is_paid"]),
+        })
+    communities.sort(key=lambda x: str(x["name"] or "").lower())
+    return {"success": True, "communities": communities}
+
+
 def list_spaces(community_id: int) -> Dict[str, Any]:
     """Sub-communities and groups under a community, for the Spaces tab —
     name + id (+ member count where cheap), so the owner can tap straight in."""

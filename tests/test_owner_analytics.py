@@ -247,3 +247,33 @@ def test_spaces_lists_subcommunities_and_groups(mysql_dsn):
     body = resp.get_json()
     assert any(s["name"] == "Sub One" for s in body["subcommunities"])
     assert any(g["name"] == "Group One" for g in body["groups"])
+
+
+def test_owner_communities_lists_owned_and_managed(mysql_dsn):
+    import bodybuilding_app
+
+    make_user("ownerA")
+    make_user("ownerB")
+    make_user("modA")
+    client = bodybuilding_app.app.test_client()
+
+    a1 = make_community("Alpha One", creator_username="ownerA")
+    a2 = make_community("Alpha Two", creator_username="ownerA")
+    b = make_community("Bravo", creator_username="ownerB")
+    _add_member("modA", a1, role="admin")
+
+    _login(client, "ownerA")
+    resp = client.get("/api/owner/communities")
+    assert resp.status_code == 200
+    owned = resp.get_json()["communities"]
+    ids = {c["id"] for c in owned}
+    assert ids == {a1, a2}                 # owns both, not Bravo
+    assert b not in ids
+    assert all(c["is_owner"] for c in owned)
+
+    _login(client, "modA")
+    managed = client.get("/api/owner/communities").get_json()["communities"]
+    by_id = {c["id"]: c for c in managed}
+    assert a1 in by_id                     # delegated admin sees the community
+    assert by_id[a1]["is_owner"] is False
+    assert by_id[a1]["role"] == "admin"

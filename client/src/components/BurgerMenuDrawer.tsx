@@ -54,7 +54,7 @@ export default function BurgerMenuDrawer({
   // still server-side gated, so this is cosmetic only.
   const ownedCommunityId = (() => {
     try {
-      return getCachedDashboardSnapshot()?.communities?.find(c => c.is_owner)?.id ?? null
+      return getCachedDashboardSnapshot()?.communities?.find(c => c.is_owner || c.is_admin)?.id ?? null
     } catch {
       return null
     }

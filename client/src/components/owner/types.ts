@@ -29,6 +29,15 @@ export type OwnerOverview = {
   generated_at: string
 }
 
+export type OwnerManagedCommunity = {
+  id: number
+  name: string
+  role: 'owner' | 'admin'
+  is_owner: boolean
+  tier: string
+  is_paid: boolean
+}
+
 export type OwnerSpaces = {
   success: boolean
   subcommunities: Array<{ id: number; name: string; member_count: number }>
