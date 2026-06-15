@@ -114,11 +114,14 @@ export default function Networking() {
   }, [])
 
   const { keyboardLift, showKeyboard, safeBottomPx } = useComposerKeyboardLift({
-    // Only chase the latest message when a conversation exists. On the empty
-    // Ask-Steve landing there's nothing below the fold, so scrolling to the
-    // end just shoves the welcome + suggestions out of view and exposes the
-    // bare canvas (black in dark mode) behind the keyboard.
-    onKeyboardOpen: () => { if (steveMessages.length > 0) scrollToBottom() },
+    // Smoothly lift the content above the keyboard on open. Safe for BOTH the
+    // empty landing and a conversation now that /networking self-manages the
+    // keyboard (no global <main> inset double-counting) and the bottom anchor
+    // grows with keyboardLift: scroll-to-end lands the content just above the
+    // lifted bar instead of flinging it off-screen. (The earlier messages-only
+    // guard was a band-aid for the old double-handling; with that fixed it just
+    // left the landing's content stranded behind the keyboard.)
+    onKeyboardOpen: scrollToBottom,
   })
 
   // Personal state
