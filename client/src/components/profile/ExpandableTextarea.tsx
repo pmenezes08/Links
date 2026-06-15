@@ -56,6 +56,13 @@ export function ExpandableTextarea({
         className={`${className ?? ''} !pr-9`}
         value={value}
         onChange={e => onChange(e.target.value)}
+        onFocus={e => {
+          // After the keyboard + card-resize settle, pull the focused field into
+          // view so clicking a lower section keeps it visible (otherwise the
+          // shrunk card can leave only the first section on screen).
+          const el = e.currentTarget
+          window.setTimeout(() => el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 280)
+        }}
         placeholder={placeholder}
       />
       <button

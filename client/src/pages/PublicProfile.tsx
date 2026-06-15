@@ -38,6 +38,43 @@ type StructuredEducation = {
   description?: string | null
 }
 
+/** Parse a "YYYY-MM" (or looser "YYYY", "YYYY/M") value to a comparable month ordinal; -1 if absent. */
+function ymToOrdinal(value?: string | null): number {
+  const s = String(value || '').trim()
+  const m = s.match(/(\d{4})(?:[-/](\d{1,2}))?/)
+  if (!m) return -1
+  const year = Number(m[1])
+  const month = m[2] ? Math.min(12, Math.max(1, Number(m[2]))) : 12
+  return year * 12 + month
+}
+
+/**
+ * Standardise a career/education timeline to most-recent-first regardless of the
+ * order the CV import produced (some CVs list oldest-first). Ongoing rows (no end,
+ * or a "present"/"current" marker) float to the top; otherwise sort by end date
+ * desc, then start date desc. Stable for equal keys so identical dates keep their
+ * relative order. Pure (does not mutate the input).
+ */
+function sortTimelineByRecency<T extends { start?: string | null; end?: string | null }>(rows: T[]): T[] {
+  const isOngoing = (r: T) => {
+    const end = String(r.end || '').trim()
+    return !end || /present|current|now|ongoing|atual|presente/i.test(end)
+  }
+  return rows
+    .map((row, idx) => ({ row, idx }))
+    .sort((a, b) => {
+      const ao = isOngoing(a.row)
+      const bo = isOngoing(b.row)
+      if (ao !== bo) return ao ? -1 : 1
+      const endDiff = ymToOrdinal(b.row.end) - ymToOrdinal(a.row.end)
+      if (endDiff !== 0) return endDiff
+      const startDiff = ymToOrdinal(b.row.start) - ymToOrdinal(a.row.start)
+      if (startDiff !== 0) return startDiff
+      return a.idx - b.idx
+    })
+    .map(x => x.row)
+}
+
 function formatYmLabel(ym: string): string {
   if (!ym || !/^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) return ym || ''
   const [yStr, mStr] = ym.split('-')
@@ -382,8 +419,12 @@ export default function PublicProfile() {
         .filter(Boolean)
     : []
 
-  const workTimeline = Array.isArray(professional.work_history) ? professional.work_history : []
-  const eduTimeline = Array.isArray(professional.education) ? professional.education : []
+  const workTimeline = sortTimelineByRecency(
+    Array.isArray(professional.work_history) ? professional.work_history : [],
+  )
+  const eduTimeline = sortTimelineByRecency(
+    Array.isArray(professional.education) ? professional.education : [],
+  )
   const highlightItems = Array.isArray(personal.highlights)
     ? personal.highlights.filter(h => h && String(h.answer || '').trim())
     : []

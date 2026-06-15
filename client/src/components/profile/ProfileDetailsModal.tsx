@@ -85,6 +85,13 @@ export function ProfileDetailsModal({
   const [page, setPage] = useState<1 | 2>(1)
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const { keyboardLift, showKeyboard, safeBottomPx } = useComposerKeyboardLift()
+  // How much extra to shave off the card when the keyboard is open. The base
+  // height already reserves the bottom safe-area + a 1.5rem margin; once the
+  // keyboard is up it covers that area, so we give it back and only keep an 8px
+  // gap above the keyboard — otherwise the card collapses far smaller than the
+  // space actually available. Kept outside the min() below so the transition
+  // animates a plain px delta (no snap).
+  const keyboardShave = showKeyboard ? Math.max(0, keyboardLift - safeBottomPx - 16) : 0
 
   const stepName =
     page === 1 ? t('profile.details_modal.step_spotlight') : t('profile.details_modal.step_timeline')
@@ -125,7 +132,7 @@ export function ProfileDetailsModal({
           // is a plain `- <px>` subtraction — WebKit won't smoothly transition a
           // max-height whose value is a min()/calc() that itself contains the
           // changing term, which made the card snap instead of glide.
-          maxHeight: `calc(min(720px, 100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 1.5rem) - ${showKeyboard ? keyboardLift : 0}px)`,
+          maxHeight: `calc(min(720px, 100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 1.5rem) - ${keyboardShave}px)`,
           transition: `max-height ${CHAT_KEYBOARD_ANIMATION_MS}ms ${CPOINT_EASE_OUT}`,
         }}
       >
