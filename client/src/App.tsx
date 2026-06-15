@@ -44,6 +44,7 @@ import PostDetail from './pages/PostDetail'
 import CreatePost from './pages/CreatePost'
 import Members from './pages/Members'
 import EditCommunity from './pages/EditCommunity'
+import OwnerDashboard from './pages/OwnerDashboard'
 import Communities from './pages/Communities'
 import Followers from './pages/Followers'
 import Networking from './pages/Networking'
@@ -99,7 +100,22 @@ import {
   GOOGLE_WEB_CLIENT_ID,
 } from './constants/googleOAuth'
 
-const queryClient = new QueryClient()
+// Weak-network-friendly defaults for the (few) react-query consumers: retry
+// transient failures with backoff, revalidate on reconnect, and serve cached
+// data briefly as fresh so a flaky link doesn't refetch on every mount.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 2,
+      retryDelay: attempt => Math.min(4000, 400 * 2 ** attempt) * (0.5 + Math.random() / 2),
+      refetchOnReconnect: true,
+      staleTime: 30_000,
+    },
+    mutations: {
+      retry: 0,
+    },
+  },
+})
 
 function ChatThreadRoute() {
   const { username } = useParams()
@@ -142,7 +158,13 @@ function AppRoutes(){
   const [uploadStatusToast, setUploadStatusToast] = useState<string | null>(null)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const [fullscreenOverlayTick, setFullscreenOverlayTick] = useState(0)
-  const isChatRoute = location.pathname.startsWith('/user_chat/chat/') || location.pathname.startsWith('/group_chat/')
+  // Routes that run their OWN fixed composer + keyboard lift, so the global
+  // <main> keyboard offset/padding must stay OFF for them — otherwise it
+  // double-counts the keyboard and shoves content up under the header (leaving
+  // a dead gap / bare canvas behind the keyboard). Networking's Ask-Steve bar
+  // self-manages via useComposerKeyboardLift, so it belongs here despite not
+  // being a chat thread.
+  const isChatRoute = location.pathname.startsWith('/user_chat/chat/') || location.pathname.startsWith('/group_chat/') || location.pathname === '/networking'
   useMediaUploadResume(authLoaded && !!userMeta.username)
 
   const scrollRegionRef = useRef<HTMLDivElement | null>(null)
@@ -959,6 +981,7 @@ function AppRoutes(){
                 <Route path="/community/:community_id/key_posts" element={<KeyPosts />} />
                 <Route path="/community/:community_id/members" element={<Members />} />
                 <Route path="/community/:community_id/edit" element={<EditCommunity />} />
+                <Route path="/community/:community_id/owner" element={<OwnerDashboard />} />
                 <Route path="/event/:event_id" element={<EventDetail />} />
                 <Route path="/post/:post_id" element={<PostDetail />} />
                 <Route path="/reply/:reply_id" element={<CommentReply />} />

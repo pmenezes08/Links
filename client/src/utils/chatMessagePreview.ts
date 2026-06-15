@@ -1,4 +1,5 @@
 import type { TFunction } from 'i18next'
+import { stripReplyMarker } from '../chat/utils'
 
 const REPLY_PREFIX_RE = /^\[REPLY:([^:\]]+):([^\]]*)\](?:\r?\n|\s*)(.*)$/s
 const STORY_REPLY_PREFIX_RE = /^\[STORY_REPLY:[^\]]+\](?:\r?\n|\s*)(.*)$/s
@@ -42,7 +43,7 @@ export function formatChatMessagePreview(text: string | null | undefined, t: TFu
     const replyMatch = raw.match(REPLY_PREFIX_RE)
     if (replyMatch) {
       const sender = (replyMatch[1] || '').trim() || t('chat.preview_someone')
-      const quoted = parseReplySnippet(replyMatch[2] || '', t)
+      const quoted = parseReplySnippet(stripReplyMarker(replyMatch[2] || ''), t)
       const body = (replyMatch[3] || '').trim()
       const content = body || quoted
       return t('chat.replied_to_user_preview', { name: sender, message: content })

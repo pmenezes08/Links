@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
@@ -11,6 +11,7 @@ import TranslateGlobeButton from '../components/TranslateGlobeButton'
 import { useEntitlements } from '../hooks/useEntitlements'
 import { SkeletonProfileShell } from '../components/SkeletonRow'
 import { hapticImpactLight } from '../utils/haptics'
+import { optimizeStoryImage, optimizeAvatar } from '../utils/imageOptimizer'
 import { SEP_EM_DASH, formatDateRange } from '../utils/typography'
 import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 
@@ -35,6 +36,43 @@ type StructuredEducation = {
   start?: string | null
   end?: string | null
   description?: string | null
+}
+
+/** Parse a "YYYY-MM" (or looser "YYYY", "YYYY/M") value to a comparable month ordinal; -1 if absent. */
+function ymToOrdinal(value?: string | null): number {
+  const s = String(value || '').trim()
+  const m = s.match(/(\d{4})(?:[-/](\d{1,2}))?/)
+  if (!m) return -1
+  const year = Number(m[1])
+  const month = m[2] ? Math.min(12, Math.max(1, Number(m[2]))) : 12
+  return year * 12 + month
+}
+
+/**
+ * Standardise a career/education timeline to most-recent-first regardless of the
+ * order the CV import produced (some CVs list oldest-first). Ongoing rows (no end,
+ * or a "present"/"current" marker) float to the top; otherwise sort by end date
+ * desc, then start date desc. Stable for equal keys so identical dates keep their
+ * relative order. Pure (does not mutate the input).
+ */
+function sortTimelineByRecency<T extends { start?: string | null; end?: string | null }>(rows: T[]): T[] {
+  const isOngoing = (r: T) => {
+    const end = String(r.end || '').trim()
+    return !end || /present|current|now|ongoing|atual|presente/i.test(end)
+  }
+  return rows
+    .map((row, idx) => ({ row, idx }))
+    .sort((a, b) => {
+      const ao = isOngoing(a.row)
+      const bo = isOngoing(b.row)
+      if (ao !== bo) return ao ? -1 : 1
+      const endDiff = ymToOrdinal(b.row.end) - ymToOrdinal(a.row.end)
+      if (endDiff !== 0) return endDiff
+      const startDiff = ymToOrdinal(b.row.start) - ymToOrdinal(a.row.start)
+      if (startDiff !== 0) return startDiff
+      return a.idx - b.idx
+    })
+    .map(x => x.row)
 }
 
 function formatYmLabel(ym: string): string {
@@ -122,6 +160,15 @@ export default function PublicProfile() {
   const [error, setError] = useState<string | null>(null)
   const [profile, setProfile] = useState<PublicProfileResponse | null>(null)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [previewLoaded, setPreviewLoaded] = useState(false)
+  const previewImgRef = useRef<HTMLImageElement>(null)
+
+  // A browser-cached full image may be `complete` before onLoad fires — reveal it immediately so it never stays hidden behind the placeholder.
+  useEffect(() => {
+    if (!previewImage) return
+    const img = previewImgRef.current
+    if (img && img.complete && img.naturalWidth > 0) setPreviewLoaded(true)
+  }, [previewImage])
   const [followStatus, setFollowStatus] = useState<'none' | 'pending' | 'accepted'>('none')
   const [followersCount, setFollowersCount] = useState(0)
   const [followingCount, setFollowingCount] = useState(0)
@@ -226,10 +273,44 @@ export default function PublicProfile() {
   const handleFollowToggle = async () => {
     if (!profile || !currentUsername) return
     if (followLoading) return
+    const shouldDelete = followStatus === 'accepted' || followStatus === 'pending'
+    const method = shouldDelete ? 'DELETE' : 'POST'
+
+    // Snapshot for rollback if the request fails.
+    const prevStatus = followStatus
+    const prevFollowers = followersCount
+    const prevFollowing = followingCount
+
+    // Optimistic: flip the button and the viewed profile's follower count NOW so the
+    // tap feels native. We can't yet know public(accepted) vs private(pending) on a
+    // new follow, so guess 'accepted' (the common case) and reconcile from the server
+    // response below — a private account corrects to 'pending' on success.
+    const wasAccepted = prevStatus === 'accepted'
+    const optimisticStatus: 'none' | 'pending' | 'accepted' = shouldDelete ? 'none' : 'accepted'
+    const optimisticFollowers = shouldDelete
+      ? Math.max(0, prevFollowers - (wasAccepted ? 1 : 0))
+      : prevFollowers + 1
+    const applyState = (
+      status: 'none' | 'pending' | 'accepted',
+      followers: number,
+      following: number,
+    ) => {
+      setFollowStatus(status)
+      setFollowersCount(followers)
+      setFollowingCount(following)
+      setProfile(prev => prev ? {
+        ...prev,
+        followers_count: followers,
+        following_count: following,
+        is_following: status === 'accepted',
+        follow_status: status,
+        has_pending_follow_request: status === 'pending',
+      } : prev)
+    }
+    applyState(optimisticStatus, optimisticFollowers, prevFollowing)
+
     setFollowLoading(true)
     try {
-      const shouldDelete = followStatus === 'accepted' || followStatus === 'pending'
-      const method = shouldDelete ? 'DELETE' : 'POST'
       const resp = await fetch(`/api/follow/${encodeURIComponent(profile.username)}`, {
         method,
         credentials: 'include',
@@ -240,25 +321,19 @@ export default function PublicProfile() {
         const nextStatusRaw = typeof data.status === 'string' ? data.status : (shouldDelete ? 'none' : 'pending')
         const normalizedStatus: 'none' | 'pending' | 'accepted' =
           nextStatusRaw === 'accepted' ? 'accepted' : nextStatusRaw === 'pending' ? 'pending' : 'none'
-        const nextFollowers = Number(data.followers_count ?? followersCount)
-        const nextFollowing = Number(data.following_count ?? followingCount)
-        setFollowStatus(normalizedStatus)
-        setFollowersCount(nextFollowers)
-        setFollowingCount(nextFollowing)
-        setProfile(prev => prev ? {
-          ...prev,
-          followers_count: nextFollowers,
-          following_count: nextFollowing,
-          is_following: normalizedStatus === 'accepted',
-          follow_status: normalizedStatus,
-          has_pending_follow_request: normalizedStatus === 'pending'
-        } : prev)
+        // Reconcile with authoritative server counts.
+        applyState(
+          normalizedStatus,
+          Number(data.followers_count ?? optimisticFollowers),
+          Number(data.following_count ?? prevFollowing),
+        )
       } else {
-        const errMsg = data?.error || t('profile.public.follow_failed')
-        alert(errMsg)
+        applyState(prevStatus, prevFollowers, prevFollowing) // roll back
+        alert(data?.error || t('profile.public.follow_failed'))
       }
     } catch (err) {
       console.error('Follow toggle error', err)
+      applyState(prevStatus, prevFollowers, prevFollowing) // roll back
       alert(t('profile.public.follow_failed_retry'))
     } finally {
       setFollowLoading(false)
@@ -372,8 +447,12 @@ export default function PublicProfile() {
         .filter(Boolean)
     : []
 
-  const workTimeline = Array.isArray(professional.work_history) ? professional.work_history : []
-  const eduTimeline = Array.isArray(professional.education) ? professional.education : []
+  const workTimeline = sortTimelineByRecency(
+    Array.isArray(professional.work_history) ? professional.work_history : [],
+  )
+  const eduTimeline = sortTimelineByRecency(
+    Array.isArray(professional.education) ? professional.education : [],
+  )
   const highlightItems = Array.isArray(personal.highlights)
     ? personal.highlights.filter(h => h && String(h.answer || '').trim())
     : []
@@ -446,7 +525,7 @@ export default function PublicProfile() {
               type="button"
               className="rounded-full focus:outline-none focus:ring-2 focus:ring-cpoint-turquoise"
               onClick={() => {
-                if (profilePictureUrl) setPreviewImage(profilePictureUrl)
+                if (profilePictureUrl) { setPreviewLoaded(false); setPreviewImage(profilePictureUrl) }
               }}
               aria-label={t('profile.aria.view_profile_picture')}
             >
@@ -863,27 +942,37 @@ export default function PublicProfile() {
       </div>
       {previewImage ? (
         <div
-          className="fixed inset-0 z-[1200] bg-black/90 backdrop-blur-sm flex items-center justify-center px-4"
+          className="fixed inset-0 z-[1200] overflow-hidden bg-black/90 backdrop-blur-sm flex items-center justify-center px-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) setPreviewImage(null)
           }}
         >
+          {/* Instant blurred backdrop from the already-cached avatar — fills the gap while the full image streams in */}
+          {profilePictureUrl ? (
+            <img
+              src={optimizeAvatar(profilePictureUrl, 64)}
+              aria-hidden="true"
+              className={`pointer-events-none absolute inset-0 w-full h-full object-cover scale-125 blur-3xl transition-opacity duration-500 ${previewLoaded ? 'opacity-0' : 'opacity-50'}`}
+            />
+          ) : null}
           <button
             type="button"
-            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-c-active-bg hover:bg-c-hover-bg border border-c-border text-c-text-primary flex items-center justify-center"
+            className="absolute top-4 right-4 z-10 w-10 h-10 rounded-full bg-c-active-bg hover:bg-c-hover-bg border border-c-border text-c-text-primary flex items-center justify-center"
             onClick={() => setPreviewImage(null)}
             aria-label={t('profile.aria.close_preview')}
           >
             <i className="fa-solid fa-xmark" />
           </button>
           <div
-            className="flex items-center justify-center w-[90vw] max-w-3xl"
+            className="relative flex items-center justify-center w-[90vw] max-w-3xl"
             style={{ maxHeight: 'calc(100vh - 6rem)' }}
           >
             <img
-              src={previewImage}
+              ref={previewImgRef}
+              src={optimizeStoryImage(previewImage)}
               alt={t('profile.alt.profile')}
-              className="max-w-full max-h-full object-contain rounded-lg border border-c-border"
+              onLoad={() => setPreviewLoaded(true)}
+              className={`max-w-full max-h-full object-contain rounded-lg border border-c-border transition-opacity duration-300 ${previewLoaded ? 'opacity-100' : 'opacity-0'}`}
             />
           </div>
         </div>

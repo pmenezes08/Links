@@ -13,6 +13,7 @@ import {
   type MediaQuality,
 } from './upload'
 import { removeMediaOutboxRecord, removeMediaOutboxRecordsByPrefix } from './upload/mediaOutbox'
+import { getFileImageDims } from '../utils/getFileImageDims'
 import type { EntitlementsError } from '../utils/entitlementsError'
 import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 
@@ -125,10 +126,14 @@ export async function sendImageMessage(options: ImageMediaOptions) {
   const tempId = `temp_${kind}_${Date.now()}_${Math.random()}`
   const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
   const previewUrl = URL.createObjectURL(file)
+  // Measure intrinsic dims so the bubble reserves its height immediately (sender) and the
+  // receiver can too (we ship them with the message). Cheap header decode; null on failure.
+  const imgDims = await getFileImageDims(file)
   const optimisticMessage: ChatMessage = {
     id: tempId,
     text: kind === 'gif' ? '🎞️ GIF' : '📷 Photo',
     image_path: previewUrl,
+    media_dims: imgDims ? [imgDims] : undefined,
     sent: true,
     time: now,
     isOptimistic: true,
@@ -160,6 +165,7 @@ export async function sendImageMessage(options: ImageMediaOptions) {
       const fd = new FormData()
       fd.append('recipient_id', String(otherUserId))
       fd.append('media_urls', JSON.stringify([publicUrl]))
+      fd.append('media_dims', JSON.stringify(imgDims ? [imgDims] : []))
       fd.append('client_key', tempId)
       const res = await fetch('/send_dm_media', { method: 'POST', credentials: 'include', body: fd })
       const payload = await res.json().catch(() => null)
@@ -559,6 +565,10 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
   const tempId = `temp_multi_${Date.now()}_${Math.random()}`
   const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
   const previewUrls = files.map(f => URL.createObjectURL(f.file))
+  // Intrinsic dims per item (null for videos), parallel to media order, for height reservation.
+  const mediaDims = await Promise.all(
+    files.map(f => (f.type === 'image' ? getFileImageDims(f.file) : Promise.resolve(null))),
+  )
 
   const optimisticMessage: ChatMessage = {
     id: tempId,
@@ -566,6 +576,7 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
     image_path: files[0].type === 'image' ? previewUrls[0] : undefined,
     video_path: files[0].type === 'video' ? previewUrls[0] : undefined,
     media_paths: previewUrls,
+    media_dims: mediaDims,
     sent: true,
     time: now,
     isOptimistic: true,
@@ -597,6 +608,7 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
       const fd = new FormData()
       fd.append('recipient_id', String(otherUserId))
       fd.append('media_urls', JSON.stringify(orderedUrls))
+      fd.append('media_dims', JSON.stringify(mediaDims))
       fd.append('client_key', tempId)
       const res = await fetch('/send_dm_media', { method: 'POST', credentials: 'include', body: fd })
       const payload = await res.json().catch(() => null)
@@ -660,6 +672,7 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
     const fd = new FormData()
     fd.append('recipient_id', String(otherUserId))
     fd.append('media_urls', JSON.stringify(orderedUrls))
+    fd.append('media_dims', JSON.stringify(mediaDims))
     fd.append('client_key', tempId)
 
     const res = await fetch('/send_dm_media', { method: 'POST', credentials: 'include', body: fd })

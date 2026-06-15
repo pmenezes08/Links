@@ -12,6 +12,7 @@ export const VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES: readonly string[] = [
   'group-chat-messages:',
   'group-chat-info:',
   'chat-profile:',
+  'chat-reactions:',
 ]
 
 export function threadsListCacheKey(viewerUsername: string): string {

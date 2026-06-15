@@ -15,6 +15,9 @@ import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 import { invalidateDashboardCache } from '../utils/dashboardCache'
 import { triggerDashboardServerPull } from '../utils/serverPull'
 import { cacheKeyVal, getCachedKeyVal } from '../utils/offlineDb'
+import { apiFetch } from '../utils/apiFetch'
+import LoadErrorRetry from '../components/LoadErrorRetry'
+import { SkeletonCommunityCard } from '../components/SkeletonRow'
 
 type Community = { 
   id: number; 
@@ -266,6 +269,7 @@ export default function Communities(){
   const [parentType, setParentType] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
   const [swipedCommunity, setSwipedCommunity] = useState<number|null>(null)
   const [activeTab, setActiveTab] = useState<'timeline'|'management'|'groups'|'training'>('management')
   const [joinedGroups, setJoinedGroups] = useState<Array<{ group_id: number; name: string; community_id: number; status: string; community_name: string }>>([])
@@ -560,7 +564,7 @@ export default function Communities(){
       setLoading(true)
       try{
         try{
-          const r = await fetch(`/api/profile_me`, { credentials:'include', headers: { 'Accept': 'application/json' } })
+          const r = await apiFetch(`/api/profile_me`, { credentials:'include', headers: { 'Accept': 'application/json' } })
           const j = await r.json().catch(()=>null)
           if (mounted && j?.success && j.profile){
             const meta = {
@@ -573,7 +577,7 @@ export default function Communities(){
           }
         }catch{}
 
-        const rc = await fetch('/api/user_communities_hierarchical', { credentials:'include', headers: { 'Accept': 'application/json' } })
+        const rc = await apiFetch('/api/user_communities_hierarchical', { credentials:'include', headers: { 'Accept': 'application/json' } })
         const jc = await rc.json()
         if (!mounted) return
         if (jc?.success){
@@ -659,7 +663,7 @@ export default function Communities(){
     }
     load()
     return () => { mounted = false }
-  }, [communityDeviceCacheKey, t])
+  }, [communityDeviceCacheKey, t, reloadKey])
 
   useEffect(() => {
     if (parentName) setTitle(t('communities.page_title_named', { name: parentName }))
@@ -873,9 +877,13 @@ export default function Communities(){
           </div>
         )}
         {loading ? (
-          <div className="text-c-text-tertiary">{t('communities.loading')}</div>
+          <div className="space-y-3">
+            <SkeletonCommunityCard />
+            <SkeletonCommunityCard />
+            <SkeletonCommunityCard />
+          </div>
         ) : error ? (
-          <div className="text-red-400">{error}</div>
+          <LoadErrorRetry message={error} onRetry={() => { setError(null); setLoading(true); setReloadKey(k => k + 1) }} />
         ) : (
           <div className="space-y-3">
              {(() => {

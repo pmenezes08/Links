@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
@@ -1770,28 +1771,46 @@ export default function CommentReply() {
         </div>
       ) : null}
 
-      {lightboxVideoSrc ? (
-        <div
-          className="fixed inset-0 z-[1000] bg-black/95 flex flex-col items-center justify-center p-4"
-          onClick={() => setLightboxVideoSrc(null)}
-        >
-          <button
-            type="button"
-            className="absolute top-3 right-3 w-10 h-10 rounded-full bg-c-active-bg hover:bg-c-hover-bg border border-c-border text-c-text-primary flex items-center justify-center z-10"
-            onClick={() => setLightboxVideoSrc(null)}
-            aria-label={t('feed.close_video')}
-          >
-            <i className="fa-solid fa-xmark" />
-          </button>
-          <video
-            src={lightboxVideoSrc.includes('#') ? lightboxVideoSrc : `${lightboxVideoSrc}#t=0.1`}
-            controls
-            playsInline
-            className="max-h-[88vh] max-w-full rounded-lg"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
-      ) : null}
+      {lightboxVideoSrc
+        ? createPortal(
+            // Portaled to body so it escapes the page's fixed-root stacking context
+            // and covers the body-portaled composer (which would otherwise bleed
+            // over a fullscreen video). Close lives in its own top bar — outside the
+            // video bounds — so iOS native video controls can never obscure it.
+            <div
+              className="fixed inset-0 z-[1100] flex flex-col bg-black/95"
+              style={{
+                paddingTop: 'max(env(safe-area-inset-top), 12px)',
+                paddingBottom: 'max(env(safe-area-inset-bottom), 12px)',
+              }}
+              onClick={() => setLightboxVideoSrc(null)}
+            >
+              <div className="flex shrink-0 items-center justify-end px-3 pb-2">
+                <button
+                  type="button"
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-white/40 bg-white/15 text-white backdrop-blur transition hover:bg-white/25"
+                  onClick={() => setLightboxVideoSrc(null)}
+                  aria-label={t('feed.close_video')}
+                >
+                  <i className="fa-solid fa-xmark text-base" />
+                </button>
+              </div>
+              <div
+                className="flex min-h-0 flex-1 items-center justify-center px-4 pb-4"
+                onClick={() => setLightboxVideoSrc(null)}
+              >
+                <video
+                  src={lightboxVideoSrc.includes('#') ? lightboxVideoSrc : `${lightboxVideoSrc}#t=0.1`}
+                  controls
+                  playsInline
+                  className="max-h-full max-w-full rounded-lg"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {/* GIF Picker Modal */}
       <GifPicker

@@ -50,7 +50,7 @@ Stack (from [`client/src/index.css`](../client/src/index.css)):
 | `CPOINT_EASE_OUT` | `cubic-bezier(0.32, 0.72, 0, 1)` | Native-style deceleration |
 | `REDUCED_MOTION_FADE_MS` | 80ms | Reduced-motion fallback: quick opacity fade instead of slide |
 | `STEVE_REPLY_DELAY_BASE_MS` / `_PER_CHAR_MS` / `_MIN_MS` / `_MAX_MS` / `_JITTER_MS` / `STEVE_REPLY_BURST_DISCOUNT` | 180ms / 4ms·char / 350ms / 1100ms / 120ms / 0.6 | Steve onboarding reply pacing — length-scaled typing delay: `clamp(BASE + chars×PER_CHAR, MIN, MAX) × (burst ? DISCOUNT : 1) + jitter`. Short acks land fast; long questions read as composed; consecutive bubbles in one burst pay a discounted price so multi-bubble stages never drag. |
-| `STEVE_THINKING_SEARCHING_MS` / `_NARROWING_MS` / `_LONG_MS` | 2.5s / 7s / 14s | Networking "Steve is thinking" staged wait line — advance-only, labels crossfade at `TAB_CROSSFADE_MS`, fixed-height so the page scroller never jitters. Recalibrate from `ai_usage_log.response_time_ms`, never by feel; copy must not claim progress the client can't know. |
+| `STEVE_THINKING_SEARCHING_MS` / `_NARROWING_MS` / `_LONG_MS` / `STEVE_THINKING_CROSSFADE_MS` | 2.5s / 7s / 14s / 280ms | Networking "Steve is thinking" staged wait line — advance-only, fixed-height so the page scroller never jitters. Labels **crossfade**: the outgoing line fades+slides up while the incoming one fades+slides in over `STEVE_THINKING_CROSSFADE_MS` (`cpoint-label-in`/`-out` keyframes), not an instant swap. Recalibrate stage thresholds from `ai_usage_log.response_time_ms`, never by feel; copy must not claim progress the client can't know. |
 
 Canonical values live in [`client/src/design/motion.ts`](../client/src/design/motion.ts) — keep this table in sync when tokens change.
 

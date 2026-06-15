@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import Avatar from './Avatar'
 import { useLogoutRequest } from '../contexts/LogoutPromptContext'
 import { triggerHaptic } from '../utils/haptics'
+import { getCachedDashboardSnapshot } from '../utils/dashboardCache'
 
 type BurgerMenuDrawerProps = {
   username?: string
@@ -48,6 +49,16 @@ export default function BurgerMenuDrawer({
   const profilePath = username ? `/profile/${encodeURIComponent(username)}` : '/profile'
   const title = displayName || username || ''
   const isAdmin = username === 'admin'
+  // Owner Dashboard entry: deep-link to a community the user owns (from the
+  // cached dashboard). Hidden until we know they own one — the route itself is
+  // still server-side gated, so this is cosmetic only.
+  const ownedCommunityId = (() => {
+    try {
+      return getCachedDashboardSnapshot()?.communities?.find(c => c.is_owner || c.is_admin)?.id ?? null
+    } catch {
+      return null
+    }
+  })()
 
   useEffect(() => {
     void triggerHaptic('light')
@@ -96,6 +107,9 @@ export default function BurgerMenuDrawer({
             </>
           ) : null}
           <MenuItem icon="fa-solid fa-table-cells-large" label={t('navigation.dashboard')} onClick={() => goTo('/premium_dashboard')} />
+          {ownedCommunityId != null ? (
+            <MenuItem icon="fa-solid fa-chart-simple" label={t('navigation.owner_tools')} onClick={() => goTo(`/community/${ownedCommunityId}/owner`)} />
+          ) : null}
           <MenuItem icon="fa-solid fa-user" label={t('navigation.my_profile')} onClick={() => goTo(profilePath)} />
           <MenuItem icon="fa-solid fa-user-group" label={t('navigation.followers')} onClick={() => goTo('/followers')} />
           <MenuItem icon="fa-solid fa-cube" label={t('navigation.subscriptions')} onClick={() => goTo('/subscription_plans')} />

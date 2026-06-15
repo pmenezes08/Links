@@ -56,6 +56,21 @@ def read_community_post_detail(post_id: int, username: str) -> Tuple[Dict[str, A
 
             fs_post = fs_get_post(post_id, username)
             if fs_post:
+                # SECURITY (privacy IDOR): apply the same membership gate as the
+                # MySQL branch below before hydrating/returning the Firestore
+                # body. The community is derived from the post; general / home-
+                # feed posts (no community) stay public; non-members get a
+                # non-enumerating 404 so post visibility cannot be probed by id.
+                from backend.services.community_access import can_view_community_content
+
+                _fs_comm = fs_post.get("community_id") if isinstance(fs_post, dict) else None
+                if _fs_comm:
+                    with get_db_connection() as _gconn:
+                        _gallowed, _ = can_view_community_content(
+                            _gconn.cursor(), get_sql_placeholder(), username, _fs_comm
+                        )
+                    if not _gallowed:
+                        return {"success": False, "error": "Post not found"}, 404
                 _hydrate_fs_post_with_mysql(
                     fs_post=fs_post,
                     post_id=post_id,
@@ -91,6 +106,20 @@ def read_community_post_detail(post_id: int, username: str) -> Tuple[Dict[str, A
 
             allow_nsfw_imagine = False
             community_id = post.get("community_id") if isinstance(post, dict) else None
+
+            # SECURITY (privacy IDOR): community-scoped posts are readable only by
+            # members (mirrors the community feed's access policy); general /
+            # home-feed posts (no community_id) stay public. Non-members get a
+            # non-enumerating 404 — identical to a missing post — so post
+            # visibility cannot be probed by id.
+            from backend.services.community_access import can_view_community_content
+
+            _allowed, _ = can_view_community_content(
+                c, get_sql_placeholder(), username, community_id
+            )
+            if not _allowed:
+                return {"success": False, "error": "Post not found"}, 404
+
             if community_id:
                 try:
                     c.execute("SELECT allow_nsfw_imagine FROM communities WHERE id = ?", (community_id,))

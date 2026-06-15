@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { Capacitor } from '@capacitor/core'
 import { App as CapacitorApp } from '@capacitor/app'
 import { PushNotifications } from '@capacitor/push-notifications'
+import { apiFetch } from '../utils/apiFetch'
 
 type BadgeContextType = {
   unreadMsgs: number
@@ -32,22 +33,18 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
     let msgs = 0
     let notifs = 0
     try {
-      const m = await fetch('/check_unread_messages', { credentials: 'include' })
+      // One round-trip returns BOTH badge counts: the unread-notifications count
+      // now rides /check_unread_messages (see count_unread_notifications), so we no
+      // longer also pull the full ~50-row /api/notifications body just to count.
+      const m = await apiFetch('/check_unread_messages', { credentials: 'include' })
       const mj = await m.json().catch(() => null)
       if (mj && typeof mj.unread_count === 'number') {
         msgs = mj.unread_count
         setUnreadMsgs(mj.unread_count)
       }
-    } catch {}
-    try {
-      const n = await fetch('/api/notifications', { credentials: 'include', headers: { Accept: 'application/json' } })
-      const nj = await n.json().catch(() => null)
-      if (nj?.success && Array.isArray(nj.notifications)) {
-        const cnt = nj.notifications.filter(
-          (x: any) => x && x.is_read === false && x.type !== 'message' && x.type !== 'reaction',
-        ).length
-        notifs = cnt
-        setUnreadNotifs(cnt)
+      if (mj && typeof mj.notif_unread === 'number') {
+        notifs = mj.notif_unread
+        setUnreadNotifs(mj.notif_unread)
       }
     } catch {}
 

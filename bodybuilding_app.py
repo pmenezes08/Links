@@ -544,10 +544,18 @@ def add_cache_headers(response):
             response.headers['Cache-Control'] = 'public, max-age=2592000, immutable'  # 30 days
             response.headers['Expires'] = (datetime.now() + timedelta(days=30)).strftime('%a, %d %b %Y %H:%M:%S GMT')
     
+    # Authenticated JSON API responses are per-user; default them to
+    # private/no-store unless the handler already set Cache-Control (e.g. the
+    # auth no_store responses). Prevents shared/intermediary caching of
+    # user-scoped JSON. Non-clobbering so deliberate per-endpoint policies win.
+    if request.path.startswith('/api/') and 'application/json' in content_type:
+        if not response.headers.get('Cache-Control'):
+            response.headers['Cache-Control'] = 'private, no-store'
+
     # Add security headers while we're at it
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'
-    
+
     return response
 
 @app.after_request
@@ -14360,6 +14368,15 @@ def add_reaction():
             post_data = c.fetchone()
             comm_id = post_data['community_id'] if post_data and hasattr(post_data, 'keys') else (post_data[1] if post_data and len(post_data) > 1 else None)
 
+            # SECURITY (privacy IDOR): only members of the post's community may
+            # react. General / home-feed posts (no community) stay open.
+            from backend.services.community_access import can_view_community_content
+            _react_allowed, _ = can_view_community_content(
+                c, get_sql_placeholder(), username, comm_id
+            )
+            if not _react_allowed:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+
             if existing:
                 if existing['reaction_type'] == reaction_type:
                     # User clicked the same reaction again, so remove it (toggle off)
@@ -16046,6 +16063,15 @@ def post_reply():
             c.execute("SELECT community_id FROM posts WHERE id = ?", (post_id,))
             post_data = c.fetchone()
             community_id = post_data['community_id'] if post_data else None
+
+            # SECURITY (privacy IDOR): only members of the post's community may
+            # reply. General / home-feed posts (no community) stay open.
+            from backend.services.community_access import can_view_community_content
+            _reply_allowed, _ = can_view_community_content(
+                c, get_sql_placeholder(), username, community_id
+            )
+            if not _reply_allowed:
+                return jsonify({'success': False, 'error': 'Post not found!'}), 404
             
             parent_reply_id = request.form.get('parent_reply_id', type=int)
 
@@ -16703,6 +16729,13 @@ def vote_poll():
             
             if not poll_data:
                 return jsonify({'success': False, 'error': 'Poll not found or inactive'})
+
+            # SECURITY (privacy IDOR): only members of the poll's community may
+            # vote. General / home-feed polls (no community) stay open.
+            from backend.services.community_access import can_view_poll
+            _vp_allowed, _ = can_view_poll(c, get_sql_placeholder(), username, poll_id)
+            if not _vp_allowed:
+                return jsonify({'success': False, 'error': 'Poll not found or inactive'}), 404
             
             # Block voting if poll is past its deadline (expires_at <= now)
             try:
@@ -16816,6 +16849,13 @@ def get_poll_results(poll_id):
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+
+            # SECURITY (privacy IDOR): poll results are scoped to the poll's
+            # community; general / home-feed polls stay open.
+            from backend.services.community_access import can_view_poll
+            _pr_allowed, _ = can_view_poll(c, get_sql_placeholder(), session.get('username'), poll_id)
+            if not _pr_allowed:
+                return jsonify({'success': False, 'error': 'Poll not found'}), 404
             
             c.execute("""
                 SELECT po.id, po.option_text, po.votes, 
@@ -16848,6 +16888,13 @@ def get_poll_voters(poll_id):
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+
+            # SECURITY (privacy IDOR): voter identities are scoped to the poll's
+            # community; general / home-feed polls stay open.
+            from backend.services.community_access import can_view_poll
+            _pv_allowed, _ = can_view_poll(c, get_sql_placeholder(), session.get('username'), poll_id)
+            if not _pv_allowed:
+                return jsonify({'success': False, 'error': 'Poll not found'}), 404
             
             # Verify poll exists
             c.execute("SELECT id FROM polls WHERE id = ?", (poll_id,))
@@ -16905,6 +16952,14 @@ def get_post_reactors(post_id: int):
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+
+            # SECURITY (privacy IDOR): reactor identities are scoped to the
+            # post's community; general / home-feed posts stay open.
+            from backend.services.community_access import can_view_post
+            _prx_allowed, _ = can_view_post(c, get_sql_placeholder(), session.get('username'), post_id)
+            if not _prx_allowed:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+
             # Validate post exists
             c.execute("SELECT id FROM posts WHERE id = ?", (post_id,))
             if not c.fetchone():
@@ -17024,6 +17079,16 @@ def get_active_polls():
         with get_db_connection() as conn:
             c = conn.cursor()
             
+            # SECURITY (privacy IDOR): scope to a community the user can read.
+            # The client always passes community_id; without it we no longer dump
+            # cross-community polls.
+            from backend.services.community_access import can_view_community_content
+            if not community_id:
+                return jsonify({'success': True, 'polls': []})
+            _ok_active, _ = can_view_community_content(c, get_sql_placeholder(), username, community_id)
+            if not _ok_active:
+                return jsonify({'success': False, 'error': 'Community not found'}), 404
+
             # Get ALL polls (both active and archived) for the specific community
             if community_id:
                 c.execute("""
@@ -17177,6 +17242,16 @@ def get_historical_polls():
         with get_db_connection() as conn:
             c = conn.cursor()
             
+            # SECURITY (privacy IDOR): scope to a community the user can read.
+            # The client always passes community_id; without it we no longer dump
+            # cross-community polls.
+            from backend.services.community_access import can_view_community_content
+            if not community_id:
+                return jsonify({'success': True, 'polls': []})
+            _ok_hist, _ = can_view_community_content(c, get_sql_placeholder(), username, community_id)
+            if not _ok_hist:
+                return jsonify({'success': False, 'error': 'Community not found'}), 404
+
             # Get historical polls (expired or inactive) for the specific community
             if community_id:
                 c.execute("""
@@ -17744,13 +17819,23 @@ def community_resources(community_id):
         with get_db_connection() as conn:
             c = conn.cursor()
             
+            # SECURITY (privacy IDOR): only members may read a community's
+            # resources forum.
+            from backend.services.community_access import can_view_community_content
+            _ok_res, _ = can_view_community_content(
+                c, get_sql_placeholder(), username, community_id
+            )
+            if not _ok_res:
+                flash('Community not found', 'error')
+                return redirect(url_for('communities'))
+
             # Get community info
             c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
             community = c.fetchone()
             if not community:
                 flash('Community not found', 'error')
                 return redirect(url_for('communities'))
-            
+
             # Get resource posts for this community with profile pictures
             c.execute("""
                 SELECT p.*,
@@ -17783,8 +17868,17 @@ def community_resources(community_id):
 def create_resource_post(community_id):
     """Create a new resource post"""
     username = session.get('username')
-    
+
     try:
+        # SECURITY (privacy IDOR): only members may post to a community's
+        # resources forum.
+        from backend.services.community_access import can_view_community_content
+        with get_db_connection() as _gconn:
+            _ok_cr, _ = can_view_community_content(
+                _gconn.cursor(), get_sql_placeholder(), username, community_id
+            )
+        if not _ok_cr:
+            return jsonify({'success': False, 'error': 'Community not found'}), 404
         data = request.get_json()
         title = data.get('title', '').strip()
         content = data.get('content', '').strip()
@@ -18031,8 +18125,18 @@ def get_community_admins(community_id):
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+
+            # SECURITY (privacy IDOR): only members may view a community's admin
+            # roster (the payload includes admin email addresses).
+            from backend.services.community_access import can_view_community_content
+            _ok_adm, _ = can_view_community_content(
+                c, get_sql_placeholder(), session.get('username'), community_id
+            )
+            if not _ok_adm:
+                return jsonify({'success': False, 'error': 'Community not found'}), 404
+
             c.execute("""
-                SELECT ca.*, u.email 
+                SELECT ca.*, u.email
                 FROM community_admins ca
                 JOIN users u ON ca.username = u.username
                 WHERE ca.community_id = ?
@@ -21919,10 +22023,22 @@ def ai_steve_reply():
                 )
 
             # Get post content for context (including media)
-            c.execute(f"SELECT content, username, image_path, video_path, media_paths FROM posts WHERE id = {placeholder}", (post_id,))
+            c.execute(f"SELECT content, username, image_path, video_path, media_paths, community_id FROM posts WHERE id = {placeholder}", (post_id,))
             post_row = c.fetchone()
             if not post_row:
                 return jsonify({'success': False, 'error': 'Post not found'}), 404
+
+            # SECURITY (privacy IDOR): derive the community from the post (never
+            # trust the client-supplied community_id) and require read access
+            # before Steve reads the post content, thread, or community
+            # resources. Mirrors the group-post gate above. General / home-feed
+            # posts (no community) stay open. Non-members get a non-enumerating 404.
+            _post_comm = post_row['community_id'] if hasattr(post_row, 'keys') else post_row[5]
+            from backend.services.community_access import can_view_community_content
+            _steve_allowed, _ = can_view_community_content(c, placeholder, username, _post_comm)
+            if not _steve_allowed:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            community_id = _post_comm
             
             post_content = post_row['content'] if hasattr(post_row, 'keys') else post_row[0]
             post_author = post_row['username'] if hasattr(post_row, 'keys') else post_row[1]
@@ -22304,6 +22420,21 @@ def add_reply_reaction():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
+            # SECURITY (privacy IDOR): the reply's parent post must be in a
+            # community the user can read before they may react to the reply.
+            c.execute(f"SELECT post_id FROM replies WHERE id = {ph}", (reply_id,))
+            _rrow = c.fetchone()
+            if not _rrow:
+                return jsonify({'success': False, 'error': 'Reply not found'}), 404
+            _rpid = _rrow['post_id'] if hasattr(_rrow, 'keys') else _rrow[0]
+            c.execute(f"SELECT community_id FROM posts WHERE id = {ph}", (_rpid,))
+            _prow = c.fetchone()
+            _rcid = (_prow['community_id'] if hasattr(_prow, 'keys') else _prow[0]) if _prow else None
+            from backend.services.community_access import can_view_community_content
+            _rr_allowed, _ = can_view_community_content(c, ph, username, _rcid)
+            if not _rr_allowed:
+                return jsonify({'success': False, 'error': 'Reply not found'}), 404
             c.execute("SELECT id, reaction_type FROM reply_reactions WHERE reply_id = ? AND username = ?", (reply_id, username))
             existing = c.fetchone()
             if existing:
@@ -22349,6 +22480,12 @@ def api_reply_view():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            # SECURITY (privacy IDOR): only members of the reply's community may
+            # record a view. General / home-feed replies stay open.
+            from backend.services.community_access import can_view_reply
+            _rv_allowed, _ = can_view_reply(c, get_sql_placeholder(), username, reply_id)
+            if not _rv_allowed:
+                return jsonify({'success': False, 'error': 'Reply not found'}), 404
             view_count = upsert_reply_view(c, reply_id, username)
             conn.commit()
             return jsonify({'success': True, 'view_count': view_count})
@@ -22365,6 +22502,12 @@ def get_reply_reactors(reply_id: int):
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
+            # SECURITY (privacy IDOR): reactor identities are scoped to the
+            # reply's community; general / home-feed replies stay open.
+            from backend.services.community_access import can_view_reply
+            _rrx_allowed, _ = can_view_reply(c, ph, session.get('username'), reply_id)
+            if not _rrx_allowed:
+                return jsonify({'success': False, 'error': 'Reply not found'}), 404
             c.execute(f"SELECT id FROM replies WHERE id = {ph}", (reply_id,))
             if not c.fetchone():
                 return jsonify({'success': False, 'error': 'Reply not found'}), 404
@@ -22490,6 +22633,16 @@ def api_get_reply(reply_id):
             c.execute(f"SELECT id, username, content, community_id, timestamp FROM posts WHERE id = {ph}", (post_id,))
             post_raw = c.fetchone()
             post_info = dict(post_raw) if post_raw else None
+
+            # SECURITY (privacy IDOR): authorize against the parent post's
+            # community before returning the reply + parent chain. General /
+            # home-feed posts (no community) stay open. Non-members get a
+            # non-enumerating 404.
+            from backend.services.community_access import can_view_community_content
+            _gr_cid = post_info.get('community_id') if post_info else None
+            _gr_allowed, _ = can_view_community_content(c, ph, username, _gr_cid)
+            if not _gr_allowed:
+                return jsonify({'success': False, 'error': 'Reply not found'}), 404
             
             # Get profile picture for the main reply
             try:
@@ -23740,6 +23893,8 @@ def fix_database_issues():
 @login_required
 def debug_community(community_id):
     """Debug route to check community data"""
+    if not is_app_admin(session.get('username')):
+        return jsonify({'success': False, 'error': 'Not found'}), 404
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -23768,6 +23923,8 @@ def debug_community(community_id):
 @login_required
 def debug_posts():
     """Debug route to check posts in database"""
+    if not is_app_admin(session.get('username')):
+        return jsonify({'success': False, 'error': 'Not found'}), 404
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -24534,50 +24691,18 @@ def api_community_feed(community_id):
                 current_user_profile_picture = None
                 current_user_display_name = username
 
-            # Enforce membership to view this community
-            # Allow: app admin, community creator, direct members, or admins of parent/ancestor communities
+            # Enforce membership to view this community: app admin, creator,
+            # direct members, or admins/owners of an ancestor community. This is
+            # the single source of truth for community read access, shared with
+            # the post-detail / reply / reaction gates via
+            # community_access.can_view_community_content.
             try:
-                if not is_app_admin(username) and username != community.get('creator_username'):
-                    # Check if direct member
-                    c.execute("""
-                        SELECT 1 FROM user_communities uc
-                        JOIN users u ON uc.user_id = u.id
-                        WHERE u.username = ? AND uc.community_id = ?
-                        LIMIT 1
-                    """, (username, community_id))
-                    is_member = c.fetchone() is not None
-                    
-                    if not is_member:
-                        # Not a direct member - check if admin of any ancestor community
-                        has_ancestor_access = False
-                        current_parent = community.get('parent_community_id')
-                        
-                        while current_parent:
-                            # Check if user is admin or owner of this ancestor
-                            c.execute("""
-                                SELECT uc.role, c.creator_username
-                                FROM user_communities uc
-                                JOIN communities c ON uc.community_id = c.id
-                                JOIN users u ON uc.user_id = u.id
-                                WHERE u.username = ? AND c.id = ?
-                            """, (username, current_parent))
-                            ancestor_membership = c.fetchone()
-                            
-                            if ancestor_membership:
-                                role = ancestor_membership['role'] if hasattr(ancestor_membership, 'keys') else ancestor_membership[0]
-                                creator = ancestor_membership['creator_username'] if hasattr(ancestor_membership, 'keys') else ancestor_membership[1]
-                                
-                                if role in ('admin', 'owner') or username == creator:
-                                    has_ancestor_access = True
-                                    break
-                            
-                            # Move to next ancestor
-                            c.execute("SELECT parent_community_id FROM communities WHERE id = ?", (current_parent,))
-                            parent_row = c.fetchone()
-                            current_parent = parent_row['parent_community_id'] if (parent_row and hasattr(parent_row, 'keys')) else (parent_row[0] if parent_row else None)
-                        
-                        if not has_ancestor_access:
-                            return jsonify({'success': False, 'error': 'Forbidden'}), 403
+                from backend.services.community_access import can_view_community_content
+                _feed_allowed, _ = can_view_community_content(
+                    c, get_sql_placeholder(), username, community_id
+                )
+                if not _feed_allowed:
+                    return jsonify({'success': False, 'error': 'Forbidden'}), 403
             except Exception as me:
                 logger.error(f"membership check failed on api_community_feed: {me}")
                 return jsonify({'success': False, 'error': 'Access check failed'}), 500
@@ -24994,6 +25119,14 @@ def api_toggle_key_post():
             if not row:
                 return jsonify({'success': False, 'error': 'Post not found'}), 404
             community_id = row['community_id'] if hasattr(row, 'keys') else row[0]
+            # SECURITY (privacy IDOR): only members of the post's community may
+            # star it. General-feed posts (no community) stay open.
+            from backend.services.community_access import can_view_community_content
+            _ok_star, _ = can_view_community_content(
+                c, get_sql_placeholder(), username, community_id
+            )
+            if not _ok_star:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
             if community_id is None:
                 # Only allow starring community posts to scope Key Posts
                 community_id = -1
@@ -25095,6 +25228,16 @@ def api_community_key_posts():
             return jsonify({'success': False, 'error': 'community_id required'}), 400
         with get_db_connection() as conn:
             c = conn.cursor()
+
+            # SECURITY (privacy IDOR): only members may read a community's
+            # pinned/key posts.
+            from backend.services.community_access import can_view_community_content
+            _ok_kp, _ = can_view_community_content(
+                c, get_sql_placeholder(), session.get('username'), community_id
+            )
+            if not _ok_kp:
+                return jsonify({'success': False, 'error': 'Community not found'}), 404
+
             # Get post ids
             c.execute("SELECT post_id FROM community_key_posts WHERE community_id = ? ORDER BY id DESC", (community_id,))
             rows = c.fetchall() or []
