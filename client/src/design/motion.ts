@@ -44,3 +44,5 @@ export const STEVE_REPLY_BURST_DISCOUNT = 0.6
 export const STEVE_THINKING_SEARCHING_MS = 2_500
 export const STEVE_THINKING_NARROWING_MS = 7_000
 export const STEVE_THINKING_LONG_MS = 14_000
+/** Crossfade+slide between staged wait-line labels — long enough to read as motion. */
+export const STEVE_THINKING_CROSSFADE_MS = 280

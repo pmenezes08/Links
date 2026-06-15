@@ -110,7 +110,11 @@ export default function Networking() {
   }, [])
 
   const { keyboardLift, showKeyboard, safeBottomPx } = useComposerKeyboardLift({
-    onKeyboardOpen: scrollToBottom,
+    // Only chase the latest message when a conversation exists. On the empty
+    // Ask-Steve landing there's nothing below the fold, so scrolling to the
+    // end just shoves the welcome + suggestions out of view and exposes the
+    // bare canvas (black in dark mode) behind the keyboard.
+    onKeyboardOpen: () => { if (steveMessages.length > 0) scrollToBottom() },
   })
 
   // Personal state
@@ -620,7 +624,7 @@ export default function Networking() {
                     setLastSteveDebugTrace(null)
                     setShowDebugModal(false)
                   }}
-                  className="h-9 min-w-0 flex-1 max-w-[75%] truncate rounded-full border border-c-border bg-transparent px-3 text-xs text-c-text-primary focus:border-cpoint-turquoise focus:outline-none"
+                  className="h-11 min-w-0 flex-1 max-w-[75%] truncate rounded-full border border-c-border bg-transparent px-4 text-sm leading-tight text-c-text-primary focus:border-cpoint-turquoise focus:outline-none"
                 >
                   {communities.map(c => <option key={c.id} value={c.id} className="bg-c-bg-app">{c.name}</option>)}
                 </select>

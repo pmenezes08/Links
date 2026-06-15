@@ -119,9 +119,12 @@ export default function OwnerDashboard() {
 
   return (
     <div className="min-h-screen bg-c-bg-app text-c-text-primary">
+      {/* No safe-area padding here: the global <main> already offsets content
+          below the fixed HeaderBar + notch via --app-header-offset. Re-adding
+          env(safe-area-inset-top) double-counts the inset and opens a gap
+          between the global header and this sub-header. */}
       <div
         className="sticky top-0 z-10 flex items-center gap-3 border-b border-c-border bg-c-bg-app/80 px-4 py-3 backdrop-blur"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)' }}
       >
         <button type="button" onClick={() => navigate(-1)} aria-label={t('navigation.back')} className="text-c-text-secondary">
           <i className="fa-solid fa-chevron-left" />

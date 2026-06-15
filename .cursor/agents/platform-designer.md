@@ -85,6 +85,20 @@ Hard, hard-won platform rules. Spec around them; if a design needs to break one,
    grow `CommunityFeed` / `PostDetail` / `OnboardingChat`.
 6. **Privacy is server-side.** Hiding UI is never access control — never "fix"
    exposure by hiding a control.
+7. **Header offset is global — never re-add the safe-area inset per page.** Every
+   route renders inside `<main>` (`App.tsx`) whose `padding-top` is
+   `--app-header-offset` (the fixed global `HeaderBar` height **including**
+   `env(safe-area-inset-top)`). So page content already starts below the notch +
+   header. A page-level header/sub-header that *also* adds
+   `padding-top: env(safe-area-inset-top)` **double-counts the inset** and opens a
+   dead gap below the global header (this was the Owner Dashboard gap). New pages:
+   do **not** pad the top for the notch yourself — rely on the global offset; use
+   the `--app-header-height` / `--app-subnav-offset` tokens for sub-navs. If a gap
+   below the header looks wrong, suspect a double-counted safe-area inset before
+   touching content padding. Likewise, a page that pushes its own content out of
+   view on keyboard open (e.g. an unconditional scroll-to-bottom) exposes the bare
+   `bg-c-bg-app` canvas — black in dark mode — behind the keyboard; gate auto-scroll
+   on there being content to scroll to.
 
 ## Boundaries (do not cross)
 
