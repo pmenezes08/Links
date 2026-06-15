@@ -6,6 +6,7 @@ import { triggerDashboardServerPull } from '../utils/serverPull'
 import { refreshDashboardCommunities } from '../utils/dashboardCache'
 import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 import LoadErrorRetry from '../components/LoadErrorRetry'
+import { SkeletonList } from '../components/SkeletonRow'
 
 type Member = {
   username: string;
@@ -426,7 +427,7 @@ export default function Members(){
         style={{ minHeight: 'calc(100vh - var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))))', '--app-subnav-height': '48px' } as CSSProperties}
       >
         {loading ? (
-          <div className="text-c-text-tertiary">{t('social.members_loading')}</div>
+          <SkeletonList count={6} />
         ) : error ? (
           <LoadErrorRetry message={error} onRetry={() => { setError(null); setLoading(true); setReloadKey(k => k + 1) }} />
         ) : (

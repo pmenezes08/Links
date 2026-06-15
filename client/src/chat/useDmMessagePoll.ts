@@ -1,6 +1,6 @@
 import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { getAllMessageReactions } from './utils'
-import { DM_FULL_SYNC_EVERY_N_POLL, DM_POLL_INTERVAL_MS } from './constants'
+import { DM_FULL_SYNC_EVERY_N_POLL, DM_POLL_INTERVAL_MS, nextPollBackoffMs } from './constants'
 import { mergePolledDmMessages, type DmIdBridge } from '../utils/dmPollMergeMessages'
 import type { MessageMeta } from './utils'
 import { cacheMessages } from '../utils/offlineDb'
@@ -50,6 +50,9 @@ export function useDmMessagePoll<T extends object>({
   const pollCountLocal = useRef(0)
   const pollInFlight = pollInFlightExternal ?? pollInFlightLocal
   const pollCountRef = pollCountExternal ?? pollCountLocal
+  // Adaptive backoff: consecutive failures widen the effective poll gap (reset on success).
+  const pollErrorCountRef = useRef(0)
+  const nextPollAtRef = useRef(0)
 
   useEffect(() => {
     if (!username || !otherUserId) return
@@ -62,6 +65,7 @@ export function useDmMessagePoll<T extends object>({
       const pollPeer = resolvedPeerRef.current
       if (!pollPeer || pollPeer.username !== username || pollPeer.userId !== otherUserId) return
       if (Date.now() < skipNextPollsUntil.current) return
+      if (Date.now() < nextPollAtRef.current) return // backing off after recent failures
       if (pollInFlight.current) return
 
       pollInFlight.current = true
@@ -86,6 +90,9 @@ export function useDmMessagePoll<T extends object>({
             body: fd,
           })
           const j = await r.json()
+          // Network round-trip succeeded — clear any backoff.
+          pollErrorCountRef.current = 0
+          nextPollAtRef.current = 0
           if (gen !== threadGenerationRef.current) return
           setSteveIsTyping(Boolean(j?.steve_is_typing))
 
@@ -119,6 +126,9 @@ export function useDmMessagePoll<T extends object>({
           }
         } catch (e) {
           console.error('Polling error:', e)
+          // Flaky-but-online ("lie-fi"): widen the gap so we stop hammering every 1.5s.
+          pollErrorCountRef.current += 1
+          nextPollAtRef.current = Date.now() + nextPollBackoffMs(pollErrorCountRef.current)
         }
 
         if (pollCountRef.current % 5 === 0) {
@@ -155,7 +165,10 @@ export function useDmMessagePoll<T extends object>({
     pollTimer.current = setInterval(poll, DM_POLL_INTERVAL_MS)
 
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') void poll()
+      if (document.visibilityState === 'visible') {
+        nextPollAtRef.current = 0 // returning to foreground: try again immediately
+        void poll()
+      }
     }
     document.addEventListener('visibilitychange', handleVisibility)
 

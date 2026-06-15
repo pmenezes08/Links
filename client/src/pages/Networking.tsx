@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useComposerKeyboardLift } from '../hooks/useComposerKeyboardLift'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
+import { SkeletonList } from '../components/SkeletonRow'
 import MatchesSheet from '../components/networking/MatchesSheet'
 import HistorySheet from '../components/networking/HistorySheet'
 import SteveEmptyState from '../components/networking/SteveEmptyState'
@@ -545,7 +546,12 @@ export default function Networking() {
   const sectionTabLabel = (key: SectionKey) =>
     key === 'steve' ? t('networking.tab_steve') : t('networking.tab_personal')
 
-  if (loading || profileGateLoading) return <div className="glass-page min-h-screen text-c-text-primary flex items-center justify-center"><span className="text-c-text-tertiary">{t('networking.loading')}</span></div>
+  if (loading || profileGateLoading) return (
+    <div className="glass-page min-h-screen text-c-text-primary px-4 pt-6">
+      <div className="h-9 w-40 rounded skeleton-box mb-5" />
+      <SkeletonList count={5} />
+    </div>
+  )
 
   if (!profileReadyForNetworking) {
     return (
@@ -688,8 +694,8 @@ export default function Networking() {
             <div className="px-2 pt-2 space-y-3">
               {steveMessages.length === 0 ? (
                 (sessionsLoading || steveMembersLoading || steveMemberCount === null) ? (
-                  <div className="flex flex-col items-center justify-center py-16 text-center">
-                    <p className="text-sm text-c-text-tertiary">{t('networking.loading')}</p>
+                  <div className="px-2 py-6">
+                    <SkeletonList count={3} />
                   </div>
                 ) : (
                   <SteveEmptyState

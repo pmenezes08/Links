@@ -17,6 +17,7 @@ import { triggerDashboardServerPull } from '../utils/serverPull'
 import { cacheKeyVal, getCachedKeyVal } from '../utils/offlineDb'
 import { apiFetch } from '../utils/apiFetch'
 import LoadErrorRetry from '../components/LoadErrorRetry'
+import { SkeletonCommunityCard } from '../components/SkeletonRow'
 
 type Community = { 
   id: number; 
@@ -876,7 +877,11 @@ export default function Communities(){
           </div>
         )}
         {loading ? (
-          <div className="text-c-text-tertiary">{t('communities.loading')}</div>
+          <div className="space-y-3">
+            <SkeletonCommunityCard />
+            <SkeletonCommunityCard />
+            <SkeletonCommunityCard />
+          </div>
         ) : error ? (
           <LoadErrorRetry message={error} onRetry={() => { setError(null); setLoading(true); setReloadKey(k => k + 1) }} />
         ) : (

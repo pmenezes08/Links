@@ -1,5 +1,5 @@
 import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
-import { GROUP_FULL_SYNC_EVERY_N_POLL, GROUP_POLL_INTERVAL_MS } from './constants'
+import { GROUP_FULL_SYNC_EVERY_N_POLL, GROUP_POLL_INTERVAL_MS, nextPollBackoffMs } from './constants'
 import {
   mergePolledGroupMessages,
   type GroupPollMessage,
@@ -42,6 +42,9 @@ export function useGroupMessagePoll<T extends GroupPollMessage = GroupPollMessag
   const pollTickLocal = useRef(0)
   const pollInFlight = pollInFlightExternal ?? pollInFlightLocal
   const pollTickRef = pollTickExternal ?? pollTickLocal
+  // Adaptive backoff: consecutive failures widen the effective poll gap (reset on success).
+  const pollErrorCountRef = useRef(0)
+  const nextPollAtRef = useRef(0)
 
   useEffect(() => {
     if (!groupId) return
@@ -59,6 +62,7 @@ export function useGroupMessagePoll<T extends GroupPollMessage = GroupPollMessag
       const fetchGroupId = groupId
       if (fetchGroupId !== activeGroupIdRef.current) return
       if (Date.now() < skipNextPollsUntil.current) return
+      if (Date.now() < nextPollAtRef.current) return // backing off after recent failures
       if (pollInFlight.current) return
 
       pollInFlight.current = true
@@ -77,6 +81,9 @@ export function useGroupMessagePoll<T extends GroupPollMessage = GroupPollMessag
           headers: { Accept: 'application/json' },
         })
         const data = await response.json()
+        // Network round-trip succeeded — clear any backoff.
+        pollErrorCountRef.current = 0
+        nextPollAtRef.current = 0
         if (gen !== threadGenerationRef.current || fetchGroupId !== activeGroupIdRef.current) return
 
         if (data.success) {
@@ -110,6 +117,9 @@ export function useGroupMessagePoll<T extends GroupPollMessage = GroupPollMessag
         }
       } catch (err) {
         console.error('Group polling error:', err)
+        // Flaky-but-online ("lie-fi"): widen the gap so we stop hammering every 1.5s.
+        pollErrorCountRef.current += 1
+        nextPollAtRef.current = Date.now() + nextPollBackoffMs(pollErrorCountRef.current, GROUP_POLL_INTERVAL_MS)
       } finally {
         pollInFlight.current = false
       }
@@ -129,6 +139,7 @@ export function useGroupMessagePoll<T extends GroupPollMessage = GroupPollMessag
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible' && navigator.onLine && !pollInFlight.current) {
+        nextPollAtRef.current = 0 // returning to foreground: try again immediately
         void poll(0)
       }
     }
