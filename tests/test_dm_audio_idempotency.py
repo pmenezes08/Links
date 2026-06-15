@@ -66,11 +66,13 @@ def test_send_audio_message_is_idempotent_on_client_key(mysql_dsn):
         row = c.fetchone()
         recipient_id = row["id"] if hasattr(row, "keys") else row[0]
 
-        # A first (successful) send already landed this voice note.
+        # A first (successful) send already landed this voice note. Provide `timestamp`
+        # explicitly: the real messages table is `timestamp TEXT NOT NULL` with no default
+        # (audio columns are added via migration), so an omitted value is rejected.
         c.execute(
-            f"INSERT INTO messages (sender, receiver, message, audio_path, audio_mime, client_key) "
-            f"VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})",
-            ("aud_sender", "aud_recipient", "", "voice_messages/a.webm", "audio/webm", "aud_ck_1"),
+            f"INSERT INTO messages (sender, receiver, message, timestamp, audio_path, audio_mime, client_key) "
+            f"VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})",
+            ("aud_sender", "aud_recipient", "", "2026-01-01 12:00:00", "voice_messages/a.webm", "audio/webm", "aud_ck_1"),
         )
         conn.commit()
 
