@@ -37,6 +37,20 @@ def _ensure_messages_table() -> None:
                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                 )"""
             )
+            # Another suite may have already created `messages` WITHOUT the audio
+            # columns (CREATE IF NOT EXISTS is then a no-op). Ensure the columns the
+            # audio idempotency path reads/writes exist; ignore "duplicate column".
+            for col, ddl in (
+                ("audio_path", "VARCHAR(512)"),
+                ("audio_summary", "TEXT"),
+                ("audio_duration_seconds", "INT NULL"),
+                ("audio_mime", "VARCHAR(64)"),
+                ("client_key", "VARCHAR(191)"),
+            ):
+                try:
+                    c.execute(f"ALTER TABLE messages ADD COLUMN {col} {ddl}")
+                except Exception:
+                    pass
         conn.commit()
 
 
