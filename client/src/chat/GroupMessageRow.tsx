@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next'
 import Avatar from '../components/Avatar'
 import LongPressActionable from './LongPressActionable'
 import { SwipeToReply } from './SwipeToReply'
-import { formatDateLabel, normalizeMediaPath, resolveDocUrl } from './index'
+import { formatDateLabel, normalizeMediaPath, resolveDocUrl, stripReplyMarker } from './index'
 import MessageImage from '../components/MessageImage'
 import MessageVideo from '../components/MessageVideo'
 import VoiceNotePlayer from '../components/VoiceNotePlayer'
@@ -139,7 +139,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
       const replyMatch = displayText.match(/^\[REPLY:([^:]+):([^\]]+)\](?:\r?\n|\s)*(.*)$/s)
       if (replyMatch) {
         rsend = replyMatch[1]
-        rs = replyMatch[2]
+        rs = stripReplyMarker(replyMatch[2])
         displayText = replyMatch[3]
       }
     }

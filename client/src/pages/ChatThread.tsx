@@ -53,6 +53,7 @@ import {
   normalizeMediaPath,
   setMessageReaction,
   getAllMessageReactions,
+  stripReplyMarker,
   CHAT_CACHE_TTL_MS,
   CHAT_CACHE_VERSION,
   readStaleDeviceCache,
@@ -603,7 +604,7 @@ export default function ChatThread(){
         // Check for regular reply format
         const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\][\r\n\s]*(.*)$/s)
         if (replyMatch) {
-          replySnippet = replyMatch[2]
+          replySnippet = stripReplyMarker(replyMatch[2])
           messageText = replyMatch[3]
         }
       }
@@ -1189,7 +1190,10 @@ export default function ChatThread(){
         const summarySnippet = replySnapshot.audio_summary ? replySnapshot.audio_summary.slice(0, 80) : ''
         replySnippet = summarySnippet ? `🎤|${summarySnippet}` : '🎤|Voice message'
       } else {
-        replySnippet = replySnapshot.text.length > 90 ? replySnapshot.text.slice(0,90) + '…' : replySnapshot.text
+        // Collapse nesting at the source: never embed the parent's own reply
+        // marker when quoting a message that was itself a reply.
+        const parentText = stripReplyMarker(replySnapshot.text)
+        replySnippet = parentText.length > 90 ? parentText.slice(0,90) + '…' : parentText
       }
     }
     const replySender = replySnapshot?.sender

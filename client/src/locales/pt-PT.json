@@ -2023,7 +2023,9 @@
       "close_invite_modal": "Fechar modal de convite",
       "close": "Fechar",
       "add_experience": "Adicionar experiência",
-      "add_education": "Adicionar formação"
+      "add_education": "Adicionar formação",
+      "expand_field": "Expandir para ecrã inteiro",
+      "collapse_field": "Concluído"
     },
     "alt": {
       "cover": "Capa",

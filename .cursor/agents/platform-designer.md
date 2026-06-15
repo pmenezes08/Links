@@ -40,11 +40,51 @@ Reference existing implementation before inventing new patterns:
 
 - `client/src/index.css` — glass tokens (`.glass-page`, `.glass-card`,
   `--glass-*`), dark-first base, safe-area CSS vars
+- `client/src/design/motion.ts` — canonical motion tokens (durations + easing);
+  spec by token name, never invent a duration (see Output format § Motion)
 - `client/tailwind.config.js` — `cpoint.turquoise` (#00CEC8); legacy teal
-  `#4db6ac` still on older surfaces — prefer turquoise on new work
-- Reuse existing components: `HeaderBar`, `FeedBottomNav`, `SkeletonRow`,
-  `LimitReachedModal`, `ManageMembershipModal`, chat kernel in `client/src/chat/`
-- Brand narrative, naming, voice: **`docs/DESIGN.md`** + coordinate with **`brand-specialist`**
+  `#4db6ac` still on older surfaces — prefer turquoise on new work, but do
+  **not** backfill `#4db6ac` in drive-by edits (full flip is a separate epic;
+  glass reads accent via `rgba(var(--cpoint-accent-rgb), …)`)
+- Reuse existing components: `HeaderBar`; **two surface-specific bottom navs** —
+  `FeedBottomNav` (CommunityFeed / GroupFeed) and `DashboardBottomNav`
+  (Home / Premium / About — portaled to `document.body`, see iOS invariant);
+  `SkeletonRow`, `LimitReachedModal`, `ManageMembershipModal`, chat kernel in
+  `client/src/chat/`
+- Design system + **enforced guardrails**: **`docs/DESIGN.md`**,
+  `.cursor/rules/design-system.mdc`, `.cursor/rules/chat-surfaces.mdc`,
+  `.cursor/rules/frontend-pages-and-routing.mdc`; brand/voice → **`brand-specialist`**
+
+## C-Point invariants (do not violate)
+
+Hard, hard-won platform rules. Spec around them; if a design needs to break one, stop and flag it.
+
+1. **iOS page-transition layout.** Any page in the route-transition stack must have a
+   **normal-flow root** (`min-h-screen`, or `position:relative; height:100dvh` for
+   inner-scroller pages). **Never `position:fixed` the page root** to fix a black /
+   no-slide transition — that is the *cause*, not the cure. Viewport-anchored chrome
+   (composer, bottom-nav) is **portaled to `document.body`** (`FixedComposerShell`,
+   `DashboardBottomNav`), never the page root.
+2. **Chat list is inverted** (`column-reverse`): newest message sits at `scrollTop:0`
+   from first paint; composer + keyboard inset is `padding-bottom` on the inverted
+   container. Read `.cursor/rules/chat-surfaces.mdc` in full before any chat/thread
+   spec. DM (`ChatThread`) and group (`GroupChatThread`) share the kernel — never
+   spec one to diverge from the other.
+3. **AI text is markdown-lite.** Steve replies / summaries / onboarding / profile
+   blocks render `**bold**` via `renderBoldText` / `renderRichText`
+   (`client/src/utils/linkUtils.tsx`). Raw `**asterisks**` must never reach the
+   screen — spec the helper, never a bare string.
+4. **The Ask register.** At most **one ask per screen**; shape is title + one line +
+   one CTA (no countdowns, progress pills, or per-section status); skip/decline is one
+   guilt-free tap that does not re-prompt in the same session; **turquoise fill = the
+   single primary action per surface** (secondary = turquoise outline; explainers =
+   underlined text). Non-interactive content must not wear control grammar — a
+   bordered rounded card with a turquoise icon chip reads as tappable.
+5. **Pages stay thin** (≤ ~400 lines: routing / layout / wiring only). UI logic →
+   `client/src/hooks/` or `client/src/components/<feature>/`. Spec extraction; never
+   grow `CommunityFeed` / `PostDetail` / `OnboardingChat`.
+6. **Privacy is server-side.** Hiding UI is never access control — never "fix"
+   exposure by hiding a control.
 
 ## Boundaries (do not cross)
 
@@ -56,6 +96,8 @@ Reference existing implementation before inventing new patterns:
 | API, entitlements, privacy gates, cross-domain architecture | **`c-point-lead`** — platform invariants & orchestration |
 | Brand naming, voice/tone, copy, logo/color rules | **`brand-specialist`** — review Design Specs before handoff |
 | Stripe/pricing UI truth | KB + `ManageMembershipModal` — never invent caps or prices |
+| Engagement / retention / empty-state *behavioral strategy* | **`c-point-stickiness-architect`** — co-own: you own the visual + IA, they own the stickiness hypothesis |
+| Visual / interaction QA sign-off | **`verifier-qa`** — hand off the QA checklist; do not self-certify a fix as confirmed |
 
 You **may** suggest Tailwind classes and CSS token names, but do not edit
 `scrollPin.ts`, keyboard hooks, or backend routes.
@@ -96,7 +138,10 @@ Deliver a **Design Spec** (not a code dump unless asked):
 4. **Layout** — ASCII or structured breakdown (regions, spacing scale)
 5. **Component spec** — anatomy, variants, states, tokens (Tailwind/CSS var names)
 6. **Typography & color** — sizes, weights, which token (`cpoint.turquoise` vs legacy)
-7. **Motion** — what animates, duration (150–250ms chrome), reduced-motion fallback
+7. **Motion** — what animates, by **token name** from `client/src/design/motion.ts`
+   (`PAGE_TRANSITION_MS` 340ms, `TAB_CROSSFADE_MS` 120ms, `CHAT_KEYBOARD_ANIMATION_MS`
+   250ms, `CPOINT_EASE_OUT`); reduced-motion fallback (`REDUCED_MOTION_FADE_MS` 80ms).
+   Never invent a duration that duplicates a token.
 8. **Accessibility** — contrast, focus, touch targets, ARIA intent
 9. **Responsive** — mobile / tablet / desktop behavior
 10. **Consistency checklist** — feed ↔ chat ↔ profile ↔ modals ↔ nav
@@ -110,6 +155,8 @@ Deliver a **Design Spec** (not a code dump unless asked):
 - Desktop-first layouts that break on 390px width
 - Tiny tap targets or icon-only actions without `aria-label` in spec
 - Animation on layout properties (`height`, `top`) — spec transforms/opacity
+- Inventing a motion duration/easing when a `motion.ts` token exists
+- `position:fixed` on a page root to "fix" a transition (breaks the iOS slide — see invariants)
 - Light-mode-only designs (app is dark-first; light must be explicit if needed)
 - Inventing pricing, tier names, or entitlement copy (KB is truth)
 - Duplicating scroll or keyboard behavior specs (delegate to specialists)

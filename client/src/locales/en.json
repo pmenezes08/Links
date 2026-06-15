@@ -2023,7 +2023,9 @@
       "close_invite_modal": "Close invite modal",
       "close": "Close",
       "add_experience": "Add experience",
-      "add_education": "Add education"
+      "add_education": "Add education",
+      "expand_field": "Expand to full screen",
+      "collapse_field": "Done"
     },
     "alt": {
       "cover": "Cover",

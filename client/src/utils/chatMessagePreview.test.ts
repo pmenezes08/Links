@@ -34,4 +34,12 @@ describe('formatChatMessagePreview', () => {
   it('formats story reply', () => {
     expect(formatChatMessagePreview('[STORY_REPLY:1:image:/x.jpg]\nNice', t)).toBe('Replied to story: Nice')
   })
+
+  it('does not leak a raw nested reply marker into the list preview', () => {
+    // Reply-to-a-reply: body wins, and the snippet must never surface raw [REPLY:.
+    const raw = '[REPLY:Paulo:[REPLY:diogorbmartins:Já deste]\nYa fiz]\nVou meter'
+    const out = formatChatMessagePreview(raw, t)
+    expect(out.startsWith('Replied to Paulo:')).toBe(true)
+    expect(out).not.toContain('[REPLY:')
+  })
 })

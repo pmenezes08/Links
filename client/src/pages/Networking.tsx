@@ -620,7 +620,7 @@ export default function Networking() {
                     setLastSteveDebugTrace(null)
                     setShowDebugModal(false)
                   }}
-                  className="h-9 max-w-[55%] truncate rounded-full border border-c-border bg-transparent px-3 text-xs text-c-text-primary focus:border-cpoint-turquoise focus:outline-none"
+                  className="h-9 min-w-0 flex-1 max-w-[75%] truncate rounded-full border border-c-border bg-transparent px-3 text-xs text-c-text-primary focus:border-cpoint-turquoise focus:outline-none"
                 >
                   {communities.map(c => <option key={c.id} value={c.id} className="bg-c-bg-app">{c.name}</option>)}
                 </select>

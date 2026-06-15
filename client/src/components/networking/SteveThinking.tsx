@@ -58,12 +58,12 @@ export default function SteveThinking() {
   return (
     <div className="flex h-8 items-center gap-1.5 text-[13px] text-c-text-tertiary" role="status">
       <span
-        className="transition-opacity"
+        className="min-w-0 truncate whitespace-nowrap transition-opacity"
         style={{ opacity: fading ? 0 : 1, transitionDuration: `${TAB_CROSSFADE_MS}ms` }}
       >
         {label}
       </span>
-      <span className="flex gap-0.5">
+      <span className="flex flex-none gap-0.5">
         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cpoint-turquoise" />
         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cpoint-turquoise" style={{ animationDelay: '300ms' }} />
         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cpoint-turquoise" style={{ animationDelay: '600ms' }} />

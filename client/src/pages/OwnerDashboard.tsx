@@ -144,7 +144,7 @@ export default function OwnerDashboard() {
         <TabButton active={tab === 'spaces'} onClick={() => changeTab('spaces')}>{t('owner.tab_spaces')}</TabButton>
       </div>
 
-      <div className="mx-auto max-w-2xl px-3 py-4">
+      <div className="mx-auto max-w-2xl px-3 pt-2 pb-4">
         {loading && <div className="py-10 text-center text-sm text-c-text-tertiary">…</div>}
 
         {error && !loading && (

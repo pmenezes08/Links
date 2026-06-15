@@ -5,6 +5,32 @@
 
 export type MessageMeta = { reaction?: string; replySnippet?: string }
 
+/**
+ * Strip a leading reply marker — `[REPLY:sender:snippet]` or `[STORY_REPLY:…]` —
+ * from message text, collapsing nested markers down to the underlying body.
+ *
+ * Used in two places so DM and group chat stay in lockstep:
+ *  - when building a reply snapshot, so quoting a reply never embeds the parent's
+ *    own raw `[REPLY:…]` marker (collapses nesting at the source); and
+ *  - when rendering a captured snippet, so historical messages that already
+ *    stored a nested marker don't leak raw `[REPLY:…]` syntax to the screen.
+ *
+ * The snippet may arrive truncated (no closing `]`) when it came from a
+ * first-`]`-stop capture, so the closing bracket is optional.
+ */
+export function stripReplyMarker(text: string | null | undefined): string {
+  let out = (text || '').replace(/^\s+/, '')
+  let prev: string
+  do {
+    prev = out
+    out = out
+      .replace(/^\[REPLY:[^:\]]*:(?:[\s\S]*?\](?:\r?\n|\s)*)?/, '')
+      .replace(/^\[STORY_REPLY:[^\]]*\](?:\r?\n|\s)*/, '')
+      .replace(/^\s+/, '')
+  } while (out !== prev)
+  return out
+}
+
 // ===== ID-based Reaction Storage (more reliable than time-based) =====
 const REACTIONS_CACHE_KEY_PREFIX = 'chat-reactions:'
 const REACTIONS_CACHE_VERSION = 'v1'
