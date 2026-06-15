@@ -10,9 +10,12 @@ interface MessageImageProps {
   className?: string
   /** Fill a fixed-aspect parent (e.g. media grid tile); drops bubble max-height and uses cover */
   tile?: boolean
+  /** Server-known intrinsic dimensions (reserve height on the very FIRST view, incl. the receiver's). */
+  width?: number
+  height?: number
 }
 
-export default function MessageImage({ src, alt, onClick, className = '', tile = false }: MessageImageProps) {
+export default function MessageImage({ src, alt, onClick, className = '', tile = false, width, height }: MessageImageProps) {
   const { t } = useTranslation()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -31,8 +34,12 @@ export default function MessageImage({ src, alt, onClick, className = '', tile =
   // previous view (cached by URL). This stops the collapse-then-grow reflow that, under
   // the inverted message list, reads as bubbles overlapping and settling after a moment.
   // First-ever view of a new image is unreserved (one settle), then cached for next time.
+  // Prefer server-known dims (reserve on first view, including the receiver's); otherwise
+  // fall back to dims measured on a previous view (cached by URL).
+  const propDims = !tile && width && height && width > 0 && height > 0 ? ([width, height] as [number, number]) : null
   const cachedDims = useMemo(() => (tile ? null : getImageDims(src)), [src, tile])
-  const reserved = !tile && !!cachedDims
+  const dims = propDims ?? cachedDims
+  const reserved = !tile && !!dims
 
   const handleLoad = (e: SyntheticEvent<HTMLImageElement>) => {
     setLoading(false)
@@ -54,7 +61,7 @@ export default function MessageImage({ src, alt, onClick, className = '', tile =
 
   const rootLayout = tile ? 'block w-full h-full min-h-0' : reserved ? 'block w-full' : 'inline-block'
   const rootStyle: CSSProperties | undefined = reserved
-    ? { aspectRatio: `${cachedDims![0]} / ${cachedDims![1]}`, maxHeight: '320px' }
+    ? { aspectRatio: `${dims![0]} / ${dims![1]}`, maxHeight: '320px' }
     : undefined
   // A reserved box already holds height, so the spinner/error overlay needn't impose a min size.
   const overlaySize = tile || reserved ? '' : 'min-h-[100px] min-w-[100px]'

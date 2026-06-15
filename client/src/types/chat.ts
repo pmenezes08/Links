@@ -4,6 +4,8 @@ export interface ChatMessage {
   image_path?: string
   video_path?: string
   media_paths?: string[]
+  /** Intrinsic [width, height] per media item (parallel to media_paths / single image), for height reservation. */
+  media_dims?: Array<[number, number] | null>
   file_path?: string
   file_name?: string
   audio_path?: string

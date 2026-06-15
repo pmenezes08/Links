@@ -566,12 +566,13 @@ def send_dm_media():
     gate_resp = _basic_profile_required_response(username)
     if gate_resp is not None:
         return gate_resp
-    files_to_upload, media_urls, upload_only = parse_grouped_media_request(request.form, request.files)
+    files_to_upload, media_urls, upload_only, media_dims = parse_grouped_media_request(request.form, request.files)
     payload, status = send_dm_grouped_media(
         username,
         recipient_id=request.form.get("recipient_id"),
         media_files=files_to_upload,
         media_urls=media_urls,
+        media_dims=media_dims,
         upload_only=upload_only,
         client_key=(request.form.get("client_key", "").strip() or None),
     )

@@ -190,6 +190,8 @@ function MessageBubbleInner({
                     src={normalizeMediaPath(m.media_paths[0])}
                     alt={t('chat.media_preview_alt')}
                     className="w-full rounded-lg"
+                    width={(m as { media_dims?: Array<[number, number] | null> }).media_dims?.[0]?.[0]}
+                    height={(m as { media_dims?: Array<[number, number] | null> }).media_dims?.[0]?.[1]}
                   />
                 )}
                 {m.media_paths.length > 1 && (
@@ -210,6 +212,8 @@ function MessageBubbleInner({
                     alt={t('chat.shared_image_alt')}
                     className="max-w-full max-h-64 cursor-pointer rounded-lg"
                     onClick={() => onImageClick(normalizeMediaPath(m.image_path!))}
+                    width={(m as { media_dims?: Array<[number, number] | null> }).media_dims?.[0]?.[0]}
+                    height={(m as { media_dims?: Array<[number, number] | null> }).media_dims?.[0]?.[1]}
                   />
                 </div>
               ) : null}
