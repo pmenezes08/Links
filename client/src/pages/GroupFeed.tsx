@@ -557,6 +557,7 @@ export default function GroupFeed(){
       {/* Scrollable content area */}
       <div
         ref={scrollRef}
+        data-preserve-scroll="true"
         className="max-w-2xl mx-auto no-scrollbar pb-[var(--app-feed-content-pad-bottom)] px-3"
         style={{
           WebkitOverflowScrolling: 'touch' as any,

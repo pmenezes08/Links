@@ -739,6 +739,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
     >
       <div
         ref={scrollRef}
+        data-preserve-scroll="true"
         className={`relative h-full max-w-2xl mx-auto overflow-y-auto px-3 ${mode === 'dashboard_feed' && hasDashboardCommunities ? 'pb-[var(--app-dashboard-content-pad-bottom)]' : 'pb-24'}`}
         style={{
           WebkitOverflowScrolling: 'touch' as any,
