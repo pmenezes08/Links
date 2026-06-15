@@ -216,10 +216,10 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
               optionalActions={longPressOptionalActions}
               disabled={(isOptimistic && !sendFailed) || isEditing || selectionMode}
             >
-              <div className={`relative ${messageReaction ? 'mb-5' : ''}`}>
+              <div className={`relative ${isEditing ? 'w-full' : ''} ${messageReaction ? 'mb-5' : ''}`}>
                 {isEditing ? (
                   <div
-                    className="flex flex-col gap-2 w-[82vw] max-w-[440px]"
+                    className="flex flex-col gap-2 w-full"
                     onClick={e => e.stopPropagation()}
                     onMouseDown={e => e.stopPropagation()}
                   >

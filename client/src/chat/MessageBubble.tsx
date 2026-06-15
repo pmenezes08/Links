@@ -159,7 +159,7 @@ function MessageBubbleInner({
       disabled={isEditing || (!!m.isOptimistic && !m.sendFailed)}
     >
       <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
-        <div className={`relative flex flex-col ${m.sent ? 'items-end' : 'items-start'} max-w-[82%] md:max-w-[65%] ${m.reaction ? 'mb-6' : ''} ${m.sendFailed ? 'opacity-60' : m.isOptimistic ? 'opacity-70' : 'opacity-100'}`}>
+        <div className={`relative flex flex-col ${m.sent ? 'items-end' : 'items-start'} ${isEditing ? 'w-full' : 'max-w-[82%] md:max-w-[65%]'} ${m.reaction ? 'mb-6' : ''} ${m.sendFailed ? 'opacity-60' : m.isOptimistic ? 'opacity-70' : 'opacity-100'}`}>
 
           {/* Grouped media display — rendered OUTSIDE the text bubble */}
           {m.media_paths && m.media_paths.length > 0 ? (
@@ -333,7 +333,7 @@ function MessageBubbleInner({
                 m.isOptimistic
                   ? 'bg-cpoint-turquoise/40 border border-cpoint-turquoise/30'
                   : `liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent' : 'liquid-glass-bubble--received'}`
-              } ${m.sent ? 'text-white' : 'text-c-text-primary'} px-2.5 py-1.5 rounded-2xl text-[14px] leading-relaxed whitespace-pre-wrap break-words overflow-hidden max-w-full min-w-0 ${
+              } ${m.sent ? 'text-white' : 'text-c-text-primary'} px-2.5 py-1.5 rounded-2xl text-[14px] leading-relaxed whitespace-pre-wrap break-words overflow-hidden max-w-full min-w-0 ${isEditing ? 'w-full' : ''} ${
                 m.sent ? 'rounded-br-xl' : 'rounded-bl-xl'
               }`}
             >
@@ -497,7 +497,7 @@ function MessageBubbleInner({
           {/* Text content or editor */}
           {isEditing ? (
             <div
-              className="w-[82vw] max-w-[440px]"
+              className="w-full"
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
             >
