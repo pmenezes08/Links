@@ -496,17 +496,17 @@ function MessageBubbleInner({
 
           {/* Text content or editor */}
           {isEditing ? (
-            <div 
-              className="w-[65vw] max-w-[320px]"
+            <div
+              className="w-[82vw] max-w-[440px]"
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
             >
               <textarea
-                className="w-full bg-c-bg-recessed border border-c-border rounded-lg px-3 py-2 text-sm text-c-text-primary placeholder-c-text-tertiary focus:outline-none focus:border-cpoint-turquoise resize-none"
-                style={{ userSelect: 'text', WebkitUserSelect: 'text', touchAction: 'manipulation' } as React.CSSProperties}
+                className="w-full bg-c-bg-recessed border border-c-border rounded-lg px-3 py-2 text-sm text-c-text-primary placeholder-c-text-tertiary focus:outline-none focus:border-cpoint-turquoise resize-none overscroll-contain max-h-[40vh]"
+                style={{ userSelect: 'text', WebkitUserSelect: 'text', touchAction: 'auto' } as React.CSSProperties}
                 value={editText}
                 onChange={(e) => onEditTextChange(e.target.value)}
-                rows={2}
+                rows={4}
                 autoFocus
                 placeholder={t('chat.edit_message_placeholder')}
               />

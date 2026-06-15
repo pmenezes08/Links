@@ -4954,7 +4954,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
           </>
         ) : (
           <div className="px-3 space-y-2" onClick={(e)=> e.stopPropagation()}>
-            <textarea className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-cpoint-turquoise/70 outline-none min-h-[100px]" value={editText} onChange={(e)=> setEditText(e.target.value)} />
+            <textarea className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-cpoint-turquoise/70 outline-none min-h-[100px] max-h-[50vh] overscroll-contain" value={editText} onChange={(e)=> setEditText(e.target.value)} />
             
             {/* Current/New Media Preview */}
             {!removeMedia && (editMediaPreview || post.image_path || post.video_path) && (

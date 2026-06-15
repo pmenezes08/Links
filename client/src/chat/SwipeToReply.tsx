@@ -88,7 +88,11 @@ export function SwipeToReply({ children, onReply, disabled = false, className = 
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
-      style={{ touchAction: 'pan-y' }}
+      // When disabled (e.g. a message is being edited) drop the pan-y restriction
+      // so the edit textarea inside gets normal touch behaviour — tap-to-place
+      // cursor, double-tap word select, and reliable button taps. pan-y on this
+      // ancestor was making the editor's cursor flaky and swallowing taps on iOS.
+      style={{ touchAction: disabled ? 'auto' : 'pan-y' }}
     >
       {children}
     </div>

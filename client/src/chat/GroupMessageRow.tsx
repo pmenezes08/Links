@@ -218,12 +218,17 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
             >
               <div className={`relative ${messageReaction ? 'mb-5' : ''}`}>
                 {isEditing ? (
-                  <div className="flex flex-col gap-2 max-w-[280px]">
+                  <div
+                    className="flex flex-col gap-2 w-[82vw] max-w-[440px]"
+                    onClick={e => e.stopPropagation()}
+                    onMouseDown={e => e.stopPropagation()}
+                  >
                     <textarea
                       value={editText}
                       onChange={e => onEditTextChange(e.target.value)}
-                      className="w-full bg-c-bg-recessed border border-cpoint-turquoise rounded-lg px-3 py-2 text-[14px] text-c-text-primary resize-none focus:outline-none"
-                      rows={3}
+                      className="w-full bg-c-bg-recessed border border-cpoint-turquoise rounded-lg px-3 py-2 text-[14px] text-c-text-primary resize-none focus:outline-none overscroll-contain max-h-[40vh]"
+                      style={{ touchAction: 'auto' }}
+                      rows={4}
                       autoFocus
                     />
                     <div className="flex gap-2 justify-end">

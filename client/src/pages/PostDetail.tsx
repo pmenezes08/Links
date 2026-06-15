@@ -1919,10 +1919,10 @@ export default function PostDetail(){
               </>
             ) : (
               <div className="px-3 space-y-2">
-                <textarea 
-                  className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[100px]" 
-                  value={editPostText} 
-                  onChange={(e) => setEditPostText(e.target.value)} 
+                <textarea
+                  className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[100px] max-h-[50vh] overscroll-contain"
+                  value={editPostText}
+                  onChange={(e) => setEditPostText(e.target.value)}
                 />
                 
                 {/* Current/New Media Preview */}
