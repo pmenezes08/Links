@@ -114,6 +114,16 @@ export default function MetricCard({ metric, onUpgrade }: { metric: OwnerMetric;
           <ActiveStat label={t('owner.active_month')} value={num(v, 'mau')} />
         </div>
         {total > 0 && <div className="mt-2 text-[11px] text-c-text-tertiary">{t('owner.active_pct', { pct })}</div>}
+        {Array.isArray(v?.top_active) && (v.top_active as LeaderRow[]).length > 0 && (
+          <div className="mt-3 border-t border-c-border pt-2.5">
+            <div className="mb-1.5 text-[10px] uppercase tracking-[0.14em] text-cpoint-turquoise">{t('owner.most_active')}</div>
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              {(v.top_active as LeaderRow[]).map((u, i) => (
+                <span key={u.username} className="text-[12px] text-c-text-primary">{i + 1}. {u.username}</span>
+              ))}
+            </div>
+          </div>
+        )}
       </Card>
     )
   }

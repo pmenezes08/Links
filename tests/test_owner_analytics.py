@@ -521,6 +521,37 @@ def test_dau_counts_recent_activity(mysql_dsn):
     assert active["dau"] >= 1   # m1 posted today
     assert active["wau"] >= 1
     assert active["mau"] >= 1
+    assert any(u["username"] == "m1" for u in active["top_active"])   # composes the metric
+
+
+def test_spaces_breakdown_ranks_active_subs(mysql_dsn):
+    import bodybuilding_app
+
+    _ensure_activity_tables()
+    make_user("ownerA")
+    make_user("m1")
+    client = bodybuilding_app.app.test_client()
+    root = make_community("Root", creator_username="ownerA")
+    live = make_community("Live Sub", creator_username="ownerA", parent_community_id=root)
+    dead = make_community("Dead Sub", creator_username="ownerA", parent_community_id=root)
+    _add_member("m1", live)
+
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"INSERT INTO posts (community_id, username, content) VALUES ({ph}, {ph}, {ph})", (live, "m1", "hi"))
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+    _login(client, "ownerA")
+    subs = client.get(f"/api/community/{root}/analytics/spaces").get_json()["subcommunities"]
+    assert subs[0]["id"] == live                       # active sub ranked first
+    by_id = {s["id"]: s for s in subs}
+    assert by_id[live]["active_7d"] >= 1
+    assert by_id[live]["status"] in ("thriving", "quiet")
+    assert by_id[dead]["status"] == "dormant"
 
 
 def test_leaderboards_rank_contributors(mysql_dsn):

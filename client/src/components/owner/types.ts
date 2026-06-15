@@ -62,8 +62,17 @@ export type OwnerReport = {
   type: string
 }
 
+export type OwnerSubcommunity = {
+  id: number
+  name: string
+  member_count: number
+  active_7d?: number
+  last_activity_days?: number | null
+  status?: 'thriving' | 'quiet' | 'dormant'
+}
+
 export type OwnerSpaces = {
   success: boolean
-  subcommunities: Array<{ id: number; name: string; member_count: number }>
+  subcommunities: OwnerSubcommunity[]
   groups: Array<{ id: number; name: string }>
 }

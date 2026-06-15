@@ -236,6 +236,77 @@ def _top_contributors(cursor, ph: str, ids: List[int], kind: str,
     return out
 
 
+def _top_active_users(cursor, ph: str, ids: List[int], cutoff: str, limit: int = 5) -> List[Dict[str, Any]]:
+    """Top members by total activity *footprint* since ``cutoff`` — the people
+    composing DAU/WAU/MAU. Counts every activity event (visit + post + reply +
+    group post/reply), so it's broader than the per-type leaderboards. 'admin'
+    excluded. Names people (celebratory)."""
+    if not ids:
+        return []
+    n = _in_clause(ph, len(ids))
+    lim = max(1, min(20, int(limit)))
+    sql = f"""
+        SELECT ev.username AS username, COUNT(*) AS count FROM (
+            SELECT username FROM community_visit_history WHERE community_id IN {n} AND visit_time >= {ph}
+            UNION ALL SELECT username FROM posts WHERE community_id IN {n} AND timestamp >= {ph}
+            UNION ALL SELECT username FROM replies WHERE community_id IN {n} AND timestamp >= {ph}
+            UNION ALL SELECT gp.username FROM group_posts gp JOIN `groups` g ON gp.group_id = g.id
+                WHERE g.community_id IN {n} AND gp.created_at >= {ph}
+            UNION ALL SELECT grp.username FROM group_replies grp
+                JOIN group_posts gp ON grp.group_post_id = gp.id
+                JOIN `groups` g ON gp.group_id = g.id
+                WHERE g.community_id IN {n} AND grp.created_at >= {ph}
+        ) AS ev
+        WHERE LOWER(ev.username) <> 'admin'
+        GROUP BY ev.username ORDER BY count DESC LIMIT {lim}
+    """
+    params = (tuple(ids) + (cutoff,)) * 5
+    out: List[Dict[str, Any]] = []
+    try:
+        cursor.execute(sql, params)
+        for r in cursor.fetchall() or []:
+            out.append({
+                "username": r["username"] if hasattr(r, "keys") else r[0],
+                "count": int((r["count"] if hasattr(r, "keys") else r[1]) or 0),
+            })
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("_top_active_users failed: %s", exc)
+    return out
+
+
+def _last_activity_days(cursor, ph: str, ids: List[int], now: datetime) -> Optional[int]:
+    """Whole days since the most recent activity in the scope, or None if never
+    active (drives the per-sub 'dormancy clock')."""
+    if not ids:
+        return None
+    n = _in_clause(ph, len(ids))
+    sql = f"""
+        SELECT MAX(t) AS last_t FROM (
+            SELECT MAX(visit_time) AS t FROM community_visit_history WHERE community_id IN {n}
+            UNION ALL SELECT MAX(timestamp) FROM posts WHERE community_id IN {n}
+            UNION ALL SELECT MAX(timestamp) FROM replies WHERE community_id IN {n}
+            UNION ALL SELECT MAX(gp.created_at) FROM group_posts gp JOIN `groups` g ON gp.group_id = g.id WHERE g.community_id IN {n}
+            UNION ALL SELECT MAX(grp.created_at) FROM group_replies grp
+                JOIN group_posts gp ON grp.group_post_id = gp.id
+                JOIN `groups` g ON gp.group_id = g.id WHERE g.community_id IN {n}
+        ) AS m
+    """
+    try:
+        cursor.execute(sql, (tuple(ids)) * 5)
+        row = cursor.fetchone()
+        last_t = (row["last_t"] if hasattr(row, "keys") else row[0]) if row else None
+        if not last_t:
+            return None
+        if isinstance(last_t, str):
+            last_t = datetime.fromisoformat(last_t.replace(" ", "T").split(".")[0])
+        if last_t.tzinfo is None:
+            last_t = last_t.replace(tzinfo=timezone.utc)
+        return max(0, (now - last_t).days)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("_last_activity_days failed: %s", exc)
+        return None
+
+
 def _profile_completion(cursor, ph: str, ids: List[int]) -> Dict[str, int]:
     """Aggregate member profile completion into none/partial/complete buckets,
     deduped across the scope's communities (one person counts once). Reuses the
@@ -326,6 +397,7 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
         top_posters = _top_contributors(c, ph, ids, "posters", cutoff=mau_cut)
         top_repliers = _top_contributors(c, ph, ids, "repliers", cutoff=mau_cut)
         top_reactors = _top_contributors(c, ph, ids, "reactors")
+        top_active = _top_active_users(c, ph, ids, mau_cut)
 
         # Subtree member teaser (the upsell hook): distinct across the WHOLE
         # subtree regardless of effective scope; only meaningful with sub-communities.
@@ -383,7 +455,8 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
         {
             "id": "active", "group": "overview", "format": "activity", "tier": "free",
             "label_key": "owner.metric.active", "locked": False,
-            "value": {"dau": dau, "wau": wau, "mau": mau, "members": members},
+            "value": {"dau": dau, "wau": wau, "mau": mau, "members": members,
+                      "top_active": top_active},
         },
         {
             "id": "spaces", "group": "overview", "format": "stat", "tier": "free",
@@ -590,10 +663,22 @@ def list_spaces(community_id: int) -> Dict[str, Any]:
                 )
                 for row in c.fetchall() or []:
                     subcommunities.append({
-                        "id": row["id"] if hasattr(row, "keys") else row[0],
+                        "id": int(row["id"] if hasattr(row, "keys") else row[0]),
                         "name": row["name"] if hasattr(row, "keys") else row[1],
                         "member_count": int((row["member_count"] if hasattr(row, "keys") else row[2]) or 0),
                     })
+                # Per-sub breakdown: active-this-week + a dormancy clock + a
+                # thriving/quiet/dormant band, so the owner can see where the life
+                # is and which rooms need a nudge. Counts only — never names.
+                now = datetime.now(timezone.utc)
+                wau_cut = (now - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+                for sub in subcommunities:
+                    active_7d = _active_users(c, ph, [sub["id"]], wau_cut)
+                    sub["active_7d"] = active_7d
+                    sub["last_activity_days"] = _last_activity_days(c, ph, [sub["id"]], now)
+                    sub["status"] = ("thriving" if active_7d >= 2
+                                     else "quiet" if active_7d >= 1 else "dormant")
+                subcommunities.sort(key=lambda s: (-s["active_7d"], -(s.get("member_count") or 0)))
             except Exception as exc:  # pragma: no cover - defensive
                 logger.debug("list_spaces subcommunities failed: %s", exc)
             try:
