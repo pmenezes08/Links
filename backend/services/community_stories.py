@@ -897,7 +897,7 @@ def get_story_viewers(username: str, story_id: int) -> Tuple[Dict[str, Any], int
         return {"success": False, "error": "Server error"}, 500
 
 
-def get_story(story_id: int) -> Tuple[Dict[str, Any], int]:
+def get_story(story_id: int, username: Optional[str] = None) -> Tuple[Dict[str, Any], int]:
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -913,6 +913,12 @@ def get_story(story_id: int) -> Tuple[Dict[str, Any], int]:
             )
             row = c.fetchone()
             if not row:
+                return {"success": False, "error": "Story not found"}, 404
+            # SECURITY (privacy IDOR): only users with access to the story's
+            # community may read it — mirrors every other story endpoint, which
+            # gate on user_has_story_access. Non-members get a non-enumerating
+            # 404. Returns the same shape as a missing story.
+            if not user_has_story_access(c, username, _row_value(row, "community_id", 2)):
                 return {"success": False, "error": "Story not found"}, 404
             media_path = _row_value(row, "media_path", 4)
             return {

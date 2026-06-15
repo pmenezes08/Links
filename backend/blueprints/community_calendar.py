@@ -92,6 +92,8 @@ def api_group_calendar(group_id: int):
 @_login_required
 def api_get_calendar_event(event_id: int):
     try:
+        # Authorization (invitation-scoped: creator / invitee / app-admin) is
+        # enforced inside get_event(); raises CalendarError(403) otherwise.
         return _json({"success": True, "event": calendar_svc.get_event(event_id, session.get("username"))})
     except Exception as exc:
         return _error_response(exc)
@@ -101,6 +103,7 @@ def api_get_calendar_event(event_id: int):
 @_login_required
 def get_calendar_event(event_id: int):
     try:
+        # Authorization (invitation-scoped) is enforced inside get_event().
         return _json({"success": True, "event": calendar_svc.get_event(event_id, session.get("username"))})
     except Exception as exc:
         return _error_response(exc)
@@ -205,6 +208,9 @@ def cancel_rsvp(event_id: int):
 @_login_required
 def get_event_rsvps(event_id: int):
     try:
+        # SECURITY (privacy IDOR): only those who can view the event may see its
+        # attendee/invitee identities.
+        calendar_svc.ensure_user_can_view_event(event_id, session.get("username"))
         event = calendar_svc.get_event(event_id, session.get("username"))
         details = calendar_svc.rsvp_details(event_id)
         rsvps = []
@@ -228,6 +234,9 @@ def get_event_rsvp_details():
         event_id = request.args.get("event_id", type=int)
         if not event_id:
             raise calendar_svc.CalendarError("Event ID required")
+        # SECURITY (privacy IDOR): only those who can view the event may see its
+        # attendee/invitee identities.
+        calendar_svc.ensure_user_can_view_event(event_id, session.get("username"))
         details = calendar_svc.rsvp_details(event_id)
         return _json({"success": True, **details})
     except Exception as exc:

@@ -595,6 +595,12 @@ def public_calendar_base_url() -> str:
 
 def get_event(event_id: int, username: str | None, *, mark_viewed: bool = False) -> dict[str, Any]:
     ensure_calendar_event_columns()
+    # SECURITY (privacy IDOR): authorize the viewer before returning ANY event or
+    # member data. Centralized here so every caller is covered (the four calendar
+    # read routes + the .ics export). Raises CalendarError(403) for anyone who is
+    # not the creator, an invitee, or an app-admin — non-enumerating, matching
+    # ensure_user_can_view_event's own behavior for missing/forbidden events.
+    ensure_user_can_view_event(event_id, username)
     with get_db_connection() as conn:
         cursor = conn.cursor()
         ph = get_sql_placeholder()

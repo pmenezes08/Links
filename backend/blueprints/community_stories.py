@@ -66,7 +66,7 @@ def api_get_story_viewers(story_id: int):
 @community_stories_bp.route("/api/story/<int:story_id>", methods=["GET"])
 @_login_required
 def get_community_story(story_id: int):
-    return _json_response(stories_svc.get_story(story_id))
+    return _json_response(stories_svc.get_story(story_id, session["username"]))
 
 
 @community_stories_bp.route("/api/community_stories/<int:story_id>", methods=["DELETE"])

@@ -74,6 +74,8 @@ describe('accountStateReset', () => {
     localStorage.setItem('ann_last_seen_1', 'announcement')
     localStorage.setItem('docs_last_seen_1', 'docs')
     localStorage.setItem('docs_last_seen_group_1', 'group-docs')
+    localStorage.setItem('chat-reactions:alice:bob', '{"version":"v1","reactions":{}}')
+    localStorage.setItem('entitlement-warn-dismissed:dm:80:2026-07', '1')
     localStorage.setItem('theme', 'dark')
 
     clearAccountScopedLocalStorage()
@@ -86,6 +88,8 @@ describe('accountStateReset', () => {
     expect(localStorage.getItem('ann_last_seen_1')).toBe(null)
     expect(localStorage.getItem('docs_last_seen_1')).toBe(null)
     expect(localStorage.getItem('docs_last_seen_group_1')).toBe(null)
+    expect(localStorage.getItem('chat-reactions:alice:bob')).toBe(null)
+    expect(localStorage.getItem('entitlement-warn-dismissed:dm:80:2026-07')).toBe(null)
     expect(localStorage.getItem('theme')).toBe('dark')
   })
 

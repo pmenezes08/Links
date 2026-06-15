@@ -50,7 +50,17 @@ function getReactionsStorage() {
 }
 
 function getReactionsCacheKey(chatUsername: string): string {
-  return `${REACTIONS_CACHE_KEY_PREFIX}${chatUsername.toLowerCase()}`
+  // Viewer-scope the key so one account's reactions never paint for a different
+  // account on the same device after logout / account switch. The bare
+  // `chat-reactions:` prefix is in VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES, so both
+  // old (peer-only) and new (viewer:peer) keys are cleared on logout/switch.
+  let viewer = ''
+  try {
+    viewer = (window.localStorage.getItem('current_username') || '').toLowerCase()
+  } catch {
+    viewer = ''
+  }
+  return `${REACTIONS_CACHE_KEY_PREFIX}${viewer}:${chatUsername.toLowerCase()}`
 }
 
 function loadReactionsCache(chatUsername: string): ReactionCache {

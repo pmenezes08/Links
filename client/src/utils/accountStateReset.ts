@@ -31,6 +31,7 @@ export const ACCOUNT_SCOPED_LOCAL_STORAGE_PREFIXES: readonly string[] = [
   'ann_last_seen_',
   'docs_last_seen_',
   'docs_last_seen_group_',
+  'entitlement-warn-dismissed:',
   ...VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES,
 ]
 

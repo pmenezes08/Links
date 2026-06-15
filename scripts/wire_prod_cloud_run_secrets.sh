@@ -26,6 +26,9 @@ UPDATE_SECRETS+=",STRIPE_API_KEY=stripe-api-key:latest"
 UPDATE_SECRETS+=",STRIPE_PUBLISHABLE_KEY=stripe-publishable-key:latest"
 UPDATE_SECRETS+=",STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest"
 UPDATE_SECRETS+=",GOOGLE_PLAY_SERVICE_ACCOUNT_JSON=google-play-service-account-json:latest"
+UPDATE_SECRETS+=",APPLE_IAP_KEY_ID=apple-iap-key-id:latest"
+UPDATE_SECRETS+=",APPLE_IAP_ISSUER_ID=apple-iap-issuer-id:latest"
+UPDATE_SECRETS+=",APPLE_IAP_PRIVATE_KEY=apple-iap-private-key:latest"
 
 echo "Updating ${SERVICE} (${PROJECT}/${REGION}) secret bindings..."
 gcloud run services update "${SERVICE}" \

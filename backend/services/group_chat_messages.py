@@ -28,6 +28,39 @@ def fetch_group_messages(
         since_id = None
     limit = min(limit, 100)
 
+    # SECURITY (privacy IDOR): verify the requester is a member of this group
+    # BEFORE reading any messages, regardless of backend. The Firestore read
+    # branch below performs no authorization of its own, so without this gate
+    # any authenticated user could read another group's full history by
+    # enumerating group_id. Fail CLOSED: a gate error returns 500 and never
+    # falls through to a read. Case-insensitive match mirrors the sibling
+    # group-read gates (chat_search.search_group_thread /
+    # fetch_group_messages_around) and avoids false-denying members whose stored
+    # username case differs from the session. No app-admin bypass, matching the
+    # other group-read endpoints (get_group_media / get_group_documents).
+    try:
+        from backend.blueprints import group_chat as gc
+
+        with get_db_connection() as _gate_conn:
+            _gate_c = _gate_conn.cursor()
+            gc._ensure_group_chat_tables(_gate_c)
+            _gate_ph = get_sql_placeholder()
+            _gate_c.execute(
+                f"SELECT 1 FROM group_chat_members "
+                f"WHERE group_id = {_gate_ph} AND LOWER(username) = LOWER({_gate_ph})",
+                (group_id, username),
+            )
+            if not _gate_c.fetchone():
+                return {"success": False, "error": "Access denied"}, 403
+    except Exception as gate_err:
+        logger.error(
+            "Group membership gate failed for group %s user %s: %s",
+            group_id,
+            username,
+            gate_err,
+        )
+        return {"success": False, "error": "Failed to load messages"}, 500
+
     try:
         from backend.services.firestore_reads import USE_FIRESTORE_READS
 
@@ -132,12 +165,15 @@ def fetch_group_messages(
             ph = get_sql_placeholder()
 
             gc._ensure_group_chat_tables(c)
-            gc._ensure_group_chat_tables(c)
 
+            # Defense-in-depth: the primary membership gate at the top of this
+            # function already enforces this, but keep a self-protecting check on
+            # the MySQL branch in case it is ever reached directly. LOWER() keeps
+            # it consistent with the top gate so it cannot false-deny members.
             c.execute(
                 f"""
                 SELECT 1 FROM group_chat_members
-                WHERE group_id = {ph} AND username = {ph}
+                WHERE group_id = {ph} AND LOWER(username) = LOWER({ph})
             """,
                 (group_id, username),
             )
