@@ -1,6 +1,7 @@
 import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { getAllMessageReactions } from './utils'
 import { DM_FULL_SYNC_EVERY_N_POLL, DM_POLL_INTERVAL_MS, nextPollBackoffMs } from './constants'
+import { shouldDeltaPoll } from './pollSync'
 import { mergePolledDmMessages, type DmIdBridge } from '../utils/dmPollMergeMessages'
 import type { MessageMeta } from './utils'
 import { cacheMessages } from '../utils/offlineDb'
@@ -59,6 +60,12 @@ export function useDmMessagePoll<T extends object>({
     const peer = resolvedPeerRef.current
     if (!peer || peer.username !== username || peer.userId !== otherUserId) return
 
+    // The first poll after opening a thread must be a FULL sync (no since_id) so a
+    // peer's reaction/edit on an already-loaded message reconciles immediately instead
+    // of waiting for the periodic full sync (~9s). Resets per thread open (closure) and
+    // on return-to-foreground.
+    let didFullSync = false
+
     async function poll() {
       if (!navigator.onLine) return
       const gen = threadGenerationRef.current
@@ -74,9 +81,12 @@ export function useDmMessagePoll<T extends object>({
 
       try {
         try {
-          const useDelta =
-            lastKnownMessageIdRef.current > 0 &&
-            pollTick % DM_FULL_SYNC_EVERY_N_POLL !== 0
+          const useDelta = shouldDeltaPoll(
+            didFullSync,
+            lastKnownMessageIdRef.current,
+            pollTick,
+            DM_FULL_SYNC_EVERY_N_POLL,
+          )
 
           const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
           if (useDelta) {
@@ -95,6 +105,7 @@ export function useDmMessagePoll<T extends object>({
           nextPollAtRef.current = 0
           if (gen !== threadGenerationRef.current) return
           setSteveIsTyping(Boolean(j?.steve_is_typing))
+          if (j?.success && !useDelta) didFullSync = true // a full page has now landed
 
           if (j?.success && Array.isArray(j.messages)) {
             let maxId = lastKnownMessageIdRef.current
@@ -167,6 +178,7 @@ export function useDmMessagePoll<T extends object>({
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         nextPollAtRef.current = 0 // returning to foreground: try again immediately
+        didFullSync = false // and re-sync reactions/edits, not just new messages
         void poll()
       }
     }
