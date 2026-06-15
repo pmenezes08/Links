@@ -344,6 +344,10 @@
     "completion_full": "Completos",
     "completion_partial": "A começar",
     "completion_none": "Por começar",
+    "active_today": "Hoje",
+    "active_week": "Esta semana",
+    "active_month": "Este mês",
+    "active_pct": "{{pct}}% ativos esta semana",
     "reports_soon_title": "Nada para rever",
     "reports_soon_body": "Quando os membros sinalizarem uma publicação ou comentário, vai aparecer aqui para tu veres.",
     "reports_intro": "Os membros sinalizaram isto para tu veres. A decisão é tua.",
@@ -362,6 +366,7 @@
     "spaces_empty": "Ainda não há espaços nem grupos.",
     "metric": {
       "members": "Membros",
+      "active": "Membros ativos",
       "spaces": "Espaços e grupos",
       "invites": "Convites",
       "profile_completion": "Perfis que os membros preencheram",

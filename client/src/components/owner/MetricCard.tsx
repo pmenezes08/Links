@@ -13,6 +13,15 @@ function num(value: Record<string, number | null> | null, key: string): number {
   return typeof v === 'number' ? v : 0
 }
 
+function ActiveStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div>
+      <div className="text-lg font-semibold text-c-text-primary">{value}</div>
+      <div className="text-[10px] text-c-text-tertiary">{label}</div>
+    </div>
+  )
+}
+
 function SegRow({ color, label, value }: { color: string; label: string; value: number }) {
   return (
     <div className="flex items-center gap-2">
@@ -86,6 +95,23 @@ export default function MetricCard({ metric, onUpgrade }: { metric: OwnerMetric;
         <div className="mt-1.5 text-[15px] font-medium text-c-text-primary">
           {t('owner.spaces_value', { subs: num(v, 'subcommunities'), groups: num(v, 'groups') })}
         </div>
+      </Card>
+    )
+  }
+
+  if (metric.format === 'activity') {
+    const total = num(v, 'members')
+    const wau = num(v, 'wau')
+    const pct = total > 0 ? Math.round((wau / total) * 100) : 0
+    return (
+      <Card>
+        <div className="text-xs text-c-text-secondary">{label}</div>
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          <ActiveStat label={t('owner.active_today')} value={num(v, 'dau')} />
+          <ActiveStat label={t('owner.active_week')} value={wau} />
+          <ActiveStat label={t('owner.active_month')} value={num(v, 'mau')} />
+        </div>
+        {total > 0 && <div className="mt-2 text-[11px] text-c-text-tertiary">{t('owner.active_pct', { pct })}</div>}
       </Card>
     )
   }

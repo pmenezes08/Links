@@ -1,6 +1,6 @@
 /** Shapes returned by the owner-analytics endpoints (backend metric registry). */
 
-export type OwnerMetricFormat = 'stat' | 'funnel' | 'segments' | 'locked'
+export type OwnerMetricFormat = 'stat' | 'activity' | 'funnel' | 'segments' | 'locked'
 
 export type OwnerMetric = {
   id: string

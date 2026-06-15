@@ -468,3 +468,56 @@ def test_sibling_network_excluded_from_rollup(mysql_dsn):
     _login(client, "ownerA")
     body = _overview_scoped(client, root_a, "network").get_json()
     assert _by_id(body)["members"]["value"]["count"] == 1  # a1 only — B's member never in the rollup
+
+
+def _ensure_activity_tables():
+    """The DAU union query touches these; create them (empty) so it doesn't
+    error out on a missing table in the test schema."""
+    ddls = [
+        "CREATE TABLE IF NOT EXISTS community_visit_history (id INT PRIMARY KEY AUTO_INCREMENT, "
+        "username VARCHAR(191), community_id INT, visit_time DATETIME)",
+        "CREATE TABLE IF NOT EXISTS group_posts (id INT PRIMARY KEY AUTO_INCREMENT, group_id INT, "
+        "username VARCHAR(191), content TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)",
+        "CREATE TABLE IF NOT EXISTS group_replies (id INT PRIMARY KEY AUTO_INCREMENT, group_post_id INT, "
+        "parent_reply_id INT NULL, username VARCHAR(191), content TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)",
+    ]
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        for ddl in ddls:
+            try:
+                c.execute(ddl)
+            except Exception:
+                pass
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+
+def test_dau_counts_recent_activity(mysql_dsn):
+    import bodybuilding_app
+
+    _ensure_activity_tables()
+    make_user("ownerA")
+    make_user("m1")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")
+    _add_member("m1", a)
+
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"INSERT INTO posts (community_id, username, content) VALUES ({ph}, {ph}, {ph})",
+            (a, "m1", "hello today"),
+        )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+    _login(client, "ownerA")
+    active = _by_id(_overview(client, a).get_json())["active"]["value"]
+    assert active["dau"] >= 1   # m1 posted today
+    assert active["wau"] >= 1
+    assert active["mau"] >= 1

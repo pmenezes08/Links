@@ -344,6 +344,10 @@
     "completion_full": "Fully set up",
     "completion_partial": "Getting started",
     "completion_none": "Not started yet",
+    "active_today": "Today",
+    "active_week": "This week",
+    "active_month": "This month",
+    "active_pct": "{{pct}}% active this week",
     "reports_soon_title": "Nothing to review",
     "reports_soon_body": "When members flag a post or comment, it'll show up here for you to look at.",
     "reports_intro": "Members flagged these for you to look at. You decide what stays.",
@@ -362,6 +366,7 @@
     "spaces_empty": "No spaces or groups yet.",
     "metric": {
       "members": "Members",
+      "active": "Active members",
       "spaces": "Spaces & groups",
       "invites": "Invites",
       "profile_completion": "Profiles members filled in",

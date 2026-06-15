@@ -119,6 +119,40 @@ def _distinct_members(cursor, ph: str, ids: List[int], cutoff: Optional[str] = N
     return _scalar(cursor, sql, params)
 
 
+def _active_users(cursor, ph: str, ids: List[int], cutoff: str) -> int:
+    """Distinct users active in the scope's communities since ``cutoff``.
+
+    Active = visited the feed (community_visit_history) OR posted/replied in the
+    community feed OR posted/replied in a group under it. Group chats are NOT
+    community-scoped (no community_id) and are excluded by design. Reactions
+    carry no timestamp, so they can't be windowed and are also excluded (a small
+    documented undercount). 'admin' excluded.
+    """
+    if not ids:
+        return 0
+    n = _in_clause(ph, len(ids))
+    sql = f"""
+        SELECT COUNT(DISTINCT active.username) AS count FROM (
+            SELECT username FROM community_visit_history WHERE community_id IN {n} AND visit_time >= {ph}
+            UNION
+            SELECT username FROM posts WHERE community_id IN {n} AND timestamp >= {ph}
+            UNION
+            SELECT username FROM replies WHERE community_id IN {n} AND timestamp >= {ph}
+            UNION
+            SELECT gp.username FROM group_posts gp JOIN `groups` g ON gp.group_id = g.id
+                WHERE g.community_id IN {n} AND gp.created_at >= {ph}
+            UNION
+            SELECT grp.username FROM group_replies grp
+                JOIN group_posts gp ON grp.group_post_id = gp.id
+                JOIN `groups` g ON gp.group_id = g.id
+                WHERE g.community_id IN {n} AND grp.created_at >= {ph}
+        ) AS active
+        WHERE LOWER(active.username) <> 'admin'
+    """
+    params = (tuple(ids) + (cutoff,)) * 5
+    return _scalar(cursor, sql, params)
+
+
 def _profile_completion(cursor, ph: str, ids: List[int]) -> Dict[str, int]:
     """Aggregate member profile completion into none/partial/complete buckets,
     deduped across the scope's communities (one person counts once). Reuses the
@@ -197,9 +231,13 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
         ids = subtree_ids if effective_network else [community_id]
         in_ids = _in_clause(ph, len(ids))
 
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+        now = datetime.now(timezone.utc)
+        cutoff = (now - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
         members = _distinct_members(c, ph, ids)
         net_new_7d = _distinct_members(c, ph, ids, cutoff=cutoff)
+        dau = _active_users(c, ph, ids, (now - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"))
+        wau = _active_users(c, ph, ids, cutoff)
+        mau = _active_users(c, ph, ids, (now - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S"))
 
         # Subtree member teaser (the upsell hook): distinct across the WHOLE
         # subtree regardless of effective scope; only meaningful with sub-communities.
@@ -253,6 +291,11 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
             "label_key": "owner.metric.members", "locked": False,
             "value": {"count": members, "delta_7d": net_new_7d,
                       "cap": tier_info.get("member_cap")},
+        },
+        {
+            "id": "active", "group": "overview", "format": "activity", "tier": "free",
+            "label_key": "owner.metric.active", "locked": False,
+            "value": {"dau": dau, "wau": wau, "mau": mau, "members": members},
         },
         {
             "id": "spaces", "group": "overview", "format": "stat", "tier": "free",
