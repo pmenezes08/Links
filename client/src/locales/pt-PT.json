@@ -354,9 +354,12 @@
     "top_reactors": "Quem mais reage",
     "leaderboard_empty": "Ainda sem atividade",
     "most_active": "Mais ativos",
+    "most_active_note": "Por atividade total — visitas, publicações e comentários — nos últimos 30 dias.",
     "status_thriving": "Animado",
+    "status_active": "Ativo",
     "status_quiet": "Calmo",
     "status_dormant": "Adormecido",
+    "spaces_legend": "Ativo = visitou, publicou ou comentou nos últimos 7 dias. Animado ≈ 1 em cada 3 membros ativos · Ativo ≈ 1 em cada 10 · Calmo = menos · Adormecido = nenhum.",
     "sub_active": "{{n}} ativos esta semana",
     "sub_quiet_days": "{{n}}d sem atividade",
     "reports_soon_title": "Nada para rever",
@@ -390,7 +393,7 @@
     },
     "steve": {
       "greeting": "Eis como vai {{community}} — tenho estado de olho.",
-      "read_default": "Estás a crescer +{{delta}} esta semana, e {{complete}} de {{total}} já preencheram o perfil. Continuo de olho.",
+      "read_default": "Estás a crescer +{{delta}} esta semana — {{wau}} ativos nos últimos 7 dias, {{mau}} no último mês, e {{communicating}} já falaram com outro membro. {{complete}} de {{total}} preencheram o perfil.",
       "read_empty": "A tua comunidade está mesmo a começar. Convida algumas pessoas e publica umas boas-vindas para arrancar."
     }
   },

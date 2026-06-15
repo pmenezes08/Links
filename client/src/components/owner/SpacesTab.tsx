@@ -46,7 +46,7 @@ function SubCard({ sub, onClick }: { sub: OwnerSubcommunity; onClick: () => void
       </div>
       <div className="ml-2 flex shrink-0 items-center gap-2">
         <div className="flex flex-col items-end">
-          <span className={`text-[10px] ${status === 'thriving' ? 'text-cpoint-turquoise' : 'text-c-text-tertiary'}`}>
+          <span className={`text-[10px] ${status === 'thriving' || status === 'active' ? 'text-cpoint-turquoise' : 'text-c-text-tertiary'}`}>
             {t(`owner.status_${status}`)}
           </span>
           {status !== 'thriving' && typeof days === 'number' && days >= 1 && (
@@ -98,6 +98,7 @@ export default function SpacesTab({ communityId }: { communityId: number }) {
               <SubCard key={s.id} sub={s} onClick={() => navigate(`/community/${s.id}/owner`)} />
             ))}
           </div>
+          <p className="mt-2 px-1 text-[10px] leading-relaxed text-c-text-tertiary">{t('owner.spaces_legend')}</p>
         </div>
       )}
       {groups.length > 0 && (

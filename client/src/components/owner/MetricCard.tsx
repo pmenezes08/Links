@@ -122,6 +122,7 @@ export default function MetricCard({ metric, onUpgrade }: { metric: OwnerMetric;
                 <span key={u.username} className="text-[12px] text-c-text-primary">{i + 1}. {u.username}</span>
               ))}
             </div>
+            <p className="mt-1.5 text-[10px] leading-relaxed text-c-text-tertiary">{t('owner.most_active_note')}</p>
           </div>
         )}
       </Card>

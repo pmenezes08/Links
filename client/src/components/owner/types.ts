@@ -68,7 +68,7 @@ export type OwnerSubcommunity = {
   member_count: number
   active_7d?: number
   last_activity_days?: number | null
-  status?: 'thriving' | 'quiet' | 'dormant'
+  status?: 'thriving' | 'active' | 'quiet' | 'dormant'
 }
 
 export type OwnerSpaces = {

@@ -354,9 +354,12 @@
     "top_reactors": "Top reactors",
     "leaderboard_empty": "No activity yet",
     "most_active": "Most active",
+    "most_active_note": "By total activity — visits, posts and replies — over the last 30 days.",
     "status_thriving": "Thriving",
+    "status_active": "Active",
     "status_quiet": "Quiet",
     "status_dormant": "Dormant",
+    "spaces_legend": "Active = visited, posted or replied in the last 7 days. Thriving ≈ 1 in 3 members active · Active ≈ 1 in 10 · Quiet = fewer · Dormant = none.",
     "sub_active": "{{n}} active this week",
     "sub_quiet_days": "{{n}}d quiet",
     "reports_soon_title": "Nothing to review",
@@ -390,7 +393,7 @@
     },
     "steve": {
       "greeting": "Here's how {{community}} is doing — I've been keeping an eye on it.",
-      "read_default": "You're up {{delta}} this week, and {{complete}} of {{total}} have set up their profile. I'll keep watching.",
+      "read_default": "You're up {{delta}} this week — {{wau}} active in the last 7 days, {{mau}} over the month, and {{communicating}} have messaged another member. {{complete}} of {{total}} have filled in their profile.",
       "read_empty": "Your community is just getting started. Invite a few people and post a welcome to get things going."
     }
   },

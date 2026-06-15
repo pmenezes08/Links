@@ -307,6 +307,20 @@ def _last_activity_days(cursor, ph: str, ids: List[int], now: datetime) -> Optio
         return None
 
 
+def _activity_band(active_7d: int, members: int) -> str:
+    """Per-sub health band from the *share* of members active this week (not a
+    raw count — 5 active in a 30-member sub is ~17%, which is not 'thriving').
+    Four bands so there's a middle ground between thriving and dormant."""
+    if active_7d <= 0:
+        return "dormant"
+    ratio = active_7d / members if members > 0 else 1.0
+    if ratio >= 0.33:
+        return "thriving"   # ~1 in 3 members active this week
+    if ratio >= 0.10:
+        return "active"     # ~1 in 10 — alive, the middle band
+    return "quiet"          # some life but most are quiet
+
+
 def _profile_completion(cursor, ph: str, ids: List[int]) -> Dict[str, int]:
     """Aggregate member profile completion into none/partial/complete buckets,
     deduped across the scope's communities (one person counts once). Reuses the
@@ -497,7 +511,8 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
         })
 
     steve = _steve_block(low_data=low_data, net_new_7d=net_new_7d,
-                         completion=completion, members=members)
+                         completion=completion, members=members,
+                         wau=wau, mau=mau, communicating=communicating)
 
     return {
         "success": True,
@@ -516,18 +531,22 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
 
 
 def _steve_block(*, low_data: bool, net_new_7d: int, completion: Dict[str, int],
-                 members: int) -> Dict[str, Any]:
+                 members: int, wau: int, mau: int, communicating: int) -> Dict[str, Any]:
     """Pick Steve's narration template + params. Copy lives in the i18n
     catalogs; this only chooses which line and supplies the numbers (zero AI
-    cost, payoff-first, never deficit-framed)."""
+    cost, payoff-first, never deficit-framed). The default read spans growth,
+    weekly + monthly activity, and connection so it isn't one-dimensional."""
     if low_data:
         return {"greeting_key": "owner.steve.greeting",
                 "read_key": "owner.steve.read_empty", "read_params": {}, "low_data": True}
     return {
         "greeting_key": "owner.steve.greeting",
         "read_key": "owner.steve.read_default",
-        "read_params": {"delta": net_new_7d,
-                        "complete": completion.get("complete", 0), "total": members},
+        "read_params": {
+            "delta": net_new_7d, "wau": wau, "mau": mau,
+            "communicating": communicating,
+            "complete": completion.get("complete", 0), "total": members,
+        },
         "low_data": False,
     }
 
@@ -676,8 +695,7 @@ def list_spaces(community_id: int) -> Dict[str, Any]:
                     active_7d = _active_users(c, ph, [sub["id"]], wau_cut)
                     sub["active_7d"] = active_7d
                     sub["last_activity_days"] = _last_activity_days(c, ph, [sub["id"]], now)
-                    sub["status"] = ("thriving" if active_7d >= 2
-                                     else "quiet" if active_7d >= 1 else "dormant")
+                    sub["status"] = _activity_band(active_7d, sub.get("member_count") or 0)
                 subcommunities.sort(key=lambda s: (-s["active_7d"], -(s.get("member_count") or 0)))
             except Exception as exc:  # pragma: no cover - defensive
                 logger.debug("list_spaces subcommunities failed: %s", exc)
