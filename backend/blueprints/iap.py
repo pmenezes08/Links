@@ -123,15 +123,42 @@ def _restore(provider: str):
         return jsonify({
             "success": False,
             "error": _error_message(last_reason, last_result),
-            "reason": last_reason,
+            # Typed, client-mappable outcome so the UI never renders a raw
+            # backend code. The raw reason is kept as ``detail_reason`` for
+            # logs/support only.
+            "reason": _restore_typed_reason(last_reason),
+            "detail_reason": last_reason,
             "detail": last_result,
         }), _status(last_reason)
     return jsonify({
         "success": True,
+        "reason": "restored",
         "restored_count": restored,
         "result": last_result,
         "links": iap_links.list_for_user(username, provider=provider),
     })
+
+
+# Map raw confirm reasons to the four client-facing restore outcomes the
+# subscriptions UI knows how to render (see ``mobileStoreBilling.ts`` /
+# ``SubscriptionPlans`` restore handling). Anything not listed is treated as
+# transient (retryable) — verification/network/config hiccups fall here.
+_RESTORE_TYPED_REASONS: Dict[str, str] = {
+    # The store purchase is owned by / managed through a different account.
+    "purchase_owned_by_other_user": "account_mismatch",
+    "managed_by_other_provider": "account_mismatch",
+    "already_active_other_provider": "account_mismatch",
+    "already_active_same_provider": "account_mismatch",
+    # Nothing here we can grant from a restore.
+    "nothing_to_restore": "no_purchase",
+    "unknown_product": "no_purchase",
+    "missing_fields": "no_purchase",
+    "community_id_required": "no_purchase",
+}
+
+
+def _restore_typed_reason(reason: str) -> str:
+    return _RESTORE_TYPED_REASONS.get(reason, "transient")
 
 
 def _string(body: Dict[str, Any], *names: str) -> str:

@@ -2656,7 +2656,10 @@
     "open_web_billing": "Abrir faturação web: {{url}}",
     "cancel": "Cancelar",
     "error_load_subscriptions": "Falha ao carregar subscrições",
-    "error_load_communities": "Falha ao carregar comunidades"
+    "error_load_communities": "Falha ao carregar comunidades",
+    "restore_no_purchase": "Não encontrámos nenhuma subscrição ativa na tua conta {{provider}}. Se subscreveste com outra conta, inicia sessão nessa e tenta novamente — não vais ser cobrado duas vezes.",
+    "restore_account_mismatch": "Encontrámos uma subscrição, mas está ligada a outra conta. A tua compra está segura — contacta o suporte e nós ligamo-la à tua conta.",
+    "restore_transient": "Não foi possível contactar a {{provider}}. Tenta novamente daqui a um momento."
   },
   "time": {
     "just_now": "agora mesmo",

@@ -2656,7 +2656,10 @@
     "open_web_billing": "Open web billing: {{url}}",
     "cancel": "Cancel",
     "error_load_subscriptions": "Failed to load subscriptions",
-    "error_load_communities": "Failed to load communities"
+    "error_load_communities": "Failed to load communities",
+    "restore_no_purchase": "No active subscription found on your {{provider}} account. If you subscribed with a different account, sign in to that one and try again — you won't be charged twice.",
+    "restore_account_mismatch": "We found a subscription, but it's linked to a different account. Your purchase is safe — contact support and we'll connect it.",
+    "restore_transient": "Couldn't reach the {{provider}}. Please try again in a moment."
   },
   "time": {
     "just_now": "just now",

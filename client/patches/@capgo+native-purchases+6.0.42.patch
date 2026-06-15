@@ -1,0 +1,45 @@
+diff --git a/node_modules/@capgo/native-purchases/ios/Plugin/NativePurchasesPlugin.m b/node_modules/@capgo/native-purchases/ios/Plugin/NativePurchasesPlugin.m
+index af91704..72c9099 100644
+--- a/node_modules/@capgo/native-purchases/ios/Plugin/NativePurchasesPlugin.m
++++ b/node_modules/@capgo/native-purchases/ios/Plugin/NativePurchasesPlugin.m
+@@ -9,4 +9,5 @@ CAP_PLUGIN(NativePurchasesPlugin, "NativePurchases",
+         CAP_PLUGIN_METHOD(restorePurchases, CAPPluginReturnPromise);
+         CAP_PLUGIN_METHOD(isBillingSupported, CAPPluginReturnPromise);
+         CAP_PLUGIN_METHOD(getPluginVersion, CAPPluginReturnPromise);
++        CAP_PLUGIN_METHOD(getCurrentEntitlements, CAPPluginReturnPromise);
+ )
+diff --git a/node_modules/@capgo/native-purchases/ios/Plugin/NativePurchasesPlugin.swift b/node_modules/@capgo/native-purchases/ios/Plugin/NativePurchasesPlugin.swift
+index 7e69fe5..307f7bd 100644
+--- a/node_modules/@capgo/native-purchases/ios/Plugin/NativePurchasesPlugin.swift
++++ b/node_modules/@capgo/native-purchases/ios/Plugin/NativePurchasesPlugin.swift
+@@ -15,6 +15,30 @@ public class NativePurchasesPlugin: CAPPlugin {
+         call.resolve(["version": self.PLUGIN_VERSION])
+     }
+ 
++    @objc func getCurrentEntitlements(_ call: CAPPluginCall) {
++        if #available(iOS 15, *) {
++            print("getCurrentEntitlements")
++            DispatchQueue.global().async {
++                Task {
++                    var entitlements: [[String: Any]] = []
++                    for await result in Transaction.currentEntitlements {
++                        if case let .verified(transaction) = result {
++                            entitlements.append([
++                                "transactionId": String(transaction.id),
++                                "originalTransactionId": String(transaction.originalID),
++                                "productId": transaction.productID,
++                                "jwsRepresentation": result.jwsRepresentation
++                            ])
++                        }
++                    }
++                    call.resolve(["entitlements": entitlements])
++                }
++            }
++        } else {
++            call.reject("Not implemented under ios 15")
++        }
++    }
++
+     @objc func isBillingSupported(_ call: CAPPluginCall) {
+         if #available(iOS 15, *) {
+             call.resolve([

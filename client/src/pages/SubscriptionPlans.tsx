@@ -348,16 +348,23 @@ export default function SubscriptionPlans() {
     setError(null)
     setPanelError(null)
     try {
-      const count = await restoreStorePurchases(provider, iapConfig)
-      showToast(
-        count > 0
-          ? t('subscriptions.status_restored', { count })
-          : t('subscriptions.status_no_restore'),
-      )
-      await loadActiveSubscriptions()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('subscriptions.error_iap'))
-      void triggerHaptic('error')
+      const outcome = await restoreStorePurchases(provider, iapConfig)
+      const label = providerLabel(provider)
+      // Map the typed outcome to reassurance-first copy — never surface a raw
+      // backend code. Money anxiety is the real failure mode on a reinstall.
+      if (outcome.reason === 'restored') {
+        showToast(t('subscriptions.status_restored', { count: outcome.count }))
+        await loadActiveSubscriptions()
+      } else if (outcome.reason === 'account_mismatch') {
+        showToast(t('subscriptions.restore_account_mismatch'), 'error')
+      } else if (outcome.reason === 'transient') {
+        showToast(t('subscriptions.restore_transient', { provider: label }), 'error')
+      } else {
+        showToast(t('subscriptions.restore_no_purchase', { provider: label }), 'error')
+      }
+    } catch {
+      // Unexpected failure — treat as transient, still no raw code.
+      showToast(t('subscriptions.restore_transient', { provider: providerLabel(provider) }), 'error')
     } finally {
       setCheckoutLoading(null)
     }

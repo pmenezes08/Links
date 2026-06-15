@@ -102,39 +102,75 @@ export async function purchaseStoreSubscription(input: {
   }
 }
 
+/** Restore outcome the subscriptions UI maps to copy — never a raw backend code. */
+export type RestoreReason = 'restored' | 'no_purchase' | 'account_mismatch' | 'transient'
+export interface RestoreOutcome {
+  count: number
+  reason: RestoreReason
+}
+
+interface StoreEntitlement {
+  transactionId: string
+  productId: string
+  jwsRepresentation?: string
+  originalTransactionId?: string
+}
+
+// `getCurrentEntitlements` is added to the native plugin via a patch-package
+// patch (client/patches/@capgo+native-purchases+6.0.42.patch). Cast so the web
+// build type-checks even if the postinstall hook is skipped — the method only
+// runs on a native iOS/Android build where the patch is compiled in.
+const NativePurchasesExt = NativePurchases as typeof NativePurchases & {
+  getCurrentEntitlements?: () => Promise<{ entitlements: StoreEntitlement[] }>
+}
+
+function mapRestoreReason(raw: unknown): RestoreReason {
+  if (raw === 'account_mismatch' || raw === 'no_purchase' || raw === 'transient') return raw
+  return 'transient'
+}
+
 export async function restoreStorePurchases(
   provider: StoreProvider,
   config: IapConfig,
-): Promise<number> {
-  const restored = await NativePurchases.restorePurchases()
-  const providerConfig = config[provider]
-  const productIds = new Set<string>([
-    providerConfig.premium_product_id,
-    providerConfig.steve_product_id || '',
-    ...Object.values(providerConfig.community_product_ids || {}),
-  ].filter(Boolean))
-  const activeIds = (restored.customerInfo?.activeSubscriptions || [])
-    .map((id) => String(id))
-    .filter((id) => productIds.has(id))
+): Promise<RestoreOutcome> {
+  // 1) Refresh StoreKit so currentEntitlements reflects this store account.
+  await NativePurchases.restorePurchases().catch(() => undefined)
 
-  let count = 0
-  for (const productId of activeIds) {
-    const res = await fetch(`/api/iap/${provider}/restore`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({
-        product_id: productId,
-        purchase_key: productId,
-      }),
-    })
-    const data = await res.json().catch(() => null)
-    if (res.ok && data?.success) count += 1
+  // 2) Read the verified active entitlements (real transaction id + signed JWS).
+  const providerConfig = config[provider]
+  const known = new Set<string>(
+    [
+      providerConfig.premium_product_id,
+      providerConfig.steve_product_id || '',
+      ...Object.values(providerConfig.community_product_ids || {}),
+    ].filter(Boolean),
+  )
+  let entitlements: StoreEntitlement[] = []
+  try {
+    const res = await NativePurchasesExt.getCurrentEntitlements?.()
+    entitlements = (res?.entitlements || []).filter((e) => e && known.has(e.productId))
+  } catch {
+    entitlements = []
   }
-  return count
+  if (entitlements.length === 0) return { count: 0, reason: 'no_purchase' }
+
+  // 3) Hand the verified transactions to the backend for re-linking + grant.
+  const transactions = entitlements.map((e) => ({
+    product_id: e.productId,
+    purchase_key: e.transactionId,
+    signed_payload: e.jwsRepresentation,
+  }))
+  const res = await fetch(`/api/iap/${provider}/restore`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ transactions }),
+  })
+  const data = await res.json().catch(() => null)
+  if (res.ok && data?.success) {
+    return { count: Number(data.restored_count || transactions.length), reason: 'restored' }
+  }
+  return { count: 0, reason: mapRestoreReason(data?.reason) }
 }
 
 export function openExternalBillingUrl(url: string): void {
