@@ -24,6 +24,16 @@ const config: CapacitorConfig = {
     scrollEnabled: true,
   },
   plugins: {
+    // Hold the launch splash until the web view's first paint (hidden from
+    // main.tsx) so cold open never flashes the bare WebView background.
+    SplashScreen: {
+      launchAutoHide: false,
+      backgroundColor: '#ffffff',
+      showSpinner: false,
+      launchFadeOutDuration: 250,
+      androidScaleType: 'CENTER_CROP',
+      splashImmersive: false,
+    },
     PushNotifications: {
       presentationOptions: ['badge', 'sound', 'alert'],
     },
