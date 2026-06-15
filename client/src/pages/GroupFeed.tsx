@@ -12,6 +12,7 @@ import ImageLoader from '../components/ImageLoader'
 import { formatSmartTime } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
 import { useUserProfile } from '../contexts/UserProfileContext'
+import { useBadges } from '../contexts/BadgeContext'
 import { renderTextWithLinks, detectLinks, replaceLinkInText } from '../utils/linkUtils'
 import { openExternalInApp } from '../utils/openExternalInApp'
 import VideoEmbed from '../components/VideoEmbed'
@@ -68,8 +69,7 @@ export default function GroupFeed(){
   const [showSearch, setShowSearch] = useState(false)
   const [q, setQ] = useState('#')
   const [results, setResults] = useState<Array<{ id: number; username: string; content: string; timestamp: string }>>([])
-  const [unreadMsgs, setUnreadMsgs] = useState(0)
-  const [unreadNotifs, setUnreadNotifs] = useState(0)
+  const { unreadMsgs, unreadNotifs } = useBadges()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
@@ -119,33 +119,8 @@ export default function GroupFeed(){
     setTitle(title)
   }, [groupName, communityMeta, setTitle, t])
 
-  useEffect(() => {
-    let mounted = true
-    const refreshUnreadBadges = async () => {
-      if (!mounted) return
-      try {
-        const m = await fetch('/check_unread_messages', { credentials: 'include' })
-        const mj = await m.json().catch(() => null)
-        if (mounted && mj && typeof mj.unread_count === 'number') {
-          setUnreadMsgs(mj.unread_count)
-        }
-      } catch {}
-      try {
-        const n = await fetch('/api/notifications', { credentials: 'include', headers: { 'Accept': 'application/json' } })
-        const nj = await n.json().catch(() => null)
-        if (mounted && nj?.success && Array.isArray(nj.notifications)) {
-          const cnt = nj.notifications.filter((x: any) => x && x.is_read === false && x.type !== 'message' && x.type !== 'reaction').length
-          setUnreadNotifs(cnt)
-        }
-      } catch {}
-    }
-    refreshUnreadBadges()
-    const interval = setInterval(refreshUnreadBadges, 10000)
-    return () => {
-      mounted = false
-      clearInterval(interval)
-    }
-  }, [])
+  // Header badge counts come from the shared BadgeContext poller (one
+  // /check_unread_messages round-trip for both counts) — no page-local poll loop.
 
   const loadFeed = useCallback(async () => {
     if (!group_id) return

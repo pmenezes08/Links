@@ -1423,7 +1423,7 @@ export default function GroupChatThread() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ voice: uploadData.audio_path }),
+          body: JSON.stringify({ voice: uploadData.audio_path, client_key: `gvoice_${optimisticId}` }),
         })
         const data = await response.json()
         if (handleBasicProfileRequired(data)) {
@@ -1599,7 +1599,7 @@ export default function GroupChatThread() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ voice: uploadData.audio_path }),
+          body: JSON.stringify({ voice: uploadData.audio_path, client_key: `gvoice_${optimisticId}` }),
         })
         const data = await response.json()
 
@@ -1663,7 +1663,7 @@ export default function GroupChatThread() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ voice: uploadData.audio_path }),
+          body: JSON.stringify({ voice: uploadData.audio_path, client_key: `gvoice_${optimisticId}` }),
         })
         const data = await response.json()
 

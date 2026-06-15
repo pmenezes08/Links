@@ -6,6 +6,7 @@ import { useHeader } from '../contexts/HeaderContext'
 import { useBadges } from '../contexts/BadgeContext'
 import { renderTextWithLinks } from '../utils/linkUtils'
 import { SkeletonNotificationList } from '../components/SkeletonRow'
+import { apiFetch } from '../utils/apiFetch'
 
 type Notif = {
   id: number
@@ -227,7 +228,7 @@ export default function Notifications(){
     }
     try{
       if (!silent) setLoading(true)
-      const r = await fetch('/api/notifications?all=true', { credentials:'include', headers: { 'Accept': 'application/json' } })
+      const r = await apiFetch('/api/notifications?all=true', { credentials:'include', headers: { 'Accept': 'application/json' } })
       devLog('📋 Notifications API status:', r.status)
       const j = await r.json()
       devLog('📋 Raw notifications response:', j)
@@ -264,7 +265,7 @@ export default function Notifications(){
 
   const loadPendingInvites = useCallback(async function loadPendingInvites(){
     try {
-      const r = await fetch('/api/community/invites/pending?include_email=true', {
+      const r = await apiFetch('/api/community/invites/pending?include_email=true', {
         credentials: 'include',
         headers: { 'Accept': 'application/json' },
       })
@@ -279,7 +280,7 @@ export default function Notifications(){
 
   const loadJoinRequests = useCallback(async function loadJoinRequests(){
     try {
-      const r = await fetch('/api/community/join_requests/pending', {
+      const r = await apiFetch('/api/community/join_requests/pending', {
         credentials: 'include',
         headers: { 'Accept': 'application/json' },
       })
@@ -350,7 +351,7 @@ export default function Notifications(){
   const loadEvents = useCallback(async () => {
     try {
       setEventsLoading(true)
-      const r = await fetch('/api/all_calendar_events', { credentials: 'include', headers: { Accept: 'application/json' } })
+      const r = await apiFetch('/api/all_calendar_events', { credentials: 'include', headers: { Accept: 'application/json' } })
       const j = await r.json()
       if (j?.success) {
         setEvents(j.events || [])
@@ -365,7 +366,7 @@ export default function Notifications(){
   const loadPolls = useCallback(async () => {
     try {
       setPollsLoading(true)
-      const r = await fetch('/api/all_active_polls', { credentials: 'include', headers: { Accept: 'application/json' } })
+      const r = await apiFetch('/api/all_active_polls', { credentials: 'include', headers: { Accept: 'application/json' } })
       const j = await r.json()
       if (j?.success) {
         setPolls(j.polls || [])
@@ -380,7 +381,7 @@ export default function Notifications(){
   const loadTasks = useCallback(async () => {
     try {
       setTasksLoading(true)
-      const r = await fetch('/api/all_my_tasks', { credentials: 'include', headers: { Accept: 'application/json' } })
+      const r = await apiFetch('/api/all_my_tasks', { credentials: 'include', headers: { Accept: 'application/json' } })
       const j = await r.json()
       if (j?.success) {
         setTasks(j.tasks || [])

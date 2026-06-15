@@ -9,7 +9,10 @@ it is not deleted, it was not sent by the user, and the user belongs to the grou
 from __future__ import annotations
 
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
-from backend.services.dm_unread import count_group_unread_excluding_cleared
+from backend.services.dm_unread import (
+    count_group_unread_excluding_cleared,
+    count_unread_notifications,
+)
 from tests.fixtures import make_user
 
 
@@ -121,3 +124,33 @@ def test_count_group_unread_excluding_cleared_matches_loop_semantics(mysql_dsn):
         assert count_group_unread_excluding_cleared(c, "gu_member") == 2
         # gu_lurker has no memberships -> zero.
         assert count_group_unread_excluding_cleared(c, "gu_lurker") == 0
+
+
+def test_count_unread_notifications_excludes_message_and_reaction(mysql_dsn):
+    """The notification badge count rides /check_unread_messages and must mirror the
+    client's old filter: unread notifications, excluding 'message' and 'reaction'
+    types (those surface in the chat/reaction UIs, not the bell)."""
+    make_user("nu_user")
+    make_user("nu_other")
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        ph = get_sql_placeholder()
+
+        def notif(user: str, ntype: str, is_read: int = 0) -> None:
+            c.execute(
+                f"INSERT INTO notifications (user_id, from_user, type, is_read) "
+                f"VALUES ({ph}, {ph}, {ph}, {ph})",
+                (user, "nu_other", ntype, is_read),
+            )
+
+        notif("nu_user", "follow")             # COUNTED
+        notif("nu_user", "post_reply")         # COUNTED
+        notif("nu_user", "message")            # excluded (chat badge owns this)
+        notif("nu_user", "reaction")           # excluded (reaction UI)
+        notif("nu_user", "follow", is_read=1)  # excluded (already read)
+        notif("nu_other", "follow")            # excluded (different user)
+        conn.commit()
+
+        assert count_unread_notifications(c, "nu_user") == 2
+        assert count_unread_notifications(c, "nu_other") == 1

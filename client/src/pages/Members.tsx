@@ -5,6 +5,7 @@ import Avatar from '../components/Avatar'
 import { triggerDashboardServerPull } from '../utils/serverPull'
 import { refreshDashboardCommunities } from '../utils/dashboardCache'
 import { handleBasicProfileRequired } from '../utils/basicProfileGate'
+import LoadErrorRetry from '../components/LoadErrorRetry'
 
 type Member = {
   username: string;
@@ -33,6 +34,7 @@ export default function Members(){
   const [communityName, setCommunityName] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
   const [canManage, setCanManage] = useState(false)
   const [canInviteCurrentCommunity, setCanInviteCurrentCommunity] = useState(false)
   const [ownerUsername, setOwnerUsername] = useState<string>('')
@@ -93,7 +95,7 @@ export default function Members(){
     }
     load()
     return () => { mounted = false }
-  }, [community_id])
+  }, [community_id, reloadKey])
 
   useEffect(() => {
     setInviteCommunityId(numericCommunityId)
@@ -426,7 +428,7 @@ export default function Members(){
         {loading ? (
           <div className="text-c-text-tertiary">{t('social.members_loading')}</div>
         ) : error ? (
-          <div className="text-red-400">{error}</div>
+          <LoadErrorRetry message={error} onRetry={() => { setError(null); setLoading(true); setReloadKey(k => k + 1) }} />
         ) : (
           <div className="space-y-2">
             {members.length === 0 ? (

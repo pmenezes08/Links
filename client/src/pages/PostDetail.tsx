@@ -25,6 +25,7 @@ import { openExternalInApp } from '../utils/openExternalInApp'
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
 import { ENTITLEMENTS_REFRESH_EVENT, useEntitlements } from '../hooks/useEntitlements'
 import { useUserProfile } from '../contexts/UserProfileContext'
+import { useBadges } from '../contexts/BadgeContext'
 import {
   buildClientPremiumRequiredError,
   mentionsSteve,
@@ -321,39 +322,10 @@ export default function PostDetail(){
   const [replyReactorViewers, setReplyReactorViewers] = useState<PostViewer[]>([])
   const [replyReactorViewCount, setReplyReactorViewCount] = useState<number | null>(null)
 
-  // Unread counts for header icons
-  const [unreadMsgs, setUnreadMsgs] = useState(0)
-  const [unreadNotifs, setUnreadNotifs] = useState(0)
+  // Header badge counts come from the shared BadgeContext poller (one
+  // /check_unread_messages round-trip for both counts) — no page-local poll loop.
+  const { unreadMsgs, unreadNotifs } = useBadges()
 
-  // Poll for unread counts
-  useEffect(() => {
-    let mounted = true
-    const poll = async () => {
-      if (!mounted) return
-      try {
-        const m = await fetch('/check_unread_messages', { credentials: 'include' })
-        const mj = await m.json().catch(() => null)
-        if (mounted && mj && typeof mj.unread_count === 'number') {
-          setUnreadMsgs(mj.unread_count)
-        }
-      } catch {}
-      try {
-        const n = await fetch('/api/notifications', { credentials: 'include', headers: { 'Accept': 'application/json' } })
-        const nj = await n.json().catch(() => null)
-        if (mounted && nj?.success && Array.isArray(nj.notifications)) {
-          const cnt = nj.notifications.filter((x: any) => x && x.is_read === false && x.type !== 'message' && x.type !== 'reaction').length
-          setUnreadNotifs(cnt)
-        }
-      } catch {}
-    }
-    poll()
-    const interval = setInterval(poll, 10000)
-    return () => {
-      mounted = false
-      clearInterval(interval)
-    }
-  }, [])
-  
   // Close more menu when clicking outside (with delay to prevent immediate close)
   useEffect(() => {
     if (!showMoreMenu) return
@@ -848,26 +820,37 @@ export default function PostDetail(){
 
   async function toggleReaction(reaction: string){
     if (!post) return
+    // Snapshot for rollback if the request fails (e.g. a tunnel).
+    const prevUser = post.user_reaction
+    const prevReactions = { ...(post.reactions || {}) }
     // Optimistic update
     setPost(p => {
       if (!p) return p
-      const prevUser = p.user_reaction
-      const nextUser = prevUser === reaction ? null : reaction
+      const pu = p.user_reaction
+      const nextUser = pu === reaction ? null : reaction
       const counts = { ...(p.reactions || {}) }
-      if (prevUser) counts[prevUser] = Math.max(0, (counts[prevUser] || 0) - 1)
+      if (pu) counts[pu] = Math.max(0, (counts[pu] || 0) - 1)
       if (nextUser) counts[nextUser] = (counts[nextUser] || 0) + 1
       return { ...p, user_reaction: nextUser, reactions: counts }
     })
     const form = new URLSearchParams({ post_id: String(post.id), reaction })
     const endpoint = isGroupPost ? '/api/group_posts/react' : '/add_reaction'
-    const r = await fetch(endpoint, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: form })
-    const j = await r.json().catch(()=>null)
-    if (handleBasicProfileRequired(j)) {
-      await refreshPost()
-      return
-    }
-    if (j?.success){
-      setPost(p => p ? ({ ...p, reactions: { ...p.reactions, ...j.counts }, user_reaction: j.user_reaction }) : p)
+    try {
+      const r = await fetch(endpoint, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: form })
+      const j = await r.json().catch(()=>null)
+      if (handleBasicProfileRequired(j)) {
+        await refreshPost()
+        return
+      }
+      if (j?.success){
+        setPost(p => p ? ({ ...p, reactions: { ...p.reactions, ...j.counts }, user_reaction: j.user_reaction }) : p)
+      } else {
+        // Server rejected — undo the optimistic change so the count can't lie.
+        setPost(p => p ? ({ ...p, user_reaction: prevUser, reactions: prevReactions }) : p)
+      }
+    } catch {
+      // Network drop — roll back so the optimistic count doesn't silently diverge.
+      setPost(p => p ? ({ ...p, user_reaction: prevUser, reactions: prevReactions }) : p)
     }
   }
 

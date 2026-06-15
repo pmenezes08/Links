@@ -671,8 +671,13 @@ def send_dm_audio_message(
     audio: Any = None,
     duration_seconds: Optional[int] = None,
     include_summary: bool = False,
+    client_key: Optional[str] = None,
 ) -> dict:
-    """Send a voice DM. Returns JSON-serializable payload (HTTP 200)."""
+    """Send a voice DM. Returns JSON-serializable payload (HTTP 200).
+
+    ``client_key`` makes the send idempotent (matching DM text/media): a retry with
+    the same key returns the original row instead of inserting a duplicate voice note.
+    """
     _ = include_summary  # monolith reads but does not branch on it
     if not recipient_id:
         return {"success": False, "error": "Recipient required"}
@@ -709,6 +714,29 @@ def send_dm_audio_message(
             recipient_username = _resolve_recipient(c, recipient_id)
             if not recipient_username:
                 return {"success": False, "error": "Recipient not found"}
+
+            # Idempotency: a retry with the same client_key returns the original row
+            # instead of saving the file again and inserting a duplicate voice note.
+            if client_key:
+                try:
+                    c.execute(
+                        "SELECT id, audio_path, audio_summary FROM messages WHERE client_key = ? AND sender = ? LIMIT 1",
+                        (client_key, username),
+                    )
+                    existing = c.fetchone()
+                    if existing:
+                        if hasattr(existing, "keys"):
+                            eid, epath, esum = existing["id"], existing["audio_path"], existing["audio_summary"]
+                        else:
+                            eid, epath, esum = existing[0], existing[1], existing[2]
+                        return {
+                            "success": True,
+                            "message_id": eid,
+                            "audio_path": epath,
+                            "audio_summary": esum,
+                        }
+                except Exception as ik_err:
+                    logger.warning("audio client_key idempotency check failed (non-fatal): %s", ik_err)
 
             stored_path = save_uploaded_file(
                 audio,
@@ -763,10 +791,10 @@ def send_dm_audio_message(
 
             c.execute(
                 """
-                INSERT INTO messages (sender, receiver, message, audio_path, audio_duration_seconds, audio_mime, audio_summary, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+                INSERT INTO messages (sender, receiver, message, audio_path, audio_duration_seconds, audio_mime, audio_summary, client_key, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
             """,
-                (username, recipient_username, "", rel_path, duration_seconds, mime, audio_summary),
+                (username, recipient_username, "", rel_path, duration_seconds, mime, audio_summary, client_key),
             )
             conn.commit()
 

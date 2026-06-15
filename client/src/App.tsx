@@ -100,7 +100,22 @@ import {
   GOOGLE_WEB_CLIENT_ID,
 } from './constants/googleOAuth'
 
-const queryClient = new QueryClient()
+// Weak-network-friendly defaults for the (few) react-query consumers: retry
+// transient failures with backoff, revalidate on reconnect, and serve cached
+// data briefly as fresh so a flaky link doesn't refetch on every mount.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 2,
+      retryDelay: attempt => Math.min(4000, 400 * 2 ** attempt) * (0.5 + Math.random() / 2),
+      refetchOnReconnect: true,
+      staleTime: 30_000,
+    },
+    mutations: {
+      retry: 0,
+    },
+  },
+})
 
 function ChatThreadRoute() {
   const { username } = useParams()

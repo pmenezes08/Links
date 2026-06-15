@@ -32,6 +32,7 @@ from backend.services.dm_thread_preferences import apply_dm_thread_mute
 from backend.services.dm_unread import (
     count_dm_unread_excluding_cleared,
     count_group_unread_excluding_cleared,
+    count_unread_notifications,
     mark_dm_received_before_clear_as_read,
 )
 from redis_cache import cache, invalidate_message_cache
@@ -111,6 +112,16 @@ def check_unread_messages():
             except Exception as ge:
                 logger.warning("Could not count group unread: %s", ge)
 
+            # Notification badge count rides this same poll so the client doesn't
+            # also pull the full ~50-row /api/notifications body just to compute a
+            # number (see BadgeContext). Non-fatal: a bell-count hiccup must not
+            # break the message badge.
+            notif_unread = 0
+            try:
+                notif_unread = count_unread_notifications(c, username)
+            except Exception as ne:
+                logger.warning("Could not count unread notifications: %s", ne)
+
             total_unread = dm_unread + group_unread
 
         return jsonify(
@@ -118,6 +129,7 @@ def check_unread_messages():
                 "unread_count": total_unread,
                 "dm_unread": dm_unread,
                 "group_unread": group_unread,
+                "notif_unread": notif_unread,
             }
         )
     except Exception as e:
@@ -601,6 +613,7 @@ def send_audio_message():
         audio=request.files.get("audio"),
         duration_seconds=duration_seconds,
         include_summary=request.form.get("include_summary", "").lower() == "true",
+        client_key=(request.form.get("client_key", "").strip() or None),
     )
     return jsonify(payload)
 

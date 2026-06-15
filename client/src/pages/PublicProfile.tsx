@@ -273,10 +273,44 @@ export default function PublicProfile() {
   const handleFollowToggle = async () => {
     if (!profile || !currentUsername) return
     if (followLoading) return
+    const shouldDelete = followStatus === 'accepted' || followStatus === 'pending'
+    const method = shouldDelete ? 'DELETE' : 'POST'
+
+    // Snapshot for rollback if the request fails.
+    const prevStatus = followStatus
+    const prevFollowers = followersCount
+    const prevFollowing = followingCount
+
+    // Optimistic: flip the button and the viewed profile's follower count NOW so the
+    // tap feels native. We can't yet know public(accepted) vs private(pending) on a
+    // new follow, so guess 'accepted' (the common case) and reconcile from the server
+    // response below — a private account corrects to 'pending' on success.
+    const wasAccepted = prevStatus === 'accepted'
+    const optimisticStatus: 'none' | 'pending' | 'accepted' = shouldDelete ? 'none' : 'accepted'
+    const optimisticFollowers = shouldDelete
+      ? Math.max(0, prevFollowers - (wasAccepted ? 1 : 0))
+      : prevFollowers + 1
+    const applyState = (
+      status: 'none' | 'pending' | 'accepted',
+      followers: number,
+      following: number,
+    ) => {
+      setFollowStatus(status)
+      setFollowersCount(followers)
+      setFollowingCount(following)
+      setProfile(prev => prev ? {
+        ...prev,
+        followers_count: followers,
+        following_count: following,
+        is_following: status === 'accepted',
+        follow_status: status,
+        has_pending_follow_request: status === 'pending',
+      } : prev)
+    }
+    applyState(optimisticStatus, optimisticFollowers, prevFollowing)
+
     setFollowLoading(true)
     try {
-      const shouldDelete = followStatus === 'accepted' || followStatus === 'pending'
-      const method = shouldDelete ? 'DELETE' : 'POST'
       const resp = await fetch(`/api/follow/${encodeURIComponent(profile.username)}`, {
         method,
         credentials: 'include',
@@ -287,25 +321,19 @@ export default function PublicProfile() {
         const nextStatusRaw = typeof data.status === 'string' ? data.status : (shouldDelete ? 'none' : 'pending')
         const normalizedStatus: 'none' | 'pending' | 'accepted' =
           nextStatusRaw === 'accepted' ? 'accepted' : nextStatusRaw === 'pending' ? 'pending' : 'none'
-        const nextFollowers = Number(data.followers_count ?? followersCount)
-        const nextFollowing = Number(data.following_count ?? followingCount)
-        setFollowStatus(normalizedStatus)
-        setFollowersCount(nextFollowers)
-        setFollowingCount(nextFollowing)
-        setProfile(prev => prev ? {
-          ...prev,
-          followers_count: nextFollowers,
-          following_count: nextFollowing,
-          is_following: normalizedStatus === 'accepted',
-          follow_status: normalizedStatus,
-          has_pending_follow_request: normalizedStatus === 'pending'
-        } : prev)
+        // Reconcile with authoritative server counts.
+        applyState(
+          normalizedStatus,
+          Number(data.followers_count ?? optimisticFollowers),
+          Number(data.following_count ?? prevFollowing),
+        )
       } else {
-        const errMsg = data?.error || t('profile.public.follow_failed')
-        alert(errMsg)
+        applyState(prevStatus, prevFollowers, prevFollowing) // roll back
+        alert(data?.error || t('profile.public.follow_failed'))
       }
     } catch (err) {
       console.error('Follow toggle error', err)
+      applyState(prevStatus, prevFollowers, prevFollowing) // roll back
       alert(t('profile.public.follow_failed_retry'))
     } finally {
       setFollowLoading(false)

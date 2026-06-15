@@ -211,7 +211,7 @@ export default function CommunityFeed() {
   }
   const navigate = useNavigate()
   const routerLocation = useLocation()
-  const { refreshBadges } = useBadges()
+  const { unreadMsgs, unreadNotifs, refreshBadges } = useBadges()
   const {
     entitlements: feedEntitlements,
     enforcement_enabled: feedEnforcementEnabled,
@@ -451,10 +451,6 @@ export default function CommunityFeed() {
     }
   }, [community_id, navigate, routerLocation.search])
 
-  // Unread counts for header icons
-  const [unreadMsgs, setUnreadMsgs] = useState(0)
-  const [unreadNotifs, setUnreadNotifs] = useState(0)
-
   // Auto-freeze owner modal state. The community feed payload exposes
   // ``community.is_frozen`` + ``community.frozen_reason``, but the modal
   // additionally needs the member count and the Free-tier cap so the
@@ -656,34 +652,8 @@ export default function CommunityFeed() {
       .catch(() => {})
   }, [community_id, refreshBadges])
 
-  // Poll for unread counts
-  useEffect(() => {
-    let mounted = true
-    const poll = async () => {
-      if (!mounted) return
-      try {
-        const m = await fetch('/check_unread_messages', { credentials: 'include' })
-        const mj = await m.json().catch(() => null)
-        if (mounted && mj && typeof mj.unread_count === 'number') {
-          setUnreadMsgs(mj.unread_count)
-        }
-      } catch {}
-      try {
-        const n = await fetch('/api/notifications', { credentials: 'include', headers: { 'Accept': 'application/json' } })
-        const nj = await n.json().catch(() => null)
-        if (mounted && nj?.success && Array.isArray(nj.notifications)) {
-          const cnt = nj.notifications.filter((x: any) => x && x.is_read === false && x.type !== 'message' && x.type !== 'reaction').length
-          setUnreadNotifs(cnt)
-        }
-      } catch {}
-    }
-    poll()
-    const interval = setInterval(poll, 10000)
-    return () => {
-      mounted = false
-      clearInterval(interval)
-    }
-  }, [])
+  // Header badge counts come from the shared BadgeContext poller (one
+  // /check_unread_messages round-trip for both counts) — no page-local poll loop.
 
   const formatViewerRelative = (value?: string | null) => {
     if (!value) return ''
@@ -2412,12 +2382,17 @@ export default function CommunityFeed() {
   }
 
   async function handleToggleReaction(postId: number, reaction: string){
+    void triggerHaptic('selection')  // tactile confirm on the most-tapped action
+    // Snapshot the affected post's reaction state (captured from the latest state
+    // inside the optimistic updater) so we can roll back if the request fails.
+    let snapshot: { user: any; reactions: Record<string, number> } | null = null
     // Optimistic update: toggle user reaction and adjust counts immediately
     setData((prev:any) => {
       if (!prev) return prev
       const updatedPosts = (prev.posts || []).map((p: any) => {
         if (p.id !== postId) return p
         const prevUserReaction = p.user_reaction
+        if (!snapshot) snapshot = { user: prevUserReaction, reactions: { ...(p.reactions || {}) } }
         const nextUserReaction = prevUserReaction === reaction ? null : reaction
         const counts = { ...(p.reactions || {}) }
         if (prevUserReaction){
@@ -2431,6 +2406,17 @@ export default function CommunityFeed() {
       return { ...prev, posts: updatedPosts }
     })
 
+    const rollback = () => {
+      if (!snapshot) return
+      const snap = snapshot
+      setData((prev:any) => {
+        if (!prev) return prev
+        const updatedPosts = (prev.posts || []).map((p: any) =>
+          p.id === postId ? { ...p, user_reaction: snap.user, reactions: snap.reactions } : p)
+        return { ...prev, posts: updatedPosts }
+      })
+    }
+
     try{
       const form = new URLSearchParams({ post_id: String(postId), reaction })
       const r = await fetch('/add_reaction', { method: 'POST', credentials: 'include', headers: { 'Content-Type':'application/x-www-form-urlencoded' }, body: form })
@@ -2439,7 +2425,7 @@ export default function CommunityFeed() {
         setRefreshKey(key => key + 1)
         return
       }
-      if (!j?.success) return
+      if (!j?.success) { rollback(); return }
       // Reconcile with server counts
       setData((prev:any) => {
         if (!prev) return prev
@@ -2454,7 +2440,10 @@ export default function CommunityFeed() {
         })
         return { ...prev, posts: updatedPosts }
       })
-    }catch{}
+    }catch{
+      // Network drop — undo the optimistic toggle so the count can't silently diverge.
+      rollback()
+    }
   }
 
   // Reply reactions handled inside PostDetail page
@@ -5490,21 +5479,36 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
                       }`}
                       onClick={async (e) => {
                         e.stopPropagation()
+                        void triggerHaptic('selection')
+                        // Optimistic toggle (mutates r in place like the surrounding code, then
+                        // forces a re-render); snapshot for rollback if the request fails.
+                        const prevReactions = { ...(r.reactions || {}) }
+                        const prevUser = r.user_reaction
+                        const nextUser = prevUser === '❤️' ? null : '❤️'
+                        const counts = { ...(r.reactions || {}) }
+                        if (prevUser) counts[prevUser] = Math.max(0, (counts[prevUser] || 0) - 1)
+                        if (nextUser) counts[nextUser] = (counts[nextUser] || 0) + 1
+                        r.reactions = counts
+                        r.user_reaction = nextUser
+                        setChildReplyText(prev => prev)
+                        const rollback = () => { r.reactions = prevReactions; r.user_reaction = prevUser; setChildReplyText(prev => prev) }
                         try {
                           const fd = new FormData()
                           fd.append('reply_id', String(r.id))
-                          // Toggle: if already selected, send same reaction to remove it
                           fd.append('reaction', '❤️')
                           const res = await fetch('/add_reply_reaction', { method: 'POST', credentials: 'include', body: fd })
-                          const data = await res.json()
-                          if (handleBasicProfileRequired(data)) return
-                          if (data.success) {
+                          const data = await res.json().catch(() => null)
+                          if (handleBasicProfileRequired(data)) { rollback(); return }
+                          if (data?.success) {
                             r.reactions = data.counts
                             r.user_reaction = data.user_reaction
                             setChildReplyText(prev => prev)
+                          } else {
+                            rollback()
                           }
                         } catch (err) {
-                          console.error('Failed to add reaction:', err)
+                          console.error('Failed to add reply reaction:', err)
+                          rollback()
                         }
                       }}
                     >
@@ -5518,20 +5522,34 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
                       }`}
                       onClick={async (e) => {
                         e.stopPropagation()
+                        void triggerHaptic('selection')
+                        const prevReactions = { ...(r.reactions || {}) }
+                        const prevUser = r.user_reaction
+                        const nextUser = prevUser === '👍' ? null : '👍'
+                        const counts = { ...(r.reactions || {}) }
+                        if (prevUser) counts[prevUser] = Math.max(0, (counts[prevUser] || 0) - 1)
+                        if (nextUser) counts[nextUser] = (counts[nextUser] || 0) + 1
+                        r.reactions = counts
+                        r.user_reaction = nextUser
+                        setChildReplyText(prev => prev)
+                        const rollback = () => { r.reactions = prevReactions; r.user_reaction = prevUser; setChildReplyText(prev => prev) }
                         try {
                           const fd = new FormData()
                           fd.append('reply_id', String(r.id))
                           fd.append('reaction', '👍')
                           const res = await fetch('/add_reply_reaction', { method: 'POST', credentials: 'include', body: fd })
-                          const data = await res.json()
-                          if (handleBasicProfileRequired(data)) return
-                          if (data.success) {
+                          const data = await res.json().catch(() => null)
+                          if (handleBasicProfileRequired(data)) { rollback(); return }
+                          if (data?.success) {
                             r.reactions = data.counts
                             r.user_reaction = data.user_reaction
                             setChildReplyText(prev => prev)
+                          } else {
+                            rollback()
                           }
                         } catch (err) {
-                          console.error('Failed to add reaction:', err)
+                          console.error('Failed to add reply reaction:', err)
+                          rollback()
                         }
                       }}
                     >
@@ -5545,20 +5563,34 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
                       }`}
                       onClick={async (e) => {
                         e.stopPropagation()
+                        void triggerHaptic('selection')
+                        const prevReactions = { ...(r.reactions || {}) }
+                        const prevUser = r.user_reaction
+                        const nextUser = prevUser === '👎' ? null : '👎'
+                        const counts = { ...(r.reactions || {}) }
+                        if (prevUser) counts[prevUser] = Math.max(0, (counts[prevUser] || 0) - 1)
+                        if (nextUser) counts[nextUser] = (counts[nextUser] || 0) + 1
+                        r.reactions = counts
+                        r.user_reaction = nextUser
+                        setChildReplyText(prev => prev)
+                        const rollback = () => { r.reactions = prevReactions; r.user_reaction = prevUser; setChildReplyText(prev => prev) }
                         try {
                           const fd = new FormData()
                           fd.append('reply_id', String(r.id))
                           fd.append('reaction', '👎')
                           const res = await fetch('/add_reply_reaction', { method: 'POST', credentials: 'include', body: fd })
-                          const data = await res.json()
-                          if (handleBasicProfileRequired(data)) return
-                          if (data.success) {
+                          const data = await res.json().catch(() => null)
+                          if (handleBasicProfileRequired(data)) { rollback(); return }
+                          if (data?.success) {
                             r.reactions = data.counts
                             r.user_reaction = data.user_reaction
                             setChildReplyText(prev => prev)
+                          } else {
+                            rollback()
                           }
                         } catch (err) {
-                          console.error('Failed to add reaction:', err)
+                          console.error('Failed to add reply reaction:', err)
+                          rollback()
                         }
                       }}
                     >
