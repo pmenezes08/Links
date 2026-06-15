@@ -99,6 +99,16 @@ Hard, hard-won platform rules. Spec around them; if a design needs to break one,
    view on keyboard open (e.g. an unconditional scroll-to-bottom) exposes the bare
    `bg-c-bg-app` canvas — black in dark mode — behind the keyboard; gate auto-scroll
    on there being content to scroll to.
+8. **Keyboard handling is global by default — opt out if you run your own composer.**
+   `<main>` (`App.tsx`) applies a global keyboard inset (`padding-bottom: keyboardOffset`)
+   to every route NOT in the self-manages-keyboard set (`isChatRoute` →
+   `suppressGlobalKeyboardPad`). A page with its **own** fixed composer + lift
+   (`useComposerKeyboardLift`, like chat and Networking) must be **added to that set**,
+   or the global inset stacks on top of the page's own lift — double-counting the
+   keyboard, inflating an empty gap, and over-scrolling content under the header. One
+   composer, one keyboard owner per surface. For scroll-to-latest above a fixed bar,
+   anchor the scroll on a bottom spacer that **grows with `keyboardLift`** and use
+   `scrollIntoView({ block: 'end' })` (not the default `'start'`).
 
 ## Boundaries (do not cross)
 

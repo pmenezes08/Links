@@ -106,7 +106,11 @@ export default function Networking() {
   const [debugTab, setDebugTab] = useState<DebugTabKey>('planner')
 
   const scrollToBottom = useCallback(() => {
-    steveEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // Align the END marker to the bottom of the viewport (not the default
+    // 'start', which parks it at the top and scrolls the latest message off
+    // under the header). The end marker is the bottom spacer, which grows with
+    // the keyboard, so this lands the latest message just above the lifted bar.
+    steveEndRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
   }, [])
 
   const { keyboardLift, showKeyboard, safeBottomPx } = useComposerKeyboardLift({
@@ -330,7 +334,7 @@ export default function Networking() {
     }).catch(() => {})
   }, [])
 
-  useEffect(() => { steveEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [steveMessages, steveMemberCount, steveMembersLoading])
+  useEffect(() => { scrollToBottom() }, [scrollToBottom, steveMessages, steveMemberCount, steveMembersLoading])
 
   // Personal: load filters + members
   useEffect(() => {
@@ -734,10 +738,14 @@ export default function Networking() {
                 })
               )}
               {(steveSending || autoMatching) && <SteveThinking />}
-              <div ref={steveEndRef} />
             </div>
-            {/* Spacer for fixed input bar */}
-            <div className="h-20" />
+            {/* Bottom spacer + scroll-to-bottom anchor. Grows with the keyboard
+                so the latest message can scroll clear above the lifted input bar
+                instead of hiding behind it (the bar itself sits at keyboardLift). */}
+            <div
+              ref={steveEndRef}
+              style={{ height: showKeyboard ? `${keyboardLift + 72}px` : '80px' }}
+            />
           </div>
         )}
 

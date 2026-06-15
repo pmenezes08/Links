@@ -143,7 +143,13 @@ function AppRoutes(){
   const [uploadStatusToast, setUploadStatusToast] = useState<string | null>(null)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const [fullscreenOverlayTick, setFullscreenOverlayTick] = useState(0)
-  const isChatRoute = location.pathname.startsWith('/user_chat/chat/') || location.pathname.startsWith('/group_chat/')
+  // Routes that run their OWN fixed composer + keyboard lift, so the global
+  // <main> keyboard offset/padding must stay OFF for them — otherwise it
+  // double-counts the keyboard and shoves content up under the header (leaving
+  // a dead gap / bare canvas behind the keyboard). Networking's Ask-Steve bar
+  // self-manages via useComposerKeyboardLift, so it belongs here despite not
+  // being a chat thread.
+  const isChatRoute = location.pathname.startsWith('/user_chat/chat/') || location.pathname.startsWith('/group_chat/') || location.pathname === '/networking'
   useMediaUploadResume(authLoaded && !!userMeta.username)
 
   const scrollRegionRef = useRef<HTMLDivElement | null>(null)
