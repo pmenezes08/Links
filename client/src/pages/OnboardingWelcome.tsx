@@ -1,15 +1,33 @@
-﻿import { useEffect, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+
+const WELCOME_CARDS_CACHE_KEY = 'cpoint:welcome_cards'
+
+function readCachedWelcomeCards(): string[] {
+  try {
+    const raw = localStorage.getItem(WELCOME_CARDS_CACHE_KEY)
+    const parsed = raw ? JSON.parse(raw) : null
+    return Array.isArray(parsed)
+      ? parsed.filter((c: unknown): c is string => typeof c === 'string' && !!c.trim())
+      : []
+  } catch {
+    return []
+  }
+}
 
 export default function OnboardingWelcome(){
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const [cards, setCards] = useState<string[]>([])
+  // Render last-known cards instantly (stale-while-revalidate); the effect below
+  // refreshes them in the background. Avoids the blank → fetch → image-load wait
+  // on every open.
+  const cachedCards = useMemo(readCachedWelcomeCards, [])
+  const [cards, setCards] = useState<string[]>(cachedCards)
   const [cardIndex, setCardIndex] = useState(0)
   const [touchStartX, setTouchStartX] = useState<number | null>(null)
   const [touchDeltaX, setTouchDeltaX] = useState(0)
-  const [loaded, setLoaded] = useState(false)
+  const [loaded, setLoaded] = useState(cachedCards.length > 0)
   const [imagesLoaded, setImagesLoaded] = useState<Record<number, boolean>>({})
 
   const sentences = t('onboarding.welcome.carousel', { returnObjects: true }) as string[]
@@ -26,16 +44,19 @@ export default function OnboardingWelcome(){
   useEffect(() => {
     ;(async () => {
       try{
-        // Add cache-buster to prevent browser/service worker caching
-        const r = await fetch(`/welcome_cards?_t=${Date.now()}`, {
+        // Revalidate in the background. We render the cached cards instantly
+        // above, so a fresh fetch (no-store, so admin updates show next paint)
+        // just reconciles the list and re-caches it for the next open.
+        const r = await fetch('/welcome_cards', {
           cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache' }
+          headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' }
         })
         const j = await r.json().catch(()=>null)
         if (j && j.success && Array.isArray(j.cards)){
           // Filter out any empty strings and use only server-provided cards
           const validCards = j.cards.filter((c: string) => c && c.trim())
           setCards(validCards)
+          try { localStorage.setItem(WELCOME_CARDS_CACHE_KEY, JSON.stringify(validCards)) } catch {}
         }
       }catch{} finally {
         setLoaded(true)
