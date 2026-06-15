@@ -121,7 +121,11 @@ export function ProfileDetailsModal({
       <div
         className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-c-border bg-c-bg-surface shadow-xl"
         style={{
-          maxHeight: `min(720px, calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 1.5rem - ${showKeyboard ? keyboardLift : 0}px))`,
+          // Keep the keyboard term OUTSIDE the min() so the only animating part
+          // is a plain `- <px>` subtraction — WebKit won't smoothly transition a
+          // max-height whose value is a min()/calc() that itself contains the
+          // changing term, which made the card snap instead of glide.
+          maxHeight: `calc(min(720px, 100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 1.5rem) - ${showKeyboard ? keyboardLift : 0}px)`,
           transition: `max-height ${CHAT_KEYBOARD_ANIMATION_MS}ms ${CPOINT_EASE_OUT}`,
         }}
       >
