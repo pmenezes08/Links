@@ -348,6 +348,11 @@
     "active_week": "This week",
     "active_month": "This month",
     "active_pct": "{{pct}}% active this week",
+    "comm_value": "{{pct}}% of members · last 30 days",
+    "top_posters": "Top posters",
+    "top_repliers": "Top repliers",
+    "top_reactors": "Top reactors",
+    "leaderboard_empty": "No activity yet",
     "reports_soon_title": "Nothing to review",
     "reports_soon_body": "When members flag a post or comment, it'll show up here for you to look at.",
     "reports_intro": "Members flagged these for you to look at. You decide what stays.",
@@ -373,7 +378,9 @@
       "activation": "New-member activation",
       "activation_hint": "How many new people start posting",
       "sticking": "Who's sticking around",
-      "sticking_hint": "See who stays active after joining"
+      "sticking_hint": "See who stays active after joining",
+      "communicating": "Members talking to each other",
+      "leaderboards": "Top contributors"
     },
     "steve": {
       "greeting": "Here's how {{community}} is doing — I've been keeping an eye on it.",

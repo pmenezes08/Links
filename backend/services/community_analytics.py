@@ -153,6 +153,89 @@ def _active_users(cursor, ph: str, ids: List[int], cutoff: str) -> int:
     return _scalar(cursor, sql, params)
 
 
+def _scope_member_usernames(cursor, ph: str, ids: List[int]) -> List[str]:
+    """Usernames of members across the scope's communities (admin excluded)."""
+    if not ids:
+        return []
+    try:
+        cursor.execute(
+            f"SELECT u.username FROM user_communities uc JOIN users u ON uc.user_id = u.id "
+            f"WHERE uc.community_id IN {_in_clause(ph, len(ids))} AND LOWER(u.username) <> 'admin'",
+            tuple(ids),
+        )
+        return list({(r["username"] if hasattr(r, "keys") else r[0]) for r in cursor.fetchall() or []})
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("_scope_member_usernames failed: %s", exc)
+        return []
+
+
+def _communicating_members(cursor, ph: str, ids: List[int], cutoff: str) -> int:
+    """Distinct members who messaged ANOTHER member since ``cutoff`` — via a DM
+    to a fellow member, or a group chat that has >=2 members of this scope.
+
+    Chats/DMs aren't community-scoped, so we attribute by MEMBERSHIP OVERLAP.
+    Aggregate count only — never who-talked-to-whom, never content (privacy)."""
+    members = _scope_member_usernames(cursor, ph, ids)
+    if not members:
+        return 0
+    m = _in_clause(ph, len(members))
+    sql = f"""
+        SELECT COUNT(DISTINCT comm.username) AS count FROM (
+            SELECT msg.sender AS username FROM messages msg
+                WHERE msg.timestamp >= {ph} AND msg.sender IN {m} AND msg.receiver IN {m}
+            UNION
+            SELECT gcm.sender_username AS username FROM group_chat_messages gcm
+                WHERE gcm.created_at >= {ph} AND gcm.sender_username IN {m}
+                  AND gcm.group_id IN (
+                    SELECT group_id FROM group_chat_members WHERE username IN {m}
+                    GROUP BY group_id HAVING COUNT(*) >= 2)
+        ) AS comm
+    """
+    mt = tuple(members)
+    params = (cutoff,) + mt + mt + (cutoff,) + mt + mt
+    return _scalar(cursor, sql, params)
+
+
+def _top_contributors(cursor, ph: str, ids: List[int], kind: str,
+                      cutoff: Optional[str] = None, limit: int = 5) -> List[Dict[str, Any]]:
+    """Top members by posts / replies / reactions across the scope's communities
+    (summed across the subtree, so cross-network activity is rewarded). Names the
+    people — this is the one celebratory naming surface. 'admin' excluded."""
+    if not ids:
+        return []
+    n = _in_clause(ph, len(ids))
+    lim = max(1, min(20, int(limit)))
+    if kind == "posters":
+        sql = (f"SELECT username, COUNT(*) AS count FROM posts WHERE community_id IN {n} "
+               f"AND timestamp >= {ph} AND LOWER(username) <> 'admin' "
+               f"GROUP BY username ORDER BY count DESC LIMIT {lim}")
+        params: Tuple[Any, ...] = tuple(ids) + (cutoff,)
+    elif kind == "repliers":
+        sql = (f"SELECT username, COUNT(*) AS count FROM replies WHERE community_id IN {n} "
+               f"AND timestamp >= {ph} AND LOWER(username) <> 'admin' "
+               f"GROUP BY username ORDER BY count DESC LIMIT {lim}")
+        params = tuple(ids) + (cutoff,)
+    elif kind == "reactors":
+        # reactions carry no timestamp → all-time, scoped by the reacted post's community.
+        sql = (f"SELECT r.username AS username, COUNT(*) AS count FROM reactions r "
+               f"JOIN posts p ON r.post_id = p.id WHERE p.community_id IN {n} "
+               f"AND LOWER(r.username) <> 'admin' GROUP BY r.username ORDER BY count DESC LIMIT {lim}")
+        params = tuple(ids)
+    else:
+        return []
+    out: List[Dict[str, Any]] = []
+    try:
+        cursor.execute(sql, params)
+        for r in cursor.fetchall() or []:
+            out.append({
+                "username": r["username"] if hasattr(r, "keys") else r[0],
+                "count": int((r["count"] if hasattr(r, "keys") else r[1]) or 0),
+            })
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("_top_contributors(%s) failed: %s", kind, exc)
+    return out
+
+
 def _profile_completion(cursor, ph: str, ids: List[int]) -> Dict[str, int]:
     """Aggregate member profile completion into none/partial/complete buckets,
     deduped across the scope's communities (one person counts once). Reuses the
@@ -235,9 +318,14 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
         cutoff = (now - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
         members = _distinct_members(c, ph, ids)
         net_new_7d = _distinct_members(c, ph, ids, cutoff=cutoff)
+        mau_cut = (now - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
         dau = _active_users(c, ph, ids, (now - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"))
         wau = _active_users(c, ph, ids, cutoff)
-        mau = _active_users(c, ph, ids, (now - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S"))
+        mau = _active_users(c, ph, ids, mau_cut)
+        communicating = _communicating_members(c, ph, ids, mau_cut)
+        top_posters = _top_contributors(c, ph, ids, "posters", cutoff=mau_cut)
+        top_repliers = _top_contributors(c, ph, ids, "repliers", cutoff=mau_cut)
+        top_reactors = _top_contributors(c, ph, ids, "reactors")
 
         # Subtree member teaser (the upsell hook): distinct across the WHOLE
         # subtree regardless of effective scope; only meaningful with sub-communities.
@@ -312,6 +400,16 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
             "tier": "free", "label_key": "owner.metric.profile_completion",
             "owner_only": True, "locked": False,
             "value": {**completion, "total": members},
+        },
+        {
+            "id": "communicating", "group": "overview", "format": "comm", "tier": "free",
+            "label_key": "owner.metric.communicating", "owner_only": True, "locked": False,
+            "value": {"count": communicating, "total": members},
+        },
+        {
+            "id": "leaderboards", "group": "overview", "format": "leaderboards", "tier": "free",
+            "label_key": "owner.metric.leaderboards", "locked": False,
+            "value": {"posters": top_posters, "repliers": top_repliers, "reactors": top_reactors},
         },
     ]
 

@@ -521,3 +521,89 @@ def test_dau_counts_recent_activity(mysql_dsn):
     assert active["dau"] >= 1   # m1 posted today
     assert active["wau"] >= 1
     assert active["mau"] >= 1
+
+
+def test_leaderboards_rank_contributors(mysql_dsn):
+    import bodybuilding_app
+
+    make_user("ownerA")
+    make_user("alice")
+    make_user("bob")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")
+    _add_member("alice", a)
+    _add_member("bob", a)
+
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        for _ in range(3):
+            c.execute(f"INSERT INTO posts (community_id, username, content) VALUES ({ph}, {ph}, {ph})", (a, "alice", "p"))
+        c.execute(f"INSERT INTO posts (community_id, username, content) VALUES ({ph}, {ph}, {ph})", (a, "bob", "p"))
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+    _login(client, "ownerA")
+    posters = _by_id(_overview(client, a).get_json())["leaderboards"]["value"]["posters"]
+    assert posters[0]["username"] == "alice"
+    assert posters[0]["count"] == 3            # summed; alice out-posts bob
+    assert any(p["username"] == "bob" for p in posters)
+
+
+def _ensure_comm_tables():
+    ddls = [
+        "CREATE TABLE IF NOT EXISTS messages (id INT PRIMARY KEY AUTO_INCREMENT, sender VARCHAR(191), "
+        "receiver VARCHAR(191), message TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)",
+        "CREATE TABLE IF NOT EXISTS group_chat_messages (id INT PRIMARY KEY AUTO_INCREMENT, group_id INT, "
+        "sender_username VARCHAR(191), message_text TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)",
+        "CREATE TABLE IF NOT EXISTS group_chat_members (id INT PRIMARY KEY AUTO_INCREMENT, group_id INT, username VARCHAR(191))",
+    ]
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        for ddl in ddls:
+            try:
+                c.execute(ddl)
+            except Exception:
+                pass
+        for t in ("messages", "group_chat_messages", "group_chat_members"):
+            try:
+                c.execute(f"DELETE FROM {t}")
+            except Exception:
+                pass
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+
+def test_members_communicating_counts_member_to_member(mysql_dsn):
+    import bodybuilding_app
+
+    _ensure_comm_tables()
+    make_user("ownerA")
+    make_user("alice")
+    make_user("bob")
+    make_user("carol")
+    make_user("stranger")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")
+    for u in ("alice", "bob", "carol"):
+        _add_member(u, a)
+
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        # alice <-> bob (both members); carol DMs a non-member (must not count)
+        for s, r in (("alice", "bob"), ("bob", "alice"), ("carol", "stranger")):
+            c.execute(f"INSERT INTO messages (sender, receiver, message) VALUES ({ph}, {ph}, {ph})", (s, r, "hi"))
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+    _login(client, "ownerA")
+    comm = _by_id(_overview(client, a).get_json())["communicating"]["value"]
+    assert comm["count"] == 2   # alice + bob; carol messaged a non-member → excluded
+    assert comm["total"] == 3

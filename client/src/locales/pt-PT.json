@@ -348,6 +348,11 @@
     "active_week": "Esta semana",
     "active_month": "Este mês",
     "active_pct": "{{pct}}% ativos esta semana",
+    "comm_value": "{{pct}}% dos membros · últimos 30 dias",
+    "top_posters": "Quem mais publica",
+    "top_repliers": "Quem mais comenta",
+    "top_reactors": "Quem mais reage",
+    "leaderboard_empty": "Ainda sem atividade",
     "reports_soon_title": "Nada para rever",
     "reports_soon_body": "Quando os membros sinalizarem uma publicação ou comentário, vai aparecer aqui para tu veres.",
     "reports_intro": "Os membros sinalizaram isto para tu veres. A decisão é tua.",
@@ -373,7 +378,9 @@
       "activation": "Ativação de novos membros",
       "activation_hint": "Quantos novos membros começam a publicar",
       "sticking": "Quem fica",
-      "sticking_hint": "Vê quem continua ativo depois de entrar"
+      "sticking_hint": "Vê quem continua ativo depois de entrar",
+      "communicating": "Membros que falam entre si",
+      "leaderboards": "Maiores contribuidores"
     },
     "steve": {
       "greeting": "Eis como vai {{community}} — tenho estado de olho.",

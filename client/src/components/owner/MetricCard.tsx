@@ -8,10 +8,12 @@ function Card({ children }: { children: ReactNode }) {
   return <div className="rounded-2xl border border-c-border bg-c-bg-elevated p-3.5">{children}</div>
 }
 
-function num(value: Record<string, number | null> | null, key: string): number {
+function num(value: Record<string, unknown> | null, key: string): number {
   const v = value?.[key]
   return typeof v === 'number' ? v : 0
 }
+
+type LeaderRow = { username: string; count: number }
 
 function ActiveStat({ label, value }: { label: string; value: number }) {
   return (
@@ -112,6 +114,56 @@ export default function MetricCard({ metric, onUpgrade }: { metric: OwnerMetric;
           <ActiveStat label={t('owner.active_month')} value={num(v, 'mau')} />
         </div>
         {total > 0 && <div className="mt-2 text-[11px] text-c-text-tertiary">{t('owner.active_pct', { pct })}</div>}
+      </Card>
+    )
+  }
+
+  if (metric.format === 'comm') {
+    const count = num(v, 'count')
+    const members = num(v, 'total')
+    const pct = members > 0 ? Math.round((count / members) * 100) : 0
+    return (
+      <Card>
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-c-text-secondary">{label}</span>
+          {metric.owner_only && <span className="text-[10px] text-c-text-tertiary">{t('owner.owner_only')}</span>}
+        </div>
+        <div className="mt-1 flex items-baseline gap-1.5">
+          <span className="text-2xl font-semibold text-c-text-primary">{count}</span>
+          <span className="text-[12px] text-c-text-tertiary">{t('owner.comm_value', { pct })}</span>
+        </div>
+      </Card>
+    )
+  }
+
+  if (metric.format === 'leaderboards') {
+    const groups = [
+      { title: t('owner.top_posters'), rows: (v?.posters as LeaderRow[]) || [] },
+      { title: t('owner.top_repliers'), rows: (v?.repliers as LeaderRow[]) || [] },
+      { title: t('owner.top_reactors'), rows: (v?.reactors as LeaderRow[]) || [] },
+    ]
+    return (
+      <Card>
+        <div className="mb-2 text-xs text-c-text-secondary">{label}</div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          {groups.map(g => (
+            <div key={g.title}>
+              <div className="mb-1.5 text-[10px] uppercase tracking-[0.14em] text-cpoint-turquoise">{g.title}</div>
+              {g.rows.length === 0 ? (
+                <div className="text-[11px] text-c-text-tertiary">{t('owner.leaderboard_empty')}</div>
+              ) : (
+                <div className="space-y-1">
+                  {g.rows.map((r, i) => (
+                    <div key={r.username} className="flex items-center justify-between text-[12px]">
+                      <span className="min-w-0 truncate text-c-text-primary">{i + 1}. {r.username}</span>
+                      <span className="ml-2 shrink-0 text-c-text-tertiary">{r.count}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </Card>
     )
   }

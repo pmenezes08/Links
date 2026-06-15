@@ -1,6 +1,6 @@
 /** Shapes returned by the owner-analytics endpoints (backend metric registry). */
 
-export type OwnerMetricFormat = 'stat' | 'activity' | 'funnel' | 'segments' | 'locked'
+export type OwnerMetricFormat = 'stat' | 'activity' | 'funnel' | 'segments' | 'comm' | 'leaderboards' | 'locked'
 
 export type OwnerMetric = {
   id: string
@@ -11,7 +11,8 @@ export type OwnerMetric = {
   hint_key?: string
   owner_only?: boolean
   locked: boolean
-  value: Record<string, number | null> | null
+  // numbers for most formats; leaderboards carry {posters,repliers,reactors: [{username,count}]}
+  value: Record<string, unknown> | null
 }
 
 export type OwnerSteve = {

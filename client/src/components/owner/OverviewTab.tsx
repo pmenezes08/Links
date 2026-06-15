@@ -15,7 +15,7 @@ export default function OverviewTab({ data, onUpgrade }: { data: OwnerOverview; 
 
   const stats = metrics.filter(m => !m.locked && m.format === 'stat')
   const activity = metrics.filter(m => !m.locked && m.format === 'activity')
-  const wide = metrics.filter(m => !m.locked && (m.format === 'funnel' || m.format === 'segments'))
+  const wide = metrics.filter(m => !m.locked && (m.format === 'funnel' || m.format === 'segments' || m.format === 'comm' || m.format === 'leaderboards'))
   const locked = metrics.filter(m => m.locked)
 
   return (
