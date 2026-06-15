@@ -403,11 +403,12 @@ html[data-theme='light'] .liquid-glass-bubble--received {
 
 .liquid-glass-surface {
   position: relative;
-  background: var(--glass-base);
+  /* Phase 0 scroll perf: no backdrop-blur. This class backs scroll-persistent
+     chrome (FeedBottomNav, dashboard cards, EventDetail) — blurring them re-rasters
+     every scroll frame on iOS WKWebView. Near-opaque same-hue fill keeps the look. */
+  background: rgba(12, 12, 16, 0.92);
   border: 1px solid var(--glass-border);
   box-shadow: var(--glass-shadow);
-  backdrop-filter: blur(var(--c-glass-blur, 32px)) saturate(var(--c-glass-saturate, 160%));
-  -webkit-backdrop-filter: blur(var(--c-glass-blur, 32px)) saturate(var(--c-glass-saturate, 160%));
 }
 
 .liquid-glass-surface::before {
@@ -424,17 +425,18 @@ html[data-theme='light'] .liquid-glass-bubble--received {
   position: relative;
   border: 1px solid var(--glass-border);
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(20px) saturate(190%);
-  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  /* Phase 0 scroll perf: no backdrop-blur. Every bubble blurring re-rasters the
+     whole list each scroll frame on iOS WKWebView — the #1 chat-scroll stutter.
+     Fills below are bumped near-opaque so bubbles still read solid without it. */
 }
 
 .liquid-glass-bubble--sent {
-  background: linear-gradient(135deg, rgba(var(--cpoint-accent-rgb), 0.9), rgba(32, 84, 78, 0.85));
+  background: linear-gradient(135deg, rgba(var(--cpoint-accent-rgb), 0.97), rgba(32, 84, 78, 0.95));
   border-color: rgba(var(--cpoint-accent-rgb), 0.65);
 }
 
 .liquid-glass-bubble--received {
-  background: rgba(18, 18, 22, 0.78);
+  background: rgba(18, 18, 22, 0.95);
 }
 
 .liquid-glass-input {
@@ -517,14 +519,16 @@ html[data-theme='light'] .liquid-glass-surface {
   -webkit-backdrop-filter: blur(24px) saturate(120%);
 }
 
+html[data-theme='light'] .liquid-glass-surface {
+  background: rgba(255, 255, 255, 0.95);
+}
+
 html[data-theme='light'] .liquid-glass-surface::before {
   opacity: 0.6;
 }
 
 html[data-theme='light'] .liquid-glass-bubble {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
-  backdrop-filter: blur(16px) saturate(140%);
-  -webkit-backdrop-filter: blur(16px) saturate(140%);
 }
 
 html[data-theme='light'] .liquid-glass-bubble--sent {
