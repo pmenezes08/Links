@@ -35,6 +35,7 @@ from backend.services.dm_unread import (
     count_unread_notifications,
     mark_dm_received_before_clear_as_read,
 )
+from backend.services.http_conditional import json_with_etag
 from redis_cache import cache, invalidate_message_cache
 
 logger = logging.getLogger(__name__)
@@ -90,7 +91,9 @@ def api_chat_threads():
     username = session.get("username")
     payload = build_chat_threads_payload(username)
     if payload.get("success"):
-        return jsonify(payload)
+        # ETag/304: a revisit with an unchanged thread list gets an empty 304
+        # instead of re-downloading the whole list on a weak connection.
+        return json_with_etag(payload)
     return jsonify(payload), 500
 
 
