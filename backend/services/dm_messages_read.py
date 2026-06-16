@@ -404,6 +404,32 @@ def fetch_dm_messages(
                 
                 messages.append(msg_dict)
             
+            # Attach media_dims via a separate, fully-guarded query so a missing column
+            # never affects the main read (media_paths/reactions). Only for media messages.
+            try:
+                media_ids = [m['id'] for m in messages if m.get('media_paths')]
+                if media_ids:
+                    placeholders = ','.join(['?'] * len(media_ids))
+                    c.execute(
+                        f"SELECT id, media_dims FROM messages WHERE id IN ({placeholders})",
+                        tuple(media_ids),
+                    )
+                    dims_by_id = {}
+                    for row in c.fetchall():
+                        rid = row['id'] if hasattr(row, 'get') else row[0]
+                        raw_dims = row['media_dims'] if hasattr(row, 'get') else row[1]
+                        if raw_dims:
+                            try:
+                                dims_by_id[rid] = json.loads(raw_dims) if isinstance(raw_dims, str) else raw_dims
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+                    for m in messages:
+                        d = dims_by_id.get(m['id'])
+                        if d:
+                            m['media_dims'] = d
+            except Exception:
+                pass
+
             if deleted_at_filter:
                 try:
                     from datetime import datetime as _dt

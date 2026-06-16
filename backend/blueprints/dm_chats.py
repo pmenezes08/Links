@@ -32,8 +32,10 @@ from backend.services.dm_thread_preferences import apply_dm_thread_mute
 from backend.services.dm_unread import (
     count_dm_unread_excluding_cleared,
     count_group_unread_excluding_cleared,
+    count_unread_notifications,
     mark_dm_received_before_clear_as_read,
 )
+from backend.services.http_conditional import json_with_etag
 from redis_cache import cache, invalidate_message_cache
 
 logger = logging.getLogger(__name__)
@@ -89,7 +91,9 @@ def api_chat_threads():
     username = session.get("username")
     payload = build_chat_threads_payload(username)
     if payload.get("success"):
-        return jsonify(payload)
+        # ETag/304: a revisit with an unchanged thread list gets an empty 304
+        # instead of re-downloading the whole list on a weak connection.
+        return json_with_etag(payload)
     return jsonify(payload), 500
 
 
@@ -111,6 +115,16 @@ def check_unread_messages():
             except Exception as ge:
                 logger.warning("Could not count group unread: %s", ge)
 
+            # Notification badge count rides this same poll so the client doesn't
+            # also pull the full ~50-row /api/notifications body just to compute a
+            # number (see BadgeContext). Non-fatal: a bell-count hiccup must not
+            # break the message badge.
+            notif_unread = 0
+            try:
+                notif_unread = count_unread_notifications(c, username)
+            except Exception as ne:
+                logger.warning("Could not count unread notifications: %s", ne)
+
             total_unread = dm_unread + group_unread
 
         return jsonify(
@@ -118,6 +132,7 @@ def check_unread_messages():
                 "unread_count": total_unread,
                 "dm_unread": dm_unread,
                 "group_unread": group_unread,
+                "notif_unread": notif_unread,
             }
         )
     except Exception as e:
@@ -551,12 +566,13 @@ def send_dm_media():
     gate_resp = _basic_profile_required_response(username)
     if gate_resp is not None:
         return gate_resp
-    files_to_upload, media_urls, upload_only = parse_grouped_media_request(request.form, request.files)
+    files_to_upload, media_urls, upload_only, media_dims = parse_grouped_media_request(request.form, request.files)
     payload, status = send_dm_grouped_media(
         username,
         recipient_id=request.form.get("recipient_id"),
         media_files=files_to_upload,
         media_urls=media_urls,
+        media_dims=media_dims,
         upload_only=upload_only,
         client_key=(request.form.get("client_key", "").strip() or None),
     )
@@ -601,6 +617,7 @@ def send_audio_message():
         audio=request.files.get("audio"),
         duration_seconds=duration_seconds,
         include_summary=request.form.get("include_summary", "").lower() == "true",
+        client_key=(request.form.get("client_key", "").strip() or None),
     )
     return jsonify(payload)
 

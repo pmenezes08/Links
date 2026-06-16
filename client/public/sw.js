@@ -1,4 +1,4 @@
-const SW_VERSION = '2.72.0'
+const SW_VERSION = '2.73.0'
 const APP_SHELL_CACHE = `cp-shell-${SW_VERSION}`
 const RUNTIME_CACHE = `cp-runtime-${SW_VERSION}`
 const MEDIA_CACHE = `cp-media-${SW_VERSION}`
@@ -342,7 +342,17 @@ self.addEventListener('message', (event) => {
           const request = new Request(absolute, { credentials: 'include', cache: 'reload' })
           const response = await fetch(request)
           if (response && response.ok){
-            await cache.put(request, response.clone())
+            // Warm the HTTP cache via the fetch above, but NEVER persist per-user
+            // session JSON into the shared (viewer-less) Cache Storage bucket.
+            // The SERVER_PULL request carries no Accept header, so guard on
+            // pathname (mirrors isSessionJsonGetRequest minus the method/Accept gates).
+            const pullPath = new URL(absolute).pathname
+            const isSessionJson = pullPath.startsWith('/api/')
+              || LEGACY_SESSION_JSON_PATHS.has(pullPath)
+              || NO_CACHE_API_ENDPOINTS.has(pullPath)
+            if (!isSessionJson){
+              await cache.put(request, response.clone())
+            }
             results.push({ url: rawUrl, success: true })
           } else {
             results.push({ url: rawUrl, success: false, status: response?.status || 0 })

@@ -21,12 +21,24 @@ export function registerBackgroundUploadResume(onResume: () => void): () => void
     if (document.visibilityState === 'visible') onResume()
   }
   document.addEventListener('visibilitychange', handler)
+  // The native App listener resolves async; track removal so a cleanup that runs before
+  // it registers still tears it down (otherwise every hook re-enable leaks a listener and
+  // stacks redundant onResume calls).
+  let removed = false
+  let removeNative: (() => void) | null = null
   if (Capacitor.isNativePlatform()) {
-    void import('@capacitor/app').then(({ App }) => {
-      void App.addListener('appStateChange', ({ isActive }) => {
+    void import('@capacitor/app').then(({ App }) =>
+      App.addListener('appStateChange', ({ isActive }) => {
         if (isActive) onResume()
-      })
-    }).catch(() => {})
+      }).then(listener => {
+        if (removed) void listener.remove()
+        else removeNative = () => { void listener.remove() }
+      }),
+    ).catch(() => {})
   }
-  return () => document.removeEventListener('visibilitychange', handler)
+  return () => {
+    removed = true
+    document.removeEventListener('visibilitychange', handler)
+    removeNative?.()
+  }
 }

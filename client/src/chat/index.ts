@@ -23,6 +23,7 @@ export {
   getMessageReaction,
   setMessageReaction,
   getAllMessageReactions,
+  stripReplyMarker,
   CHAT_CACHE_TTL_MS,
   CHAT_CACHE_VERSION,
   type MessageMeta,

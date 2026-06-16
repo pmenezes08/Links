@@ -6,6 +6,7 @@ import {
   ensureNormalizedTime,
   getMessageTimestamp,
   readMessageMeta,
+  stripReplyMarker,
   type MessageMeta,
 } from '../chat/utils'
 import {
@@ -67,7 +68,7 @@ export function mergePolledDmMessages<T extends object>(
     } else {
       const replyMatch = messageText?.match(/^\[REPLY:([^:]+):([^\]]+)\][\r\n\s]*(.*)$/s)
       if (replyMatch) {
-        replySnippet = replyMatch[2]
+        replySnippet = stripReplyMarker(replyMatch[2])
         messageText = replyMatch[3]
       }
     }

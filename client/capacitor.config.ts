@@ -33,6 +33,19 @@ const productionServer = {
 };
 
 const sharedPlugins: CapacitorConfig['plugins'] = {
+  // Hold the (white, logo) launch splash until the web view paints its first
+  // frame, then hide it from JS (main.tsx). Without this the splash auto-hides
+  // before the remote SPA has loaded, exposing the bare WebView background as a
+  // black flash on cold open. showSpinner:false — the in-app loader owns the
+  // spinner; the splash art already carries the logo.
+  SplashScreen: {
+    launchAutoHide: false,
+    backgroundColor: '#ffffff',
+    showSpinner: false,
+    launchFadeOutDuration: 250,
+    androidScaleType: 'CENTER_CROP',
+    splashImmersive: false,
+  },
   PushNotifications: {
     presentationOptions: ['badge', 'sound', 'alert'],
   },

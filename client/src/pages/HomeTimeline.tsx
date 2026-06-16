@@ -19,6 +19,8 @@ import PullToRefreshPuck from '../components/PullToRefreshPuck'
 import { PAGE_TRANSITION_MS } from '../design/motion'
 import { hapticImpactLight } from '../utils/haptics'
 import { handleBasicProfileRequired } from '../utils/basicProfileGate'
+import { apiFetch } from '../utils/apiFetch'
+import LoadErrorRetry from '../components/LoadErrorRetry'
 const HOME_TIMELINE_CACHE_KEY = 'home-timeline'
 const HOME_TIMELINE_CACHE_TTL_MS = 2 * 60 * 1000 // 2 minutes
 const HOME_TIMELINE_CACHE_VERSION = 'home-timeline-v1'
@@ -453,7 +455,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
 
     async function load() {
       try {
-        const r = await fetch('/api/home_timeline', { credentials: 'include', headers: { Accept: 'application/json' } })
+        const r = await apiFetch('/api/home_timeline', { credentials: 'include', headers: { Accept: 'application/json' } })
         const j = await r.json()
         if (!mounted) return
         if (j?.success) {
@@ -737,6 +739,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
     >
       <div
         ref={scrollRef}
+        data-preserve-scroll="true"
         className={`relative h-full max-w-2xl mx-auto overflow-y-auto px-3 ${mode === 'dashboard_feed' && hasDashboardCommunities ? 'pb-[var(--app-dashboard-content-pad-bottom)]' : 'pb-24'}`}
         style={{
           WebkitOverflowScrolling: 'touch' as any,
@@ -788,7 +791,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
         {loading ? (
           <SkeletonFeedList count={4} />
         ) : error ? (
-          <div className="p-3 text-red-400">{error}</div>
+          <LoadErrorRetry message={error} onRetry={() => { setError(null); setRefreshKey(k => k + 1) }} />
         ) : posts.length === 0 ? (
           mode === 'dashboard_feed' && feedMode === 'unread' ? (
             <DashboardFeedCaughtUpEmpty />

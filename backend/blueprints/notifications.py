@@ -21,6 +21,7 @@ from flask import (
 
 from backend.services import auth_session, session_identity
 from backend.services.database import USE_MYSQL, get_db_connection
+from backend.services.http_conditional import json_with_etag
 from backend.services.notifications import (
     check_single_event_notifications,
     check_single_poll_notifications,
@@ -666,7 +667,9 @@ def get_notifications():
                 sum(1 for n in notifications if not n["is_read"]),
                 list(set(n["type"] for n in notifications)),
             )
-            return jsonify({"success": True, "notifications": notifications})
+            # ETag/304: revisiting the list with no new notifications gets an
+            # empty 304 instead of re-downloading up to ~50 rows on a weak link.
+            return json_with_etag({"success": True, "notifications": notifications})
     except Exception as exc:
         import traceback
         current_app.logger.error("Error getting notifications: %s\n%s", exc, traceback.format_exc())

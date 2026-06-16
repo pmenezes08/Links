@@ -5,6 +5,7 @@
 
 import type { Dispatch, SetStateAction } from 'react'
 import { SENDING_MEDIA_LABEL } from './mediaSenders'
+import { nativeToast } from '../utils/nativeUi'
 import {
   createUploadController,
   removeUploadController,
@@ -60,9 +61,7 @@ interface MultiMediaOptions extends BaseMediaOptions {
 }
 
 const defaultErrorHandler = (msg: string) => {
-  if (typeof window !== 'undefined') {
-    window.alert(msg)
-  }
+  void nativeToast(msg, 'long') // native toast on iOS/Android; non-blocking web toast fallback
 }
 
 const BASIC_PROFILE_SENTINEL = '__basic_profile_required__'

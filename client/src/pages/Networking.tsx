@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useComposerKeyboardLift } from '../hooks/useComposerKeyboardLift'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
+import { SkeletonList } from '../components/SkeletonRow'
 import MatchesSheet from '../components/networking/MatchesSheet'
 import HistorySheet from '../components/networking/HistorySheet'
 import SteveEmptyState from '../components/networking/SteveEmptyState'
@@ -10,6 +11,7 @@ import SteveThinking from '../components/networking/SteveThinking'
 import SteveDebugModal, { type DebugTabKey, type SteveDebugTrace } from '../components/networking/SteveDebugModal'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
+import { maybeRequestReview } from '../utils/inAppReview'
 import { useNetwork } from '../contexts/NetworkContext'
 import { CHAT_KEYBOARD_ANIMATION_MS, CPOINT_EASE_OUT } from '../design/motion'
 
@@ -106,10 +108,21 @@ export default function Networking() {
   const [debugTab, setDebugTab] = useState<DebugTabKey>('planner')
 
   const scrollToBottom = useCallback(() => {
-    steveEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // Align the END marker to the bottom of the viewport (not the default
+    // 'start', which parks it at the top and scrolls the latest message off
+    // under the header). The end marker is the bottom spacer, which grows with
+    // the keyboard, so this lands the latest message just above the lifted bar.
+    steveEndRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
   }, [])
 
   const { keyboardLift, showKeyboard, safeBottomPx } = useComposerKeyboardLift({
+    // Smoothly lift the content above the keyboard on open. Safe for BOTH the
+    // empty landing and a conversation now that /networking self-manages the
+    // keyboard (no global <main> inset double-counting) and the bottom anchor
+    // grows with keyboardLift: scroll-to-end lands the content just above the
+    // lifted bar instead of flinging it off-screen. (The earlier messages-only
+    // guard was a band-aid for the old double-handling; with that fixed it just
+    // left the landing's content stranded behind the keyboard.)
     onKeyboardOpen: scrollToBottom,
   })
 
@@ -326,7 +339,7 @@ export default function Networking() {
     }).catch(() => {})
   }, [])
 
-  useEffect(() => { steveEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [steveMessages, steveMemberCount, steveMembersLoading])
+  useEffect(() => { scrollToBottom() }, [scrollToBottom, steveMessages, steveMemberCount, steveMembersLoading])
 
   // Personal: load filters + members
   useEffect(() => {
@@ -534,7 +547,12 @@ export default function Networking() {
   const sectionTabLabel = (key: SectionKey) =>
     key === 'steve' ? t('networking.tab_steve') : t('networking.tab_personal')
 
-  if (loading || profileGateLoading) return <div className="glass-page min-h-screen text-c-text-primary flex items-center justify-center"><span className="text-c-text-tertiary">{t('networking.loading')}</span></div>
+  if (loading || profileGateLoading) return (
+    <div className="glass-page min-h-screen text-c-text-primary px-4 pt-6">
+      <div className="h-9 w-40 rounded skeleton-box mb-5" />
+      <SkeletonList count={5} />
+    </div>
+  )
 
   if (!profileReadyForNetworking) {
     return (
@@ -620,7 +638,7 @@ export default function Networking() {
                     setLastSteveDebugTrace(null)
                     setShowDebugModal(false)
                   }}
-                  className="h-9 max-w-[55%] truncate rounded-full border border-c-border bg-transparent px-3 text-xs text-c-text-primary focus:border-cpoint-turquoise focus:outline-none"
+                  className="h-11 min-w-0 flex-1 max-w-[75%] truncate rounded-full border border-c-border bg-transparent px-4 text-sm leading-tight text-c-text-primary focus:border-cpoint-turquoise focus:outline-none"
                 >
                   {communities.map(c => <option key={c.id} value={c.id} className="bg-c-bg-app">{c.name}</option>)}
                 </select>
@@ -677,8 +695,8 @@ export default function Networking() {
             <div className="px-2 pt-2 space-y-3">
               {steveMessages.length === 0 ? (
                 (sessionsLoading || steveMembersLoading || steveMemberCount === null) ? (
-                  <div className="flex flex-col items-center justify-center py-16 text-center">
-                    <p className="text-sm text-c-text-tertiary">{t('networking.loading')}</p>
+                  <div className="px-2 py-6">
+                    <SkeletonList count={3} />
                   </div>
                 ) : (
                   <SteveEmptyState
@@ -730,10 +748,14 @@ export default function Networking() {
                 })
               )}
               {(steveSending || autoMatching) && <SteveThinking />}
-              <div ref={steveEndRef} />
             </div>
-            {/* Spacer for fixed input bar */}
-            <div className="h-20" />
+            {/* Bottom spacer + scroll-to-bottom anchor. Grows with the keyboard
+                so the latest message can scroll clear above the lifted input bar
+                instead of hiding behind it (the bar itself sits at keyboardLift). */}
+            <div
+              ref={steveEndRef}
+              style={{ height: showKeyboard ? `${keyboardLift + 72}px` : '80px' }}
+            />
           </div>
         )}
 
@@ -932,6 +954,7 @@ export default function Networking() {
           if (!steveFeedback[u]) submitFeedback(u, 'up', 'implicit_message_tap')
           setMatchSheetOpen(false)
           navigate(`/user_chat/chat/${u}?source=steve_match`)
+          void maybeRequestReview('steve_match_message') // strongest positive signal (throttled)
         }}
         onClose={() => setMatchSheetOpen(false)}
       />

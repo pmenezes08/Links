@@ -9,7 +9,7 @@ import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { GroupMessageRow } from '../chat/GroupMessageRow'
-import { getDateKey, normalizeMediaPath, useChatThreadChrome, chatHapticSend, ChatAttachMenuRow, useGroupMessagePoll, ChatMediaPreviewModal, ChatMediaViewerModal, ChatSelectionBar, NewMessagesChip, useResumeOutboxDrain, ChatComposerPortal, ChatComposerCard, ChatVirtualMessageList, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION, readStaleDeviceCache, markThreadCachePainted, isCachePaintedForGen, isUnchangedFromCacheSnapshot, hydrateThreadFromIndexedDb } from '../chat'
+import { getDateKey, normalizeMediaPath, useChatThreadChrome, chatHapticSend, ChatAttachMenuRow, useGroupMessagePoll, ChatMediaPreviewModal, ChatMediaViewerModal, ChatSelectionBar, NewMessagesChip, useResumeOutboxDrain, ChatComposerPortal, ChatComposerCard, ChatVirtualMessageList, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION, readStaleDeviceCache, markThreadCachePainted, isCachePaintedForGen, isUnchangedFromCacheSnapshot, hydrateThreadFromIndexedDb, stripReplyMarker } from '../chat'
 import { groupChatInfoDeviceCacheKey, groupChatMessagesDeviceCacheKey } from '../utils/chatThreadsCache'
 import { useAndroidBackButton } from '../hooks/useAndroidBackButton'
 import { getStoredMediaQuality, setStoredMediaQuality, type MediaQuality } from '../chat/upload'
@@ -44,6 +44,7 @@ import {
   releaseShareUrlHandoffKey,
 } from '../services/shareImportStore'
 import { handleBasicProfileRequired } from '../utils/basicProfileGate'
+import { isNativeMediaPlatform, pickFromLibraryNative, capturePhotoNative } from '../utils/nativeMediaPicker'
 
 type Message = {
   id: number
@@ -782,7 +783,7 @@ export default function GroupChatThread() {
             const replyMatch = text.match(/^\[REPLY:([^:]+):([^\]]+)\](?:\r?\n|\s)*(.*)$/s)
             if (replyMatch) {
               replySender = replyMatch[1]
-              replySnippet = replyMatch[2]
+              replySnippet = stripReplyMarker(replyMatch[2])
               text = replyMatch[3]
             }
             return {
@@ -933,7 +934,10 @@ export default function GroupChatThread() {
         const summarySnippet = replySnapshot.audio_summary ? replySnapshot.audio_summary.slice(0, 80) : ''
         replySnippet = summarySnippet ? `🎤|${summarySnippet}` : '🎤|Voice message'
       } else {
-        replySnippet = replySnapshot.text.length > 90 ? replySnapshot.text.slice(0, 90) + '…' : replySnapshot.text
+        // Collapse nesting at the source: never embed the parent's own reply
+        // marker when quoting a message that was itself a reply.
+        const parentText = stripReplyMarker(replySnapshot.text)
+        replySnippet = parentText.length > 90 ? parentText.slice(0, 90) + '…' : parentText
       }
       formattedMessage = `[REPLY:${replySnapshot.sender}:${replySnippet}]\n${text}`
     }
@@ -1179,13 +1183,23 @@ export default function GroupChatThread() {
     textarea.focus()
   }, [mentionStartPos])
 
-  const handlePhotoSelect = () => {
+  const handlePhotoSelect = async () => {
     setShowAttachMenu(false)
+    if (isNativeMediaPlatform()) {
+      const files = await pickFromLibraryNative()
+      if (files && files.length) appendPendingMediaFiles(files) // null = user cancelled → do nothing
+      return
+    }
     fileInputRef.current?.click()
   }
 
-  const handleCameraOpen = () => {
+  const handleCameraOpen = async () => {
     setShowAttachMenu(false)
+    if (isNativeMediaPlatform()) {
+      const files = await capturePhotoNative()
+      if (files && files.length) appendPendingMediaFiles(files)
+      return
+    }
     cameraInputRef.current?.click()
   }
   
@@ -1240,33 +1254,27 @@ export default function GroupChatThread() {
   }
 
   // Handle multiple file selection (photos or videos)
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files || files.length === 0) return
-    
+  // Shared by the web <input> path and the native camera/library picker so both produce
+  // identical pendingMedia — the upload kernel downstream is untouched.
+  function appendPendingMediaFiles(files: File[]) {
     const newMedia: Array<{ file: File; previewUrl: string; type: 'image' | 'video' }> = []
-    
-    Array.from(files).forEach(file => {
+    files.forEach(file => {
       if (file.type.startsWith('image/')) {
-        newMedia.push({
-          file,
-          previewUrl: URL.createObjectURL(file),
-          type: 'image'
-        })
+        newMedia.push({ file, previewUrl: URL.createObjectURL(file), type: 'image' })
       } else if (file.type.startsWith('video/')) {
-        newMedia.push({
-          file,
-          previewUrl: URL.createObjectURL(file),
-          type: 'video'
-        })
+        newMedia.push({ file, previewUrl: URL.createObjectURL(file), type: 'video' })
       }
     })
-    
     if (newMedia.length > 0) {
       setPendingMedia(prev => [...prev, ...newMedia])
       setPreviewIndex(0)
     }
-    
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    appendPendingMediaFiles(Array.from(files))
     // Reset input
     if (fileInputRef.current) fileInputRef.current.value = ''
     if (cameraInputRef.current) cameraInputRef.current.value = ''
@@ -1420,7 +1428,7 @@ export default function GroupChatThread() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ voice: uploadData.audio_path }),
+          body: JSON.stringify({ voice: uploadData.audio_path, client_key: `gvoice_${optimisticId}` }),
         })
         const data = await response.json()
         if (handleBasicProfileRequired(data)) {
@@ -1596,7 +1604,7 @@ export default function GroupChatThread() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ voice: uploadData.audio_path }),
+          body: JSON.stringify({ voice: uploadData.audio_path, client_key: `gvoice_${optimisticId}` }),
         })
         const data = await response.json()
 
@@ -1660,7 +1668,7 @@ export default function GroupChatThread() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ voice: uploadData.audio_path }),
+          body: JSON.stringify({ voice: uploadData.audio_path, client_key: `gvoice_${optimisticId}` }),
         })
         const data = await response.json()
 

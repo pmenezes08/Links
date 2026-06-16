@@ -60,6 +60,33 @@ def count_group_unread_excluding_cleared(cursor, username: str) -> int:
     return int(row[0] or 0)
 
 
+def count_unread_notifications(cursor, username: str) -> int:
+    """
+    Count unread, badge-worthy notifications — everything except ``message`` and
+    ``reaction`` rows (those surface in the chat/reaction UIs, not the bell).
+
+    Mirrors the client-side filter the badge poller used to run over the full
+    ``/api/notifications`` list, so ``/check_unread_messages`` can return the
+    notification count in the same round-trip instead of shipping ~50 rows on a
+    high-frequency poll. ``notifications.user_id`` stores the username (see the
+    notifications blueprint). The ``type IS NULL`` branch keeps parity with the
+    client's exact ``!== 'message' && !== 'reaction'`` check (a NULL type counted).
+    """
+    ph = get_sql_placeholder()
+    sql = f"""
+        SELECT COUNT(*) AS cnt FROM notifications
+        WHERE user_id = {ph} AND is_read = 0
+          AND (type IS NULL OR type NOT IN ('message', 'reaction'))
+    """
+    cursor.execute(sql, (username,))
+    row = cursor.fetchone()
+    if row is None:
+        return 0
+    if hasattr(row, "keys"):
+        return int(list(row.values())[0] or 0)
+    return int(row[0] or 0)
+
+
 def mark_dm_received_before_clear_as_read(cursor, username: str, other_username: str) -> None:
     """After deleted_chat_threads row is set for this pair, mark pre-clear unread rows as read."""
     ph = get_sql_placeholder()

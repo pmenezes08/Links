@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import { exportEventToDeviceCalendar, removeNativeCalendarMirrorForCpointEvent } from '../utils/calendarExport'
 import type { CalendarExportEventFields } from '../utils/calendarExportTypes'
+import { scheduleEventReminder, cancelEventReminder } from '../utils/eventReminders'
 
 type EventData = {
   id: number
@@ -92,6 +93,14 @@ export default function EventDetail(){
       const j = await r.json().catch(()=>null)
       if (j?.success){
         await loadEvent()
+        // On-device reminder ~30 min before — schedule for "going", cancel otherwise.
+        if (event) {
+          if (response === 'going') {
+            void scheduleEventReminder({ id: event.id, title: event.title, starts_at_utc: event.starts_at_utc, community_name: event.community_name })
+          } else {
+            void cancelEventReminder(event.id)
+          }
+        }
       }
     }catch{}
   }

@@ -159,7 +159,7 @@ function MessageBubbleInner({
       disabled={isEditing || (!!m.isOptimistic && !m.sendFailed)}
     >
       <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
-        <div className={`relative flex flex-col ${m.sent ? 'items-end' : 'items-start'} max-w-[82%] md:max-w-[65%] ${m.reaction ? 'mb-6' : ''} ${m.sendFailed ? 'opacity-60' : m.isOptimistic ? 'opacity-70' : 'opacity-100'}`}>
+        <div className={`relative flex flex-col ${m.sent ? 'items-end' : 'items-start'} ${isEditing ? 'w-full' : 'max-w-[82%] md:max-w-[65%]'} ${m.reaction ? 'mb-6' : ''} ${m.sendFailed ? 'opacity-60' : m.isOptimistic ? 'opacity-70' : 'opacity-100'}`}>
 
           {/* Grouped media display — rendered OUTSIDE the text bubble */}
           {m.media_paths && m.media_paths.length > 0 ? (
@@ -190,6 +190,8 @@ function MessageBubbleInner({
                     src={normalizeMediaPath(m.media_paths[0])}
                     alt={t('chat.media_preview_alt')}
                     className="w-full rounded-lg"
+                    width={(m as { media_dims?: Array<[number, number] | null> }).media_dims?.[0]?.[0]}
+                    height={(m as { media_dims?: Array<[number, number] | null> }).media_dims?.[0]?.[1]}
                   />
                 )}
                 {m.media_paths.length > 1 && (
@@ -210,6 +212,8 @@ function MessageBubbleInner({
                     alt={t('chat.shared_image_alt')}
                     className="max-w-full max-h-64 cursor-pointer rounded-lg"
                     onClick={() => onImageClick(normalizeMediaPath(m.image_path!))}
+                    width={(m as { media_dims?: Array<[number, number] | null> }).media_dims?.[0]?.[0]}
+                    height={(m as { media_dims?: Array<[number, number] | null> }).media_dims?.[0]?.[1]}
                   />
                 </div>
               ) : null}
@@ -329,7 +333,7 @@ function MessageBubbleInner({
                 m.isOptimistic
                   ? 'bg-cpoint-turquoise/40 border border-cpoint-turquoise/30'
                   : `liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent' : 'liquid-glass-bubble--received'}`
-              } ${m.sent ? 'text-white' : 'text-c-text-primary'} px-2.5 py-1.5 rounded-2xl text-[14px] leading-relaxed whitespace-pre-wrap break-words overflow-hidden max-w-full min-w-0 ${
+              } ${m.sent ? 'text-white' : 'text-c-text-primary'} px-2.5 py-1.5 rounded-2xl text-[14px] leading-relaxed whitespace-pre-wrap break-words overflow-hidden max-w-full min-w-0 ${isEditing ? 'w-full' : ''} ${
                 m.sent ? 'rounded-br-xl' : 'rounded-bl-xl'
               }`}
             >
@@ -492,17 +496,17 @@ function MessageBubbleInner({
 
           {/* Text content or editor */}
           {isEditing ? (
-            <div 
-              className="w-[65vw] max-w-[320px]"
+            <div
+              className="w-full"
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
             >
               <textarea
-                className="w-full bg-c-bg-recessed border border-c-border rounded-lg px-3 py-2 text-sm text-c-text-primary placeholder-c-text-tertiary focus:outline-none focus:border-cpoint-turquoise resize-none"
-                style={{ userSelect: 'text', WebkitUserSelect: 'text', touchAction: 'manipulation' } as React.CSSProperties}
+                className="w-full bg-c-bg-recessed border border-c-border rounded-lg px-3 py-2 text-sm text-c-text-primary placeholder-c-text-tertiary focus:outline-none focus:border-cpoint-turquoise resize-none overscroll-contain max-h-[40vh]"
+                style={{ userSelect: 'text', WebkitUserSelect: 'text', touchAction: 'auto' } as React.CSSProperties}
                 value={editText}
                 onChange={(e) => onEditTextChange(e.target.value)}
-                rows={2}
+                rows={4}
                 autoFocus
                 placeholder={t('chat.edit_message_placeholder')}
               />

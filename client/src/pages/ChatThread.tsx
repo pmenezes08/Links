@@ -37,6 +37,7 @@ import {
 } from '../utils/chatThreadsCache'
 import { sendImageMessage, sendVideoMessage, sendMultiMediaMessage, sendDocumentMessage, type UploadProgress } from '../chat/mediaSenders'
 import { handleBasicProfileRequired } from '../utils/basicProfileGate'
+import { isNativeMediaPlatform, pickFromLibraryNative, capturePhotoNative } from '../utils/nativeMediaPicker'
 import { comparableMediaUrl, consumeDeletedMedia, mediaDeleteScopeForDm, type DeletedMediaItem } from '../chat/mediaDeletionEvents'
 import ChatThreadSearch from '../chat/ChatThreadSearch'
 import type { ChatMessage } from '../types/chat'
@@ -53,6 +54,7 @@ import {
   normalizeMediaPath,
   setMessageReaction,
   getAllMessageReactions,
+  stripReplyMarker,
   CHAT_CACHE_TTL_MS,
   CHAT_CACHE_VERSION,
   readStaleDeviceCache,
@@ -311,6 +313,9 @@ export default function ChatThread(){
   })
   // Track recently sent optimistic messages to prevent poll from removing them
   const recentOptimisticRef = useRef<Map<string, { message: Message; timestamp: number }>>(new Map())
+  // Holds the audio blob of an in-flight/failed voice note so it can be retried
+  // (idempotently, via client_key) instead of being silently lost. Cleared on confirmed send.
+  const pendingVoiceRef = useRef<Map<string, { blob: Blob; duration: number; url: string }>>(new Map())
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
   // Draft persistence - save timeout for debounced auto-save
@@ -603,7 +608,7 @@ export default function ChatThread(){
         // Check for regular reply format
         const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\][\r\n\s]*(.*)$/s)
         if (replyMatch) {
-          replySnippet = replyMatch[2]
+          replySnippet = stripReplyMarker(replyMatch[2])
           messageText = replyMatch[3]
         }
       }
@@ -1189,7 +1194,10 @@ export default function ChatThread(){
         const summarySnippet = replySnapshot.audio_summary ? replySnapshot.audio_summary.slice(0, 80) : ''
         replySnippet = summarySnippet ? `🎤|${summarySnippet}` : '🎤|Voice message'
       } else {
-        replySnippet = replySnapshot.text.length > 90 ? replySnapshot.text.slice(0,90) + '…' : replySnapshot.text
+        // Collapse nesting at the source: never embed the parent's own reply
+        // marker when quoting a message that was itself a reply.
+        const parentText = stripReplyMarker(replySnapshot.text)
+        replySnippet = parentText.length > 90 ? parentText.slice(0,90) + '…' : parentText
       }
     }
     const replySender = replySnapshot?.sender
@@ -1346,6 +1354,9 @@ export default function ChatThread(){
   }
 
   function retryFailedMessage(clientKey: string) {
+    // Voice notes carry their audio in pendingVoiceRef — re-upload it (same
+    // client_key, so the server dedups) rather than re-sending as a text message.
+    if (pendingVoiceRef.current.has(clientKey)) { retryVoiceMessage(clientKey); return }
     const msg = messages.find(m => (m.clientKey || m.id) === clientKey)
     if (!msg) return
     const originalMessage = msg._originalMessage || msg.text || ''
@@ -1422,13 +1433,91 @@ export default function ChatThread(){
       })
   }
 
-  function handlePhotoSelect() {
+  function markVoiceFailed(tempId: string) {
+    try { recentOptimisticRef.current.delete(tempId) } catch { /* ignore */ }
+    setMessages(prev => prev.map(m =>
+      (m.clientKey || m.id) === tempId ? { ...m, sendFailed: true, isOptimistic: true } : m
+    ))
+  }
+
+  // Shared voice send. client_key makes it idempotent; on failure we keep a
+  // retryable bubble (the blob stays in pendingVoiceRef) instead of deleting it + alert().
+  async function sendVoiceRequest(tempId: string, blob: Blob, durationSeconds: number, url: string) {
+    pendingVoiceRef.current.set(tempId, { blob, duration: durationSeconds, url })
+    let filename = 'voice.webm'
+    if (blob.type.includes('mp4')) filename = 'voice.mp4'
+    else if (blob.type.includes('wav')) filename = 'voice.wav'
+    else if (blob.type.includes('ogg')) filename = 'voice.ogg'
+    const fd = new FormData()
+    fd.append('recipient_id', String(otherUserId))
+    if (durationSeconds) fd.append('duration_seconds', String(durationSeconds))
+    fd.append('client_key', tempId)
+    fd.append('audio', blob, filename)
+    try {
+      const r = await fetch('/send_audio_message', { method: 'POST', credentials: 'include', body: fd })
+      const j = await r.json().catch(() => null)
+      if (handleBasicProfileRequired(j)) { markVoiceFailed(tempId); return }
+      if (!j?.success) { markVoiceFailed(tempId); return }
+      const entry = pendingVoiceRef.current.get(tempId)
+      if (entry) {
+        setTimeout(() => { try { URL.revokeObjectURL(entry.url) } catch { /* ignore */ } }, 100)
+        pendingVoiceRef.current.delete(tempId)
+      }
+      if (j.message_id) {
+        idBridgeRef.current.tempToServer.set(tempId, j.message_id)
+        idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
+        setMessages(prev => {
+          const serverId = j.message_id
+          const updated = prev.map(m => (m.clientKey || m.id) === tempId ? {
+            ...m,
+            id: serverId,
+            audio_path: j.audio_path || m.audio_path,
+            audio_summary: j.audio_summary || m.audio_summary || null,
+            isOptimistic: false,
+            sendFailed: false,
+            clientKey: tempId,
+          } : m)
+          return updated.filter(m => m.id !== serverId || (m.clientKey || m.id) === tempId)
+        })
+        setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
+      } else {
+        setMessages(prev => prev.map(m =>
+          (m.clientKey || m.id) === tempId ? { ...m, isOptimistic: false, sendFailed: false } : m
+        ))
+        setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
+      }
+    } catch (error) {
+      console.error('Failed to send voice message', error)
+      markVoiceFailed(tempId)
+    }
+  }
+
+  function retryVoiceMessage(clientKey: string) {
+    const entry = pendingVoiceRef.current.get(clientKey)
+    if (!entry) return
+    setMessages(prev => prev.map(m =>
+      (m.clientKey || m.id) === clientKey ? { ...m, sendFailed: false, isOptimistic: true } : m
+    ))
+    void sendVoiceRequest(clientKey, entry.blob, entry.duration, entry.url)
+  }
+
+  async function handlePhotoSelect() {
     setShowAttachMenu(false)
+    if (isNativeMediaPlatform()) {
+      const files = await pickFromLibraryNative()
+      if (files && files.length) appendPendingMediaFiles(files) // null = user cancelled → do nothing
+      return
+    }
     fileInputRef.current?.click()
   }
 
-  function handleCameraOpen() {
+  async function handleCameraOpen() {
     setShowAttachMenu(false)
+    if (isNativeMediaPlatform()) {
+      const files = await capturePhotoNative()
+      if (files && files.length) appendPendingMediaFiles(files)
+      return
+    }
     cameraInputRef.current?.click()
   }
 
@@ -1460,11 +1549,11 @@ export default function ChatThread(){
     if (documentInputRef.current) documentInputRef.current.value = ''
   }
 
-  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const files = event.target.files
-    if (!files || files.length === 0) return
+  // Shared by the web <input> path and the native camera/library picker so both produce
+  // identical pendingMedia — the upload kernel downstream is untouched.
+  function appendPendingMediaFiles(files: File[]) {
     const newMedia: Array<{ file: File; previewUrl: string; type: 'image' | 'video' | 'audio' }> = []
-    Array.from(files).forEach(file => {
+    files.forEach(file => {
       if (file.type.startsWith('image/')) {
         newMedia.push({ file, previewUrl: URL.createObjectURL(file), type: 'image' })
       } else if (file.type.startsWith('video/')) {
@@ -1477,6 +1566,12 @@ export default function ChatThread(){
       setPendingMedia(prev => [...prev, ...newMedia])
       setPreviewIndex(0)
     }
+  }
+
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = event.target.files
+    if (!files || files.length === 0) return
+    appendPendingMediaFiles(Array.from(files))
     if (fileInputRef.current) fileInputRef.current.value = ''
     if (cameraInputRef.current) cameraInputRef.current.value = ''
   }
@@ -1757,45 +1852,10 @@ export default function ChatThread(){
       setMessages(prev => [...prev, optimistic])
       recentOptimisticRef.current.set(tempId, { message: optimistic, timestamp: Date.now() })
       setTimeout(scrollToBottom, 50)
-      const fd = new FormData()
-      fd.append('recipient_id', String(otherUserId))
-      if (durationSeconds) fd.append('duration_seconds', durationSeconds)
-      fd.append('audio', file, file.name || 'audio.m4a')
-      const r = await fetch('/send_audio_message', { method: 'POST', credentials: 'include', body: fd })
-      const j = await r.json().catch(() => null)
-      if (!j?.success) {
-        setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
-        recentOptimisticRef.current.delete(tempId)
-        URL.revokeObjectURL(url)
-        alert(j?.error || t('chat.failed_send_audio'))
-      } else if (j.message_id) {
-        idBridgeRef.current.tempToServer.set(tempId, j.message_id)
-        idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
-        setMessages(prev => {
-          const serverId = j.message_id
-          const updated = prev.map(m => {
-            if ((m.clientKey || m.id) === tempId) {
-              return {
-                ...m,
-                id: serverId,
-                audio_path: j.audio_path || m.audio_path,
-                audio_summary: j.audio_summary || m.audio_summary || null,
-                isOptimistic: false,
-                clientKey: tempId,
-              }
-            }
-            return m
-          })
-          return updated.filter(m => m.id !== serverId || (m.clientKey || m.id) === tempId)
-        })
-        setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
-        setTimeout(() => URL.revokeObjectURL(url), 100)
-      }
+      await sendVoiceRequest(tempId, file, durationSeconds ? Number(durationSeconds) : 0, url)
     } catch (error) {
       console.error('Failed to send shared audio', error)
-      setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
-      recentOptimisticRef.current.delete(tempId)
-      alert(t('chat.failed_send_audio'))
+      markVoiceFailed(tempId)
     } finally {
       setSending(false)
     }
@@ -1825,51 +1885,10 @@ export default function ChatThread(){
       recentOptimisticRef.current.set(tempId, { message: optimistic, timestamp: Date.now() })
       
       setTimeout(scrollToBottom, 50)
-      const fd = new FormData()
-      fd.append('recipient_id', String(otherUserId))
-      fd.append('duration_seconds', String(Math.round(recordMs/1000)))
-      fd.append('audio', blob, 'voice.webm')
-      const r = await fetch('/send_audio_message', { method:'POST', credentials:'include', body: fd })
-      const j = await r.json().catch(()=>null)
-      if (!j?.success){
-        setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
-        recentOptimisticRef.current.delete(tempId)
-        URL.revokeObjectURL(url)
-        alert(j?.error || t('chat.failed_send_audio'))
-      } else {
-        // Update optimistic message with server data and remove duplicates
-        if (j.message_id) {
-          idBridgeRef.current.tempToServer.set(tempId, j.message_id)
-          idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
-          setMessages(prev => {
-            const serverId = j.message_id
-            const updated = prev.map(m => {
-              if ((m.clientKey || m.id) === tempId) {
-                return {
-                  ...m,
-                  id: serverId,
-                  audio_path: j.audio_path || m.audio_path,
-                  audio_summary: j.audio_summary || m.audio_summary || null,
-                  isOptimistic: false,
-                  clientKey: tempId,
-                }
-              }
-              return m
-            })
-            // Filter out poll-added duplicates
-            return updated.filter(m => m.id !== serverId || (m.clientKey || m.id) === tempId)
-          })
-          // Clean up ref
-          setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
-        }
-        // Revoke blob URL after successful upload
-        setTimeout(() => URL.revokeObjectURL(url), 100)
-      }
+      await sendVoiceRequest(tempId, blob, Math.round(recordMs/1000), url)
     }catch(error){
       console.error('Failed to send audio', error)
-      setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
-      recentOptimisticRef.current.delete(tempId)
-      alert(t('chat.failed_send_audio'))
+      markVoiceFailed(tempId)
     }finally{
       setSending(false)
     }
@@ -1984,64 +2003,10 @@ export default function ChatThread(){
       recentOptimisticRef.current.set(tempId, { message: optimistic, timestamp: Date.now() })
       
       setTimeout(scrollToBottom, 50)
-      const fd = new FormData()
-      fd.append('recipient_id', String(otherUserId))
-      fd.append('duration_seconds', String(durationSeconds))
-      
-      // Determine file extension based on blob type
-      let filename = 'voice.webm'
-      if (blob.type.includes('mp4')) {
-        filename = 'voice.mp4'
-      } else if (blob.type.includes('wav')) {
-        filename = 'voice.wav'
-      } else if (blob.type.includes('ogg')) {
-        filename = 'voice.ogg'
-      }
-      
-      fd.append('audio', blob, filename)
-      const r = await fetch('/send_audio_message', { method:'POST', credentials:'include', body: fd })
-      const j = await r.json().catch(()=>null)
-      if (!j?.success){
-        setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
-        recentOptimisticRef.current.delete(tempId)
-        URL.revokeObjectURL(url)
-        alert(j?.error || t('chat.failed_send_audio'))
-      } else {
-        // Update optimistic message with server data and remove duplicates
-        if (j.message_id) {
-          idBridgeRef.current.tempToServer.set(tempId, j.message_id)
-          idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
-          setMessages(prev => {
-            const serverId = j.message_id
-            const updated = prev.map(m => {
-              if ((m.clientKey || m.id) === tempId) {
-                return {
-                  ...m,
-                  id: serverId,
-                  audio_path: j.audio_path || m.audio_path,
-                  audio_summary: j.audio_summary || m.audio_summary || null,
-                  audio_duration_seconds: durationSeconds,
-                  isOptimistic: false,
-                  clientKey: tempId,
-                }
-              }
-              return m
-            })
-            // Filter out poll-added duplicates
-            return updated.filter(m => m.id !== serverId || (m.clientKey || m.id) === tempId)
-          })
-          // Clean up ref
-          setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
-        }
-        // Revoke blob URL after successful upload
-        setTimeout(() => URL.revokeObjectURL(url), 100)
-      }
+      await sendVoiceRequest(tempId, blob, durationSeconds, url)
     }catch(error){
       console.error('Failed to send voice message', error)
-      setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
-      recentOptimisticRef.current.delete(tempId)
-      const message = error instanceof Error ? error.message : String(error)
-      alert(t('chat.failed_send_voice', { message }))
+      markVoiceFailed(tempId)
     } finally {
       setSending(false)
     }

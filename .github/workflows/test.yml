@@ -112,6 +112,8 @@ jobs:
             tests/test_spotlight_kb.py \
             tests/test_redis_cache_resilience.py \
             tests/test_dm_unread_counts.py \
+            tests/test_dm_audio_idempotency.py \
+            tests/test_http_conditional.py \
             -v --tb=short --maxfail=5
 
       - name: Upload test logs (on failure)

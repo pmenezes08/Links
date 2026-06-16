@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom'
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { PersonalForm, ProfessionalForm } from '../../pages/Profile'
+import { ExpandableTextarea } from './ExpandableTextarea'
+import { useComposerKeyboardLift } from '../../hooks/useComposerKeyboardLift'
+import { CHAT_KEYBOARD_ANIMATION_MS, CPOINT_EASE_OUT } from '../../design/motion'
 
 export type WorkExperienceRow = {
   title: string
@@ -80,12 +83,24 @@ export function ProfileDetailsModal({
 }: ProfileDetailsModalProps) {
   const { t } = useTranslation()
   const [page, setPage] = useState<1 | 2>(1)
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  const { keyboardLift, showKeyboard, safeBottomPx } = useComposerKeyboardLift()
+  // How much extra to shave off the card when the keyboard is open. The base
+  // height already reserves the bottom safe-area + a 1.5rem margin; once the
+  // keyboard is up it covers that area, so we give it back and only keep an 8px
+  // gap above the keyboard — otherwise the card collapses far smaller than the
+  // space actually available. Kept outside the min() below so the transition
+  // animates a plain px delta (no snap).
+  const keyboardShave = showKeyboard ? Math.max(0, keyboardLift - safeBottomPx - 16) : 0
 
   const stepName =
     page === 1 ? t('profile.details_modal.step_spotlight') : t('profile.details_modal.step_timeline')
 
   useEffect(() => {
-    if (open) setPage(1)
+    if (open) {
+      setPage(1)
+      setExpandedKey(null)
+    }
   }, [open])
 
   useEffect(() => {
@@ -110,7 +125,17 @@ export function ProfileDetailsModal({
       aria-modal="true"
       aria-labelledby="profile-details-title"
     >
-      <div className="relative flex max-h-[min(720px,calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1.5rem))] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-c-border bg-c-bg-surface shadow-xl">
+      <div
+        className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-c-border bg-c-bg-surface shadow-xl"
+        style={{
+          // Keep the keyboard term OUTSIDE the min() so the only animating part
+          // is a plain `- <px>` subtraction — WebKit won't smoothly transition a
+          // max-height whose value is a min()/calc() that itself contains the
+          // changing term, which made the card snap instead of glide.
+          maxHeight: `calc(min(720px, 100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 1.5rem) - ${keyboardShave}px)`,
+          transition: `max-height ${CHAT_KEYBOARD_ANIMATION_MS}ms ${CPOINT_EASE_OUT}`,
+        }}
+      >
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-c-border px-4 py-3">
           <div>
             <h2 id="profile-details-title" className="text-base font-semibold text-c-text-primary">
@@ -130,7 +155,7 @@ export function ProfileDetailsModal({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3">
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-4 py-3">
           {page === 1 ? (
             <form id="form-personal-modal" className="space-y-4" onSubmit={onSavePersonal}>
               <p className="text-xs leading-relaxed text-[#b8c8cc] border border-cpoint-turquoise/25 rounded-lg px-3 py-2 bg-cpoint-turquoise/5">
@@ -140,12 +165,16 @@ export function ProfileDetailsModal({
               {PERSONAL_FIELDS.map(field => (
                 <label key={field.key} className="text-sm block">
                   <span className="text-c-text-primary">{t(field.labelKey)}</span>
-                  <textarea
-                    className="mt-1 w-full min-h-[72px] rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm text-c-text-primary outline-none focus:border-cpoint-turquoise"
+                  <ExpandableTextarea
+                    label={t(field.labelKey)}
                     value={personal[field.key]}
-                    onChange={e =>
-                      setPersonal(prev => ({ ...prev, [field.key]: e.target.value }))
-                    }
+                    onChange={v => setPersonal(prev => ({ ...prev, [field.key]: v }))}
+                    className="mt-1 w-full min-h-[72px] rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm text-c-text-primary outline-none focus:border-cpoint-turquoise"
+                    expanded={expandedKey === field.key}
+                    onExpandedChange={ex => setExpandedKey(ex ? field.key : null)}
+                    keyboardLift={keyboardLift}
+                    showKeyboard={showKeyboard}
+                    safeBottomPx={safeBottomPx}
                   />
                 </label>
               ))}
@@ -271,17 +300,22 @@ export function ProfileDetailsModal({
                         />
                       </label>
                     </div>
-                    <textarea
-                      className="w-full rounded-md bg-c-bg-app border border-c-border px-2 py-1.5 text-sm min-h-[64px]"
+                    <ExpandableTextarea
+                      label={t('profile.work.description')}
                       placeholder={t('profile.work.description')}
+                      className="w-full rounded-md bg-c-bg-app border border-c-border px-2 py-1.5 text-sm min-h-[64px]"
                       value={row.description}
-                      onChange={e => {
-                        const v = e.target.value
+                      onChange={v =>
                         setProfessional(prev => ({
                           ...prev,
                           work_history: prev.work_history.map((r, i) => (i === idx ? { ...r, description: v } : r)),
                         }))
-                      }}
+                      }
+                      expanded={expandedKey === `work-${idx}`}
+                      onExpandedChange={ex => setExpandedKey(ex ? `work-${idx}` : null)}
+                      keyboardLift={keyboardLift}
+                      showKeyboard={showKeyboard}
+                      safeBottomPx={safeBottomPx}
                     />
                   </div>
                 ))}
@@ -373,17 +407,22 @@ export function ProfileDetailsModal({
                         }}
                       />
                     </div>
-                    <textarea
-                      className="w-full rounded-md bg-c-bg-app border border-c-border px-2 py-1.5 text-sm min-h-[56px]"
+                    <ExpandableTextarea
+                      label={t('profile.education.description_optional')}
                       placeholder={t('profile.education.description_optional')}
+                      className="w-full rounded-md bg-c-bg-app border border-c-border px-2 py-1.5 text-sm min-h-[56px]"
                       value={row.description}
-                      onChange={e => {
-                        const v = e.target.value
+                      onChange={v =>
                         setProfessional(prev => ({
                           ...prev,
                           education: prev.education.map((r, i) => (i === idx ? { ...r, description: v } : r)),
                         }))
-                      }}
+                      }
+                      expanded={expandedKey === `edu-${idx}`}
+                      onExpandedChange={ex => setExpandedKey(ex ? `edu-${idx}` : null)}
+                      keyboardLift={keyboardLift}
+                      showKeyboard={showKeyboard}
+                      safeBottomPx={safeBottomPx}
                     />
                   </div>
                 ))}

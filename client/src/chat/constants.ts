@@ -12,6 +12,22 @@ export const DM_FULL_SYNC_EVERY_N_POLL = 6
 /** Group thread poll interval (ms). */
 export const GROUP_POLL_INTERVAL_MS = 1500
 
+/** Cap for adaptive poll backoff after consecutive failed polls (ms). */
+export const MAX_POLL_BACKOFF_MS = 15000
+
+/**
+ * Adaptive backoff after `errorCount` consecutive failed polls: exponential on the
+ * base interval with full jitter, capped at MAX_POLL_BACKOFF_MS. Returns 0 for
+ * errorCount <= 0 (poll at the normal interval). Keeps a flaky-but-online ("lie-fi")
+ * connection from hammering /get_messages every 1.5s — each failure widens the gap,
+ * a success resets it.
+ */
+export function nextPollBackoffMs(errorCount: number, baseMs: number = DM_POLL_INTERVAL_MS): number {
+  if (errorCount <= 0) return 0
+  const ceiling = Math.min(MAX_POLL_BACKOFF_MS, baseMs * 2 ** errorCount)
+  return Math.round(ceiling * (0.5 + Math.random() / 2)) // 50–100% of ceiling (jitter)
+}
+
 /** Every Nth group poll omits since_id for full sync. */
 export const GROUP_FULL_SYNC_EVERY_N_POLL = 6
 

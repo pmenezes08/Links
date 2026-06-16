@@ -292,10 +292,15 @@ def send_dm_grouped_media(
     recipient_id: Any = None,
     media_files: list | None = None,
     media_urls: list | None = None,
+    media_dims: list | None = None,
     upload_only: bool = False,
     client_key: str | None = None,
 ) -> Tuple[dict, int]:
-    """Upload and send grouped photo/video DM. Returns (payload, http_status)."""
+    """Upload and send grouped photo/video DM. Returns (payload, http_status).
+
+    ``media_dims`` is an optional list of [w, h] (or null) parallel to the media order,
+    measured client-side, stored so the receiver can reserve image height on first view.
+    """
     if not recipient_id:
         return {"success": False, "error": "Recipient required"}, 400
 
@@ -368,6 +373,13 @@ def send_dm_grouped_media(
                     logger.warning("send_dm_media client_key check failed: %s", ik_err)
 
             media_paths_json = json.dumps(uploaded_paths)
+            media_dims_json = json.dumps(media_dims) if media_dims else None
+            # Ensure the (nullable) media_dims column exists; harmless if already present.
+            try:
+                c.execute("ALTER TABLE messages ADD COLUMN media_dims TEXT")
+                conn.commit()
+            except Exception:
+                pass
             first_image = next(
                 (
                     p
@@ -388,18 +400,18 @@ def send_dm_grouped_media(
             if USE_MYSQL:
                 c.execute(
                     """
-                    INSERT INTO messages (sender, receiver, message, image_path, video_path, media_paths, client_key, timestamp)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                    INSERT INTO messages (sender, receiver, message, image_path, video_path, media_paths, media_dims, client_key, timestamp)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
                 """,
-                    (username, recipient_username, "", first_image, first_video, media_paths_json, client_key),
+                    (username, recipient_username, "", first_image, first_video, media_paths_json, media_dims_json, client_key),
                 )
             else:
                 c.execute(
                     """
-                    INSERT INTO messages (sender, receiver, message, image_path, video_path, media_paths, client_key, timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                    INSERT INTO messages (sender, receiver, message, image_path, video_path, media_paths, media_dims, client_key, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 """,
-                    (username, recipient_username, "", first_image, first_video, media_paths_json, client_key),
+                    (username, recipient_username, "", first_image, first_video, media_paths_json, media_dims_json, client_key),
                 )
 
             conn.commit()
@@ -671,8 +683,13 @@ def send_dm_audio_message(
     audio: Any = None,
     duration_seconds: Optional[int] = None,
     include_summary: bool = False,
+    client_key: Optional[str] = None,
 ) -> dict:
-    """Send a voice DM. Returns JSON-serializable payload (HTTP 200)."""
+    """Send a voice DM. Returns JSON-serializable payload (HTTP 200).
+
+    ``client_key`` makes the send idempotent (matching DM text/media): a retry with
+    the same key returns the original row instead of inserting a duplicate voice note.
+    """
     _ = include_summary  # monolith reads but does not branch on it
     if not recipient_id:
         return {"success": False, "error": "Recipient required"}
@@ -709,6 +726,29 @@ def send_dm_audio_message(
             recipient_username = _resolve_recipient(c, recipient_id)
             if not recipient_username:
                 return {"success": False, "error": "Recipient not found"}
+
+            # Idempotency: a retry with the same client_key returns the original row
+            # instead of saving the file again and inserting a duplicate voice note.
+            if client_key:
+                try:
+                    c.execute(
+                        "SELECT id, audio_path, audio_summary FROM messages WHERE client_key = ? AND sender = ? LIMIT 1",
+                        (client_key, username),
+                    )
+                    existing = c.fetchone()
+                    if existing:
+                        if hasattr(existing, "keys"):
+                            eid, epath, esum = existing["id"], existing["audio_path"], existing["audio_summary"]
+                        else:
+                            eid, epath, esum = existing[0], existing[1], existing[2]
+                        return {
+                            "success": True,
+                            "message_id": eid,
+                            "audio_path": epath,
+                            "audio_summary": esum,
+                        }
+                except Exception as ik_err:
+                    logger.warning("audio client_key idempotency check failed (non-fatal): %s", ik_err)
 
             stored_path = save_uploaded_file(
                 audio,
@@ -763,10 +803,10 @@ def send_dm_audio_message(
 
             c.execute(
                 """
-                INSERT INTO messages (sender, receiver, message, audio_path, audio_duration_seconds, audio_mime, audio_summary, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+                INSERT INTO messages (sender, receiver, message, audio_path, audio_duration_seconds, audio_mime, audio_summary, client_key, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
             """,
-                (username, recipient_username, "", rel_path, duration_seconds, mime, audio_summary),
+                (username, recipient_username, "", rel_path, duration_seconds, mime, audio_summary, client_key),
             )
             conn.commit()
 
@@ -831,7 +871,7 @@ def send_dm_audio_message(
         return {"success": False, "error": "Failed to send audio"}
 
 
-def parse_grouped_media_request(form, files) -> Tuple[list, list, bool]:
+def parse_grouped_media_request(form, files) -> Tuple[list, list, bool, list]:
     """Parse multipart form for send_dm_grouped_media from Flask request."""
     upload_only = form.get("upload_only", "").lower() in ("1", "true", "yes")
 
@@ -853,4 +893,14 @@ def parse_grouped_media_request(form, files) -> Tuple[list, list, bool]:
     except (json.JSONDecodeError, TypeError):
         pass
 
-    return files_to_upload, media_urls, upload_only
+    media_dims = []
+    try:
+        dims_json = form.get("media_dims", "")
+        if dims_json:
+            parsed_dims = json.loads(dims_json)
+            if isinstance(parsed_dims, list):
+                media_dims = parsed_dims
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    return files_to_upload, media_urls, upload_only, media_dims
