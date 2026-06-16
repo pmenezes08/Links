@@ -91,14 +91,14 @@ export default function PushInit(){
           console.log('🔔 Permission result:', permResult)
           
           if (permResult.receive === 'granted') {
-            console.log('🔔 Permission granted! Registering for push...')
-            // Register for push notifications
-            await PushNotifications.register()
-            console.log('🔔 Registration initiated')
-            
-            // Listen for registration token from Capacitor
-            // When Firebase generates FCM token, Capacitor catches it and fires this event
-            PushNotifications.addListener('registration', async (token) => {
+            console.log('🔔 Permission granted! Attaching listeners before register…')
+
+            // CRITICAL ORDERING: attach the 'registration' listener BEFORE register(). On iOS
+            // the (often cached) token is delivered synchronously the instant register() runs,
+            // so a listener added afterwards misses the event entirely — the token never reaches
+            // the server and the device ends up with 0 registered tokens. Await the attach so the
+            // native listener is live before we register.
+            await PushNotifications.addListener('registration', async (token) => {
               console.log('🔥 Capacitor registration event fired!')
               console.log('🔥 FCM token received: ' + token.value.substring(0, 30) + '...')
 
@@ -166,7 +166,11 @@ export default function PushInit(){
               // Navigate to the relevant page
               handleNotificationNavigation(url)
             })
-            
+
+            // Listeners are wired — now ask iOS for the token (it fires 'registration' above).
+            await PushNotifications.register()
+            console.log('🔔 Registration initiated')
+
             setReady(true)
           } else {
             console.log('🔔 ❌ Push notification permission not granted:', permResult.receive)
