@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { registerBackgroundUploadResume } from '../chat/upload/nativeBackgroundUpload'
 import {
   claimMediaOutboxRecord,
@@ -40,10 +40,17 @@ async function commitUploadedMedia(record: MediaOutboxRecord & { id: number }, p
 
 /** Resume failed/pending media uploads when the app returns to foreground. */
 export function useMediaUploadResume(enabled = true): void {
+  // Guards against overlapping drains when focus / online / appStateChange fire together.
+  const drainingRef = useRef(false)
   useEffect(() => {
     if (!enabled) return
 
     const resume = () => {
+      // Don't drain (and burn retries) while offline — the 'online' listener re-triggers
+      // us on reconnect, so an interrupted upload waits instead of failing out.
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+      if (drainingRef.current) return
+      drainingRef.current = true
       void listPendingMediaOutbox().then(async records => {
         for (const record of records) {
           if (!['failed', 'pending', 'uploading', 'committing'].includes(record.status)) continue
@@ -79,15 +86,17 @@ export function useMediaUploadResume(enabled = true): void {
             await releaseMediaOutboxRecord(claimed.id)
           }
         }
-      })
+      }).finally(() => { drainingRef.current = false })
     }
 
     resume()
     const unregisterNativeResume = registerBackgroundUploadResume(resume)
     window.addEventListener('focus', resume)
+    window.addEventListener('online', resume)
     return () => {
       unregisterNativeResume()
       window.removeEventListener('focus', resume)
+      window.removeEventListener('online', resume)
     }
   }, [enabled])
 }
