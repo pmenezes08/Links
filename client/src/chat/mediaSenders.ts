@@ -14,6 +14,7 @@ import {
 } from './upload'
 import { removeMediaOutboxRecord, removeMediaOutboxRecordsByPrefix } from './upload/mediaOutbox'
 import { getFileImageDims } from '../utils/getFileImageDims'
+import { nativeToast } from '../utils/nativeUi'
 import type { EntitlementsError } from '../utils/entitlementsError'
 import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 
@@ -71,9 +72,7 @@ interface VideoMediaOptions extends BaseMediaOptions {
 }
 
 const defaultNotify = (msg: string) => {
-  if (typeof window !== 'undefined') {
-    window.alert(msg)
-  }
+  void nativeToast(msg, 'long') // native toast on iOS/Android; non-blocking web toast fallback
 }
 
 const BASIC_PROFILE_SENTINEL = '__basic_profile_required__'

@@ -49,16 +49,29 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
     } catch {}
 
     const total = msgs + notifs
-    try {
-      const navAny = navigator as any
-      if (total > 0) {
-        if (typeof navAny.setAppBadge === 'function') navAny.setAppBadge(total)
-        else if (typeof navAny.setExperimentalAppBadge === 'function') navAny.setExperimentalAppBadge(total)
-      } else {
-        if (typeof navAny.clearAppBadge === 'function') navAny.clearAppBadge()
-        else if (typeof navAny.setExperimentalAppBadge === 'function') navAny.setExperimentalAppBadge(0)
-      }
-    } catch {}
+    // Native app-icon badge first (reliable on iOS native, unlike navigator.setAppBadge in
+    // the remote-URL WebView); fall back to the web Badging API on web / if the plugin fails.
+    let nativeBadgeOk = false
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const { Badge } = await import('@capawesome/capacitor-badge')
+        if (total > 0) await Badge.set({ count: total })
+        else await Badge.clear()
+        nativeBadgeOk = true
+      } catch { /* fall back to the web badge API below */ }
+    }
+    if (!nativeBadgeOk) {
+      try {
+        const navAny = navigator as any
+        if (total > 0) {
+          if (typeof navAny.setAppBadge === 'function') navAny.setAppBadge(total)
+          else if (typeof navAny.setExperimentalAppBadge === 'function') navAny.setExperimentalAppBadge(total)
+        } else {
+          if (typeof navAny.clearAppBadge === 'function') navAny.clearAppBadge()
+          else if (typeof navAny.setExperimentalAppBadge === 'function') navAny.setExperimentalAppBadge(0)
+        }
+      } catch {}
+    }
 
     // Always sync native badge on poll (server computes exact count via get_total_badge_count
     // and sends silent push). This + resume listener makes clearing robust after viewing
