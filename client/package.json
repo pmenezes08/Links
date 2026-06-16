@@ -16,6 +16,7 @@
     "postinstall": "npx patch-package || true; bash patches/fix-google-auth-ios.sh || true"
   },
   "dependencies": {
+    "@aparajita/capacitor-biometric-auth": "^8.0.2",
     "@capacitor-community/apple-sign-in": "^6.0.0",
     "@capacitor-community/in-app-review": "^6.0.0",
     "@capacitor-community/media": "^6.0.0",

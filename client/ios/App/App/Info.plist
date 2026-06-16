@@ -45,6 +45,8 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSFaceIDUsageDescription</key>
+	<string>C-Point uses Face ID to unlock the app when you enable App Lock.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app needs access to your microphone to record and send voice messages in chat.</string>
 	<key>NSCameraUsageDescription</key>

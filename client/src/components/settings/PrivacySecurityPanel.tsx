@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { triggerHaptic } from '../../utils/haptics'
+import {
+  isBiometricLockSupported,
+  isBiometricLockEnabled,
+  setBiometricLockEnabled,
+  getBiometryInfo,
+  verifyBiometric,
+  type BiometryKind,
+} from '../../utils/biometricLock'
 
 type BlockedUser = {
   username: string
@@ -29,6 +37,11 @@ export default function PrivacySecurityPanel() {
   const [hiddenPosts, setHiddenPosts] = useState<HiddenPost[]>([])
   const [hiddenPostsLoading, setHiddenPostsLoading] = useState(false)
   const [unhiding, setUnhiding] = useState<number | null>(null)
+  const [bioSupported] = useState(() => isBiometricLockSupported())
+  const [bioAvailable, setBioAvailable] = useState(false)
+  const [bioEnabled, setBioEnabled] = useState(false)
+  const [bioBusy, setBioBusy] = useState(false)
+  const [bioKind, setBioKind] = useState<BiometryKind>('biometric')
 
   const loadBlockedUsers = useCallback(async () => {
     setBlockedUsersLoading(true)
@@ -62,6 +75,49 @@ export default function PrivacySecurityPanel() {
       void loadHiddenPosts()
     }
   }, [activeTab, loadBlockedUsers, loadHiddenPosts])
+
+  useEffect(() => {
+    if (!bioSupported) return
+    void (async () => {
+      const info = await getBiometryInfo()
+      setBioAvailable(info.available)
+      setBioKind(info.kind)
+      setBioEnabled(isBiometricLockEnabled())
+    })()
+  }, [bioSupported])
+
+  const bioLabel = bioKind === 'face' ? 'Face ID' : bioKind === 'touch' ? 'Touch ID' : 'biometric unlock'
+
+  async function handleToggleBiometric() {
+    if (bioBusy) return
+    void triggerHaptic('selection')
+    setBioBusy(true)
+    try {
+      if (!bioEnabled) {
+        // Prove the user can authenticate before arming the lock.
+        const ok = await verifyBiometric({
+          reason: 'Enable app lock',
+          cancelTitle: 'Cancel',
+          iosFallbackTitle: 'Use passcode',
+          androidTitle: 'Enable app lock',
+          androidSubtitle: 'Verify your identity to enable',
+        })
+        if (ok) {
+          setBiometricLockEnabled(true)
+          setBioEnabled(true)
+          void triggerHaptic('success')
+        } else {
+          void triggerHaptic('error')
+        }
+      } else {
+        setBiometricLockEnabled(false)
+        setBioEnabled(false)
+        void triggerHaptic('selection')
+      }
+    } finally {
+      setBioBusy(false)
+    }
+  }
 
   async function handleUnblock(username: string) {
     void triggerHaptic('selection')
@@ -172,6 +228,35 @@ export default function PrivacySecurityPanel() {
 
       {activeTab === 'security' ? (
         <div className="space-y-4">
+          {bioSupported ? (
+            <div className="rounded-3xl border border-c-border bg-c-bg-surface p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="text-base font-bold text-c-text-primary">App Lock</h3>
+                  <p className="mt-1 text-sm text-c-text-tertiary">
+                    {bioAvailable
+                      ? `Require ${bioLabel} to open C-Point.`
+                      : `Set up ${bioLabel === 'biometric unlock' ? 'biometrics' : bioLabel} in your device settings to use App Lock.`}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={bioEnabled}
+                  aria-label="Require biometric unlock to open the app"
+                  disabled={!bioAvailable || bioBusy}
+                  onClick={() => void handleToggleBiometric()}
+                  className={`relative h-7 w-12 flex-shrink-0 rounded-full transition-colors disabled:opacity-50 ${
+                    bioEnabled ? 'bg-cpoint-turquoise' : 'border border-c-border bg-c-hover-bg'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-1 h-5 w-5 rounded-full bg-white transition-all ${bioEnabled ? 'left-6' : 'left-1'}`}
+                  />
+                </button>
+              </div>
+            </div>
+          ) : null}
           {passwordMessage ? (
             <div
               className={`rounded-2xl border px-4 py-3 text-sm ${

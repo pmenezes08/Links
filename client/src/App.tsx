@@ -29,6 +29,7 @@ import { BadgeProvider } from './contexts/BadgeContext'
 import OfflineBanner from './components/OfflineBanner'
 import OutboxDrainer from './components/OutboxDrainer'
 import BrandAssetsInit from './components/BrandAssetsInit'
+import BiometricLockGate from './components/BiometricLockGate'
 import BasicProfileGateProvider from './components/basic-profile/BasicProfileGateProvider'
 import AgeGateController from './components/onboarding/AgeGate'
 import LocaleBootstrap from './components/LocaleBootstrap'
@@ -1073,6 +1074,7 @@ export default function App() {
                 <PushInit />
                 <NotificationPrompt />
                 <AppRoutes />
+                <BiometricLockGate />
               </LogoutPromptProvider>
             </EntitlementsProvider>
           </ThemeProvider>
