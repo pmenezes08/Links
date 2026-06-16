@@ -121,6 +121,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         NSLog("Token passed to Firebase Messaging")
         print("✅ APNs token passed to Firebase Messaging")
 
+        // CRITICAL: forward to Capacitor so @capacitor/push-notifications fires its
+        // 'registration' event. This custom AppDelegate does not route through Capacitor's
+        // app-delegate proxy, so without this explicit post the JS registration listener
+        // (PushInit.tsx) never fires and the token never reaches the server (0 registered
+        // devices). Previously this only worked via Firebase's delegate swizzling, which the
+        // added notification plugins disrupted.
+        NotificationCenter.default.post(
+            name: .capacitorDidRegisterForRemoteNotifications,
+            object: deviceToken
+        )
+
         // Server registration is handled by PushInit.tsx __reregisterPushToken
         // after the user's session is confirmed — no unauthenticated POST here.
     }
@@ -131,6 +142,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         print("❌ Failed to register for remote notifications!")
         print("❌ Error: \(error)")
         print("❌ Error localized: \(error.localizedDescription)")
+
+        // Forward the failure to Capacitor as well, so the JS layer can react.
+        NotificationCenter.default.post(
+            name: .capacitorDidFailToRegisterForRemoteNotifications,
+            object: error
+        )
     }
     
     // MARK: - App Lifecycle - Badge Sync
