@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { App as CapacitorApp } from '@capacitor/app'
+import BrandLogo from './BrandLogo'
 import {
   isBiometricLockSupported,
   isBiometricLockEnabled,
@@ -41,6 +43,16 @@ export default function BiometricLockGate() {
   const setLocked = useCallback((v: boolean) => {
     lockedRef.current = v
     setLockedState(v)
+    // When locking, drop focus and hide the native keyboard so it can't sit on top of
+    // the lock screen (e.g. backgrounded while a chat composer was focused).
+    if (v) {
+      try {
+        ;(document.activeElement as HTMLElement | null)?.blur()
+      } catch {
+        /* ignore */
+      }
+      void import('@capacitor/keyboard').then(({ Keyboard }) => Keyboard.hide()).catch(() => {})
+    }
   }, [])
 
   const tryUnlock = useCallback(async () => {
@@ -95,19 +107,22 @@ export default function BiometricLockGate() {
     }
   }, [supported, setLocked, tryUnlock])
 
-  if (!supported || !locked) return null
+  if (!supported || !locked || typeof document === 'undefined') return null
 
-  return (
+  // Portal to <body> so the overlay escapes any ancestor stacking context and reliably
+  // covers the fixed dashboard nav bar (z-900) and any focused composer.
+  return createPortal(
     <div
-      className="theme-always-dark fixed inset-0 z-[100000] flex flex-col items-center justify-center gap-7 bg-black px-8"
+      className="theme-always-dark fixed inset-0 z-[2147483600] flex flex-col items-center justify-center gap-8 bg-black px-8"
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
-      <div className="flex flex-col items-center gap-3">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-cpoint-turquoise/15">
-          <i className="fa-solid fa-lock text-2xl text-cpoint-turquoise" />
+      <div className="flex flex-col items-center gap-4">
+        <BrandLogo className="h-20 w-20 rounded-3xl object-contain" />
+        <div className="flex items-center gap-2 text-white">
+          <i className="fa-solid fa-lock text-sm text-cpoint-turquoise" />
+          <span className="text-lg font-semibold">C-Point is locked</span>
         </div>
-        <div className="text-lg font-semibold text-white">C-Point is locked</div>
-        <div className="text-center text-sm text-white/50">Unlock with biometrics to continue</div>
+        <div className="text-center text-sm text-white/45">Unlock with biometrics to continue</div>
       </div>
       <button
         type="button"
@@ -117,6 +132,7 @@ export default function BiometricLockGate() {
       >
         {verifying ? <i className="fa-solid fa-spinner fa-spin" /> : 'Unlock'}
       </button>
-    </div>
+    </div>,
+    document.body,
   )
 }

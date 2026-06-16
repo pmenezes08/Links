@@ -102,9 +102,9 @@ export default function PushInit(){
               console.log('🔥 Capacitor registration event fired!')
               console.log('🔥 FCM token received: ' + token.value.substring(0, 30) + '...')
 
-              // Cache token client-side only — never POST automatically.
-              // Server registration happens through __reregisterPushToken,
-              // called after login (MobileLogin) or profile load (App.tsx).
+              // Cache token client-side. Server registration goes through
+              // __reregisterPushToken, called after login (MobileLogin) or profile load
+              // (App.tsx).
               ;(window as any).__fcmToken = token.value
               ;(window as any).__reregisterPushToken = async () => {
                 const t = (window as any).__fcmToken
@@ -117,6 +117,16 @@ export default function PushInit(){
                   })
                 } catch {}
               }
+
+              // Race fix: the FCM token can arrive AFTER App.tsx's post-profile-load
+              // __reregisterPushToken?.() has already run (token was still undefined then),
+              // so the token would never reach the server. If we're already signed in,
+              // register it now too. register_fcm is an idempotent upsert.
+              try {
+                if (localStorage.getItem('current_username')) {
+                  await (window as any).__reregisterPushToken()
+                }
+              } catch {}
             })
             
             // Listen for registration errors

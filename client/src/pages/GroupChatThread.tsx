@@ -343,6 +343,18 @@ export default function GroupChatThread() {
 
   useResumeOutboxDrain()
 
+  // Back from a community group goes to THAT community's management view, never the global
+  // all-networks list. Read the latest group through a ref so the memoized handler can't go
+  // stale. Falls back to Messages for a group with no parent community.
+  const latestGroupRef = useRef(group)
+  latestGroupRef.current = group
+  const goBackFromGroupChat = useCallback(() => {
+    hapticImpactLight()
+    const cid = latestGroupRef.current?.community_id
+    if (cid) navigate(`/communities?parent_id=${cid}`)
+    else navigate('/user_chat')
+  }, [navigate])
+
   useAndroidBackButton({
     textareaRef,
     onExitSelection: () => {
@@ -351,7 +363,7 @@ export default function GroupChatThread() {
       setSelectedMessages(new Set())
       return true
     },
-    onNavigateBack: () => navigate(-1),
+    onNavigateBack: goBackFromGroupChat,
   })
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
@@ -2187,9 +2199,9 @@ export default function GroupChatThread() {
         }}
       >
         <div className="h-12 flex items-center gap-2 px-3">
-          <button 
-            className="p-2 rounded-full hover:bg-c-hover-bg transition-colors" 
-            onClick={() => { hapticImpactLight(); navigate('/user_chat') }} 
+          <button
+            className="p-2 rounded-full hover:bg-c-hover-bg transition-colors"
+            onClick={goBackFromGroupChat}
             aria-label={t('chat.back_to_messages')}
           >
             <i className="fa-solid fa-arrow-left text-c-text-primary" />
