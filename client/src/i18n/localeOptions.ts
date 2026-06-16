@@ -6,4 +6,5 @@ export type LocaleOption = { value: SupportedLocale; labelKey: string }
 export const LOCALE_OPTIONS: LocaleOption[] = [
   { value: 'en', labelKey: 'account.language.option_en' },
   { value: 'pt-PT', labelKey: 'account.language.option_pt_pt' },
+  { value: 'de-DE', labelKey: 'account.language.option_de' },
 ]

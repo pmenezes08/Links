@@ -1,0 +1,497 @@
+{
+  "_meta": {
+    "locale": "de-DE",
+    "name": "Deutsch",
+    "description": "Standard German (de-DE, du tone). Onboarding-chat catalog uses Sie. See backend/locales/glossary-de-DE.md."
+  },
+  "common": {
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "retry": "Erneut versuchen",
+    "loading": "Wird geladen…",
+    "ok": "OK",
+    "close": "Schließen",
+    "yes": "Ja",
+    "no": "Nein",
+    "back": "Zurück",
+    "next": "Weiter",
+    "done": "Fertig"
+  },
+  "errors": {
+    "generic": "Etwas ist schiefgelaufen. Bitte versuche es erneut.",
+    "network": "Netzwerkfehler. Prüfe deine Verbindung und versuche es erneut.",
+    "server": "Serverfehler. Bitte versuche es in einem Moment erneut.",
+    "not_found": "Nicht gefunden.",
+    "forbidden": "Du hast keinen Zugriff darauf.",
+    "rate_limited": "Zu viele Anfragen. Bitte warte kurz und versuche es erneut."
+  },
+  "auth": {
+    "authentication_required": "Anmeldung erforderlich",
+    "invalid_credentials": "Ungültiger Benutzername oder falsches Passwort.",
+    "user_not_found": "Benutzer nicht gefunden",
+    "password": {
+      "current_incorrect": "Das aktuelle Passwort ist falsch",
+      "server_error": "Serverfehler. Bitte versuche es erneut."
+    },
+    "email": {
+      "required": "E-Mail erforderlich",
+      "already_in_use": "Diese E-Mail-Adresse wird bereits verwendet",
+      "server_error": "Serverfehler. Bitte versuche es erneut."
+    },
+    "signup": {
+      "missing_required_fields": "Alle Pflichtfelder müssen ausgefüllt werden.",
+      "passwords_do_not_match": "Die Passwörter stimmen nicht überein.",
+      "password_too_short": "Das Passwort muss mindestens 6 Zeichen lang sein.",
+      "invalid_email": "Bitte gib eine gültige E-Mail-Adresse ein.",
+      "disposable_email_blocked": "Dieser E-Mail-Anbieter wird nicht unterstützt. Bitte verwende eine dauerhafte E-Mail-Adresse (keine Wegwerf- oder Temporäradresse).",
+      "email_already_registered": "E-Mail-Adresse bereits registriert.",
+      "invalid_username": "Ungültiger Benutzername.",
+      "username_taken": "Benutzername bereits vergeben.",
+      "email_does_not_match_invitation": "E-Mail-Adresse stimmt nicht mit der Einladung überein.",
+      "registration_failed": "Bei der Registrierung ist ein Fehler aufgetreten. Bitte versuche es erneut."
+    },
+    "server_error": "Serverfehler. Bitte versuche es erneut."
+  },
+  "entitlements": {
+    "premium_required": {
+      "message": "Premium schaltet Steve in der DM, im Feed und in geeigneten Chats frei — bis zu {steve_uses_per_month} Steve-Gespräche pro Monat und {whisper_minutes_per_month} Minuten Sprachnachricht-Zusammenfassungen pro Abrechnungszeitraum.",
+      "cta_label": "Auf Premium upgraden"
+    },
+    "daily_cap": {
+      "message": "Du hast heute dein Steve-Limit von {ai_daily_limit} Anfragen erreicht. Es wird um {resets_at_daily} zurückgesetzt.",
+      "cta_label": "Meine Nutzung ansehen"
+    },
+    "monthly_steve_cap": {
+      "message": "Du hast alle {steve_uses_per_month} Steve-Anfragen für diesen Monat aufgebraucht. Sie werden am {resets_at_monthly} zurückgesetzt.",
+      "cta_label": "Meine Nutzung ansehen"
+    },
+    "monthly_whisper_cap": {
+      "message": "Du hast alle {whisper_minutes_per_month} Minuten Sprachnachricht-Zusammenfassungen für diesen Monat aufgebraucht. Sie werden am {resets_at_monthly} zurückgesetzt.",
+      "cta_label": "Meine Nutzung ansehen"
+    },
+    "community_pool_exhausted": {
+      "message": "Der gemeinsame Steve-Pool dieser Community ist für diesen Monat leer. Premium-Mitglieder können weiterhin ihr persönliches Kontingent nutzen.",
+      "cta_label": "Auf Premium upgraden"
+    },
+    "rpm_exceeded": {
+      "message": "Du sendest zu schnell Anfragen — mach kurz langsamer und versuch es erneut.",
+      "cta_label": "OK"
+    },
+    "hpm_exceeded": {
+      "message": "Du hast das Stundenlimit erreicht. Versuch es in Kürze noch einmal.",
+      "cta_label": "OK"
+    },
+    "special_technical_cap": {
+      "message": "Du hast ein technisches Sicherheitslimit erreicht. Das schützt die Plattform vor ausuferndem Verbrauch — es wird gleich wieder freigegeben.",
+      "cta_label": "Meine Nutzung ansehen"
+    },
+    "community_suspended": {
+      "message": "Diese Community ist derzeit gesperrt. Steve-Funktionen pausieren, bis die Community wiederhergestellt ist.",
+      "cta_label": "Support kontaktieren"
+    },
+    "grace_expired": {
+      "message": "Dein Enterprise-Platz ist abgelaufen. Schließe ein Premium-Abo ab, um Steve weiter zu nutzen.",
+      "cta_label": "Premium abonnieren"
+    }
+  },
+  "billing": {
+    "premium_required": "Premium-Abo erforderlich!",
+    "subscription_active": "Dein Abo ist aktiv.",
+    "subscription_inactive": "Du hast kein aktives Abo.",
+    "checkout_failed": "Checkout konnte nicht gestartet werden. Bitte versuche es erneut.",
+    "portal_failed": "Das Abrechnungsportal konnte nicht geöffnet werden. Bitte versuche es erneut."
+  },
+  "chat": {
+    "dm": {
+      "other_username_required": "Ein anderer Benutzer ist erforderlich.",
+      "message_id_and_url_required": "message_id und media_url sind erforderlich.",
+      "invalid_message_id": "Ungültige Nachrichten-ID.",
+      "message_not_found": "Nachricht nicht gefunden.",
+      "edit_own_only": "Du kannst nur deine eigenen Anhänge bearbeiten.",
+      "nothing_to_remove": "Nichts zu entfernen.",
+      "attachment_not_found": "Anhang nicht gefunden.",
+      "failed_to_delete_chat": "Dieser Chat konnte nicht gelöscht werden.",
+      "failed_to_update_message": "Diese Nachricht konnte nicht aktualisiert werden."
+    },
+    "audio": {
+      "no_audio_uploaded": "Keine Audiodatei hochgeladen.",
+      "no_audio_selected": "Keine Audiodatei ausgewählt.",
+      "save_failed": "Die Audiodatei konnte nicht gespeichert werden.",
+      "upload_failed": "Die Audiodatei konnte nicht hochgeladen werden."
+    }
+  },
+  "onboarding": {
+    "validation": {
+      "no_text": "Bitte gib einen Text ein.",
+      "no_location": "Bitte gib an, wo du ansässig bist.",
+      "no_field": "Kein Feld angegeben.",
+      "no_answers": "Keine Antworten angegeben.",
+      "parent_name_required": "Community-Name ist erforderlich.",
+      "user_not_found": "Benutzer nicht gefunden."
+    },
+    "deferral": {
+      "unavailable": "Verschieben ist gerade nicht möglich.",
+      "save_failed": "Onboarding konnte nicht verschoben werden. Bitte versuche es erneut.",
+      "forbidden": "Du kannst das Onboarding gerade nicht verschieben.",
+      "reminders_failed": "Onboarding-Erinnerungen konnten nicht geplant werden."
+    },
+    "hints": {
+      "tier_load_failed": "Stufen-Hinweise können gerade nicht geladen werden."
+    }
+  },
+  "email": {
+    "common": {
+      "go_to_c_point": "Zu C-Point",
+      "footer_thanks": "Danke, dass du Teil von C-Point bist."
+    },
+    "invite_existing_user": {
+      "subject": "{inviter} hat dich zu {community} auf C-Point hinzugefügt",
+      "heading": "Du wurdest hinzugefügt!",
+      "lead_html": "<strong>{inviter}</strong> hat dich zu <strong>{community}</strong> auf C-Point hinzugefügt.",
+      "lead_text": "{inviter} hat dich zu {community} auf C-Point hinzugefügt.",
+      "secondary": "Du hast jetzt Zugriff auf diese Community und kannst dich mit anderen Mitgliedern vernetzen.",
+      "nested_heading": "Du trittst außerdem bei"
+    },
+    "invite_new_user": {
+      "subject": "Du bist eingeladen, {community} auf C-Point beizutreten",
+      "heading": "Willkommen bei C-Point",
+      "lead_html": "Du wurdest von <strong>{inviter}</strong> eingeladen, <strong>{community}</strong> beizutreten.",
+      "lead_text": "Du wurdest von {inviter} eingeladen, {community} beizutreten.",
+      "cta": "{community} beitreten",
+      "nested_heading": "Du trittst außerdem bei"
+    }
+  },
+  "notifications": {
+    "group_feed_post": {
+      "title": "Neuer Gruppenbeitrag",
+      "body": "{author}: {preview}",
+      "message": "{author} hat in {community} gepostet"
+    },
+    "group_feed_post_no_community": {
+      "title": "Neuer Gruppenbeitrag",
+      "body": "{author}: {preview}",
+      "message": "{author} hat in einer Gruppe gepostet"
+    },
+    "dm_message": {
+      "title": "Neue Nachricht",
+      "body": "{author}: {preview}",
+      "message": "{author} hat dir eine Nachricht geschickt"
+    },
+    "group_chat_message": {
+      "title": "Neue Gruppennachricht",
+      "body": "{author}: {preview}",
+      "message": "{author} hat in {group} gepostet"
+    },
+    "group_chat_mention": {
+      "title": "{group} — Erwähnung",
+      "body": "{author} hat dich erwähnt: {preview}",
+      "message": "{author} hat dich in {group} erwähnt"
+    },
+    "dm_photo": {
+      "title": "Neues Foto",
+      "body": "{author}: {preview}",
+      "message": "{author} hat dir ein Foto geschickt"
+    },
+    "dm_video": {
+      "title": "Neues Video",
+      "body": "{author}: {preview}",
+      "message": "{author} hat dir ein Video geschickt"
+    },
+    "dm_voice": {
+      "title": "Neue Sprachnachricht",
+      "body": "{author}: {preview}",
+      "message": "{author} hat dir eine Sprachnachricht geschickt"
+    },
+    "dm_media": {
+      "title": "Neue Medien",
+      "body": "{author}: {preview}",
+      "message": "{author} hat dir Medien geschickt"
+    },
+    "dm_reaction": {
+      "title": "Neue Reaktion",
+      "body": "{author} hat auf deine Nachricht reagiert",
+      "message": "{author} hat auf deine Nachricht reagiert"
+    },
+    "community_reply": {
+      "title": "Neue Antwort",
+      "body": "{author} hat auf deinen Beitrag geantwortet",
+      "message": "{author} hat auf deinen Beitrag geantwortet"
+    },
+    "group_feed_reply": {
+      "title": "Neue Antwort",
+      "body": "{author} hat auf deinen Beitrag geantwortet",
+      "message": "{author} hat auf deinen Beitrag geantwortet"
+    },
+    "post_reply": {
+      "title": "Neue Antwort",
+      "body": "{author} hat auf deinen Beitrag geantwortet",
+      "message": "{author} hat auf deinen Beitrag geantwortet"
+    },
+    "post_reaction": {
+      "title": "Neue Reaktion",
+      "body": "{author} hat auf deinen Beitrag reagiert",
+      "message": "{author} hat auf deinen Beitrag reagiert"
+    },
+    "community_invite": {
+      "title": "Du hast eine Einladung",
+      "body": "{author} hat dich zu {community} eingeladen",
+      "message": "{author} hat dich eingeladen, {community} beizutreten"
+    },
+    "event_reminder": {
+      "title": "Bevorstehendes Event",
+      "body": "{event_name} beginnt bald",
+      "message": "Erinnerung: {event_name} beginnt bald"
+    },
+    "community_join_request": {
+      "title": "Jemand möchte beitreten",
+      "body": "@{username} möchte {community} beitreten",
+      "message": "@{username} möchte {community} beitreten"
+    },
+    "community_join_request_accepted": {
+      "title": "Willkommen an Bord",
+      "body": "Du bist dabei — {community} hat deine Anfrage angenommen.",
+      "message": "Du bist dabei — {community} hat deine Anfrage angenommen."
+    },
+    "profile_section_professional": {
+      "title": "Eine Frage von Steve",
+      "body": "Was machst du? Ich kann niemanden vorstellen, den ich nicht kenne.",
+      "message": "Was machst du? Ich kann niemanden vorstellen, den ich nicht kenne."
+    },
+    "profile_section_personal": {
+      "title": "Von Steve",
+      "body": "Ich weiß, was du machst. Jetzt würde ich gern wissen, wer du bist.",
+      "message": "Ich weiß, was du machst. Jetzt würde ich gern wissen, wer du bist."
+    }
+  },
+  "communities": {
+    "not_found": "Community nicht gefunden.",
+    "not_a_member": "Du bist kein Mitglied dieser Community.",
+    "admin_required": "Das können nur Community-Inhaber oder Admins.",
+    "invite": {
+      "user_not_found": "Benutzer nicht gefunden.",
+      "cannot_invite_self": "Du kannst dich nicht selbst einladen.",
+      "already_member": "Dieser Benutzer ist bereits Mitglied dieser Community.",
+      "root_only": "Einladungen können nur aus Root-Communitys erstellt werden.",
+      "invite_sent": "Einladung gesendet.",
+      "invite_revoked": "Einladung widerrufen.",
+      "if_exists": "Falls dieser Benutzer existiert, senden wir eine Einladung.",
+      "expired": "Diese Einladung ist abgelaufen. Bitte den Absender, eine neue zu senden.",
+      "token_required": "Einladungstoken erforderlich.",
+      "invalid_invitation": "Ungültige Einladung.",
+      "not_pending": "Diese Einladung ist nicht mehr ausstehend.",
+      "email_mismatch": "Diese Einladung wurde an eine andere E-Mail-Adresse gesendet."
+    },
+    "join": {
+      "joined": "Willkommen in {community_name}!",
+      "expired_invite": "Diese Einladung ist abgelaufen.",
+      "used_invite": "Diese Einladung wurde bereits verwendet.",
+      "invalid_invite": "Diese Einladung ist nicht gültig."
+    },
+    "updated": "Community erfolgreich aktualisiert"
+  },
+  "steve_welcome": {
+    "posted_by": "*Gepostet von Steve.*",
+    "welcome": {
+      "header": "**Willkommen bei {name} 👋**",
+      "community_fallback": "deiner Community",
+      "sub_intro": "\nDas ist ein Unterbereich innerhalb von **{parent}** — Mitglieder von {parent} finden hierher.\n",
+      "tour_intro": "Ein kurzer Rundgang durch das, was es hier gibt:",
+      "bullets_base": "- **Beiträge** — teile Text, Fotos, Videos, Audio, Links oder Umfragen.\n- **Storys** — schnelle Foto-/Videomomente, die nach 24 Std. verschwinden.\n- **Reaktionen & Antworten** — halte einen Beitrag gedrückt, um zu reagieren oder zu antworten.\n- **Zusammenfassen** — tippe bei langen Threads auf **Zusammenfassen**, um das Wesentliche zu bekommen.\n- **Wichtige Beiträge** — angepinnte Highlights liegen im Tab *Wichtige Beiträge*, damit man sie später wiederfindet.\n- **Links & Dokumente** — jeder hier geteilte Link oder jedes Dokument, in einem Tab.\n- **Medien** — jedes hier geteilte Foto und Video, in einer Galerie.\n",
+      "bullet_business_extra": "- **Mitgliederverzeichnis** — sieh, wer in der Community ist.\n",
+      "bullets_tail": "- **Ausblenden oder melden** — etwas wirkt unpassend? Blende es nur für dich aus oder melde es.\n- **Tagge mich** — tagge **@steve** in einem Beitrag oder einer Antwort, wenn du meine Meinung willst.\n",
+      "closer": "Ich bin außerdem oben in deinen Chats angepinnt — **schreib mir jederzeit eine DM** für alles, was du brauchst."
+    },
+    "owner_dm": {
+      "who_fallback": "du",
+      "standard": "Hey {who} — Glückwunsch zu **{name}**.\n\nIch habe gerade einen kurzen Willkommensbeitrag in deinem Feed veröffentlicht, damit alle, die hier zum ersten Mal landen, sich zurechtfinden. Er bleibt in den *Wichtigen Beiträgen*.\n\nBrauchst du Hilfe beim Start? Sag einfach Bescheid — ich kann dir helfen, Leute einzuladen, ein Titelbild zu setzen, die Beschreibung zu schreiben oder deinen ersten Beitrag zu entwerfen.",
+      "late": "Hey {who} — kurze Sache zu **{name}**.\n\nIch hätte das schon beim Start machen sollen, aber besser spät als nie: Ich habe gerade einen Willkommensbeitrag in deinem Feed veröffentlicht, damit alle, die hier zum ersten Mal landen, sich zurechtfinden. Er bleibt in den *Wichtigen Beiträgen*.\n\nWenn du Hilfe beim Titelbild, der Beschreibung oder den ersten Einladungen willst, schreib mir einfach eine DM."
+    },
+    "poll": {
+      "generic": {
+        "question": "Kurze Frage: was hat dich hierhergebracht?",
+        "option_1": "Leute, die ich schon kenne",
+        "option_2": "Ein Thema, das mir wichtig ist",
+        "option_3": "Ein Neuanfang",
+        "option_4": "Schaue mich nur um"
+      },
+      "professional": {
+        "question": "Kurze Frage: wofür soll dieser Bereich zuerst nützlich sein?",
+        "option_1": "Die richtigen Leute finden",
+        "option_2": "Nützliche Arbeit teilen",
+        "option_3": "Gute Fragen stellen",
+        "option_4": "Neue Chancen entdecken"
+      },
+      "fitness": {
+        "question": "Kurze Frage: worauf trainierst du gerade hin?",
+        "option_1": "Kraft aufbauen",
+        "option_2": "Dranbleiben und konstant werden",
+        "option_3": "Mich Tag für Tag besser fühlen",
+        "option_4": "Ein bestimmtes Ziel oder Event"
+      }
+    },
+    "introduce": {
+      "title": "**👋 Stell dich vor!**",
+      "community_fallback": "diese Community",
+      "lead": "Neu hier? Fang mit ein paar kurzen Zeilen an.",
+      "prompt_intro": "Du kannst es einfach halten:",
+      "bullet_name": "- Dein Name",
+      "bullet_why": "- Was dich zu **{name}** gebracht hat",
+      "bullet_working": "- Eine Sache, an der du arbeitest, die dich interessiert oder die du suchst",
+      "no_bio": "Keine lange Bio nötig. Ein paar Zeilen reichen.",
+      "pinned_closer": "Ich halte diesen Thread in den *Wichtigen Beiträgen* angepinnt, damit neue Mitglieder eine klare Anlaufstelle haben."
+    },
+    "rolling": {
+      "header": "**Neue Gesichter in {name}**",
+      "community_fallback": "diese Community",
+      "names_few": "ein paar neue Leute",
+      "names_overflow": "{names} und {count} weitere",
+      "names_and_last": "{prefix} und {last}",
+      "joined_line": "Diese Woche sind ein paar Leute dazugekommen: {names}.",
+      "new_members": "Wenn du neu bist, hinterlass ein paar Zeilen im **Stell dich vor**-Thread, sobald du so weit bist. Name, warum du beigetreten bist, und eine Sache, die du suchst, reichen völlig.",
+      "existing_members": "Wenn du schon eine Weile dabei bist, sag Hallo. Gute Bereiche entstehen aus kleinen Antworten."
+    }
+  },
+  "feed": {
+    "poll_created": "Umfrage erfolgreich erstellt!",
+    "poll_closed": "Umfrage erfolgreich geschlossen",
+    "poll_updated": "Umfrage erfolgreich aktualisiert",
+    "poll_option_removed": "Option erfolgreich entfernt",
+    "poll_invalid_id": "Ungültige Umfrage-ID",
+    "poll_not_found_or_closed": "Umfrage nicht gefunden oder bereits geschlossen",
+    "poll_create_failed": "Fehler beim Erstellen der Umfrage",
+    "issue_reported": "Problem erfolgreich gemeldet",
+    "issue_resolved": "Problem als gelöst markiert",
+    "post_deleted": "Beitrag erfolgreich gelöscht",
+    "reply_deleted": "Antwort erfolgreich gelöscht",
+    "user_blocked": "@{username} wurde blockiert",
+    "user_already_blocked": "Benutzer bereits blockiert",
+    "user_unblocked": "@{username} wurde entsperrt",
+    "post_not_found": "Beitrag nicht gefunden",
+    "appoint_admin_only": "Nur der Community-Inhaber oder App-Admin kann Admins ernennen",
+    "remove_admin_only": "Nur der Community-Inhaber oder App-Admin kann Admins entfernen",
+    "username_required": "Benutzername ist erforderlich",
+    "user_not_found": "Benutzer nicht gefunden",
+    "already_admin": "Benutzer ist bereits Admin",
+    "not_admin": "Benutzer ist kein Admin",
+    "admin_appointed": "{username} wurde als Community-Admin ernannt",
+    "admin_removed": "{username} wurde als Community-Admin entfernt",
+    "community_id_required": "Community-ID ist erforderlich",
+    "feedback_required": "Feedback-Text ist erforderlich",
+    "feedback_submitted": "Feedback erfolgreich übermittelt",
+    "community_not_found": "Community nicht gefunden",
+    "not_community_member": "Kein Zugriff: du bist kein Mitglied dieser Community",
+    "post_reported": "Beitrag erfolgreich gemeldet. Unser Team wird ihn prüfen.",
+    "post_already_reported": "Du hast diesen Beitrag bereits gemeldet",
+    "post_hidden": "Beitrag ausgeblendet",
+    "post_already_hidden": "Beitrag bereits ausgeblendet",
+    "post_unhidden": "Beitrag wieder eingeblendet",
+    "leave_community_success": "Community erfolgreich verlassen"
+  },
+  "calendar": {
+    "event_created": "Event erfolgreich hinzugefügt. {invited_count} Mitglieder eingeladen.",
+    "event_updated": "Event erfolgreich aktualisiert",
+    "event_deleted": "Event erfolgreich gelöscht",
+    "rsvp_cancelled": "Zusage zurückgezogen",
+    "event_id_required": "Event-ID ist erforderlich",
+    "server_error": "Serverfehler. Bitte versuche es erneut.",
+    "errors": {
+      "title_start_required": "Titel und Startdatum sind erforderlich",
+      "invalid_start_date": "Ungültiges Startdatum-Format",
+      "invalid_end_date": "Ungültiges Enddatum-Format",
+      "end_before_start_date": "Das Enddatum kann nicht vor dem Startdatum liegen",
+      "invalid_start_time_format": "Ungültiges Startuhrzeit-Format",
+      "invalid_end_time_format": "Ungültiges Enduhrzeit-Format",
+      "end_before_start_time": "Die Endzeit kann nicht vor der Startzeit liegen",
+      "invalid_meeting_url": "Der Meeting-Link muss eine gültige https-URL sein",
+      "group_not_found": "Gruppe nicht gefunden",
+      "forbidden": "Kein Zugriff",
+      "cannot_access_event": "Du hast keinen Zugriff auf dieses Event",
+      "event_not_found": "Event nicht gefunden",
+      "group_community_mismatch": "Die Gruppe gehört nicht zu dieser Community",
+      "community_id_required": "Community ist erforderlich",
+      "edit_forbidden": "Du hast keine Berechtigung, dieses Event zu bearbeiten",
+      "delete_forbidden": "Du hast keine Berechtigung, dieses Event zu löschen",
+      "invalid_rsvp_response": "Ungültige Antwort",
+      "not_invited": "Du bist zu diesem Event nicht eingeladen",
+      "no_rsvp": "Keine Zusage gefunden"
+    }
+  },
+  "templates": {
+    "reset_password": {
+      "page_title": "Passwort zurücksetzen – C-Point",
+      "heading": "Passwort zurücksetzen",
+      "resetting_for": "Passwort wird zurückgesetzt für:",
+      "new_password_label": "Neues Passwort",
+      "new_password_placeholder": "Neues Passwort eingeben",
+      "confirm_password_label": "Passwort bestätigen",
+      "confirm_password_placeholder": "Neues Passwort bestätigen",
+      "password_requirements": "Das Passwort muss mindestens 6 Zeichen lang sein",
+      "submit": "Passwort zurücksetzen",
+      "close_return": "Schließen und zur App zurückkehren",
+      "passwords_match": "Passwörter stimmen überein",
+      "passwords_mismatch": "Passwörter stimmen nicht überein",
+      "alert_too_short": "Das Passwort muss mindestens 6 Zeichen lang sein",
+      "alert_mismatch": "Passwörter stimmen nicht überein",
+      "invalid_link": "Ungültiger oder abgelaufener Link zum Zurücksetzen.",
+      "fill_all": "Bitte fülle alle Felder aus.",
+      "success": "Dein Passwort wurde erfolgreich zurückgesetzt."
+    },
+    "verification": {
+      "page_title": "E-Mail-Bestätigung",
+      "success_title": "E-Mail bestätigt",
+      "success_message": "Deine E-Mail wurde erfolgreich bestätigt.",
+      "success_hint": "Bitte schließe diese Seite und kehre zur C-Point-App zurück, um dich anzumelden.",
+      "close_page": "Diese Seite schließen",
+      "close_hint": "Falls sich diese Seite nicht schließt, kannst du sie problemlos manuell schließen.",
+      "failed_title": "Bestätigung fehlgeschlagen",
+      "failed_default": "Der Bestätigungslink ist ungültig oder abgelaufen.",
+      "signup_pending": "Wir haben einen Bestätigungslink an deine E-Mail gesendet. Bitte bestätige sie, um die Registrierung abzuschließen.",
+      "verified_success": "Deine E-Mail wurde erfolgreich bestätigt.",
+      "invalid_link": "Ungültiger Bestätigungslink",
+      "pending_not_found": "Ausstehende Registrierung nicht gefunden oder abgelaufen",
+      "link_mismatch": "Bestätigungslink stimmt nicht überein",
+      "finalize_error": "Serverfehler beim Abschließen der Registrierung",
+      "expired_link": "Bestätigungslink ist ungültig oder abgelaufen",
+      "verify_error": "Serverfehler beim Bestätigen der E-Mail"
+    },
+    "verify_required": {
+      "page_title": "Bestätige deine E-Mail",
+      "title": "Bestätige deine E-Mail",
+      "body": "Bitte bestätige deine E-Mail, bevor du fortfährst. Sieh in deinem Posteingang nach dem Bestätigungslink. Bei Bedarf kannst du einen neuen Link anfordern.",
+      "resend": "Bestätigung erneut senden",
+      "ok": "OK",
+      "resent_ok": "Bestätigungs-E-Mail gesendet.",
+      "resent_failed": "E-Mail konnte nicht gesendet werden."
+    },
+    "error_page": {
+      "page_title": "Fehler",
+      "heading": "Etwas ist schiefgelaufen",
+      "default_message": "Ein Fehler ist aufgetreten. Bitte versuche es später erneut.",
+      "go_dashboard": "Zum Dashboard",
+      "internal_error": "Ein interner Serverfehler ist aufgetreten. Bitte versuche es später erneut.",
+      "not_found": "Seite nicht gefunden. Bitte überprüfe die URL oder kehre zur Startseite zurück."
+    },
+    "event_rsvp": {
+      "page_title": "Event-Zusage – {title}",
+      "invited_by": "Eingeladen von {name}",
+      "date_label": "Datum",
+      "time_label": "Uhrzeit",
+      "description_label": "Beschreibung",
+      "organizer_label": "Organisator",
+      "going": "Zusagen",
+      "maybe": "Vielleicht",
+      "cant_go": "Absagen",
+      "will_attend": "Nimmst du an diesem Event teil?",
+      "response_saved": "Deine Antwort wurde gespeichert!",
+      "view_community": "Community ansehen",
+      "back_dashboard": "Zurück zum Dashboard",
+      "rsvp_failed": "RSVP konnte nicht gesendet werden: {message}",
+      "rsvp_unknown_error": "Unbekannter Fehler",
+      "rsvp_network_error": "Beim Senden deiner RSVP ist ein Fehler aufgetreten"
+    }
+  },
+  "networking": {
+    "name_lookup_found_one": "@{username} in dieser Community gefunden — tippe unten, um das Profil zu öffnen oder eine Nachricht zu senden.",
+    "name_lookup_found_many": "{mentions} in dieser Community gefunden — tippe unten, um ein Profil zu öffnen oder eine Nachricht zu senden."
+  }
+}

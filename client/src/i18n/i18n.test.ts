@@ -25,6 +25,15 @@ describe('matchLocale', () => {
     expect(matchLocale('PT-pt')).toBe('pt-PT')
     expect(matchLocale('pt-BR')).toBe('pt-PT')
   })
+
+  it('routes German variants to de-DE (de-AT / de-CH included)', () => {
+    expect(matchLocale('de')).toBe('de-DE')
+    expect(matchLocale('de-DE')).toBe('de-DE')
+    expect(matchLocale('de_DE')).toBe('de-DE')
+    expect(matchLocale('DE-de')).toBe('de-DE')
+    expect(matchLocale('de-AT')).toBe('de-DE')
+    expect(matchLocale('de-CH')).toBe('de-DE')
+  })
 })
 
 describe('normalizeLocale', () => {
@@ -35,6 +44,7 @@ describe('normalizeLocale', () => {
 
   it('keeps a supported locale unchanged', () => {
     expect(normalizeLocale('pt-PT')).toBe('pt-PT')
+    expect(normalizeLocale('de-DE')).toBe('de-DE')
     expect(normalizeLocale('en-US')).toBe('en')
   })
 })
@@ -44,6 +54,12 @@ describe('runtime translation resources', () => {
     await i18n.changeLanguage(tag)
     expect(i18n.t('account.language.section_title')).toBe('Idioma')
     expect(i18n.t('account.language.helper')).toContain('aplicação')
+  })
+
+  it.each(['de-DE', 'de', 'de-de'])('renders German strings for %s', async (tag) => {
+    await i18n.changeLanguage(tag)
+    expect(i18n.t('account.language.section_title')).toBe('Sprache')
+    expect(i18n.t('account.language.helper')).toContain('App')
   })
 
   it('renders English strings after switching back', async () => {

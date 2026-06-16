@@ -19,14 +19,17 @@ import LanguageDetector from 'i18next-browser-languagedetector'
 
 import en from '../locales/en.json'
 import ptPT from '../locales/pt-PT.json'
+import deDE from '../locales/de-DE.json'
 import onboardingChatEn from '../locales/onboarding-chat/en.json'
 import onboardingChatPt from '../locales/onboarding-chat/pt-PT.json'
+import onboardingChatDe from '../locales/onboarding-chat/de-DE.json'
 
 const enCatalog = { ...en, onboarding_chat: onboardingChatEn }
 const ptCatalog = { ...ptPT, onboarding_chat: onboardingChatPt }
+const deCatalog = { ...deDE, onboarding_chat: onboardingChatDe }
 
 export const DEFAULT_LOCALE = 'en'
-export const SUPPORTED_LOCALES = ['en', 'pt-PT'] as const
+export const SUPPORTED_LOCALES = ['en', 'pt-PT', 'de-DE'] as const
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number]
 
 // i18next may internally resolve regional tags in different forms depending
@@ -34,7 +37,7 @@ export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number]
 // Keep the public app locale as `pt-PT`, but register the same catalog under
 // every key i18next can reasonably ask for so a successful language switch
 // never falls back to English text.
-const I18NEXT_SUPPORTED_LNGS = ['en', 'pt', 'pt-PT', 'pt-pt'] as const
+const I18NEXT_SUPPORTED_LNGS = ['en', 'pt', 'pt-PT', 'pt-pt', 'de', 'de-DE', 'de-de'] as const
 
 const ALIAS_MAP: Record<string, SupportedLocale> = {
   en: 'en',
@@ -47,6 +50,10 @@ const ALIAS_MAP: Record<string, SupportedLocale> = {
   pt: 'pt-PT',
   'pt-pt': 'pt-PT',
   'pt-br': 'pt-PT',
+  de: 'de-DE',
+  'de-de': 'de-DE',
+  'de-at': 'de-DE',
+  'de-ch': 'de-DE',
 }
 
 /**
@@ -78,6 +85,9 @@ i18n
       pt: { translation: ptCatalog },
       'pt-PT': { translation: ptCatalog },
       'pt-pt': { translation: ptCatalog },
+      de: { translation: deCatalog },
+      'de-DE': { translation: deCatalog },
+      'de-de': { translation: deCatalog },
     },
     fallbackLng: DEFAULT_LOCALE,
     supportedLngs: [...I18NEXT_SUPPORTED_LNGS],

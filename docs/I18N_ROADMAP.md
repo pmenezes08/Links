@@ -11,7 +11,15 @@ HTML templates, and CI catalog checks for nested client locale dirs.
 Forum), CommunityFeed story stragglers, `calendar.errors.*` validation
 messages, and monolith wave-2 member API copy (delete reply, block/unblock,
 community update, update-email errors).
-German (`de`) remains a separate epic after QA sign-off on staging.
+**German (`de-DE`)** (2026-06-16) is implemented and deployed to staging
+for native-reviewer QA: full catalog translation (backend, client,
+onboarding-chat), wiring (locale aliases `de`/`de-AT`/`de-CH` → `de-DE`,
+Account Settings + first-run picker, react-i18next resources), and `en`/
+`pt-PT`/`de-DE` parity tests. Register mirrors the as-shipped pt split —
+informal **du** in-product, formal **Sie** in the onboarding/sales chat.
+Term + tone contract:
+[`backend/locales/glossary-de-DE.md`](../backend/locales/glossary-de-DE.md).
+Native review on staging gates the prod ship.
 
 This is a **living engineering doc**. Update it in the same PR as any
 i18n-related change (see [`AGENTS.md` § Living engineering docs](../AGENTS.md)
@@ -82,6 +90,8 @@ may be retained (recommended) while the branch can be retired.
 
 - `en` — default and source of truth
 - `pt-PT` — European Portuguese, **tu** tone
+- `de-DE` — standard German, **du** in-product / **Sie** in onboarding-chat
+  (aliases `de`, `de-AT`, `de-CH` → `de-DE`)
 
 Architecture supports adding further locales by dropping in a new JSON
 catalog plus catalog completeness CI.
@@ -229,6 +239,12 @@ identifiers.
 ## 7. pt-PT style guide
 
 European Portuguese only. Reject Brazilian variants in review.
+
+> **German (`de-DE`)** has its own style guide & glossary —
+> [`backend/locales/glossary-de-DE.md`](../backend/locales/glossary-de-DE.md)
+> — with the same structure (register split, term table, keep-English
+> list, mechanics). It uses standard German with `ß`; informal **du**
+> everywhere except the onboarding-chat catalog, which is formal **Sie**.
 
 ### Tone
 

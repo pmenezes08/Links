@@ -44,7 +44,7 @@ DEFAULT_LOCALE = "en"
 
 # Locales the product currently ships. Adding a locale = adding a JSON
 # file and an entry here.
-SUPPORTED_LOCALES: tuple[str, ...] = ("en", "pt-PT")
+SUPPORTED_LOCALES: tuple[str, ...] = ("en", "pt-PT", "de-DE")
 
 # Mapping from common request hints (``Accept-Language`` tags) to the
 # locale we actually have a catalog for. Lower-case keys.
@@ -60,6 +60,10 @@ _LOCALE_ALIASES: Dict[str, str] = {
     "pt-pt": "pt-PT",
     "pt-br": "pt-PT",   # v1: Portugal-first; pt-BR users get PT-PT until
                          # we ship a dedicated pt-BR catalog.
+    "de": "de-DE",
+    "de-de": "de-DE",
+    "de-at": "de-DE",   # Austrian / Swiss German fall back to the de-DE
+    "de-ch": "de-DE",   # catalog until dedicated variants ship.
 }
 
 

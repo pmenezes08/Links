@@ -465,11 +465,39 @@ Run after changes to authentication, remember-me cookies, CSRF/origin gates, or 
 - [ ] **Capacitor iOS/Android**: Google Sign-In via `/api/auth/google` succeeds (POST must not be blocked when shadow CSRF logging is on).
 - [ ] **CSRF rollout**: before flipping `CSRF_ORIGIN_ENFORCE=true`, follow `docs/OPERATIONS.md` § CSRF / Origin enforcement (24h shadow logs on staging, then prod).
 
-## §15 — Internationalization (pt-PT)
+## §15 — Internationalization (pt-PT, de-DE)
 
 Run after any change that touches user-facing strings, the locale
 preference, or push / email copy. See `docs/I18N_ROADMAP.md` for the
 catalog convention and namespaces.
+
+### German (de-DE) — native reviewer pass
+
+German ships as `de-DE` (standard German, `ß`). The whole pt-PT sweep
+below applies with **Deutsch** selected; these checks are German-specific.
+Term + tone contract: `backend/locales/glossary-de-DE.md`.
+
+- [ ] **Register split.** In-product chrome (feed, chat, account, errors,
+      notifications, Steve community posts) is informal **du**. The
+      **first-run onboarding/sales chat** is formal **Sie**. No `Sie`
+      leaks into the app; no stray `du` in the onboarding questions.
+- [ ] **Sie → du handoff.** Finish onboarding and land on the first
+      community view / Steve welcome DM. Steve switches from `Sie`
+      (onboarding) to `du` (in-product). Confirm it reads as "now we know
+      each other," not a glitch.
+- [ ] **Length / layout (German runs ~15–25% longer).** On a narrow
+      phone, scan buttons, bottom-nav labels, the **owner dashboard**
+      metric cards, and entitlement/limit modals for truncation or
+      overflow. Long compounds (e.g. *Benachrichtigungseinstellungen*)
+      must not break the layout.
+- [ ] **Mechanics spot-check.** Nouns capitalized; `ß` (not Swiss `ss`);
+      `E-Mail` spelling; product names kept (C-Point, Steve, Premium,
+      Enterprise) and loanwords per glossary (Feed, Chat, Story, Dashboard).
+- [ ] **Account Settings → Language** lists **Deutsch**; selecting it
+      fires `PATCH /api/me/locale {"locale":"de-DE"}` → 200 and persists.
+- [ ] **Push / email in de-DE** resolve to the recipient's locale (not the
+      sender's session): trigger a DM/mention push and an invite email to
+      a de-DE recipient.
 
 ### Auto-detect + headers
 

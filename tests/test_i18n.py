@@ -46,6 +46,12 @@ def _reset_catalogs():
         ("PT-PT", "pt-PT"),
         ("pt", "pt-PT"),
         ("pt-BR", "pt-PT"),   # v1 maps Brazilian to PT until pt-BR catalog ships
+        ("de-DE", "de-DE"),
+        ("de", "de-DE"),
+        ("de_DE", "de-DE"),
+        ("DE-de", "de-DE"),
+        ("de-AT", "de-DE"),   # Austrian / Swiss German map to de-DE in v1
+        ("de-CH", "de-DE"),
         ("en", "en"),
         ("en-US", "en"),
         ("en-GB", "en"),
@@ -67,7 +73,10 @@ def test_normalize_locale(raw, expected):
         ("pt-PT,en;q=0.5", "pt-PT"),
         ("en-US,en;q=0.8", "en"),
         ("fr-FR,pt-PT;q=0.7,en;q=0.3", "pt-PT"),
-        ("fr-FR,de;q=0.5", "en"),
+        ("de-DE", "de-DE"),
+        ("de", "de-DE"),
+        ("de-AT,en;q=0.4", "de-DE"),
+        ("fr-FR,de-DE;q=0.7,en;q=0.3", "de-DE"),
         ("", "en"),
         (None, "en"),
         ("pt;q=0.9", "pt-PT"),
@@ -89,6 +98,11 @@ def test_basic_lookup_english():
 def test_basic_lookup_portuguese():
     assert i18n.t("common.save", "pt-PT") == "Guardar"
     assert i18n.t("common.cancel", "pt-PT") == "Cancelar"
+
+
+def test_basic_lookup_german():
+    assert i18n.t("common.save", "de-DE") == "Speichern"
+    assert i18n.t("common.cancel", "de-DE") == "Abbrechen"
 
 
 def test_default_locale_when_locale_missing():
@@ -119,13 +133,15 @@ def test_fallback_chain_falls_back_to_english(monkeypatch, tmp_path):
 def test_has_key():
     assert i18n.has_key("common.save", "en")
     assert i18n.has_key("common.save", "pt-PT")
+    assert i18n.has_key("common.save", "de-DE")
     assert not i18n.has_key("does.not.exist", "en")
 
 
-def test_available_locales_includes_pt_pt():
+def test_available_locales_includes_supported():
     locales = i18n.available_locales()
     assert "en" in locales
     assert "pt-PT" in locales
+    assert "de-DE" in locales
 
 
 def test_unknown_locale_falls_back_to_english():
