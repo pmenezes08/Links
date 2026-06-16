@@ -37,6 +37,7 @@ import {
 } from '../utils/chatThreadsCache'
 import { sendImageMessage, sendVideoMessage, sendMultiMediaMessage, sendDocumentMessage, type UploadProgress } from '../chat/mediaSenders'
 import { handleBasicProfileRequired } from '../utils/basicProfileGate'
+import { isNativeMediaPlatform, pickFromLibraryNative, capturePhotoNative } from '../utils/nativeMediaPicker'
 import { comparableMediaUrl, consumeDeletedMedia, mediaDeleteScopeForDm, type DeletedMediaItem } from '../chat/mediaDeletionEvents'
 import ChatThreadSearch from '../chat/ChatThreadSearch'
 import type { ChatMessage } from '../types/chat'
@@ -1500,13 +1501,23 @@ export default function ChatThread(){
     void sendVoiceRequest(clientKey, entry.blob, entry.duration, entry.url)
   }
 
-  function handlePhotoSelect() {
+  async function handlePhotoSelect() {
     setShowAttachMenu(false)
+    if (isNativeMediaPlatform()) {
+      const files = await pickFromLibraryNative()
+      if (files && files.length) appendPendingMediaFiles(files) // null = user cancelled → do nothing
+      return
+    }
     fileInputRef.current?.click()
   }
 
-  function handleCameraOpen() {
+  async function handleCameraOpen() {
     setShowAttachMenu(false)
+    if (isNativeMediaPlatform()) {
+      const files = await capturePhotoNative()
+      if (files && files.length) appendPendingMediaFiles(files)
+      return
+    }
     cameraInputRef.current?.click()
   }
 
@@ -1538,11 +1549,11 @@ export default function ChatThread(){
     if (documentInputRef.current) documentInputRef.current.value = ''
   }
 
-  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const files = event.target.files
-    if (!files || files.length === 0) return
+  // Shared by the web <input> path and the native camera/library picker so both produce
+  // identical pendingMedia — the upload kernel downstream is untouched.
+  function appendPendingMediaFiles(files: File[]) {
     const newMedia: Array<{ file: File; previewUrl: string; type: 'image' | 'video' | 'audio' }> = []
-    Array.from(files).forEach(file => {
+    files.forEach(file => {
       if (file.type.startsWith('image/')) {
         newMedia.push({ file, previewUrl: URL.createObjectURL(file), type: 'image' })
       } else if (file.type.startsWith('video/')) {
@@ -1555,6 +1566,12 @@ export default function ChatThread(){
       setPendingMedia(prev => [...prev, ...newMedia])
       setPreviewIndex(0)
     }
+  }
+
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = event.target.files
+    if (!files || files.length === 0) return
+    appendPendingMediaFiles(Array.from(files))
     if (fileInputRef.current) fileInputRef.current.value = ''
     if (cameraInputRef.current) cameraInputRef.current.value = ''
   }

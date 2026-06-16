@@ -1631,6 +1631,8 @@
     "download_failed": "Download failed",
     "save_to_device_title": "Save to device (Filesystem + phone memory)",
     "saved_to_documents": "Saved to device Documents folder as {{path}}. Use Files app to view (native phone memory win).",
+    "saved_to_gallery": "Saved to your photos",
+    "save_to_gallery_title": "Save to Photos",
     "save_failed": "Save failed: {{message}}",
     "select": "Select",
     "select_all": "Select all",

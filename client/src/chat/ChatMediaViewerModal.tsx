@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import ZoomableImage from '../components/ZoomableImage'
 import { useImmersiveStatusBar } from '../hooks/useNativeStatusBar'
+import { isNativeMediaPlatform, saveToGalleryNative } from '../utils/nativeMediaPicker'
+import { nativeToast } from '../utils/nativeUi'
 
 function isVideoUrl(url: string): boolean {
   return /\.(mp4|mov|webm|m4v)($|\?)/i.test(url) || url.includes('.mp4') || url.includes('.mov') || url.includes('.webm')
@@ -30,12 +32,28 @@ export function ChatMediaViewerModal({
 }: ChatMediaViewerModalProps) {
   const { t } = useTranslation()
   const [videoError, setVideoError] = useState(false)
+  const [saving, setSaving] = useState(false)
   useImmersiveStatusBar(!!viewer)
   const currentUrl = viewer ? viewer.urls[viewer.index] : ''
 
   useEffect(() => {
     setVideoError(false)
   }, [currentUrl])
+
+  // Native-only: save the visible media straight to the camera roll. Web has its own
+  // download affordances elsewhere, so the button is hidden off-device.
+  async function handleSaveToGallery() {
+    if (!currentUrl || saving) return
+    setSaving(true)
+    try {
+      await saveToGalleryNative(currentUrl, isVideoUrl(currentUrl) ? 'video' : 'image')
+      void nativeToast(t('chat.saved_to_gallery'), 'short')
+    } catch (err) {
+      void nativeToast(t('chat.save_failed', { message: (err as Error).message }), 'long')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   if (!viewer) return null
 
@@ -53,7 +71,20 @@ export function ChatMediaViewerModal({
         <span className="text-white font-medium">
           {urls.length > 1 ? `${index + 1} of ${urls.length}` : 'Media'}
         </span>
-        <div className="w-10" />
+        {isNativeMediaPlatform() ? (
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); void handleSaveToGallery() }}
+            disabled={saving}
+            className="text-white p-2 -mr-2 disabled:opacity-50"
+            title={t('chat.save_to_gallery_title')}
+            aria-label={t('chat.save_to_gallery_title')}
+          >
+            <i className={`fa-solid ${saving ? 'fa-spinner fa-spin' : 'fa-arrow-down-to-line'} text-lg`} />
+          </button>
+        ) : (
+          <div className="w-10" />
+        )}
       </div>
 
       <div

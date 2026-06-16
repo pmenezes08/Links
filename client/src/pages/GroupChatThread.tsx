@@ -44,6 +44,7 @@ import {
   releaseShareUrlHandoffKey,
 } from '../services/shareImportStore'
 import { handleBasicProfileRequired } from '../utils/basicProfileGate'
+import { isNativeMediaPlatform, pickFromLibraryNative, capturePhotoNative } from '../utils/nativeMediaPicker'
 
 type Message = {
   id: number
@@ -1182,13 +1183,23 @@ export default function GroupChatThread() {
     textarea.focus()
   }, [mentionStartPos])
 
-  const handlePhotoSelect = () => {
+  const handlePhotoSelect = async () => {
     setShowAttachMenu(false)
+    if (isNativeMediaPlatform()) {
+      const files = await pickFromLibraryNative()
+      if (files && files.length) appendPendingMediaFiles(files) // null = user cancelled → do nothing
+      return
+    }
     fileInputRef.current?.click()
   }
 
-  const handleCameraOpen = () => {
+  const handleCameraOpen = async () => {
     setShowAttachMenu(false)
+    if (isNativeMediaPlatform()) {
+      const files = await capturePhotoNative()
+      if (files && files.length) appendPendingMediaFiles(files)
+      return
+    }
     cameraInputRef.current?.click()
   }
   
@@ -1243,33 +1254,27 @@ export default function GroupChatThread() {
   }
 
   // Handle multiple file selection (photos or videos)
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files || files.length === 0) return
-    
+  // Shared by the web <input> path and the native camera/library picker so both produce
+  // identical pendingMedia — the upload kernel downstream is untouched.
+  function appendPendingMediaFiles(files: File[]) {
     const newMedia: Array<{ file: File; previewUrl: string; type: 'image' | 'video' }> = []
-    
-    Array.from(files).forEach(file => {
+    files.forEach(file => {
       if (file.type.startsWith('image/')) {
-        newMedia.push({
-          file,
-          previewUrl: URL.createObjectURL(file),
-          type: 'image'
-        })
+        newMedia.push({ file, previewUrl: URL.createObjectURL(file), type: 'image' })
       } else if (file.type.startsWith('video/')) {
-        newMedia.push({
-          file,
-          previewUrl: URL.createObjectURL(file),
-          type: 'video'
-        })
+        newMedia.push({ file, previewUrl: URL.createObjectURL(file), type: 'video' })
       }
     })
-    
     if (newMedia.length > 0) {
       setPendingMedia(prev => [...prev, ...newMedia])
       setPreviewIndex(0)
     }
-    
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    appendPendingMediaFiles(Array.from(files))
     // Reset input
     if (fileInputRef.current) fileInputRef.current.value = ''
     if (cameraInputRef.current) cameraInputRef.current.value = ''

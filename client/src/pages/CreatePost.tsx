@@ -11,6 +11,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { detectLinks, replaceLinkInText, type DetectedLink } from '../utils/linkUtils.tsx'
 import { maybeRequestReview } from '../utils/inAppReview'
+import { isNativeMediaPlatform, pickFromLibraryNative } from '../utils/nativeMediaPicker'
 import { extractUrls, stripExtractedUrlsFromText } from '../components/LinkPreview'
 import GifPicker from '../components/GifPicker'
 import { NativeActionButton } from '../components/NativeActionButton'
@@ -827,7 +828,25 @@ export default function CreatePost(){
           style={{ gridTemplateColumns: '1fr auto', alignItems: 'center' }}
         >
           <div className="flex flex-wrap items-center gap-3">
-            <label className="px-3 py-2 rounded-full hover:bg-c-hover-bg cursor-pointer" aria-label={t('feed.add_photos_videos')}>
+            <label
+              className="px-3 py-2 rounded-full hover:bg-c-hover-bg cursor-pointer"
+              aria-label={t('feed.add_photos_videos')}
+              onClick={async (e) => {
+                if (!isNativeMediaPlatform()) return // web: let the hidden <input> open
+                e.preventDefault()
+                const remaining = MAX_MEDIA - mediaFiles.length
+                if (remaining <= 0) {
+                  setMediaLimitMsg(t('feed.max_files', { max: MAX_MEDIA }))
+                  setTimeout(() => setMediaLimitMsg(''), 3000)
+                  return
+                }
+                const picked = await pickFromLibraryNative(remaining)
+                if (!picked || !picked.length) return
+                setMediaFiles(prev => [...prev, ...picked].slice(0, MAX_MEDIA))
+                setSelectedGif(null)
+                setGifFile(null)
+              }}
+            >
               <i className="fa-regular fa-image" style={{ color: '#00CEC8' }} />
               <input
                 ref={fileInputRef}

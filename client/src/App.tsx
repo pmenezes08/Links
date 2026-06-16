@@ -87,6 +87,7 @@ const TRANSITIONS_ENABLED = import.meta.env.VITE_PAGE_TRANSITIONS === 'true'
 import { useSafeAreaSync } from './hooks/useSafeAreaSync'
 import { useThemedNativeChrome } from './hooks/useThemedNativeChrome'
 import { useMediaUploadResume } from './hooks/useMediaUploadResume'
+import { useEventReminderSync } from './hooks/useEventReminderSync'
 import EventDetail from './pages/EventDetail'
 import GroupFeed from './pages/GroupFeed'
 import EditGroup from './pages/EditGroup'
@@ -166,6 +167,7 @@ function AppRoutes(){
   // being a chat thread.
   const isChatRoute = location.pathname.startsWith('/user_chat/chat/') || location.pathname.startsWith('/group_chat/') || location.pathname === '/networking'
   useMediaUploadResume(authLoaded && !!userMeta.username)
+  useEventReminderSync(authLoaded && !!userMeta.username)
 
   const scrollRegionRef = useRef<HTMLDivElement | null>(null)
   const publicPaths = useMemo(

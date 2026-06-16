@@ -1631,6 +1631,8 @@
     "download_failed": "Falha na transferência",
     "save_to_device_title": "Guardar no dispositivo (Filesystem + memória do telemóvel)",
     "saved_to_documents": "Guardado na pasta Documentos do dispositivo como {{path}}. Use a app Ficheiros para ver.",
+    "saved_to_gallery": "Guardado nas tuas fotos",
+    "save_to_gallery_title": "Guardar nas Fotos",
     "save_failed": "Falha ao guardar: {{message}}",
     "select": "Selecionar",
     "select_all": "Selecionar tudo",

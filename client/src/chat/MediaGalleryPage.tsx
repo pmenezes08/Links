@@ -9,6 +9,8 @@ import { useHeader } from '../contexts/HeaderContext'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import { normalizeMediaPath } from './utils'
 import { mediaDeleteScopeForDm, mediaDeleteScopeForGroup, recordDeletedMedia } from './mediaDeletionEvents'
+import { isNativeMediaPlatform, saveToGalleryNative } from '../utils/nativeMediaPicker'
+import { nativeToast } from '../utils/nativeUi'
 
 export type MediaGalleryMode =
   | { type: 'dm'; peer: string }
@@ -117,6 +119,16 @@ export default function MediaGalleryPage({ mode }: { mode: MediaGalleryMode }) {
   const deleteScope = mode.type === 'dm' ? mediaDeleteScopeForDm(mode.peer) : mediaDeleteScopeForGroup(mode.groupId)
 
   const saveMediaToDevice = async (url: string, type: 'image' | 'video') => {
+    // Native: save straight to the OS camera roll/gallery via the Media plugin.
+    if (isNativeMediaPlatform()) {
+      try {
+        await saveToGalleryNative(url, type)
+        void nativeToast(t('chat.saved_to_gallery'), 'short')
+      } catch (err) {
+        void nativeToast(t('chat.save_failed', { message: (err as Error).message }), 'long')
+      }
+      return
+    }
     try {
       const status = await Network.getStatus()
       if (!status.connected) {
@@ -320,8 +332,8 @@ export default function MediaGalleryPage({ mode }: { mode: MediaGalleryMode }) {
                   <i className="fa-solid fa-trash-can" />
                 </button>
               ) : null}
-              {mode.type === 'dm' ? (
-                <button onClick={event => { event.stopPropagation(); void saveMediaToDevice(normalizeMediaPath(viewingMedia.url), viewingMedia.type) }} className="text-white p-2 hover:bg-white/10 rounded-full" title={t('chat.save_to_device_title')}>
+              {(isNativeMediaPlatform() || mode.type === 'dm') ? (
+                <button onClick={event => { event.stopPropagation(); void saveMediaToDevice(normalizeMediaPath(viewingMedia.url), viewingMedia.type) }} className="text-white p-2 hover:bg-white/10 rounded-full" title={isNativeMediaPlatform() ? t('chat.save_to_gallery_title') : t('chat.save_to_device_title')}>
                   <i className="fa-solid fa-download" />
                 </button>
               ) : null}
