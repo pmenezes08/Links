@@ -3,6 +3,12 @@
 // change how the File[] is produced. Web (incl. mobile web) returns null/false so callers
 // fall back to their existing <input type=file>. Cancel returns null WITHOUT throwing, so
 // callers must distinguish "not native" (fall back) from "native cancelled" (abort).
+//
+// IMPORTANT — remote server.url: the app loads a REMOTE https origin in the native WebView,
+// so the Camera plugin's `webPath` (which points at the local capacitor file server) is NOT
+// reachable via fetch() cross-origin. We therefore read the picked/captured file through the
+// Filesystem native bridge (item.path) and only fall back to fetch(webPath) for local-server
+// dev builds.
 import { Capacitor } from '@capacitor/core'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 
@@ -10,12 +16,44 @@ export function isNativeMediaPlatform(): boolean {
   return Capacitor.isNativePlatform()
 }
 
-async function uriToFile(webPath: string, fallbackName: string): Promise<File> {
-  const res = await fetch(webPath)
-  const blob = await res.blob()
-  const type = blob.type || 'image/jpeg'
-  const ext = type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : type.includes('gif') ? 'gif' : 'jpg'
-  return new File([blob], `${fallbackName}.${ext}`, { type })
+type PickedItem = { path?: string; webPath?: string; format?: string }
+
+function mimeForFormat(format?: string): { mime: string; ext: string } {
+  const f = (format || 'jpeg').toLowerCase()
+  if (f.includes('png')) return { mime: 'image/png', ext: 'png' }
+  if (f.includes('webp')) return { mime: 'image/webp', ext: 'webp' }
+  if (f.includes('gif')) return { mime: 'image/gif', ext: 'gif' }
+  if (f.includes('heic')) return { mime: 'image/heic', ext: 'heic' }
+  return { mime: 'image/jpeg', ext: 'jpg' }
+}
+
+function base64ToBlob(base64: string, mime: string): Blob {
+  const byteChars = atob(base64)
+  const bytes = new Uint8Array(byteChars.length)
+  for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i)
+  return new Blob([bytes], { type: mime })
+}
+
+/** Turn a Camera/Gallery result into a File, reading the native path via Filesystem. */
+async function pickedItemToFile(item: PickedItem, name: string): Promise<File> {
+  const { mime, ext } = mimeForFormat(item.format)
+  // Preferred path: read the native file through the bridge (works under a remote server.url).
+  if (item.path) {
+    try {
+      const { Filesystem } = await import('@capacitor/filesystem')
+      const res = await Filesystem.readFile({ path: item.path })
+      const blob = typeof res.data === 'string' ? base64ToBlob(res.data, mime) : res.data
+      return new File([blob], `${name}.${ext}`, { type: mime })
+    } catch {
+      /* fall through to webPath for dev/local-server builds */
+    }
+  }
+  if (item.webPath) {
+    const res = await fetch(item.webPath)
+    const blob = await res.blob()
+    return new File([blob], `${name}.${ext}`, { type: blob.type || mime })
+  }
+  throw new Error('no_readable_path')
 }
 
 function isUserCancelled(e: unknown): boolean {
@@ -29,13 +67,13 @@ export async function capturePhotoNative(): Promise<File[] | null> {
   try {
     const photo = await Camera.getPhoto({
       source: CameraSource.Camera,
-      resultType: CameraResultType.Uri, // Uri (not base64) → low memory; kernel compresses
+      resultType: CameraResultType.Uri, // Uri (not base64) → low memory; we read via Filesystem
       quality: 90,
       allowEditing: false,
       saveToGallery: false,
     })
-    if (!photo.webPath) return null
-    return [await uriToFile(photo.webPath, `camera_${Date.now()}`)]
+    if (!photo.path && !photo.webPath) return null
+    return [await pickedItemToFile(photo, `camera_${Date.now()}`)]
   } catch (e) {
     if (isUserCancelled(e)) return null
     throw e
@@ -48,7 +86,7 @@ export async function pickFromLibraryNative(limit = 10): Promise<File[] | null> 
   try {
     const { photos } = await Camera.pickImages({ quality: 90, limit })
     if (!photos?.length) return null
-    return await Promise.all(photos.map((p, i) => uriToFile(p.webPath, `library_${Date.now()}_${i}`)))
+    return await Promise.all(photos.map((p, i) => pickedItemToFile(p, `library_${Date.now()}_${i}`)))
   } catch (e) {
     if (isUserCancelled(e)) return null
     throw e
