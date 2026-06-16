@@ -28,8 +28,18 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
   const [unreadMsgs, setUnreadMsgs] = useState(0)
   const [unreadNotifs, setUnreadNotifs] = useState(0)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const lastPollAtRef = useRef(0)
+  const pollingRef = useRef(false)
 
-  const poll = useCallback(async () => {
+  const poll = useCallback(async (force = false) => {
+    // Coalesce rapid triggers: resume + visibilitychange can fire in bursts while app-state
+    // churns (e.g. a native lock/modal cycling active/inactive), which otherwise hammers
+    // /clear-badge several times a second. The 15s interval and explicit refreshBadges()
+    // bypass with force=true.
+    if (pollingRef.current) return
+    if (!force && Date.now() - lastPollAtRef.current < 6000) return
+    lastPollAtRef.current = Date.now()
+    pollingRef.current = true
     let msgs = 0
     let notifs = 0
     try {
@@ -90,6 +100,7 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
         await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' })
       } catch {}
     }
+    pollingRef.current = false
   }, [])
 
   useEffect(() => {
@@ -140,7 +151,7 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
   }, [poll])
 
   const refreshBadges = useCallback(() => {
-    poll()
+    poll(true)
   }, [poll])
 
   const adjustBadges = useCallback(({ msgs, notifs }: { msgs?: number; notifs?: number }) => {
