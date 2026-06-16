@@ -10,6 +10,7 @@ import { useAudioRecorder } from '../components/useAudioRecorder'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { detectLinks, replaceLinkInText, type DetectedLink } from '../utils/linkUtils.tsx'
+import { maybeRequestReview } from '../utils/inAppReview'
 import { extractUrls, stripExtractedUrlsFromText } from '../components/LinkPreview'
 import GifPicker from '../components/GifPicker'
 import { NativeActionButton } from '../components/NativeActionButton'
@@ -492,6 +493,8 @@ export default function CreatePost(){
           else navigate(-1)
         }, 2000)
       } else {
+        // Posted again (not their first) — a good moment to ask for a store rating (throttled).
+        void maybeRequestReview('post_created')
         // Regardless of server response, navigate back to feed to avoid double tap
         // Pass refresh state to trigger feed reload (needed for Capacitor apps where component stays mounted)
         if (groupId) navigate(`/group_feed_react/${groupId}`, { state: { refresh: Date.now() } })

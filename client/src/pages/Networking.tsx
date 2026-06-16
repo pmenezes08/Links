@@ -11,6 +11,7 @@ import SteveThinking from '../components/networking/SteveThinking'
 import SteveDebugModal, { type DebugTabKey, type SteveDebugTrace } from '../components/networking/SteveDebugModal'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
+import { maybeRequestReview } from '../utils/inAppReview'
 import { useNetwork } from '../contexts/NetworkContext'
 import { CHAT_KEYBOARD_ANIMATION_MS, CPOINT_EASE_OUT } from '../design/motion'
 
@@ -953,6 +954,7 @@ export default function Networking() {
           if (!steveFeedback[u]) submitFeedback(u, 'up', 'implicit_message_tap')
           setMatchSheetOpen(false)
           navigate(`/user_chat/chat/${u}?source=steve_match`)
+          void maybeRequestReview('steve_match_message') // strongest positive signal (throttled)
         }}
         onClose={() => setMatchSheetOpen(false)}
       />
