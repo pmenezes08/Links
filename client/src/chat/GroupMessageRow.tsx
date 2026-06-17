@@ -540,9 +540,45 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
   )
 }
 
+// Compare the message CONTENT fields the row actually renders, instead of relying on
+// `a.msg === b.msg`. The thread page rebuilds a fresh `{ ...msg, clientKey, ... }` object on
+// every render (renderItem in GroupChatThread.tsx), so reference equality was ALWAYS false —
+// which silently defeated this memo and made every row re-render on every parent render
+// (~2×/sec under the 1.5s poll, plus every keystroke/keyboard/selection change). Field
+// comparison lets unchanged rows skip. Mirrors the proven DM MessageBubble comparator.
+function groupMsgContentEqual(a: any, b: any): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  if (
+    a.id !== b.id ||
+    a.text !== b.text ||
+    a.reaction !== b.reaction ||
+    a.replySnippet !== b.replySnippet ||
+    a.replySender !== b.replySender ||
+    a.sender !== b.sender ||
+    a.profile_picture !== b.profile_picture ||
+    a.created_at !== b.created_at ||
+    a.is_edited !== b.is_edited ||
+    a.edited_at !== b.edited_at ||
+    a.image !== b.image ||
+    a.video !== b.video ||
+    a.voice !== b.voice ||
+    a.audio_duration_seconds !== b.audio_duration_seconds ||
+    a.audio_summary !== b.audio_summary ||
+    a.file_path !== b.file_path ||
+    a.document !== b.document ||
+    a.file_name !== b.file_name
+  ) return false
+  const am = a.media_paths, bm = b.media_paths
+  if (am === bm) return true
+  if (!am || !bm || am.length !== bm.length) return false
+  for (let i = 0; i < am.length; i++) if (am[i] !== bm[i]) return false
+  return true
+}
+
 function rowPropsAreEqual(a: GroupMessageRowProps, b: GroupMessageRowProps) {
   return (
-    a.msg === b.msg &&
+    groupMsgContentEqual(a.msg, b.msg) &&
     a.showAvatar === b.showAvatar &&
     a.showTime === b.showTime &&
     a.showDateSeparator === b.showDateSeparator &&

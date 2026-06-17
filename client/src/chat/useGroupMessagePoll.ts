@@ -109,8 +109,7 @@ export function useGroupMessagePoll<T extends GroupPollMessage = GroupPollMessag
             })
           }
 
-          const newMaxId =
-            newServerMessages.length > 0 ? Math.max(...newServerMessages.map(m => m.id)) : 0
+          const newMaxId = newServerMessages.reduce((mx, m) => (m.id > mx ? m.id : mx), 0)
           if (newMaxId > 0 && gen === threadGenerationRef.current) {
             lastMessageIdRef.current = Math.max(lastMessageIdRef.current, newMaxId)
           }

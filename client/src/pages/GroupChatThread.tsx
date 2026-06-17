@@ -264,6 +264,21 @@ export default function GroupChatThread() {
   // Paste from clipboard state
   const [pastedImage, setPastedImage] = useState<File | null>(null)
   const [pastedImagePreview, setPastedImagePreview] = useState<string | null>(null)
+  // Revoke un-sent media preview object URLs (pending attachments + pasted image) when the
+  // thread unmounts (leaving chat OR switching group — the route wrapper keys GroupChatThread
+  // by group_id, so a switch remounts). Prevents blob-URL accumulation that adds WebView memory
+  // pressure across a session (a likely contributor to the iOS watchdog "crash").
+  const pendingMediaRef = useRef(pendingMedia)
+  pendingMediaRef.current = pendingMedia
+  const pastedImagePreviewRef = useRef(pastedImagePreview)
+  pastedImagePreviewRef.current = pastedImagePreview
+  useEffect(() => () => {
+    pendingMediaRef.current.forEach(item => {
+      if (item.previewUrl.startsWith('blob:')) { try { URL.revokeObjectURL(item.previewUrl) } catch {} }
+    })
+    const pasted = pastedImagePreviewRef.current
+    if (pasted && pasted.startsWith('blob:')) { try { URL.revokeObjectURL(pasted) } catch {} }
+  }, [])
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
   const [showManageGroup, setShowManageGroup] = useState(false)
   const [renameText, setRenameText] = useState('')
@@ -521,7 +536,9 @@ export default function GroupChatThread() {
     const gen = threadGenerationRef.current
     if (cachedMessages?.length) {
       markThreadCachePainted(cachePaintedGenRef, cacheSnapshotRef, gen, cachedMessages)
-      const newMaxId = Math.max(...cachedMessages.map(m => m.id))
+      // reduce, not Math.max(...spread): a very long thread can exceed the JS argument-count
+      // limit and throw RangeError (→ white-screen).
+      const newMaxId = cachedMessages.reduce((mx, m) => (m.id > mx ? m.id : mx), 0)
       if (newMaxId > 0) lastMessageIdRef.current = newMaxId
     } else {
       cachePaintedGenRef.current = null
@@ -696,7 +713,7 @@ export default function GroupChatThread() {
           })
         }
 
-        const newMaxId = newServerMessages.length > 0 ? Math.max(...newServerMessages.map(m => m.id)) : 0
+        const newMaxId = newServerMessages.reduce((mx, m) => (m.id > mx ? m.id : mx), 0)
         if (newMaxId > 0 && gen === threadGenerationRef.current) {
           lastMessageIdRef.current = Math.max(lastMessageIdRef.current, newMaxId)
         }

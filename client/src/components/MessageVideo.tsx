@@ -94,7 +94,11 @@ export default function MessageVideo({ src, className = '' }: MessageVideoProps)
         className={`block w-full max-h-64 object-contain ${hasError ? 'opacity-0' : ''}`}
         controls={!showOverlay}
         playsInline
-        preload="auto"
+        // metadata (not auto): a thread can hold several videos at once; preload="auto"
+        // eagerly downloads every one on open, contending for bandwidth/decoder and memory
+        // with first paint + scroll. metadata is enough to render the first-frame thumbnail
+        // (loadedmetadata → seek to 0.001); full data loads only once the user taps play.
+        preload="metadata"
         muted={showOverlay}
         src={videoSrc}
       />

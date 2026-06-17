@@ -119,14 +119,25 @@ const queryClient = new QueryClient({
   },
 })
 
+// Chat-scoped error boundary: a render throw on a single malformed message is contained to the
+// thread (recoverable in place) instead of bubbling to the app-level boundary and white-screening
+// everything. Keyed by route param so navigating to another thread resets a caught error.
 function ChatThreadRoute() {
   const { username } = useParams()
-  return <ChatThread key={username} />
+  return (
+    <ErrorBoundary key={username}>
+      <ChatThread key={username} />
+    </ErrorBoundary>
+  )
 }
 
 function GroupChatThreadRoute() {
   const { group_id } = useParams()
-  return <GroupChatThread key={group_id} />
+  return (
+    <ErrorBoundary key={group_id}>
+      <GroupChatThread key={group_id} />
+    </ErrorBoundary>
+  )
 }
 
 function AppRoutes(){

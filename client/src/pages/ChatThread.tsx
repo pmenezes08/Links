@@ -301,6 +301,17 @@ export default function ChatThread(){
   const [videoUploadProgress, setVideoUploadProgress] = useState<UploadProgress | null>(null)
   const [cancelActiveUpload, setCancelActiveUpload] = useState<(() => void) | null>(null)
   const [pendingMedia, setPendingMedia] = useState<Array<{ file: File; previewUrl: string; type: 'image' | 'video' | 'audio' }>>([])
+  // Revoke un-sent media preview object URLs when the thread unmounts (leaving chat OR switching
+  // thread — the route wrapper keys ChatThread by username, so a switch remounts). Without this,
+  // picking photos then navigating away leaks blob URLs for the WebView's lifetime; accumulated
+  // across a session that memory pressure can trip the iOS watchdog (felt as an app crash).
+  const pendingMediaRef = useRef(pendingMedia)
+  pendingMediaRef.current = pendingMedia
+  useEffect(() => () => {
+    pendingMediaRef.current.forEach(item => {
+      if (item.previewUrl.startsWith('blob:')) { try { URL.revokeObjectURL(item.previewUrl) } catch {} }
+    })
+  }, [])
   const [mediaQuality, setMediaQuality] = useState<MediaQuality>(() => getStoredMediaQuality())
   const [previewIndex, setPreviewIndex] = useState(0)
   const [mediaLoading, setMediaLoading] = useState(false)
@@ -591,8 +602,11 @@ export default function ChatThread(){
     const storedReactions = username ? getAllMessageReactions(username) : {}
     
     return decryptedMessages.map((m: any) => {
-      // Parse reply information from message text
-      let messageText = m.text
+      // Parse reply information from message text. Coerce to string first: a cached / polled /
+      // bridge message can arrive with a null or non-string `text` (e.g. media-only rows), and
+      // calling `.match()` on it throws, which — with only the app-level boundary — white-screens
+      // the whole app. The poll-merge path already guards; keep this path consistent.
+      let messageText = typeof m.text === 'string' ? m.text : (m.text == null ? '' : String(m.text))
       let replySnippet: string | undefined
       let storyReply: { id: string; mediaType: string; mediaPath: string } | undefined
       
@@ -664,7 +678,9 @@ export default function ChatThread(){
       .map(m => (typeof m.id === 'number' ? m.id : parseInt(String(m.id), 10)))
       .filter(n => !Number.isNaN(n))
     if (numericIds.length) {
-      lastKnownMessageIdRef.current = Math.max(...numericIds)
+      // reduce, not Math.max(...spread): a very long thread can exceed the JS argument-count
+      // limit and throw RangeError (→ white-screen).
+      lastKnownMessageIdRef.current = numericIds.reduce((mx, n) => (n > mx ? n : mx), 0)
     }
     notifyMessagesSettledRef.current(gen)
   }, [username, processRawMessages, mergeHydratedMessages])

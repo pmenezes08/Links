@@ -92,7 +92,16 @@ export async function pickFromLibraryNative(limit = 10, onReadStart?: () => void
     const { photos } = await Camera.pickImages({ quality: 90, limit })
     if (!photos?.length) return null
     onReadStart?.()
-    return await Promise.all(photos.map((p, i) => pickedItemToFile(p, `library_${Date.now()}_${i}`)))
+    // Read photos off the native bridge SEQUENTIALLY, not via Promise.all: each read
+    // pulls a full-resolution base64 string + allocates a Uint8Array/Blob, and decoding
+    // up to `limit` (10) of them concurrently is a large synchronous memory spike that can
+    // trip the iOS WKWebView memory watchdog (presents to the user as an app crash).
+    // Sequential reads cap peak memory at roughly one photo at a time.
+    const files: File[] = []
+    for (let i = 0; i < photos.length; i++) {
+      files.push(await pickedItemToFile(photos[i], `library_${Date.now()}_${i}`))
+    }
+    return files
   } catch (e) {
     if (isUserCancelled(e)) return null
     throw e
