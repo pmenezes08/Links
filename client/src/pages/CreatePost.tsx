@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next'
 import { detectLinks, replaceLinkInText, type DetectedLink } from '../utils/linkUtils.tsx'
 import { maybeRequestReview } from '../utils/inAppReview'
 import { isNativeMediaPlatform, pickFromLibraryNative } from '../utils/nativeMediaPicker'
+import { nativeToast } from '../utils/nativeUi'
 import { extractUrls, stripExtractedUrlsFromText } from '../components/LinkPreview'
 import GifPicker from '../components/GifPicker'
 import { NativeActionButton } from '../components/NativeActionButton'
@@ -840,7 +841,7 @@ export default function CreatePost(){
                   setTimeout(() => setMediaLimitMsg(''), 3000)
                   return
                 }
-                const picked = await pickFromLibraryNative(remaining)
+                const picked = await pickFromLibraryNative(remaining, () => void nativeToast(t('chat.preparing_media'), 'short'))
                 if (!picked || !picked.length) return
                 setMediaFiles(prev => [...prev, ...picked].slice(0, MAX_MEDIA))
                 setSelectedGif(null)

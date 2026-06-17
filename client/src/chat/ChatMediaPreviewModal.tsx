@@ -18,6 +18,8 @@ export type ChatMediaPreviewModalProps = {
   onSend: () => void
   quality?: MediaQuality
   onQualityChange?: (quality: MediaQuality) => void
+  /** True while picked files are still being read off the native bridge (no items yet). */
+  loading?: boolean
 }
 
 export function ChatMediaPreviewModal({
@@ -29,9 +31,22 @@ export function ChatMediaPreviewModal({
   onSend,
   quality = 'standard',
   onQualityChange,
+  loading = false,
 }: ChatMediaPreviewModalProps) {
   const { t } = useTranslation()
-  if (items.length === 0 || typeof document === 'undefined') return null
+  if ((items.length === 0 && !loading) || typeof document === 'undefined') return null
+
+  // Reading picked photos off the native bridge takes a moment; show a spinner so the
+  // composer doesn't look frozen after the picker closes (looked like "send failed").
+  if (items.length === 0) {
+    return createPortal(
+      <div className="theme-always-dark fixed inset-0 bg-black z-[10050] flex flex-col items-center justify-center gap-4">
+        <i className="fa-solid fa-spinner fa-spin text-3xl text-cpoint-turquoise" />
+        <div className="text-sm font-medium text-white/80">{t('chat.preparing_media')}</div>
+      </div>,
+      document.body,
+    )
+  }
 
   const current = items[previewIndex]
   const hasVideo = items.some(item => item.type === 'video')

@@ -1529,6 +1529,7 @@
     "upload_failed": "Not sent — tap to retry",
     "upload_cancelled": "Cancelled",
     "media_preview_title": "Preview",
+    "preparing_media": "Preparing media…",
     "media_preview_count": "{{current}} of {{total}}",
     "media_quality_standard": "Standard",
     "media_quality_hd": "HD",

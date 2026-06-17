@@ -1529,6 +1529,7 @@
     "upload_failed": "Não enviado — toca para repetir",
     "upload_cancelled": "Cancelado",
     "media_preview_title": "Pré-visualização",
+    "preparing_media": "A preparar multimédia…",
     "media_preview_count": "{{current}} de {{total}}",
     "media_quality_standard": "Standard",
     "media_quality_hd": "HD",

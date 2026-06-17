@@ -250,6 +250,7 @@ export default function GroupChatThread() {
   const [pendingMedia, setPendingMedia] = useState<Array<{ file: File; previewUrl: string; type: 'image' | 'video' | 'audio' }>>([])
   const [mediaQuality, setMediaQuality] = useState<MediaQuality>(() => getStoredMediaQuality())
   const [previewIndex, setPreviewIndex] = useState(0)
+  const [mediaLoading, setMediaLoading] = useState(false)
   const shareAttachDoneRef = useRef(false)
 
   useEffect(() => {
@@ -1198,8 +1199,12 @@ export default function GroupChatThread() {
   const handlePhotoSelect = async () => {
     setShowAttachMenu(false)
     if (isNativeMediaPlatform()) {
-      const files = await pickFromLibraryNative()
-      if (files && files.length) appendPendingMediaFiles(files) // null = user cancelled → do nothing
+      try {
+        const files = await pickFromLibraryNative(10, () => setMediaLoading(true))
+        if (files && files.length) appendPendingMediaFiles(files) // null = user cancelled → do nothing
+      } finally {
+        setMediaLoading(false)
+      }
       return
     }
     fileInputRef.current?.click()
@@ -1208,8 +1213,12 @@ export default function GroupChatThread() {
   const handleCameraOpen = async () => {
     setShowAttachMenu(false)
     if (isNativeMediaPlatform()) {
-      const files = await capturePhotoNative()
-      if (files && files.length) appendPendingMediaFiles(files)
+      try {
+        const files = await capturePhotoNative(() => setMediaLoading(true))
+        if (files && files.length) appendPendingMediaFiles(files)
+      } finally {
+        setMediaLoading(false)
+      }
       return
     }
     cameraInputRef.current?.click()
@@ -3612,6 +3621,7 @@ export default function GroupChatThread() {
 
       <ChatMediaPreviewModal
         items={pendingMedia}
+        loading={mediaLoading}
         previewIndex={previewIndex}
         onPreviewIndexChange={setPreviewIndex}
         onCancel={cancelMediaPreview}

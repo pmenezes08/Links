@@ -303,6 +303,7 @@ export default function ChatThread(){
   const [pendingMedia, setPendingMedia] = useState<Array<{ file: File; previewUrl: string; type: 'image' | 'video' | 'audio' }>>([])
   const [mediaQuality, setMediaQuality] = useState<MediaQuality>(() => getStoredMediaQuality())
   const [previewIndex, setPreviewIndex] = useState(0)
+  const [mediaLoading, setMediaLoading] = useState(false)
   const [viewingMedia, setViewingMedia] = useState<{ urls: string[]; index: number } | null>(null)
   const pendingDeletions = useRef<Set<number|string>>(new Set())
   const headerMenuRef = useRef<HTMLDivElement | null>(null)
@@ -1504,8 +1505,12 @@ export default function ChatThread(){
   async function handlePhotoSelect() {
     setShowAttachMenu(false)
     if (isNativeMediaPlatform()) {
-      const files = await pickFromLibraryNative()
-      if (files && files.length) appendPendingMediaFiles(files) // null = user cancelled → do nothing
+      try {
+        const files = await pickFromLibraryNative(10, () => setMediaLoading(true))
+        if (files && files.length) appendPendingMediaFiles(files) // null = user cancelled → do nothing
+      } finally {
+        setMediaLoading(false)
+      }
       return
     }
     fileInputRef.current?.click()
@@ -1514,8 +1519,12 @@ export default function ChatThread(){
   async function handleCameraOpen() {
     setShowAttachMenu(false)
     if (isNativeMediaPlatform()) {
-      const files = await capturePhotoNative()
-      if (files && files.length) appendPendingMediaFiles(files)
+      try {
+        const files = await capturePhotoNative(() => setMediaLoading(true))
+        if (files && files.length) appendPendingMediaFiles(files)
+      } finally {
+        setMediaLoading(false)
+      }
       return
     }
     cameraInputRef.current?.click()
@@ -3920,6 +3929,7 @@ export default function ChatThread(){
 
       <ChatMediaPreviewModal
         items={pendingMedia}
+        loading={mediaLoading}
         previewIndex={previewIndex}
         onPreviewIndexChange={setPreviewIndex}
         onCancel={cancelMediaPreview}

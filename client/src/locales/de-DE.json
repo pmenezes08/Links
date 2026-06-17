@@ -1529,6 +1529,7 @@
     "upload_failed": "Nicht gesendet — antippen zum Wiederholen",
     "upload_cancelled": "Abgebrochen",
     "media_preview_title": "Vorschau",
+    "preparing_media": "Medien werden vorbereitet…",
     "media_preview_count": "{{current}} von {{total}}",
     "media_quality_standard": "Standard",
     "media_quality_hd": "HD",

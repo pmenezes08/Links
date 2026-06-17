@@ -61,8 +61,12 @@ function isUserCancelled(e: unknown): boolean {
   return m.includes('cancel') || m.includes('denied') || m.includes('no image')
 }
 
+// `onReadStart` fires once the picker has closed and we begin reading files off the bridge
+// (which can take a few seconds for several photos) — callers use it to show a "preparing"
+// spinner without flashing it behind the still-open picker.
+
 /** Single shot from the CAMERA → [File], or null (not native / user cancelled). */
-export async function capturePhotoNative(): Promise<File[] | null> {
+export async function capturePhotoNative(onReadStart?: () => void): Promise<File[] | null> {
   if (!isNativeMediaPlatform()) return null
   try {
     const photo = await Camera.getPhoto({
@@ -73,6 +77,7 @@ export async function capturePhotoNative(): Promise<File[] | null> {
       saveToGallery: false,
     })
     if (!photo.path && !photo.webPath) return null
+    onReadStart?.()
     return [await pickedItemToFile(photo, `camera_${Date.now()}`)]
   } catch (e) {
     if (isUserCancelled(e)) return null
@@ -81,11 +86,12 @@ export async function capturePhotoNative(): Promise<File[] | null> {
 }
 
 /** Multi-select from the photo LIBRARY → File[] (images only; videos stay on web input). */
-export async function pickFromLibraryNative(limit = 10): Promise<File[] | null> {
+export async function pickFromLibraryNative(limit = 10, onReadStart?: () => void): Promise<File[] | null> {
   if (!isNativeMediaPlatform()) return null
   try {
     const { photos } = await Camera.pickImages({ quality: 90, limit })
     if (!photos?.length) return null
+    onReadStart?.()
     return await Promise.all(photos.map((p, i) => pickedItemToFile(p, `library_${Date.now()}_${i}`)))
   } catch (e) {
     if (isUserCancelled(e)) return null
