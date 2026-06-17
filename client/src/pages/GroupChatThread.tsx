@@ -9,7 +9,7 @@ import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { GroupMessageRow } from '../chat/GroupMessageRow'
-import { getDateKey, normalizeMediaPath, useChatThreadChrome, chatHapticSend, ChatAttachMenuRow, useGroupMessagePoll, ChatMediaPreviewModal, ChatMediaViewerModal, ChatSelectionBar, NewMessagesChip, useResumeOutboxDrain, ChatComposerPortal, ChatComposerCard, ChatVirtualMessageList, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION, readStaleDeviceCache, markThreadCachePainted, isCachePaintedForGen, isUnchangedFromCacheSnapshot, hydrateThreadFromIndexedDb, stripReplyMarker } from '../chat'
+import { getDateKey, normalizeMediaPath, useChatThreadChrome, chatHapticSend, chatHapticTap, ChatAttachMenuRow, useGroupMessagePoll, ChatMediaPreviewModal, ChatMediaViewerModal, ChatSelectionBar, NewMessagesChip, useResumeOutboxDrain, ChatComposerPortal, ChatComposerCard, ChatVirtualMessageList, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION, readStaleDeviceCache, markThreadCachePainted, isCachePaintedForGen, isUnchangedFromCacheSnapshot, hydrateThreadFromIndexedDb, stripReplyMarker } from '../chat'
 import { groupChatInfoDeviceCacheKey, groupChatMessagesDeviceCacheKey } from '../utils/chatThreadsCache'
 import { useAndroidBackButton } from '../hooks/useAndroidBackButton'
 import { getStoredMediaQuality, setStoredMediaQuality, type MediaQuality } from '../chat/upload'
@@ -2594,12 +2594,13 @@ export default function GroupChatThread() {
       {showScrollDown && !selectionMode && !viewingHistory && (
         <button
           type="button"
-          className="fixed z-50 w-10 h-10 rounded-full bg-cpoint-turquoise text-black shadow-lg border border-cpoint-turquoise hover:brightness-110 flex items-center justify-center"
+          className="fixed z-50 w-10 h-10 rounded-full bg-cpoint-turquoise text-black shadow-lg border border-cpoint-turquoise hover:brightness-110 flex items-center justify-center transition active:scale-90"
           style={{
             bottom: scrollButtonBottom,
             right: '22px',
           }}
           onClick={() => {
+            chatHapticTap()
             scrollToBottomSmooth()
           }}
           aria-label={t('chat.scroll_latest')}

@@ -69,6 +69,7 @@ import {
   SwipeToReply,
   useResumeOutboxDrain,
   chatHapticSend,
+  chatHapticTap,
   ChatAttachMenuRow,
   useDmMessagePoll,
   ChatMediaPreviewModal,
@@ -2823,12 +2824,12 @@ export default function ChatThread(){
     )}
     {showScrollDown && !isMultiSelectMode && !viewingHistory && (
       <button
-        className="fixed z-50 w-10 h-10 rounded-full bg-cpoint-turquoise text-black shadow-lg border border-cpoint-turquoise hover:brightness-110 flex items-center justify-center"
-        style={{ 
+        className="fixed z-50 w-10 h-10 rounded-full bg-cpoint-turquoise text-black shadow-lg border border-cpoint-turquoise hover:brightness-110 flex items-center justify-center transition active:scale-90"
+        style={{
           bottom: scrollButtonBottom,
           right: '22px'
         }}
-        onClick={() => { scrollToBottomSmooth() }}
+        onClick={() => { chatHapticTap(); scrollToBottomSmooth() }}
         aria-label={t('chat.scroll_latest')}
       >
         <i className="fa-solid fa-arrow-down" />

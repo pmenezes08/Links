@@ -1,7 +1,10 @@
 import { useCallback, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { chatHapticReply } from './chatHaptics'
 
 const SWIPE_THRESHOLD_PX = 56
 const MAX_DRAG_PX = 72
+// iOS-style spring snap-back when the finger lifts (matches CPOINT_EASE_OUT in motion.ts).
+const SNAP_BACK_TRANSITION = 'transform 200ms cubic-bezier(0.32, 0.72, 0, 1)'
 
 export type SwipeToReplyProps = {
   children: ReactNode
@@ -16,14 +19,18 @@ export type SwipeToReplyProps = {
 export function SwipeToReply({ children, onReply, disabled = false, className = '' }: SwipeToReplyProps) {
   const startRef = useRef<{ x: number; y: number; pointerId: number; active: boolean } | null>(null)
   const dragRef = useRef(0)
+  const crossedRef = useRef(false)
   const nodeRef = useRef<HTMLDivElement>(null)
 
-  const resetTransform = useCallback(() => {
+  const resetTransform = useCallback((smooth = false) => {
     dragRef.current = 0
+    crossedRef.current = false
     const node = nodeRef.current
     if (node) {
-      node.style.transform = ''
-      node.style.transition = ''
+      // smooth = finger lifted → glide back with a spring; otherwise (gesture abandoned
+      // mid-move) snap instantly so it doesn't fight the vertical scroll.
+      node.style.transition = smooth ? SNAP_BACK_TRANSITION : 'none'
+      node.style.transform = smooth ? 'translateX(0px)' : ''
     }
   }, [])
 
@@ -61,6 +68,15 @@ export function SwipeToReply({ children, onReply, disabled = false, className = 
       node.style.transition = 'none'
       node.style.transform = `translateX(${drag}px)`
     }
+    // Fire a single selection tick the moment the drag crosses the reply threshold (and re-arm
+    // if the user pulls back under it), so the gesture confirms tactilely like WhatsApp/iMessage.
+    const crossed = drag >= SWIPE_THRESHOLD_PX
+    if (crossed && !crossedRef.current) {
+      crossedRef.current = true
+      chatHapticReply()
+    } else if (!crossed && crossedRef.current) {
+      crossedRef.current = false
+    }
   }, [resetTransform])
 
   const handlePointerUp = useCallback(
@@ -69,7 +85,7 @@ export function SwipeToReply({ children, onReply, disabled = false, className = 
       if (!start || start.pointerId !== event.pointerId) return
       startRef.current = null
       const triggered = dragRef.current >= SWIPE_THRESHOLD_PX
-      resetTransform()
+      resetTransform(true)
       if (triggered) onReply()
     },
     [onReply, resetTransform],
