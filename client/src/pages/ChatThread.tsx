@@ -893,7 +893,13 @@ export default function ChatThread(){
     const gen = threadGenerationRef.current
     const hasPaintedFromCache = isCachePaintedForGen(cachePaintedGenRef, gen)
     if (!hasPaintedFromCache) setLoading(true)
-    
+    // Abort the open fetches if the thread is left/switched before they land. The route wrapper
+    // keys ChatThread by username, so switching threads unmounts this and runs the cleanup —
+    // freeing the socket instead of leaving a stale full-thread fetch queued behind the new
+    // thread's open (iOS allows few parallel connections). Generation guards already drop stale
+    // responses; this just stops the wasted in-flight request sooner.
+    const ac = new AbortController()
+
     // Helper to fetch messages and profile once we have user ID
     const fetchMessagesAndProfile = (userId: number) => {
       const gen = threadGenerationRef.current
@@ -901,11 +907,12 @@ export default function ChatThread(){
       resolvedPeerRef.current = { username: fetchUsername, userId }
       // Load fresh messages
       const fd = new URLSearchParams({ other_user_id: String(userId) })
-      fetch('/get_messages', { 
-        method:'POST', 
-        credentials:'include', 
-        headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
-        body: fd 
+      fetch('/get_messages', {
+        method:'POST',
+        credentials:'include',
+        headers:{ 'Content-Type':'application/x-www-form-urlencoded' },
+        body: fd,
+        signal: ac.signal,
       })
       .then(r=>r.json())
       .then((msgResponse) => {
@@ -972,10 +979,10 @@ export default function ChatThread(){
           }
         }
         setLoading(false)
-      }).catch(() => { setLoading(false) })
-      
+      }).catch((e) => { if ((e as any)?.name !== 'AbortError') setLoading(false) })
+
       // Load user profile (in parallel)
-      fetch(`/api/get_user_profile_brief?username=${encodeURIComponent(fetchUsername)}`, { credentials:'include', headers: { 'Accept': 'application/json' } })
+      fetch(`/api/get_user_profile_brief?username=${encodeURIComponent(fetchUsername)}`, { credentials:'include', headers: { 'Accept': 'application/json' }, signal: ac.signal })
         .then(r => r.json())
         .then(profileResponse => {
           if (gen !== threadGenerationRef.current) return
@@ -1002,11 +1009,12 @@ export default function ChatThread(){
       fetchMessagesAndProfile(cached.otherUserId)
     } else {
       // No cache - need to look up user ID first
-      fetch('/api/get_user_id_by_username', { 
-        method:'POST', 
-        credentials:'include', 
-        headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
-        body: new URLSearchParams({ username }) 
+      fetch('/api/get_user_id_by_username', {
+        method:'POST',
+        credentials:'include',
+        headers:{ 'Content-Type':'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ username }),
+        signal: ac.signal,
       })
       .then(r=>r.json())
       .then(j=>{
@@ -1018,8 +1026,10 @@ export default function ChatThread(){
         } else {
           setLoading(false)
         }
-      }).catch(() => { setLoading(false) })
+      }).catch((e) => { if ((e as any)?.name !== 'AbortError') setLoading(false) })
     }
+
+    return () => { ac.abort() }
   }, [username, chatCacheKey, profileCacheKey, processRawMessages, viewer, dmOfflineKey, refreshBadges])
 
   // Hydrate pending/failed outbox entries so they survive app restarts

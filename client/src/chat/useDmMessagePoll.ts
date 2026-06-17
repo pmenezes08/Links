@@ -142,30 +142,26 @@ export function useDmMessagePoll<T extends object>({
           nextPollAtRef.current = Date.now() + nextPollBackoffMs(pollErrorCountRef.current)
         }
 
-        if (pollCountRef.current % 5 === 0) {
-          try {
-            const t = await fetch(`/api/typing?peer=${encodeURIComponent(username!)}`, {
-              credentials: 'include',
-              headers: { Accept: 'application/json' },
-            })
-            const tj = await t.json().catch(() => null)
-            setTyping(!!tj?.is_typing)
-          } catch {
-            /* ignore */
-          }
+        // Presence/typing are auxiliary — fire-and-forget (no await) so a slow typing/active_chat
+        // request on a weak network never holds pollInFlight and delays the next message poll.
+        // (The group poll hook already drives presence off its critical path the same way.)
+        if (pollTick % 5 === 0 && username) {
+          fetch(`/api/typing?peer=${encodeURIComponent(username)}`, {
+            credentials: 'include',
+            headers: { Accept: 'application/json' },
+          })
+            .then(t => t.json())
+            .then(tj => { if (gen === threadGenerationRef.current) setTyping(!!tj?.is_typing) })
+            .catch(() => { /* ignore */ })
         }
 
-        if (pollCountRef.current % 4 === 0) {
-          try {
-            await fetch('/api/active_chat', {
-              method: 'POST',
-              credentials: 'include',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ peer: username }),
-            })
-          } catch {
-            /* ignore */
-          }
+        if (pollTick % 4 === 0 && username) {
+          fetch('/api/active_chat', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ peer: username }),
+          }).catch(() => { /* ignore */ })
         }
       } finally {
         pollInFlight.current = false
