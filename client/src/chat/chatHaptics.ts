@@ -24,13 +24,3 @@ export function chatHapticMenuOpen() {
 export function chatHapticReaction() {
   void triggerHaptic('light')
 }
-
-/** Swipe-to-reply drag crossed the trigger threshold (fires once per crossing). */
-export function chatHapticReply() {
-  void triggerHaptic('selection')
-}
-
-/** Light tick for navigation/affordance taps (back, scroll-to-bottom, new-messages chip). */
-export function chatHapticTap() {
-  void triggerHaptic('light')
-}

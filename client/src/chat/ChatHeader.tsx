@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import Avatar from '../components/Avatar'
-import { chatHapticTap } from './chatHaptics'
 
 interface ChatHeaderProps {
   username?: string
@@ -64,9 +63,9 @@ export default function ChatHeader({
         }}
       >
         <div className="h-12 flex items-center gap-2 px-3">
-          <button
-            className="p-2 rounded-full hover:bg-c-hover-bg transition active:scale-90"
-            onClick={() => { chatHapticTap(); navigate('/user_chat') }}
+          <button 
+            className="p-2 rounded-full hover:bg-c-hover-bg transition-colors" 
+            onClick={() => navigate('/user_chat')} 
             aria-label={t('chat.back_to_messages')}
           >
             <i className="fa-solid fa-arrow-left text-c-text-primary" />

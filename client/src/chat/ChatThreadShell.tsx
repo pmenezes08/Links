@@ -88,10 +88,7 @@ export function ChatThreadShell({
             className={composedListClassName}
             style={{
               WebkitOverflowScrolling: 'touch',
-              // contain (not auto): keep the inverted list's rubber-band self-contained so
-              // overscroll at the top (oldest) / bottom (newest) doesn't chain into the page
-              // scroll or the native WebView bounce — reads as a leaky web page otherwise.
-              overscrollBehaviorY: 'contain',
+              overscrollBehaviorY: 'auto',
               paddingBottom: listPaddingBottom,
               scrollPaddingBottom: listScrollPaddingBottom,
               minHeight: 0,
