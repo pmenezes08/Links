@@ -42,10 +42,16 @@ _SYSTEM_PROMPT = (
     "Everything must be inline in a single `<!doctype html>` file: inline `<style>` and inline `<script>`. "
     "It MUST be front-end only: no backend, no database, no fetch/XHR/websocket calls, and no external "
     "resources EXCEPT scripts or styles loaded from cdnjs.cloudflare.com, cdn.jsdelivr.net, unpkg.com, or "
-    "fonts.googleapis.com. It must run fully offline inside a sandboxed iframe that has no access to cookies "
-    "or app storage. Make it mobile-friendly (responsive layout, on-screen touch controls if it is a game) "
-    "with a dark background and clean, modern visuals. No analytics, ads, tracking, or login. "
-    "Keep the whole document well under 400KB."
+    "fonts.googleapis.com. It must run fully offline inside a sandboxed iframe with no access to cookies or storage. "
+    "MOBILE-FIRST AND TOUCH-ONLY — this is critical, it runs in a small embedded frame on a phone with NO physical keyboard: "
+    "1) Include <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\"> in <head>. "
+    "2) The layout MUST be fully responsive and fit a ~390px-wide phone screen with NO horizontal scrolling and, where possible, "
+    "no vertical scrolling — use relative units (%, vw, vh, flexbox, clamp()); never hard-code widths wider than the screen; "
+    "scale game boards/canvases to the available width. "
+    "3) Every interaction must work by TOUCH: provide clearly visible on-screen buttons for ALL controls. Do NOT rely on arrow "
+    "keys, Enter, Space, or any physical key. "
+    "4) Anything that needs starting MUST start on a tap/touch (an on-screen Start/Play button or auto-start) — never 'press a key to start'. "
+    "Use a dark background and clean, modern visuals. No analytics, ads, tracking, or login. Keep the whole document well under 400KB."
 )
 
 _CREATION_COLS = [

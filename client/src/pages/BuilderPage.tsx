@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useBuilder } from '../hooks/useBuilder'
 import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
 import PlayableCreation from '../components/builder/PlayableCreation'
+import { prepareCreationHtml } from '../utils/creationHtml'
 
 const SUGGESTIONS = [
   'A block-stacking game for the group',
@@ -91,7 +92,7 @@ export default function BuilderPage() {
 
       <div style={{ flex: '0 0 auto', height: '44%', position: 'relative', background: '#0b0b0b', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         {creation ? (
-          <iframe key={`${creation.id}-${rev}`} title="Preview" sandbox="allow-scripts" srcDoc={creation.html}
+          <iframe key={`${creation.id}-${rev}`} title="Preview" sandbox="allow-scripts" srcDoc={prepareCreationHtml(creation.html)}
             style={{ width: '100%', height: '100%', border: 0, display: 'block' }} />
         ) : (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', color: '#8a8a8a', fontSize: 14 }}>

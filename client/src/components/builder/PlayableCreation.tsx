@@ -1,33 +1,13 @@
 import { useMemo, useRef, useState } from 'react'
+import { prepareCreationHtml } from '../../utils/creationHtml'
 
 /**
  * Full-screen play surface for a front-end creation. Renders the artifact in a
- * sandboxed iframe (opaque origin — no app-session access) and injects a tiny
- * bridge so the host's on-screen touch controls can drive keyboard-controlled
- * games: the host posts {__cpctl, key, down} and the bridge dispatches a
- * synthetic KeyboardEvent inside the iframe. Mobile has no arrow keys, so this
- * is how a built game becomes playable on a phone.
+ * sandboxed iframe (opaque origin — no app-session access). The host can drive
+ * keyboard-controlled games via an optional on-screen D-pad (toggle), which
+ * posts synthetic key events through the injected control bridge. Well-formed
+ * artifacts ship their own touch controls, so the D-pad defaults to hidden.
  */
-
-const CONTROL_BRIDGE = `<script>(function(){
-  function fire(type,key){
-    try{
-      var e=new KeyboardEvent(type,{key:key,code:key,bubbles:true,cancelable:true});
-      var t=document.activeElement||document.body||document.documentElement;
-      t.dispatchEvent(e);document.dispatchEvent(e);window.dispatchEvent(e);
-    }catch(_){}
-  }
-  window.addEventListener('message',function(ev){
-    var d=ev&&ev.data||{};
-    if(d&&d.__cpctl&&d.key){fire(d.down?'keydown':'keyup',d.key);}
-  });
-})();<\/script>`
-
-function withBridge(html: string): string {
-  if (!html) return html
-  if (html.includes('</body>')) return html.replace('</body>', CONTROL_BRIDGE + '</body>')
-  return html + CONTROL_BRIDGE
-}
 
 type Props = { html: string; title?: string; onClose: () => void }
 
@@ -40,9 +20,8 @@ const ARROWS: Array<{ key: string; icon: string; gridArea: string; label: string
 
 export default function PlayableCreation({ html, title, onClose }: Props) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
-  const [started, setStarted] = useState(false)
-  const [showPad, setShowPad] = useState(true)
-  const srcDoc = useMemo(() => withBridge(html), [html])
+  const [showPad, setShowPad] = useState(false)
+  const srcDoc = useMemo(() => prepareCreationHtml(html, { controlBridge: true }), [html])
 
   const sendKey = (key: string, down: boolean) => {
     try { iframeRef.current?.contentWindow?.postMessage({ __cpctl: true, key, down }, '*') } catch { /* noop */ }
@@ -63,10 +42,11 @@ export default function PlayableCreation({ html, title, onClose }: Props) {
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 80, background: '#000',
+      display: 'flex', flexDirection: 'column',
       paddingTop: 'var(--sat-px, 0px)', paddingBottom: 'var(--sab-px, 0px)',
     }}>
       <iframe ref={iframeRef} title={title || 'Creation'} sandbox="allow-scripts" srcDoc={srcDoc}
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }} />
+        style={{ flex: '1 1 auto', width: '100%', minHeight: 0, border: 0, display: 'block' }} />
 
       <button onClick={onClose} aria-label="Close"
         style={{ position: 'absolute', top: 'calc(var(--sat-px, 0px) + 10px)', left: 10, zIndex: 3, width: 38, height: 38, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.18)', color: '#fff', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -78,18 +58,7 @@ export default function PlayableCreation({ html, title, onClose }: Props) {
         <i className="ti ti-device-gamepad-2" aria-hidden="true" />
       </button>
 
-      {!started && (
-        <button onClick={() => setStarted(true)}
-          style={{ position: 'absolute', inset: 0, zIndex: 2, background: 'rgba(0,0,0,0.55)', border: 'none', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-          <span style={{ width: 60, height: 60, borderRadius: '50%', background: '#00CEC8', color: '#00302e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>
-            <i className="ti ti-player-play" aria-hidden="true" />
-          </span>
-          <span style={{ fontSize: 15 }}>Tap to start</span>
-          {title ? <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>{title}</span> : null}
-        </button>
-      )}
-
-      {started && showPad && (
+      {showPad && (
         <div style={{ position: 'absolute', left: 0, right: 0, bottom: 'calc(var(--sab-px, 0px) + 14px)', zIndex: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', padding: '0 18px', pointerEvents: 'none' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 52px)', gridTemplateRows: 'repeat(2, 52px)', gap: 6, pointerEvents: 'auto' }}>
             {ARROWS.map((a) => (
@@ -99,7 +68,7 @@ export default function PlayableCreation({ html, title, onClose }: Props) {
             ))}
           </div>
           <div style={{ display: 'flex', gap: 10, pointerEvents: 'auto' }}>
-            <button aria-label="Rotate / action" style={{ ...padBtn, width: 60, height: 60, borderRadius: '50%' }} {...hold('ArrowUp')}>
+            <button aria-label="Rotate / up" style={{ ...padBtn, width: 60, height: 60, borderRadius: '50%' }} {...hold('ArrowUp')}>
               <i className="ti ti-rotate-clockwise" aria-hidden="true" />
             </button>
             <button aria-label="Action" style={{ ...padBtn, width: 60, height: 60, borderRadius: '50%', background: 'rgba(0,206,200,0.22)', borderColor: 'rgba(0,206,200,0.5)' }} {...hold(' ')}>
