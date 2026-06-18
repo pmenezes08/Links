@@ -53,7 +53,7 @@ export function useBuilder(communityId: string) {
       setRev((r) => r + 1)
       setMessages((m) => [
         ...m,
-        { role: 'steve', text: creation ? 'Updated — take a look.' : "Here's your creation. Tell me what to change." },
+        { role: 'steve', text: creation ? 'Done — take a look.' : 'Here you go! Want to change anything?' },
       ])
     } catch {
       setError('Network error. Please try again.')

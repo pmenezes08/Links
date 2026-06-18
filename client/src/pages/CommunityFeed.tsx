@@ -3992,7 +3992,7 @@ export default function CommunityFeed() {
             style={{ marginBottom: 'var(--app-feed-bottom-nav-height)' }}
           >
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg flex items-center justify-end gap-2" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/builder`) }}>
-              <span style={{ color: '#00CEC8' }}>Build with Steve</span>
+              <span style={{ color: '#00CEC8' }}>Make something fun</span>
             </button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/key_posts`) }}>
               {t('feed.key_posts')}
@@ -5171,6 +5171,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
                 </span>
                 <span className="text-sm text-c-text-secondary">Tap to play</span>
               </span>
+              <span className="absolute left-3 bottom-3 text-xs text-c-text-tertiary">{post.username} made this with Steve</span>
             </button>
           </div>
         ) : null}
