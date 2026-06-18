@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -26,7 +27,12 @@ from backend.services.content_generation import llm
 
 logger = logging.getLogger(__name__)
 
-MODEL_LABEL = llm.GROK_MODEL_FAST
+# Codegen quality depends heavily on the model. Default to a *reasoning* Grok
+# model (the fast non-reasoning content model produces poor code). Override
+# via STEVE_BUILDER_MODEL to A/B a different model without touching other
+# Steve surfaces.
+BUILDER_MODEL = os.getenv("STEVE_BUILDER_MODEL", "grok-4.20-reasoning")
+MODEL_LABEL = BUILDER_MODEL
 MAX_HTML_BYTES = 400_000  # reject pathologically large artifacts
 _CODEGEN_MAX_TOKENS = 8000
 
@@ -182,6 +188,7 @@ def generate_artifact(prompt: str, *, prior_html: Optional[str] = None) -> str:
             max_tokens=_CODEGEN_MAX_TOKENS,
             temperature=0.5,
             caps=None,
+            model=BUILDER_MODEL,
         )
     )
     if not html:

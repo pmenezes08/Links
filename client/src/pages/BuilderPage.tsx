@@ -9,15 +9,60 @@ const SUGGESTIONS = [
   'A countdown timer to our next event',
 ]
 
+function BuildingIndicator() {
+  const [secs, setSecs] = useState(0)
+  useEffect(() => {
+    const id = window.setInterval(() => setSecs((s) => s + 1), 1000)
+    return () => window.clearInterval(id)
+  }, [])
+  const label =
+    secs < 4 ? 'Steve is building' :
+    secs < 10 ? 'Still building' :
+    secs < 20 ? 'Putting it together' :
+    'Almost there'
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', gap: 14,
+      background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(1px)',
+    }}>
+      <div style={{
+        width: 34, height: 34, borderRadius: '50%',
+        border: '3px solid rgba(0,206,200,0.25)', borderTopColor: '#00CEC8',
+        animation: 'cp-spin 0.8s linear infinite',
+      }} />
+      <div style={{ fontSize: 14, color: '#e9e9e9' }}>
+        {label}<span className="cp-ellipsis" /> <span style={{ color: '#00CEC8' }}>{secs}s</span>
+      </div>
+    </div>
+  )
+}
+
 export default function BuilderPage() {
   const { community_id } = useParams()
   const navigate = useNavigate()
   const cid = String(community_id || '')
-  const { creation, messages, loading, error, limit, build, publish } = useBuilder(cid)
+  const { creation, messages, loading, error, limit, rev, build, publish } = useBuilder(cid)
   const [input, setInput] = useState('')
   const [publishing, setPublishing] = useState(false)
   const [publishedPostId, setPublishedPostId] = useState<number | null>(null)
+  const [kb, setKb] = useState(0)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+
+  // Keep the composer above the on-screen keyboard (visualViewport shrinks
+  // on iOS WKWebView and web when the keyboard opens).
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const update = () => setKb(Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)))
+    vv.addEventListener('resize', update)
+    vv.addEventListener('scroll', update)
+    update()
+    return () => {
+      vv.removeEventListener('resize', update)
+      vv.removeEventListener('scroll', update)
+    }
+  }, [])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -49,8 +94,15 @@ export default function BuilderPage() {
     <div style={{
       position: 'fixed', inset: 0, zIndex: 60, background: '#000', color: '#f1f1f1',
       display: 'flex', flexDirection: 'column',
-      paddingTop: 'var(--sat-px, 0px)', paddingBottom: 'var(--sab-px, 0px)',
+      paddingTop: 'var(--sat-px, 0px)',
+      paddingBottom: kb > 0 ? `${kb}px` : 'var(--sab-px, 0px)',
     }}>
+      <style>{`
+        @keyframes cp-spin { to { transform: rotate(360deg) } }
+        @keyframes cp-dots { 0%{content:''} 25%{content:'.'} 50%{content:'..'} 75%{content:'...'} }
+        .cp-ellipsis::after { content:''; animation: cp-dots 1.2s steps(1,end) infinite; }
+      `}</style>
+
       <div style={{ flex: '0 0 auto', height: 52, display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <button onClick={goBack} aria-label="Back" style={{ background: 'none', border: 'none', color: '#cfcfcf', fontSize: 22, lineHeight: 1, padding: 4, cursor: 'pointer' }}>‹</button>
         <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#00CEC8', color: '#00302e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 500 }}>S</div>
@@ -63,15 +115,16 @@ export default function BuilderPage() {
         )}
       </div>
 
-      <div style={{ flex: '0 0 auto', height: '46%', position: 'relative', background: '#0b0b0b', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <div style={{ flex: '0 0 auto', height: '44%', position: 'relative', background: '#0b0b0b', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         {creation ? (
-          <iframe title="Creation preview" sandbox="allow-scripts" srcDoc={creation.html}
+          <iframe key={`${creation.id}-${rev}`} title="Creation preview" sandbox="allow-scripts" srcDoc={creation.html}
             style={{ width: '100%', height: '100%', border: 0, display: 'block' }} />
         ) : (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', color: '#8a8a8a', fontSize: 14 }}>
             Describe something fun to build — it appears here, live.
           </div>
         )}
+        {loading && <BuildingIndicator />}
       </div>
 
       <div ref={scrollRef} style={{ flex: '1 1 auto', overflowY: 'auto', padding: 14 }}>
@@ -92,17 +145,20 @@ export default function BuilderPage() {
             }}>{m.text}</div>
           </div>
         ))}
-        {loading && <div style={{ color: '#8a8a8a', fontSize: 13, margin: '8px 0' }}>Steve is building…</div>}
-        {error && <div style={{ color: '#ff8a8a', fontSize: 13, margin: '8px 0' }}>{error}</div>}
-        {limit && <div style={{ color: '#ffcf8a', fontSize: 13, margin: '8px 0' }}>{limit.message}</div>}
       </div>
+
+      {(error || limit) && (
+        <div style={{ flex: '0 0 auto', padding: '8px 14px', fontSize: 13, color: limit ? '#ffcf8a' : '#ff9a9a', background: 'rgba(255,255,255,0.03)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          {limit ? limit.message : error}
+        </div>
+      )}
 
       <div style={{ flex: '0 0 auto', display: 'flex', gap: 8, padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,0.08)', background: '#000' }}>
         <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') send() }}
           placeholder={creation ? 'Tell Steve what to change…' : 'Describe what to build…'}
-          style={{ flex: 1, background: '#141414', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 999, padding: '11px 14px', color: '#f1f1f1', fontSize: 14, outline: 'none' }} />
+          style={{ flex: 1, background: '#141414', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 999, padding: '11px 14px', color: '#f1f1f1', fontSize: 16, outline: 'none' }} />
         <button onClick={send} disabled={loading || !input.trim()} aria-label="Send"
-          style={{ background: '#00CEC8', color: '#00302e', border: 'none', borderRadius: 999, width: 44, height: 44, fontSize: 18, fontWeight: 500, cursor: 'pointer', flex: '0 0 auto' }}>↑</button>
+          style={{ background: loading || !input.trim() ? '#0a4a47' : '#00CEC8', color: '#00302e', border: 'none', borderRadius: 999, width: 44, height: 44, fontSize: 18, fontWeight: 500, cursor: 'pointer', flex: '0 0 auto' }}>↑</button>
       </div>
     </div>
   )

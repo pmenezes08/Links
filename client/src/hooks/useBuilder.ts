@@ -17,6 +17,10 @@ export function useBuilder(communityId: string) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [limit, setLimit] = useState<BuilderLimit | null>(null)
+  // Bumped on every successful build/iterate so the preview iframe can be
+  // keyed off it — iOS WKWebView does not reliably reload on srcDoc change,
+  // so we remount the iframe each turn.
+  const [rev, setRev] = useState(0)
 
   const build = useCallback(async (prompt: string) => {
     const text = (prompt || '').trim()
@@ -46,6 +50,7 @@ export function useBuilder(communityId: string) {
         return
       }
       setCreation(data.creation)
+      setRev((r) => r + 1)
       setMessages((m) => [
         ...m,
         { role: 'steve', text: creation ? 'Updated — take a look.' : "Here's your creation. Tell me what to change." },
@@ -78,5 +83,5 @@ export function useBuilder(communityId: string) {
     }
   }, [creation])
 
-  return { creation, messages, loading, error, limit, build, publish }
+  return { creation, messages, loading, error, limit, rev, build, publish }
 }

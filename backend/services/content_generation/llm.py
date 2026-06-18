@@ -320,18 +320,20 @@ def generate_text(
     max_tokens: int = 4000,
     temperature: float = 0.6,
     caps: Optional[Dict[str, Any]] = None,
+    model: Optional[str] = None,
 ) -> str:
     """Plain-text completion from Grok (no JSON coercion).
 
     Used by the Steve Builder to generate a self-contained HTML artifact.
     Callers that need a large artifact pass ``caps=None`` so the small
     chat per-turn token ceilings don't truncate the output; cost is governed
-    by the builder's own monthly cap, not per-turn tokens.
+    by the builder's own monthly cap, not per-turn tokens. ``model`` lets a
+    caller pick a stronger (e.g. reasoning) model than the fast default.
     """
     client = _require_client()
     effective_max = _apply_output_cap(max_tokens, caps)
     completion = client.chat.completions.create(
-        model=GROK_MODEL_FAST,
+        model=model or GROK_MODEL_FAST,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
