@@ -383,3 +383,15 @@ Push tokens are stored in `fcm_tokens` (primary), `native_push_tokens` (direct A
 1. Merge to **staging** branch / workflow; run **`cloudbuild.yaml`** → **`cpoint-app-staging`**.
 2. Hit **staging** API and **admin-staging** against staging; remember **shared DB** risk (**OPERATIONS**).
 3. Promote to prod via **`cloudbuild-production.yaml`** → **`cpoint-app`** only after checks — **`AGENTS.md`** discourages prod-first deploys.
+
+## 14. Steve Builder (front-end creations) — Phase 1
+
+The Builder lets a member chat with Steve to generate a **front-end-only** web creation (a single self-contained HTML document — game, quiz, generator, or site), iterate on it, and publish it to the community feed. It is the entertainment-first entry point to "social building with AI"; AI app-builder framing is deliberately avoided (positioning + App Store Guideline 4.7 posture).
+
+1. **Entry** — community feed → *More → "Build with Steve"* → `/community/:id/builder` (`client/src/pages/BuilderPage.tsx`, `useBuilder` hook).
+2. **Build / iterate** — `POST /api/builder/create` then `POST /api/builder/<id>/iterate` (`backend/blueprints/builder.py` → `backend/services/builder.py`). Steve codegen runs through `content_generation/llm.generate_text` (never a raw Grok call). Iteration regenerates the full HTML from the prior document + the new instruction. Each turn is gated by `entitlements_gate.gate_builder_or_reason` (free/trial monthly quota from KB `builder_turns_per_month`, paid tiers uncapped) and logs one `ai_usage_log` row via `ai_usage.log_usage(surface="builder")` (blocks log via `log_block`). The Builder deliberately does **not** use the Steve credit-pool gate (`check_steve_access`).
+3. **Preview / play** — the HTML renders client-side in a sandboxed iframe (`srcDoc`, `sandbox="allow-scripts"` only → opaque origin, no access to app session cookies/storage). The staging-safe equivalent of the future dedicated `*.builds.c-point.co` origin.
+4. **Publish = post** — `POST /api/builder/<id>/publish` inserts a normal `posts` row carrying `creation_id`, marks the creation `published`, and invalidates the community feed cache. The React feed renders any post with `creation_id` as a tap-to-play card → `/community/:id/creation/:creation_id` (`CreationPlay.tsx`, served from `GET /api/builder/<id>`).
+5. **Privacy / access** — create reads and the play view authorize via `community_access.can_view_community_content`; iterate/publish require creation ownership.
+
+Phase-1 scope is front-end only (no user backends). Remix (copy a creation + `parent_creation_id`), the dedicated sandbox origin, and full `LimitReachedModal` wiring are follow-ups.

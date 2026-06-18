@@ -70,7 +70,7 @@ type PollOption = { id: number; text: string; votes: number; user_voted?: boolea
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null, audio_path?: string|null, parent_reply_id?: number | null, reply_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
-type Post = { id: number; username: string; content: string; link_urls?: string[] | string | null; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean, view_count?: number, has_viewed?: boolean, media_paths?: MediaItem[] | string | null, is_system_post?: boolean | number | null, welcome_card_key?: string | null }
+type Post = { id: number; username: string; content: string; link_urls?: string[] | string | null; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean, view_count?: number, has_viewed?: boolean, media_paths?: MediaItem[] | string | null, is_system_post?: boolean | number | null, welcome_card_key?: string | null, creation_id?: number | null }
 type ReactionGroup = { reaction_type: string; users: Array<{ username: string; profile_picture?: string | null }> }
 type PostViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
 type TextOverlay = {
@@ -3991,6 +3991,9 @@ export default function CommunityFeed() {
             }`}
             style={{ marginBottom: 'var(--app-feed-bottom-nav-height)' }}
           >
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg flex items-center justify-end gap-2" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/builder`) }}>
+              <span style={{ color: '#00CEC8' }}>Build with Steve</span>
+            </button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/key_posts`) }}>
               {t('feed.key_posts')}
             </button>
@@ -5148,6 +5151,27 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
               className="w-full max-h-[420px] rounded border border-c-border bg-c-bg-app"
               playsInline
             />
+          </div>
+        ) : null}
+        {post.creation_id ? (
+          <div className="px-3">
+            <button
+              onClick={(e) => { e.stopPropagation(); navigate(`/community/${communityId}/creation/${post.creation_id}`) }}
+              className="relative w-full overflow-hidden rounded-xl border border-c-border bg-c-bg-app"
+              style={{ height: 150 }}
+            >
+              <span className="absolute left-3 top-3 flex gap-1">
+                <span className="h-3 w-3 rounded-[3px]" style={{ background: '#00CEC8' }} />
+                <span className="h-3 w-3 rounded-[3px]" style={{ background: '#EF9F27' }} />
+                <span className="h-3 w-3 rounded-[3px]" style={{ background: '#7F77DD' }} />
+              </span>
+              <span className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-cpoint-turquoise text-black">
+                  <i className="fa-solid fa-play" />
+                </span>
+                <span className="text-sm text-c-text-secondary">Tap to play</span>
+              </span>
+            </button>
           </div>
         ) : null}
         {post.audio_path ? (

@@ -313,6 +313,37 @@ def generate_web_search_json(
         return {}
 
 
+def generate_text(
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    max_tokens: int = 4000,
+    temperature: float = 0.6,
+    caps: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Plain-text completion from Grok (no JSON coercion).
+
+    Used by the Steve Builder to generate a self-contained HTML artifact.
+    Callers that need a large artifact pass ``caps=None`` so the small
+    chat per-turn token ceilings don't truncate the output; cost is governed
+    by the builder's own monthly cap, not per-turn tokens.
+    """
+    client = _require_client()
+    effective_max = _apply_output_cap(max_tokens, caps)
+    completion = client.chat.completions.create(
+        model=GROK_MODEL_FAST,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=temperature,
+        max_tokens=effective_max,
+    )
+    if not completion.choices:
+        return ""
+    return completion.choices[0].message.content or ""
+
+
 def trim_messages(messages: List[Dict[str, Any]], caps: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Trim a conversation ``messages`` list to ``caps['max_context_messages']``.
 

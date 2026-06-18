@@ -64,6 +64,7 @@ SURFACE_CONTENT_GEN = "content_gen"
 SURFACE_WHISPER = "whisper"
 SURFACE_NETWORKING_STEVE = "networking_steve"
 SURFACE_ONBOARDING_AI = "onboarding_ai"
+SURFACE_BUILDER = "builder"
 
 ALL_SURFACES = (
     SURFACE_DM,
@@ -397,6 +398,32 @@ def _fetch_count(cursor, sql: str, params: tuple) -> int:
         return int(row["cnt"] if hasattr(row, "keys") else row[0] or 0)
     except Exception:
         return 0
+
+
+def builder_turns_this_month(username: str) -> int:
+    """Successful Steve Builder turns this calendar month for ``username``.
+
+    Powers the ``builder_turns_per_month`` cap. Builder rows carry a
+    ``community_id`` (builds happen inside a community), so unlike the
+    personal-Steve counters this does not filter on ``community_id``.
+    """
+    if not username:
+        return 0
+    ensure_tables()
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        return _fetch_count(
+            c,
+            f"""
+            SELECT COUNT(*) AS cnt FROM ai_usage_log
+            WHERE username = {ph}
+              AND surface = 'builder'
+              AND success = 1
+              AND created_at >= {ph}
+            """,
+            (username, _first_of_current_month_utc()),
+        )
 
 
 def _fetch_sum_credits(cursor, sql: str, params: tuple) -> float:

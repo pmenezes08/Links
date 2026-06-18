@@ -1295,6 +1295,8 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 # User allowance
                 {"name": "steve_uses_per_month_user_facing", "label": "Allowance (Steve uses / month)", "type": "integer", "value": 100, "group": "user_allowance"},
                 {"name": "whisper_minutes_per_month", "label": "Whisper minutes / month", "type": "integer", "value": 100, "group": "user_allowance"},
+                {"name": "builder_turns_per_month", "label": "Steve Builder turns / month (free tier)", "type": "integer", "value": 10,
+                 "help": "Free/trial monthly quota for building front-end creations with Steve. Paid tiers are uncapped.", "group": "user_allowance"},
                 {"name": "display_format", "label": "Displayed to user as", "type": "string",
                  "value": "\"X of 100 Steve uses · Y of 100 voice minutes — resets on [date]\"", "group": "user_allowance"},
 

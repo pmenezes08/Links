@@ -38,6 +38,8 @@ import CommunityFeed from './pages/CommunityFeed'
 import CommunityCalendar from './pages/CommunityCalendar'
 import CommunityTasks from './pages/CommunityTasks'
 import CommunityPolls from './pages/CommunityPolls'
+import BuilderPage from './pages/BuilderPage'
+import CreationPlay from './pages/CreationPlay'
 import CommunityResources from './pages/CommunityResources'
 import UsefulLinks from './pages/UsefulLinks'
 import CommunityPhotos from './pages/CommunityPhotos'
@@ -996,6 +998,8 @@ function AppRoutes(){
                 <Route path="/community/:community_id/members" element={<Members />} />
                 <Route path="/community/:community_id/edit" element={<EditCommunity />} />
                 <Route path="/community/:community_id/owner" element={<OwnerDashboard />} />
+                <Route path="/community/:community_id/builder" element={<BuilderPage />} />
+                <Route path="/community/:community_id/creation/:creation_id" element={<CreationPlay />} />
                 <Route path="/event/:event_id" element={<EventDetail />} />
                 <Route path="/post/:post_id" element={<PostDetail />} />
                 <Route path="/reply/:reply_id" element={<CommentReply />} />

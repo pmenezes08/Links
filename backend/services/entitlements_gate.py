@@ -520,3 +520,39 @@ def gate_or_reason(
         # Flag off — pretend we allowed it but report the reason for logging.
         return True, reason, ent
     return False, reason, ent
+
+
+def gate_builder_or_reason(
+    username: str,
+    *,
+    community_id: Optional[Any] = None,
+    enforce_override: Optional[bool] = None,
+) -> Tuple[bool, Optional[str], Dict[str, Any]]:
+    """Self-contained entitlements gate for the Steve Builder surface.
+
+    Builder is deliberately NOT a Steve credit-pool surface, so it does not
+    route through :func:`check_steve_access` (no community pool / weighted
+    credits). It enforces a simple monthly turn cap read from
+    ``ent['builder_turns_per_month']`` (``None`` = unlimited for paid tiers).
+
+    Returns ``(allowed, reason_or_none, ent)``.
+    """
+    try:
+        ent = resolve_entitlements(username)
+    except Exception:
+        logger.exception("resolve_entitlements failed for builder gate %s", username)
+        return False, errs.REASON_PREMIUM_REQUIRED, {"tier": "unknown"}
+    cap = ent.get("builder_turns_per_month")
+    if cap is None:
+        return True, None, ent  # unlimited (paid tier)
+    try:
+        cap_int = int(cap)
+    except Exception:
+        return True, None, ent
+    used = ai_usage.builder_turns_this_month(username)
+    if used < cap_int:
+        return True, None, ent
+    enforce = enforce_override if enforce_override is not None else entitlements_enforcement_enabled()
+    if not enforce:
+        return True, "builder_monthly_cap", ent
+    return False, "builder_monthly_cap", ent
