@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # model (the fast non-reasoning content model produces poor code). Override
 # via STEVE_BUILDER_MODEL to A/B a different model without touching other
 # Steve surfaces.
-BUILDER_MODEL = os.getenv("STEVE_BUILDER_MODEL", "grok-4.20-reasoning")
+BUILDER_MODEL = os.getenv("STEVE_BUILDER_MODEL", "grok-4.3")
 MODEL_LABEL = BUILDER_MODEL
 MAX_HTML_BYTES = 400_000  # reject pathologically large artifacts
 _CODEGEN_MAX_TOKENS = 8000
