@@ -37,7 +37,7 @@ export default function CreationPlay() {
   }
 
   if (creation) {
-    return <PlayableCreation html={creation.html} title={creation.title} onClose={goBack} />
+    return <PlayableCreation html={creation.html} title={creation.title} onClose={goBack} creationId={creation.id} />
   }
 
   return (

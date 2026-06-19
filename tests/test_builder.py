@@ -135,3 +135,66 @@ def test_paid_tier_is_uncapped():
     allowed, _reason, ent = gate_builder_or_reason("pro", enforce_override=True)
     assert allowed is True
     assert ent.get("builder_turns_per_month") is None
+
+
+# --- Community interaction data ------------------------------------------------
+
+def _make_creation(cid: int, owner: str = "maker", monkeypatch=None) -> int:
+    if monkeypatch is not None:
+        monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    return builder.create_creation(username=owner, community_id=cid, prompt="a game")["id"]
+
+
+def test_submit_score_keeps_best_and_ranks(monkeypatch):
+    _make_user("maker"); _make_user("p2")
+    cid = _make_community()
+    crid = _make_creation(cid, monkeypatch=monkeypatch)
+
+    builder.submit_score(creation_id=crid, community_id=cid, username="maker", value=100)
+    builder.submit_score(creation_id=crid, community_id=cid, username="maker", value=50)  # lower → ignored
+    r = builder.submit_score(creation_id=crid, community_id=cid, username="p2", value=200)
+
+    board = builder.get_leaderboard(crid, username="maker")
+    assert [int(e["value"]) for e in board["entries"]] == [200, 100]
+    assert board["entries"][0]["rank"] == 1
+    assert board["mine"] is not None and int(board["mine"]["value"]) == 100 and board["mine"]["rank"] == 2
+    assert r["rank"] == 1 and int(r["best"]) == 200
+
+
+def test_rate_creation_aggregates(monkeypatch):
+    _make_user("maker"); _make_user("p2")
+    cid = _make_community()
+    crid = _make_creation(cid, monkeypatch=monkeypatch)
+
+    builder.rate_creation(creation_id=crid, community_id=cid, username="maker", value=4)
+    builder.rate_creation(creation_id=crid, community_id=cid, username="maker", value=5)  # replaces (latest wins)
+    res = builder.rate_creation(creation_id=crid, community_id=cid, username="p2", value=1)
+    assert res["count"] == 2
+    assert res["average"] == 3.0  # (5 + 1) / 2
+    assert int(res["mine"]) == 1
+
+
+def test_play_count_and_summary(monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation(cid, monkeypatch=monkeypatch)
+
+    builder.record_play(crid)
+    out = builder.record_play(crid)
+    assert out["plays"] == 2
+
+    builder.submit_score(creation_id=crid, community_id=cid, username="maker", value=500)
+    builder.rate_creation(creation_id=crid, community_id=cid, username="maker", value=4)
+    summary = builder.get_summary(crid)
+    assert summary["plays"] == 2
+    assert int(summary["top_score"]) == 500
+    assert summary["rating_avg"] == 4.0 and summary["rating_count"] == 1
+
+
+def test_invalid_score_is_rejected(monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation(cid, monkeypatch=monkeypatch)
+    for bad in ("not-a-number", float("nan"), float("inf")):
+        with pytest.raises(ValueError):
+            builder.submit_score(creation_id=crid, community_id=cid, username="maker", value=bad)

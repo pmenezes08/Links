@@ -35,6 +35,33 @@ const ERROR_REPORTER = `<script>(function(){
   window.addEventListener('unhandledrejection', function(e){ report((e && e.reason && e.reason.message) || 'Unhandled promise rejection'); });
 })();<\/script>`
 
+// Community data SDK. The artifact gets a promise-based window.CPoint that
+// posts RPCs to the host; the host (which is session-authed) performs the real
+// authenticated fetch and posts the result back. The artifact never touches the
+// network or the app session itself.
+const DATA_BRIDGE = `<script>(function(){
+  var seq=0, pending={};
+  window.addEventListener('message',function(ev){
+    var d=ev&&ev.data||{};
+    if(d&&d.__cpdata_res&&d.rid&&pending[d.rid]){
+      var p=pending[d.rid]; delete pending[d.rid];
+      d.ok?p.resolve(d.result):p.reject(new Error(d.error||'cpoint_error'));
+    }
+  });
+  function call(op,payload){return new Promise(function(resolve,reject){
+    var rid=(++seq)+'_'+(new Date().getTime());
+    pending[rid]={resolve:resolve,reject:reject};
+    try{ parent.postMessage({__cpdata:true,rid:rid,op:op,payload:payload||{}},'*'); }catch(_){ reject(new Error('cpoint_unavailable')); return; }
+    setTimeout(function(){ if(pending[rid]){ delete pending[rid]; reject(new Error('cpoint_timeout')); } },8000);
+  });}
+  window.CPoint={
+    submitScore:function(n,opts){return call('submitScore',{value:n,key:(opts&&opts.key)||'highscore',name:(opts&&opts.name)});},
+    getLeaderboard:function(opts){return call('getLeaderboard',{key:(opts&&opts.key)||'highscore',limit:(opts&&opts.limit)||10});},
+    rate:function(x,opts){return call('rate',{value:x,name:(opts&&opts.name)});},
+    getResults:function(){return call('getResults',{});}
+  };
+})();<\/script>`
+
 const CONTROL_BRIDGE = `<script>(function(){
   function fire(type,key){
     try{
@@ -49,7 +76,7 @@ const CONTROL_BRIDGE = `<script>(function(){
   });
 })();<\/script>`
 
-export function prepareCreationHtml(html: string, opts: { controlBridge?: boolean } = {}): string {
+export function prepareCreationHtml(html: string, opts: { controlBridge?: boolean; dataBridge?: boolean } = {}): string {
   if (!html) return html
   let out = html
   const headInject = VIEWPORT_META + BASE_CSS
@@ -62,7 +89,9 @@ export function prepareCreationHtml(html: string, opts: { controlBridge?: boolea
     out = headInject + out
   }
 
-  const tail = ERROR_REPORTER + FIT_REPORTER + (opts.controlBridge ? CONTROL_BRIDGE : '')
+  const tail = ERROR_REPORTER + FIT_REPORTER
+    + (opts.controlBridge ? CONTROL_BRIDGE : '')
+    + (opts.dataBridge ? DATA_BRIDGE : '')
   out = out.includes('</body>') ? out.replace('</body>', tail + '</body>') : out + tail
   return out
 }

@@ -203,3 +203,153 @@ def builder_get(creation_id: int):
         "created_by": creation.get("created_by"),
         "published_post_id": creation.get("published_post_id"),
     }})
+
+
+# --- Community interaction data (scores / ratings / plays) --------------------
+# These routes are NOT AI calls: they do not touch the builder turn cap, the
+# entitlements gate, or ai_usage. Authorization is server-side — the community
+# is resolved from the creation row (never the request), and the writer's
+# username comes from the session, never the (untrusted) artifact.
+
+def _resolve_accessible_creation(creation_id: int, username: str):
+    """Return (creation, community_id) if the user may interact with it, else (None, None)."""
+    creation = builder_svc.get_creation(creation_id)
+    if not creation:
+        return None, None
+    community_id = _safe_int(creation.get("community_id"))
+    if creation.get("created_by") == username:
+        return creation, community_id
+    if community_id is not None and _can_access_community(username, community_id):
+        return creation, community_id
+    return None, None
+
+
+def _data_write_ok(username: str, creation_id: int) -> bool:
+    """Coarse best-effort per-user/creation write throttle (anti-spam). Never blocks on error."""
+    try:
+        from redis_cache import cache
+        key = f"cpdata:rl:{username}:{creation_id}"
+        count = cache.get(key) or 0
+        if int(count) >= 40:  # ~40 writes / 60s window
+            return False
+        cache.set(key, int(count) + 1, ttl=60)
+    except Exception:
+        pass
+    return True
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/data/score", methods=["POST"])
+def builder_data_score(creation_id: int):
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    _creation, community_id = _resolve_accessible_creation(creation_id, username)
+    if community_id is None:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    if not _data_write_ok(username, creation_id):
+        return jsonify({"success": False, "error": "rate_limited"}), 429
+    data = request.get_json(silent=True) or {}
+    try:
+        result = builder_svc.submit_score(
+            creation_id=creation_id, community_id=community_id, username=username,
+            value=data.get("value"), key=data.get("key") or "highscore",
+            display_name=data.get("name"),
+        )
+    except ValueError:
+        return jsonify({"success": False, "error": "invalid_value"}), 400
+    except Exception:
+        logger.exception("builder: submit_score failed")
+        return jsonify({"success": False, "error": "data_error"}), 500
+    return jsonify(result)
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/data/rate", methods=["POST"])
+def builder_data_rate(creation_id: int):
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    _creation, community_id = _resolve_accessible_creation(creation_id, username)
+    if community_id is None:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    if not _data_write_ok(username, creation_id):
+        return jsonify({"success": False, "error": "rate_limited"}), 429
+    data = request.get_json(silent=True) or {}
+    try:
+        result = builder_svc.rate_creation(
+            creation_id=creation_id, community_id=community_id, username=username,
+            value=data.get("value"), display_name=data.get("name"),
+        )
+    except ValueError:
+        return jsonify({"success": False, "error": "invalid_value"}), 400
+    except Exception:
+        logger.exception("builder: rate_creation failed")
+        return jsonify({"success": False, "error": "data_error"}), 500
+    return jsonify(result)
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/data/leaderboard", methods=["GET"])
+def builder_data_leaderboard(creation_id: int):
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    _creation, community_id = _resolve_accessible_creation(creation_id, username)
+    if community_id is None:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    key = request.args.get("key") or "highscore"
+    limit = _safe_int(request.args.get("limit")) or 10
+    return jsonify({"success": True, **builder_svc.get_leaderboard(creation_id, key=key, limit=limit, username=username)})
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/data/results", methods=["GET"])
+def builder_data_results(creation_id: int):
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    _creation, community_id = _resolve_accessible_creation(creation_id, username)
+    if community_id is None:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    return jsonify({"success": True, **builder_svc.get_results(creation_id, username=username)})
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/data/summary", methods=["GET"])
+def builder_data_summary(creation_id: int):
+    """Lightweight aggregates for the feed card strip (plays / top score / rating)."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    _creation, community_id = _resolve_accessible_creation(creation_id, username)
+    if community_id is None:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    try:
+        from redis_cache import cache
+        ckey = f"cpdata:summary:{creation_id}"
+        cached = cache.get(ckey)
+        if cached is not None:
+            return jsonify({"success": True, **cached})
+    except Exception:
+        cache = None
+        ckey = None
+    summary = builder_svc.get_summary(creation_id)
+    try:
+        if cache is not None and ckey:
+            cache.set(ckey, summary, ttl=15)
+    except Exception:
+        pass
+    return jsonify({"success": True, **summary})
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/play", methods=["POST"])
+def builder_record_play(creation_id: int):
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    _creation, community_id = _resolve_accessible_creation(creation_id, username)
+    if community_id is None:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    result = builder_svc.record_play(creation_id)
+    try:
+        from redis_cache import cache
+        cache.delete(f"cpdata:summary:{creation_id}")
+    except Exception:
+        pass
+    return jsonify({"success": True, **result})

@@ -39,6 +39,7 @@ import {
 } from '../utils/linkUtils.tsx'
 import EditableAISummary from '../components/EditableAISummary'
 import CreationPreview from '../components/builder/CreationPreview'
+import CreationStatsStrip from '../components/builder/CreationStatsStrip'
 import GifPicker from '../components/GifPicker'
 import FeedBottomNav from '../components/FeedBottomNav'
 import AskSteveEntry from '../components/feed/AskSteveEntry'
@@ -5168,7 +5169,10 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
                   <i className="fa-solid fa-play" />
                 </span>
               </span>
-              <span className="absolute left-3 bottom-2.5 text-xs text-white" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}>{post.username} made this with Steve</span>
+              <span className="absolute left-3 right-3 bottom-2.5 flex flex-col items-start gap-1.5">
+                <CreationStatsStrip creationId={post.creation_id} />
+                <span className="text-xs text-white" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}>{post.username} made this with Steve</span>
+              </span>
             </button>
           </div>
         ) : null}

@@ -186,7 +186,7 @@ export default function BuilderPage() {
       </div>
 
       {playingCreation && (
-        <PlayableCreation html={playingCreation.html} title={playingCreation.title} onClose={() => setPlayingCreation(null)} />
+        <PlayableCreation html={playingCreation.html} title={playingCreation.title} onClose={() => setPlayingCreation(null)} creationId={playingCreation.id} />
       )}
     </div>
   )

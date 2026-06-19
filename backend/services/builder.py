@@ -40,7 +40,11 @@ MODEL_LABEL = _MODEL_FAST  # default label; the actual model used is logged per 
 def resolve_model(tier: Optional[str]) -> str:
     return BUILDER_TIERS.get((tier or "fast").strip().lower(), _MODEL_FAST)
 MAX_HTML_BYTES = 400_000  # reject pathologically large artifacts
-_CODEGEN_MAX_TOKENS = 32000
+# Output ceiling. Kept well above what a rich single-file artifact needs so the
+# 400KB byte limit (not the token budget) is the real ceiling — a low ceiling
+# silently truncates ambitious builds mid-document (and truncation often does
+# NOT throw, so the client error net never sees it).
+_CODEGEN_MAX_TOKENS = 64000
 
 _SYSTEM_PROMPT = (
     "You are Steve, a world-class creative front-end engineer and game designer. Build a single self-contained web "
@@ -74,7 +78,14 @@ _SYSTEM_PROMPT = (
     "starting begins on a tap/touch (on-screen Start or auto-start) — never 'press a key to start'.\n"
     "5) Dark background; no analytics, ads, tracking, or login; keep the document under 400KB.\n"
     "6) Set a short, catchy, human-friendly <title> that NAMES the creation (e.g. \"Neon Block Drop\", "
-    "\"Which Pizza Are You?\") — never \"Document\", \"Untitled\", or a copy of the user's prompt."
+    "\"Which Pizza Are You?\") — never \"Document\", \"Untitled\", or a copy of the user's prompt.\n"
+    "COMMUNITY DATA (optional — use ONLY when the creation has a score, a result, or something worth rating, "
+    "e.g. a game high score or a quiz): a `window.CPoint` API may exist at runtime for community-shared data. "
+    "ALWAYS feature-detect (`if (window.CPoint) { ... }`) and work fully without it (degrade to local-only). "
+    "It returns Promises: `CPoint.submitScore(n)` saves the player's score; `CPoint.getLeaderboard()` -> "
+    "`{entries:[{name,value,rank}], mine}` for a top-scores list; `CPoint.rate(1..5)` and `CPoint.getResults()` -> "
+    "`{average,count,mine}` for ratings. For a score-based game, call `submitScore` on game over and render the "
+    "returned leaderboard on the result screen. Never block gameplay on it; wrap calls in try/catch."
 )
 
 _CREATION_COLS = [
@@ -147,6 +158,61 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
             cursor.execute("ALTER TABLE posts ADD COLUMN creation_id INTEGER")
         except Exception:
             pass
+        # Migration-light: total play count surfaced on the feed card.
+        try:
+            cursor.execute("ALTER TABLE creations ADD COLUMN play_count INTEGER NOT NULL DEFAULT 0")
+        except Exception:
+            pass
+        # Community-scoped interaction data (scores, ratings). One row per user
+        # per (creation, namespace, key) — UNIQUE makes "one score/rating per
+        # user" a DB invariant (upsert). The artifact never writes here directly;
+        # the session-authed host brokers every write (see blueprints/builder.py).
+        if USE_MYSQL:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS creation_data (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    creation_id INT NOT NULL,
+                    community_id INT NOT NULL,
+                    namespace VARCHAR(16) NOT NULL,
+                    data_key VARCHAR(64) NOT NULL DEFAULT '',
+                    username VARCHAR(191) NOT NULL,
+                    display_name VARCHAR(64),
+                    num_value DOUBLE,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    UNIQUE KEY uq_creation_data (creation_id, namespace, data_key, username),
+                    INDEX idx_creation_data_board (creation_id, namespace, num_value),
+                    INDEX idx_creation_data_community (community_id, namespace)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS creation_data (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    creation_id INTEGER NOT NULL,
+                    community_id INTEGER NOT NULL,
+                    namespace TEXT NOT NULL,
+                    data_key TEXT NOT NULL DEFAULT '',
+                    username TEXT NOT NULL,
+                    display_name TEXT,
+                    num_value REAL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE (creation_id, namespace, data_key, username)
+                )
+                """
+            )
+            for stmt in (
+                "CREATE INDEX IF NOT EXISTS idx_creation_data_board ON creation_data (creation_id, namespace, num_value)",
+                "CREATE INDEX IF NOT EXISTS idx_creation_data_community ON creation_data (community_id, namespace)",
+            ):
+                try:
+                    cursor.execute(stmt)
+                except Exception:
+                    pass
         if owns_connection and conn is not None:
             conn.commit()
     finally:
@@ -351,3 +417,201 @@ def publish_creation(*, creation_id: int, username: str,
         )
         conn.commit()
     return {"post_id": post_id, "already_published": False}
+
+
+# --- Community-scoped interaction data (scores / ratings / plays) -------------
+# Front-end-only artifacts can't be trusted, so every value is clamped and the
+# writer's username is stamped server-side. The artifact never reaches these
+# functions directly — the session-authed host brokers the call.
+
+_KEY_RE = re.compile(r"^[a-z0-9_]{1,64}$")
+_LEADERBOARD_MAX = 50
+
+
+def _clamp_score(value: Any) -> Optional[float]:
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if v != v or v in (float("inf"), float("-inf")):  # NaN / Inf
+        return None
+    return max(-1e12, min(1e12, v))
+
+
+def _clean_display_name(name: Any, fallback: str) -> str:
+    s = name if isinstance(name, str) else ""
+    s = re.sub(r"[\x00-\x1f\x7f]", "", s)  # strip control chars
+    s = re.sub(r"\s+", " ", s).strip()[:40]
+    return s or (fallback or "Player")[:40]
+
+
+def _safe_key(key: Any) -> str:
+    k = key.strip().lower() if isinstance(key, str) else ""
+    return k if _KEY_RE.match(k) else "highscore"
+
+
+def _cell(row: Any, idx: int) -> Any:
+    """Read the idx-th SELECTed column from a tuple / sqlite3.Row / dict row."""
+    if row is None:
+        return None
+    try:
+        return row[idx]  # tuple, sqlite3.Row
+    except (KeyError, TypeError, IndexError):
+        try:
+            return list(row.values())[idx]  # dict-style cursor (column order preserved)
+        except Exception:
+            return None
+
+
+def _upsert_value(*, creation_id: int, community_id: int, namespace: str, key: str,
+                  username: str, value: float, display_name: str, keep_max: bool) -> None:
+    """Insert or update the single row for (creation, namespace, key, user).
+    keep_max=True keeps the best (highest) value; otherwise the latest wins."""
+    now = _now()
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""SELECT num_value FROM creation_data
+                WHERE creation_id = {ph} AND namespace = {ph} AND data_key = {ph} AND username = {ph}""",
+            (creation_id, namespace, key, username),
+        )
+        existing = c.fetchone()
+        if existing is None:
+            c.execute(
+                f"""INSERT INTO creation_data
+                    (creation_id, community_id, namespace, data_key, username, display_name,
+                     num_value, created_at, updated_at)
+                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})""",
+                (creation_id, community_id, namespace, key, username, display_name, value, now, now),
+            )
+        else:
+            prev = _cell(existing, 0)
+            new_value = max(float(prev), value) if (keep_max and prev is not None) else value
+            c.execute(
+                f"""UPDATE creation_data SET num_value = {ph}, display_name = {ph}, updated_at = {ph}
+                    WHERE creation_id = {ph} AND namespace = {ph} AND data_key = {ph} AND username = {ph}""",
+                (new_value, display_name, now, creation_id, namespace, key, username),
+            )
+        conn.commit()
+
+
+def get_leaderboard(creation_id: int, *, key: str = "highscore", limit: int = 10,
+                    username: Optional[str] = None) -> Dict[str, Any]:
+    key = _safe_key(key)
+    limit = max(1, min(int(limit or 10), _LEADERBOARD_MAX))
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""SELECT display_name, num_value, username FROM creation_data
+                WHERE creation_id = {ph} AND namespace = 'score' AND data_key = {ph}
+                ORDER BY num_value DESC LIMIT {ph}""",
+            (creation_id, key, limit),
+        )
+        rows = c.fetchall() or []
+    entries = [{"name": _cell(r, 0) or "Player", "value": _cell(r, 1), "rank": i + 1}
+               for i, r in enumerate(rows)]
+    mine = None
+    if username:
+        for i, r in enumerate(rows):
+            if _cell(r, 2) == username:
+                mine = {"value": _cell(r, 1), "rank": i + 1}
+                break
+    return {"entries": entries, "mine": mine}
+
+
+def get_results(creation_id: int, *, username: Optional[str] = None) -> Dict[str, Any]:
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""SELECT AVG(num_value), COUNT(*) FROM creation_data
+                WHERE creation_id = {ph} AND namespace = 'rating'""",
+            (creation_id,),
+        )
+        agg = c.fetchone()
+        mine = None
+        if username:
+            c.execute(
+                f"""SELECT num_value FROM creation_data
+                    WHERE creation_id = {ph} AND namespace = 'rating' AND username = {ph}""",
+                (creation_id, username),
+            )
+            row = c.fetchone()
+            mine = _cell(row, 0) if row else None
+    avg = _cell(agg, 0)
+    count = _cell(agg, 1) or 0
+    return {"average": round(float(avg), 2) if avg is not None else None,
+            "count": int(count), "mine": mine}
+
+
+def submit_score(*, creation_id: int, community_id: int, username: str, value: Any,
+                 key: str = "highscore", display_name: Optional[str] = None) -> Dict[str, Any]:
+    v = _clamp_score(value)
+    if v is None:
+        raise ValueError("invalid score")
+    _upsert_value(creation_id=creation_id, community_id=community_id, namespace="score",
+                  key=_safe_key(key), username=username,
+                  value=v, display_name=_clean_display_name(display_name, username), keep_max=True)
+    board = get_leaderboard(creation_id, key=key, username=username)
+    return {"success": True, "best": (board["mine"] or {}).get("value", v),
+            "rank": (board["mine"] or {}).get("rank"), "entries": board["entries"]}
+
+
+def rate_creation(*, creation_id: int, community_id: int, username: str, value: Any,
+                  display_name: Optional[str] = None) -> Dict[str, Any]:
+    try:
+        iv = int(value)
+    except (TypeError, ValueError):
+        raise ValueError("invalid rating")
+    iv = max(1, min(iv, 5))
+    _upsert_value(creation_id=creation_id, community_id=community_id, namespace="rating",
+                  key="", username=username, value=float(iv),
+                  display_name=_clean_display_name(display_name, username), keep_max=False)
+    res = get_results(creation_id, username=username)
+    return {"success": True, **res}
+
+
+def record_play(creation_id: int) -> Dict[str, Any]:
+    """Increment the total play count. Best-effort (never raises to the caller)."""
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(f"UPDATE creations SET play_count = play_count + 1 WHERE id = {ph}", (creation_id,))
+            conn.commit()
+            c.execute(f"SELECT play_count FROM creations WHERE id = {ph}", (creation_id,))
+            row = c.fetchone()
+        return {"plays": int(_cell(row, 0) or 0)}
+    except Exception:
+        logger.warning("builder: record_play failed", exc_info=True)
+        return {"plays": 0}
+
+
+def get_summary(creation_id: int) -> Dict[str, Any]:
+    """Aggregate stats for the feed card strip: plays, top score, rating."""
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT play_count FROM creations WHERE id = {ph}", (creation_id,))
+        prow = c.fetchone()
+        c.execute(
+            f"""SELECT MAX(num_value) FROM creation_data
+                WHERE creation_id = {ph} AND namespace = 'score' AND data_key = 'highscore'""",
+            (creation_id,),
+        )
+        top = c.fetchone()
+        c.execute(
+            f"""SELECT AVG(num_value), COUNT(*) FROM creation_data
+                WHERE creation_id = {ph} AND namespace = 'rating'""",
+            (creation_id,),
+        )
+        ragg = c.fetchone()
+    avg = _cell(ragg, 0)
+    return {
+        "plays": int(_cell(prow, 0) or 0),
+        "top_score": _cell(top, 0),
+        "rating_avg": round(float(avg), 1) if avg is not None else None,
+        "rating_count": int(_cell(ragg, 1) or 0),
+    }

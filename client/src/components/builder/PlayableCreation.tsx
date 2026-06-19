@@ -9,7 +9,7 @@ import { prepareCreationHtml } from '../../utils/creationHtml'
  * on-screen D-pad drives keyboard games via the injected control bridge.
  */
 
-type Props = { html: string; title?: string; onClose: () => void }
+type Props = { html: string; title?: string; onClose: () => void; creationId?: number }
 
 const ARROWS: Array<{ key: string; icon: string; gridArea: string; label: string }> = [
   { key: 'ArrowUp', icon: 'ti-chevron-up', gridArea: '1 / 2 / 2 / 3', label: 'Up' },
@@ -18,13 +18,62 @@ const ARROWS: Array<{ key: string; icon: string; gridArea: string; label: string
   { key: 'ArrowRight', icon: 'ti-chevron-right', gridArea: '2 / 3 / 3 / 4', label: 'Right' },
 ]
 
-export default function PlayableCreation({ html, title, onClose }: Props) {
+export default function PlayableCreation({ html, title, onClose, creationId }: Props) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const [showPad, setShowPad] = useState(false)
   const [fit, setFit] = useState(1)
-  const srcDoc = useMemo(() => prepareCreationHtml(html, { controlBridge: true }), [html])
+  const srcDoc = useMemo(
+    () => prepareCreationHtml(html, { controlBridge: true, dataBridge: creationId != null }),
+    [html, creationId],
+  )
 
   useEffect(() => { setFit(1) }, [html])
+
+  // Count one play when the surface opens (best-effort).
+  useEffect(() => {
+    if (creationId == null) return
+    fetch(`/api/builder/${creationId}/play`, { method: 'POST', credentials: 'include' }).catch(() => { /* noop */ })
+  }, [creationId])
+
+  // Broker CPoint SDK calls from the sandboxed artifact: the artifact posts an
+  // RPC, the host (session-authed) performs the real fetch and posts the result
+  // back. Only messages from THIS artifact's window are honoured.
+  useEffect(() => {
+    if (creationId == null) return
+    const base = `/api/builder/${creationId}/data`
+    const reply = (src: MessageEventSource | null, rid: string, ok: boolean, result?: unknown, error?: string) => {
+      try { (src as Window | null)?.postMessage({ __cpdata_res: true, rid, ok, result, error }, '*') } catch { /* noop */ }
+    }
+    const onMsg = async (e: MessageEvent) => {
+      const d = e.data as { __cpdata?: boolean; rid?: string; op?: string; payload?: Record<string, unknown> } | null
+      if (!d || typeof d !== 'object' || !d.__cpdata || !d.rid || !d.op) return
+      if (e.source !== iframeRef.current?.contentWindow) return // only our artifact
+      const rid = d.rid
+      const p = (d.payload || {}) as Record<string, unknown>
+      try {
+        let res: Response
+        if (d.op === 'submitScore') {
+          res = await fetch(`${base}/score`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: p.value, key: p.key, name: p.name }) })
+        } else if (d.op === 'rate') {
+          res = await fetch(`${base}/rate`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: p.value, name: p.name }) })
+        } else if (d.op === 'getLeaderboard') {
+          const q = new URLSearchParams({ key: String(p.key || 'highscore'), limit: String(p.limit || 10) })
+          res = await fetch(`${base}/leaderboard?${q.toString()}`, { credentials: 'include' })
+        } else if (d.op === 'getResults') {
+          res = await fetch(`${base}/results`, { credentials: 'include' })
+        } else {
+          reply(e.source, rid, false, undefined, 'unknown_op'); return
+        }
+        const data = await res.json().catch(() => null) as { success?: boolean; error?: string } | null
+        if (res.ok && data && data.success !== false) reply(e.source, rid, true, data)
+        else reply(e.source, rid, false, undefined, (data && data.error) || 'request_failed')
+      } catch {
+        reply(e.source, rid, false, undefined, 'network_error')
+      }
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [creationId])
 
   // The artifact posts its measured content size; scale down (never up) to fit.
   useEffect(() => {
