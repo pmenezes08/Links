@@ -87,5 +87,24 @@ export function useBuilder(communityId: string) {
     }
   }, [creation])
 
-  return { creation, messages, loading, error, limit, rev, tier, setTier, build, publish }
+  // Resume a saved creation back into the builder so the user can keep
+  // iterating on work they left without publishing (drafts persist server-side).
+  const loadCreation = useCallback(async (id: number): Promise<boolean> => {
+    setError(null)
+    setLimit(null)
+    try {
+      const res = await fetch(`/api/builder/${id}`, { credentials: 'include' })
+      const data = (await res.json().catch(() => null)) as ApiResult | null
+      if (res.ok && data?.success && data.creation) {
+        setCreation(data.creation)
+        setRev((r) => r + 1)
+        setMessages([{ role: 'steve', text: 'Picking up where we left off —', creation: data.creation }])
+        return true
+      }
+    } catch { /* fall through */ }
+    setError('Could not open that build.')
+    return false
+  }, [])
+
+  return { creation, messages, loading, error, limit, rev, tier, setTier, build, publish, loadCreation }
 }

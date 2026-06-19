@@ -27,7 +27,8 @@ export default function PlayableCreation({ html, title, onClose, creationId }: P
     [html, creationId],
   )
 
-  useEffect(() => { setFit(1) }, [html])
+  const fitRef = useRef(1)
+  useEffect(() => { setFit(1); fitRef.current = 1 }, [html])
 
   // Count one play when the surface opens (best-effort).
   useEffect(() => {
@@ -75,15 +76,23 @@ export default function PlayableCreation({ html, title, onClose, creationId }: P
     return () => window.removeEventListener('message', onMsg)
   }, [creationId])
 
-  // The artifact posts its measured content size; scale down (never up) to fit.
+  // The artifact posts its measured content size; scale down to fit the WIDTH
+  // only (tall content scrolls — never scale a long page to fit its height).
+  // The latch is monotonic-decrease with a dead-band: we only ever shrink, and
+  // only on a meaningful change. This is what breaks the scale<->reflow
+  // feedback loop that made responsive sites flash: scaling down widens the
+  // iframe's inner viewport, content reflows, the size is re-reported — and
+  // without the latch we'd scale back up, re-narrow, reflow, forever.
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
-      const d = e.data as { __cpfit?: boolean; w?: number; h?: number; vw?: number; vh?: number } | null
+      const d = e.data as { __cpfit?: boolean; w?: number; vw?: number } | null
       if (!d || typeof d !== 'object' || !d.__cpfit) return
       const sx = d.vw && d.w ? d.vw / d.w : 1
-      const sy = d.vh && d.h ? d.vh / d.h : 1
-      const s = Math.min(1, sx, sy)
-      setFit(s < 0.999 ? Math.max(0.4, s) : 1)
+      const target = sx < 0.999 ? Math.max(0.4, sx) : 1
+      if (target < fitRef.current - 0.02) { // only ever shrink, only if meaningful
+        fitRef.current = target
+        setFit(target)
+      }
     }
     window.addEventListener('message', onMsg)
     return () => window.removeEventListener('message', onMsg)

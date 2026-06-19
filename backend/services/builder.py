@@ -83,6 +83,10 @@ _SYSTEM_PROMPT = (
     "4) TOUCH-ONLY (no physical keyboard): clearly visible on-screen buttons for ALL controls; anything that needs "
     "starting begins on a tap/touch (on-screen Start or auto-start) — never 'press a key to start'.\n"
     "5) Dark background; no analytics, ads, tracking, or login; keep the document under 400KB.\n"
+    "5b) NO FLICKER / NO INFINITE LOOPS: never call location.reload/replace; never re-render the whole DOM on a timer; "
+    "drive animation with a single requestAnimationFrame loop (never schedule rAF from inside resize/scroll/ResizeObserver "
+    "handlers); make layout idempotent so it doesn't thrash; the page must reach a stable resting state and never visibly "
+    "flash or re-mount itself.\n"
     "6) Set a short, catchy, human-friendly <title> that NAMES the creation (e.g. \"Neon Block Drop\", "
     "\"Which Pizza Are You?\") — never \"Document\", \"Untitled\", or a copy of the user's prompt.\n"
     "COMMUNITY DATA (optional — use ONLY when the creation has a score, a result, or something worth rating, "
@@ -593,6 +597,28 @@ def record_play(creation_id: int) -> Dict[str, Any]:
     except Exception:
         logger.warning("builder: record_play failed", exc_info=True)
         return {"plays": 0}
+
+
+def list_creations(username: str, *, limit: int = 50) -> List[Dict[str, Any]]:
+    """The user's own creations (drafts + published), newest first, so they can
+    return to unfinished work. Lightweight — no HTML (fetch that via get_creation)."""
+    ph = get_sql_placeholder()
+    limit = max(1, min(int(limit or 50), 100))
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""SELECT id, title, kind, status, community_id, published_post_id, updated_at, play_count
+                FROM creations WHERE created_by = {ph}
+                ORDER BY updated_at DESC LIMIT {ph}""",
+            (username, limit),
+        )
+        rows = c.fetchall() or []
+    return [{
+        "id": _cell(r, 0), "title": _cell(r, 1), "kind": _cell(r, 2), "status": _cell(r, 3),
+        "community_id": _cell(r, 4), "published_post_id": _cell(r, 5),
+        "updated_at": str(_cell(r, 6)) if _cell(r, 6) is not None else None,
+        "plays": int(_cell(r, 7) or 0),
+    } for r in rows]
 
 
 def get_summary(creation_id: int) -> Dict[str, Any]:

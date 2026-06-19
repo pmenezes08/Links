@@ -178,6 +178,16 @@ def builder_publish(creation_id: int):
     return jsonify({"success": True, **result})
 
 
+@builder_bp.route("/api/builder/mine", methods=["GET"])
+def builder_mine():
+    """The signed-in user's own creations so they can resume unfinished work."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    limit = _safe_int(request.args.get("limit")) or 50
+    return jsonify({"success": True, "creations": builder_svc.list_creations(username, limit=limit)})
+
+
 @builder_bp.route("/api/builder/<int:creation_id>", methods=["GET"])
 def builder_get(creation_id: int):
     username = session.get("username")
