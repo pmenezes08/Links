@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useBuilder } from '../hooks/useBuilder'
+import { useBuilder, type Creation } from '../hooks/useBuilder'
 import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
 import PlayableCreation from '../components/builder/PlayableCreation'
-import { prepareCreationHtml } from '../utils/creationHtml'
 
 const SUGGESTIONS = [
   'A block-stacking game for the group',
@@ -14,7 +13,7 @@ const SUGGESTIONS = [
 
 const STAGES = ["Steve's on it", 'Making it', 'Adding the fun bits', 'Almost there']
 
-function BuildingIndicator() {
+function BuildingRow() {
   const [secs, setSecs] = useState(0)
   useEffect(() => {
     const id = window.setInterval(() => setSecs((s) => s + 1), 1000)
@@ -22,10 +21,17 @@ function BuildingIndicator() {
   }, [])
   const label = secs < 4 ? STAGES[0] : secs < 12 ? STAGES[1] : secs < 25 ? STAGES[2] : STAGES[3]
   return (
-    <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, background: 'rgba(0,0,0,0.72)' }}>
-      <div style={{ width: 34, height: 34, borderRadius: '50%', border: '3px solid rgba(0,206,200,0.25)', borderTopColor: '#00CEC8', animation: 'cp-spin 0.8s linear infinite' }} />
-      <div style={{ fontSize: 14, color: '#e9e9e9' }}>{label} <span style={{ color: '#00CEC8' }}>{secs}s</span></div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '14px 0' }}>
+      <Avatar />
+      <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid rgba(0,206,200,0.25)', borderTopColor: '#00CEC8', animation: 'cp-spin 0.8s linear infinite' }} />
+      <span style={{ fontSize: 13, color: '#8a8a8a' }}>{label} · {secs}s</span>
     </div>
+  )
+}
+
+function Avatar() {
+  return (
+    <span style={{ flex: '0 0 auto', width: 22, height: 22, borderRadius: '50%', background: '#00CEC8', color: '#00302e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 500 }}>S</span>
   )
 }
 
@@ -33,11 +39,11 @@ export default function BuilderPage() {
   const { community_id } = useParams()
   const navigate = useNavigate()
   const cid = String(community_id || '')
-  const { creation, messages, loading, error, limit, rev, tier, setTier, build, publish } = useBuilder(cid)
+  const { creation, messages, loading, error, limit, tier, setTier, build, publish } = useBuilder(cid)
   const [input, setInput] = useState('')
   const [publishing, setPublishing] = useState(false)
   const [publishedPostId, setPublishedPostId] = useState<number | null>(null)
-  const [playing, setPlaying] = useState(false)
+  const [playingCreation, setPlayingCreation] = useState<Creation | null>(null)
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
@@ -46,12 +52,9 @@ export default function BuilderPage() {
     if (el) el.scrollTo({ top: el.scrollHeight })
   }
   const { keyboardLift, safeBottomPx } = useFixedComposerKeyboard({ onLayoutNudge: scrollToBottom })
-
   useEffect(scrollToBottom, [messages, loading])
 
-  // Reset the runtime-error flag when a new build/iteration renders.
-  useEffect(() => { setRuntimeError(null) }, [rev])
-  // The artifact (preview + play) reports its own runtime errors via postMessage.
+  // The played creation reports runtime errors; offer a one-tap fix.
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
       const d = e.data as { __cperr?: boolean; message?: string } | null
@@ -90,6 +93,8 @@ export default function BuilderPage() {
     else navigate(-1)
   }
 
+  const showEmpty = messages.length === 0 && !creation && !loading
+
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 60, background: '#000', color: '#f1f1f1',
@@ -99,88 +104,111 @@ export default function BuilderPage() {
     }}>
       <style>{`@keyframes cp-spin { to { transform: rotate(360deg) } }`}</style>
 
-      <div style={{ flex: '0 0 auto', height: 52, display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-        <button onClick={goBack} aria-label="Back" style={{ background: 'none', border: 'none', color: '#cfcfcf', fontSize: 22, lineHeight: 1, padding: 4, cursor: 'pointer' }}>‹</button>
-        <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#00CEC8', color: '#00302e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 500 }}>S</div>
-        <div style={{ fontSize: 15 }}>Make with Steve</div>
-        {creation && (
-          <button onClick={onPublish} disabled={publishing}
-            style={{ marginLeft: 'auto', background: publishedPostId ? 'transparent' : '#00CEC8', color: publishedPostId ? '#00CEC8' : '#00302e', border: publishedPostId ? '1px solid rgba(0,206,200,0.5)' : 'none', borderRadius: 10, padding: '8px 14px', fontWeight: 500, fontSize: 13, cursor: 'pointer' }}>
-            {publishedPostId ? 'Shared' : publishing ? 'Sharing…' : 'Share'}
-          </button>
-        )}
+      <div style={{ flex: '0 0 auto', height: 44, display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px 0 6px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <button onClick={goBack} aria-label="Back" style={{ background: 'none', border: 'none', color: '#cfcfcf', fontSize: 24, lineHeight: 1, padding: '4px 8px', cursor: 'pointer' }}>‹</button>
+        <Avatar />
+        <div style={{ fontSize: 15 }}>Steve</div>
       </div>
 
-      <div style={{ flex: '0 0 auto', height: '44%', position: 'relative', background: '#0b0b0b', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-        {creation ? (
-          <iframe key={`${creation.id}-${rev}`} title="Preview" sandbox="allow-scripts" srcDoc={prepareCreationHtml(creation.html)}
-            style={{ width: '100%', height: '100%', border: 0, display: 'block' }} />
-        ) : (
-          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', color: '#8a8a8a', fontSize: 14 }}>
-            Tell Steve what to make — it pops up right here.
+      <div ref={scrollRef} style={{ flex: '1 1 auto', overflowY: 'auto', padding: '16px 16px 8px' }}>
+        {showEmpty && (
+          <div style={{ minHeight: '60%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18 }}>
+            <span style={{ width: 40, height: 40, borderRadius: '50%', background: '#00CEC8', color: '#00302e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 500 }}>S</span>
+            <div style={{ fontSize: 20, color: '#f1f1f1' }}>What should we make?</div>
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+              {SUGGESTIONS.map((s) => (
+                <button key={s} onClick={() => build(s)} disabled={loading}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, width: '100%', textAlign: 'left', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 12, padding: '12px 14px', background: 'transparent', color: '#cfcfcf', fontSize: 14, cursor: 'pointer' }}>
+                  <span>{s}</span><span style={{ color: '#5f5f5f' }}>›</span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
-        {creation && !loading && (
-          <button onClick={() => setPlaying(true)} aria-label="Play full screen"
-            style={{ position: 'absolute', bottom: 10, right: 10, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.18)', color: '#fff', borderRadius: 999, padding: '7px 13px', fontSize: 13, cursor: 'pointer' }}>
-            <i className="ti ti-player-play" aria-hidden="true" /> Play
-          </button>
-        )}
-        {loading && <BuildingIndicator />}
-      </div>
 
-      <div ref={scrollRef} style={{ flex: '1 1 auto', overflowY: 'auto', padding: 14 }}>
-        {messages.length === 0 && !creation && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {SUGGESTIONS.map((s) => (
-              <button key={s} onClick={() => { setInput(''); build(s) }} disabled={loading}
-                style={{ fontSize: 13, color: '#cfcfcf', border: '1px solid rgba(255,255,255,0.16)', borderRadius: 999, padding: '8px 12px', background: 'transparent', cursor: 'pointer' }}>{s}</button>
-            ))}
-          </div>
-        )}
         {messages.map((m, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start', margin: '8px 0' }}>
-            <div style={{ maxWidth: '82%', padding: '9px 12px', borderRadius: 14, fontSize: 14, lineHeight: 1.45, background: m.role === 'user' ? 'rgba(0,206,200,0.16)' : '#161616', color: m.role === 'user' ? '#bdeeeb' : '#e9e9e9' }}>{m.text}</div>
-          </div>
+          m.role === 'user' ? (
+            <div key={i} style={{ display: 'flex', justifyContent: 'flex-end', margin: '14px 0' }}>
+              <div style={{ maxWidth: '82%', padding: '10px 14px', borderRadius: 18, fontSize: 15, lineHeight: 1.45, background: 'rgba(255,255,255,0.06)', color: '#f1f1f1' }}>{m.text}</div>
+            </div>
+          ) : (
+            <div key={i} style={{ display: 'flex', gap: 10, margin: '14px 0' }}>
+              <Avatar />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, lineHeight: 1.5, color: '#e9e9e9' }}>{m.text}</div>
+                {m.creation && (
+                  <CreationCard creation={m.creation} isLatest={!!creation && m.creation.id === creation.id}
+                    onOpen={() => setPlayingCreation(m.creation!)}
+                    publishing={publishing} publishedPostId={publishedPostId} onShare={onPublish} />
+                )}
+              </div>
+            </div>
+          )
         ))}
+
+        {loading && <BuildingRow />}
+        {error && !loading && <div style={{ display: 'flex', gap: 10, margin: '14px 0' }}><Avatar /><div style={{ fontSize: 15, color: '#ff9a9a' }}>{error}</div></div>}
+        {limit && !loading && <div style={{ display: 'flex', gap: 10, margin: '14px 0' }}><Avatar /><div style={{ fontSize: 15, color: '#ffcf8a' }}>{limit.message}</div></div>}
+        {runtimeError && !loading && (
+          <div style={{ display: 'flex', gap: 10, margin: '14px 0' }}>
+            <Avatar />
+            <div style={{ fontSize: 15, color: '#e9e9e9' }}>
+              That build hit an error.{' '}
+              <button onClick={fixErrors} style={{ background: 'none', border: 'none', color: '#00CEC8', fontSize: 15, padding: 0, cursor: 'pointer', textDecoration: 'underline' }}>Have Steve fix it</button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {(error || limit) && (
-        <div style={{ flex: '0 0 auto', padding: '8px 14px', fontSize: 13, color: limit ? '#ffcf8a' : '#ff9a9a', background: 'rgba(255,255,255,0.03)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          {limit ? limit.message : error}
-        </div>
-      )}
-
-      {runtimeError && !loading && (
-        <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', fontSize: 13, color: '#ffcf8a', background: 'rgba(255,207,138,0.08)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          <span style={{ flex: 1 }}>This build hit an error.</span>
-          <button onClick={fixErrors} style={{ background: '#00CEC8', color: '#00302e', border: 'none', borderRadius: 999, padding: '6px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>Have Steve fix it</button>
-        </div>
-      )}
-
-      <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px 0' }}>
-        <span style={{ fontSize: 12, color: '#7d7d7d' }}>Quality</span>
-        <div style={{ display: 'flex', background: '#141414', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 999, padding: 2 }}>
-          {(['fast', 'best'] as const).map((t) => (
-            <button key={t} onClick={() => setTier(t)} disabled={loading}
-              style={{ border: 'none', borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer', background: tier === t ? '#00CEC8' : 'transparent', color: tier === t ? '#00302e' : '#cfcfcf' }}>
-              {t === 'fast' ? 'Fast' : 'Best quality'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ flex: '0 0 auto', display: 'flex', gap: 8, padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,0.08)', background: '#000' }}>
+      <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,0.06)', background: '#000' }}>
+        <button onClick={() => setTier(tier === 'fast' ? 'best' : 'fast')} disabled={loading} aria-label="Quality"
+          style={{ flex: '0 0 auto', border: 'none', borderRadius: 999, padding: '8px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer', background: 'rgba(255,255,255,0.06)', color: tier === 'best' ? '#00CEC8' : '#cfcfcf' }}>
+          {tier === 'best' ? 'Best' : 'Fast'}
+        </button>
         <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') send() }}
-          placeholder={creation ? 'What should we tweak?' : 'What should we make?'}
-          style={{ flex: 1, background: '#141414', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 999, padding: '11px 14px', color: '#f1f1f1', fontSize: 16, outline: 'none' }} />
+          placeholder={creation ? 'What should we tweak?' : 'Message Steve…'}
+          style={{ flex: 1, minWidth: 0, background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 22, padding: '12px 16px', color: '#f1f1f1', fontSize: 16, outline: 'none' }} />
         <button onClick={send} disabled={loading || !input.trim()} aria-label="Send"
-          style={{ background: loading || !input.trim() ? '#0a4a47' : '#00CEC8', color: '#00302e', border: 'none', borderRadius: 999, width: 44, height: 44, fontSize: 18, fontWeight: 500, cursor: 'pointer', flex: '0 0 auto' }}>↑</button>
+          style={{ flex: '0 0 auto', background: loading || !input.trim() ? 'rgba(255,255,255,0.08)' : '#00CEC8', color: loading || !input.trim() ? '#6e6e6e' : '#00302e', border: 'none', borderRadius: '50%', width: 40, height: 40, fontSize: 18, fontWeight: 500, cursor: 'pointer' }}>↑</button>
       </div>
 
-      {playing && creation && (
-        <PlayableCreation html={creation.html} title={creation.title} onClose={() => setPlaying(false)} />
+      {playingCreation && (
+        <PlayableCreation html={playingCreation.html} title={playingCreation.title} onClose={() => setPlayingCreation(null)} />
       )}
     </div>
+  )
+}
+
+function CreationCard({ creation, isLatest, onOpen, publishing, publishedPostId, onShare }: {
+  creation: Creation
+  isLatest: boolean
+  onOpen: () => void
+  publishing: boolean
+  publishedPostId: number | null
+  onShare: () => void
+}) {
+  return (
+    <button onClick={onOpen}
+      style={{ position: 'relative', display: 'block', width: '100%', maxWidth: 320, height: 132, marginTop: 10, borderRadius: 14, border: '1px solid rgba(255,255,255,0.10)', background: '#0b0b0b', overflow: 'hidden', cursor: 'pointer', opacity: isLatest ? 1 : 0.85 }}>
+      <span style={{ position: 'absolute', left: 12, top: 12, display: 'flex', gap: 5 }}>
+        <span style={{ width: 10, height: 10, borderRadius: 3, background: '#00CEC8' }} />
+        <span style={{ width: 10, height: 10, borderRadius: 3, background: '#EF9F27' }} />
+        <span style={{ width: 10, height: 10, borderRadius: 3, background: '#7F77DD' }} />
+      </span>
+      <span style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+        <span style={{ width: 44, height: 44, borderRadius: '50%', background: '#00CEC8', color: '#00302e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>
+          <i className="ti ti-player-play" aria-hidden="true" />
+        </span>
+        <span style={{ fontSize: 14, color: '#e9e9e9', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{creation.title}</span>
+      </span>
+      <span style={{ position: 'absolute', left: 12, bottom: 10, fontSize: 11, color: '#6e6e6e' }}>Tap to play</span>
+      {isLatest && (
+        <span role="button" tabIndex={0}
+          onClick={(e) => { e.stopPropagation(); if (!publishedPostId) onShare() }}
+          style={{ position: 'absolute', right: 12, bottom: 8, fontSize: 13, fontWeight: 500, color: '#00CEC8', padding: '4px 6px' }}>
+          {publishedPostId ? 'Shared ✓' : publishing ? 'Sharing…' : 'Share'}
+        </span>
+      )}
+    </button>
   )
 }

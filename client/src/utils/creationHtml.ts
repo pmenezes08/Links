@@ -11,7 +11,23 @@
 const VIEWPORT_META =
   '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">'
 const BASE_CSS =
-  '<style>html,body{margin:0;padding:0;background:#000}</style>'
+  '<style>html,body{margin:0;padding:0;background:#000;max-width:100%;overflow-x:hidden}img,canvas,svg,video{max-width:100%;height:auto}</style>'
+
+// Reports the artifact's content size out to the host so it can scale the
+// iframe to fit (fixed-pixel layouts overflow even with a viewport meta).
+const FIT_REPORTER = `<script>(function(){
+  function measure(){
+    try{
+      var d=document.documentElement, b=document.body;
+      var w=Math.max(d.scrollWidth, b?b.scrollWidth:0, d.offsetWidth||0);
+      var h=Math.max(d.scrollHeight, b?b.scrollHeight:0, d.offsetHeight||0);
+      parent.postMessage({__cpfit:true, w:w, h:h, vw:window.innerWidth, vh:window.innerHeight}, '*');
+    }catch(_){ }
+  }
+  window.addEventListener('load', measure);
+  try{ new ResizeObserver(measure).observe(document.documentElement); }catch(_){ }
+  setTimeout(measure, 300); setTimeout(measure, 1200);
+})();<\/script>`
 
 const ERROR_REPORTER = `<script>(function(){
   function report(msg){ try{ parent.postMessage({__cperr:true, message:String(msg).slice(0,400)}, '*'); }catch(_){ } }
@@ -46,7 +62,7 @@ export function prepareCreationHtml(html: string, opts: { controlBridge?: boolea
     out = headInject + out
   }
 
-  const tail = ERROR_REPORTER + (opts.controlBridge ? CONTROL_BRIDGE : '')
+  const tail = ERROR_REPORTER + FIT_REPORTER + (opts.controlBridge ? CONTROL_BRIDGE : '')
   out = out.includes('</body>') ? out.replace('</body>', tail + '</body>') : out + tail
   return out
 }

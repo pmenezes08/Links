@@ -1,12 +1,12 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { prepareCreationHtml } from '../../utils/creationHtml'
 
 /**
  * Full-screen play surface for a front-end creation. Renders the artifact in a
- * sandboxed iframe (opaque origin — no app-session access). The host can drive
- * keyboard-controlled games via an optional on-screen D-pad (toggle), which
- * posts synthetic key events through the injected control bridge. Well-formed
- * artifacts ship their own touch controls, so the D-pad defaults to hidden.
+ * sandboxed iframe (opaque origin — no app-session access) and scales it to fit
+ * the frame: the injected fit-reporter posts the content size out, and we apply
+ * a transform so fixed-pixel artifacts can't overflow or clip. An optional
+ * on-screen D-pad drives keyboard games via the injected control bridge.
  */
 
 type Props = { html: string; title?: string; onClose: () => void }
@@ -21,7 +21,24 @@ const ARROWS: Array<{ key: string; icon: string; gridArea: string; label: string
 export default function PlayableCreation({ html, title, onClose }: Props) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const [showPad, setShowPad] = useState(false)
+  const [fit, setFit] = useState(1)
   const srcDoc = useMemo(() => prepareCreationHtml(html, { controlBridge: true }), [html])
+
+  useEffect(() => { setFit(1) }, [html])
+
+  // The artifact posts its measured content size; scale down (never up) to fit.
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      const d = e.data as { __cpfit?: boolean; w?: number; h?: number; vw?: number; vh?: number } | null
+      if (!d || typeof d !== 'object' || !d.__cpfit) return
+      const sx = d.vw && d.w ? d.vw / d.w : 1
+      const sy = d.vh && d.h ? d.vh / d.h : 1
+      const s = Math.min(1, sx, sy)
+      setFit(s < 0.999 ? Math.max(0.4, s) : 1)
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [])
 
   const sendKey = (key: string, down: boolean) => {
     try { iframeRef.current?.contentWindow?.postMessage({ __cpctl: true, key, down }, '*') } catch { /* noop */ }
@@ -39,14 +56,20 @@ export default function PlayableCreation({ html, title, onClose }: Props) {
     display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'none', userSelect: 'none',
   }
 
+  const scaled = fit < 1
+  const iframeStyle: React.CSSProperties = scaled
+    ? { position: 'absolute', top: 0, left: 0, width: `${100 / fit}%`, height: `${100 / fit}%`, transform: `scale(${fit})`, transformOrigin: 'top left', border: 0, display: 'block' }
+    : { position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0, display: 'block' }
+
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 80, background: '#000',
       display: 'flex', flexDirection: 'column',
       paddingTop: 'var(--sat-px, 0px)', paddingBottom: 'var(--sab-px, 0px)',
     }}>
-      <iframe ref={iframeRef} title={title || 'Creation'} sandbox="allow-scripts" srcDoc={srcDoc}
-        style={{ flex: '1 1 auto', width: '100%', minHeight: 0, border: 0, display: 'block' }} />
+      <div style={{ flex: '1 1 auto', position: 'relative', overflow: 'hidden', minHeight: 0 }}>
+        <iframe ref={iframeRef} title={title || 'Creation'} sandbox="allow-scripts" srcDoc={srcDoc} style={iframeStyle} />
+      </div>
 
       <button onClick={onClose} aria-label="Close"
         style={{ position: 'absolute', top: 'calc(var(--sat-px, 0px) + 10px)', left: 10, zIndex: 3, width: 38, height: 38, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.18)', color: '#fff', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

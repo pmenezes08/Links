@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 XAI_API_KEY = os.getenv("XAI_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 GROK_MODEL_FAST = os.getenv("STEVE_CONTENT_MODEL", "grok-4.20-non-reasoning")
 
 # Tech, culture, analysis, fashion, music — US/Europe-oriented; bare + www for filter_links netloc match.
@@ -105,6 +106,11 @@ def _is_openai_model(model: str) -> bool:
     """OpenAI models (gpt-*, o-series) route to OpenAI; everything else to xAI."""
     m = (model or "").lower()
     return m.startswith("gpt") or m.startswith("o1") or m.startswith("o3") or m.startswith("o4")
+
+
+def _is_anthropic_model(model: str) -> bool:
+    """Anthropic Claude models (claude-*) route to the Anthropic SDK."""
+    return (model or "").lower().startswith("claude")
 
 
 def _strip_markdown_json_fence(raw_text: str) -> str:
@@ -343,6 +349,22 @@ def generate_text(
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
+    if _is_anthropic_model(mdl):
+        # Anthropic Claude (Opus/Sonnet/Haiku) via the official SDK. Opus/Sonnet
+        # reject `temperature` (400), so we omit it; `max_tokens` is the output
+        # cap, and an explicit timeout suppresses the SDK's large-output guard.
+        if not ANTHROPIC_API_KEY:
+            raise RuntimeError("ANTHROPIC_API_KEY is not configured")
+        import anthropic
+        aclient = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        msg = aclient.messages.create(
+            model=mdl,
+            max_tokens=effective_max,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+            timeout=600,
+        )
+        return next((b.text for b in msg.content if getattr(b, "type", None) == "text"), "")
     if _is_openai_model(mdl):
         # OpenAI GPT-5.x runs through the Responses API with max_output_tokens
         # (mirrors the onboarding services); these models reject chat-style

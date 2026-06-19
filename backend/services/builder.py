@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # can be repointed without code. "best" routes to OpenAI GPT-5.x via the
 # provider router in llm.py; "fast" stays on Grok.
 _MODEL_FAST = os.getenv("STEVE_BUILDER_MODEL_FAST", os.getenv("STEVE_BUILDER_MODEL", "grok-4.3"))
-_MODEL_BEST = os.getenv("STEVE_BUILDER_MODEL_BEST", "gpt-5.5")
+_MODEL_BEST = os.getenv("STEVE_BUILDER_MODEL_BEST", "claude-opus-4-8")
 BUILDER_TIERS = {"fast": _MODEL_FAST, "best": _MODEL_BEST}
 MODEL_LABEL = _MODEL_FAST  # default label; the actual model used is logged per build
 

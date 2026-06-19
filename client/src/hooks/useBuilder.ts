@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 
 export type Creation = { id: number; title: string; html: string; status: string }
-export type BuilderMessage = { role: 'user' | 'steve'; text: string }
+export type BuilderMessage = { role: 'user' | 'steve'; text: string; creation?: Creation }
 export type BuilderLimit = { cap: number | null; message: string }
 
 type ApiResult = { success?: boolean; error?: string; creation?: Creation; cap?: number | null; message?: string; post_id?: number }
@@ -56,7 +56,7 @@ export function useBuilder(communityId: string) {
       setRev((r) => r + 1)
       setMessages((m) => [
         ...m,
-        { role: 'steve', text: creation ? 'Done — take a look.' : 'Here you go! Want to change anything?' },
+        { role: 'steve', text: creation ? 'Updated —' : "Here's your build —", creation: data.creation },
       ])
     } catch {
       setError('Network error. Please try again.')
