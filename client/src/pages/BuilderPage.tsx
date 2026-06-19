@@ -68,6 +68,7 @@ export default function BuilderPage() {
   const [tierSheetOpen, setTierSheetOpen] = useState(false)
   const [myBuildsOpen, setMyBuildsOpen] = useState(false)
   const [myBuilds, setMyBuilds] = useState<BuildSummary[] | null>(null)
+  const [lastPrompt, setLastPrompt] = useState('')
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const currentTier = TIERS.find((t) => t.key === tier) || TIERS[1]
@@ -89,30 +90,30 @@ export default function BuilderPage() {
   const { keyboardLift, safeBottomPx } = useFixedComposerKeyboard({ onLayoutNudge: scrollToBottom })
   useEffect(scrollToBottom, [messages, loading])
 
-  // The played creation reports runtime errors; offer a one-tap fix.
-  useEffect(() => {
-    const onMsg = (e: MessageEvent) => {
-      const d = e.data as { __cperr?: boolean; message?: string } | null
-      if (d && typeof d === 'object' && d.__cperr && typeof d.message === 'string') setRuntimeError(d.message)
-    }
-    window.addEventListener('message', onMsg)
-    return () => window.removeEventListener('message', onMsg)
-  }, [])
+  // Runtime errors now arrive (scoped to the played artifact) via
+  // PlayableCreation's onRuntimeError — no global listener, so non-interactive
+  // posters can't trigger a false "fix it".
 
   const send = () => {
     const v = input.trim()
     if (!v || loading) return
     setInput('')
+    setLastPrompt(v)
     setPublishedPostId(null)
     setRuntimeError(null)
     build(v)
+  }
+
+  const retry = () => {
+    if (!lastPrompt || loading) return
+    build(lastPrompt) // build() clears error/limit itself
   }
 
   const fixErrors = () => {
     if (!runtimeError || loading) return
     const msg = runtimeError
     setRuntimeError(null)
-    build(`Fix this runtime error so the creation works correctly: ${msg}`)
+    build(`The creation has a problem when it runs: "${msg}". Fix it so it works correctly, and make sure the page never renders blank — keep everything else that already works.`)
   }
 
   const onPublish = async () => {
@@ -203,14 +204,24 @@ export default function BuilderPage() {
         ))}
 
         {loading && <BuildingRow />}
-        {error && !loading && <div style={{ display: 'flex', gap: 10, margin: '14px 0' }}><Avatar /><div style={{ fontSize: 15, color: '#ff9a9a' }}>{error}</div></div>}
+        {error && !loading && (
+          <div style={{ display: 'flex', gap: 10, margin: '14px 0' }}>
+            <Avatar />
+            <div style={{ fontSize: 15, lineHeight: 1.5, color: '#e9e9e9' }}>
+              Hmm, that one got away from me.{lastPrompt ? ' ' : ''}
+              {lastPrompt && (
+                <button onClick={retry} style={{ background: 'none', border: 'none', color: '#00CEC8', fontSize: 15, fontWeight: 500, padding: 0, cursor: 'pointer' }}>Try again</button>
+              )}
+            </div>
+          </div>
+        )}
         {limit && !loading && <div style={{ display: 'flex', gap: 10, margin: '14px 0' }}><Avatar /><div style={{ fontSize: 15, color: '#ffcf8a' }}>{limit.message}</div></div>}
         {runtimeError && !loading && (
           <div style={{ display: 'flex', gap: 10, margin: '14px 0' }}>
             <Avatar />
-            <div style={{ fontSize: 15, color: '#e9e9e9' }}>
-              That build hit an error.{' '}
-              <button onClick={fixErrors} style={{ background: 'none', border: 'none', color: '#00CEC8', fontSize: 15, padding: 0, cursor: 'pointer', textDecoration: 'underline' }}>Have Steve fix it</button>
+            <div style={{ fontSize: 15, lineHeight: 1.5, color: '#e9e9e9' }}>
+              I spotted a glitch in that one.{' '}
+              <button onClick={fixErrors} style={{ background: 'rgba(0,206,200,0.14)', border: 'none', color: '#00CEC8', fontSize: 14, fontWeight: 500, padding: '4px 10px', borderRadius: 999, cursor: 'pointer' }}>Fix it</button>
             </div>
           </div>
         )}
@@ -283,7 +294,13 @@ export default function BuilderPage() {
       )}
 
       {playingCreation && (
-        <PlayableCreation html={playingCreation.html} title={playingCreation.title} onClose={() => setPlayingCreation(null)} creationId={playingCreation.id} />
+        <PlayableCreation
+          html={playingCreation.html} title={playingCreation.title}
+          onClose={() => setPlayingCreation(null)} creationId={playingCreation.id}
+          onRuntimeError={(m) => setRuntimeError(m)}
+          onShare={playingCreation.id === creation?.id ? onPublish : undefined}
+          shared={!!publishedPostId}
+        />
       )}
     </div>
   )

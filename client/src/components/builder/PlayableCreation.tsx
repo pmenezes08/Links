@@ -9,7 +9,18 @@ import { prepareCreationHtml } from '../../utils/creationHtml'
  * on-screen D-pad drives keyboard games via the injected control bridge.
  */
 
-type Props = { html: string; title?: string; onClose: () => void; creationId?: number }
+type Props = {
+  html: string
+  title?: string
+  onClose: () => void
+  creationId?: number
+  onRuntimeError?: (msg: string) => void
+  onShare?: () => void
+  shared?: boolean
+}
+
+type Entry = { name: string; value: number; rank: number }
+type ResultState = { score: number | null; key: string }
 
 const ARROWS: Array<{ key: string; icon: string; gridArea: string; label: string }> = [
   { key: 'ArrowUp', icon: 'ti-chevron-up', gridArea: '1 / 2 / 2 / 3', label: 'Up' },
@@ -18,12 +29,16 @@ const ARROWS: Array<{ key: string; icon: string; gridArea: string; label: string
   { key: 'ArrowRight', icon: 'ti-chevron-right', gridArea: '2 / 3 / 3 / 4', label: 'Right' },
 ]
 
-export default function PlayableCreation({ html, title, onClose, creationId }: Props) {
+export default function PlayableCreation({ html, title, onClose, creationId, onRuntimeError, onShare, shared }: Props) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const [showPad, setShowPad] = useState(false)
   const [fit, setFit] = useState(1)
+  const [playKey, setPlayKey] = useState(0)
+  const [result, setResult] = useState<ResultState | null>(null)
+  const [board, setBoard] = useState<{ entries: Entry[]; mine: Entry | null } | null>(null)
+  const [myRating, setMyRating] = useState<number | null>(null)
   const srcDoc = useMemo(
-    () => prepareCreationHtml(html, { controlBridge: true, dataBridge: creationId != null }),
+    () => prepareCreationHtml(html, { controlBridge: true, dataBridge: creationId != null, errorReporter: true }),
     [html, creationId],
   )
 
@@ -36,9 +51,33 @@ export default function PlayableCreation({ html, title, onClose, creationId }: P
     fetch(`/api/builder/${creationId}/play`, { method: 'POST', credentials: 'include' }).catch(() => { /* noop */ })
   }, [creationId])
 
-  // Broker CPoint SDK calls from the sandboxed artifact: the artifact posts an
-  // RPC, the host (session-authed) performs the real fetch and posts the result
-  // back. Only messages from THIS artifact's window are honoured.
+  // Show the native result screen when the artifact signals the run ended.
+  const handleGameOver = async (score: unknown, key: unknown) => {
+    const k = (typeof key === 'string' && key) ? key : 'highscore'
+    const numScore = typeof score === 'number' && isFinite(score) ? score : null
+    if (creationId != null) {
+      try {
+        if (numScore != null) {
+          await fetch(`/api/builder/${creationId}/data/score`, {
+            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value: numScore, key: k }),
+          })
+        }
+        const [lb, rs] = await Promise.all([
+          fetch(`/api/builder/${creationId}/data/leaderboard?key=${encodeURIComponent(k)}&limit=5`, { credentials: 'include' }).then((r) => r.json()).catch(() => null),
+          fetch(`/api/builder/${creationId}/data/results`, { credentials: 'include' }).then((r) => r.json()).catch(() => null),
+        ])
+        setBoard(lb && lb.success ? { entries: lb.entries || [], mine: lb.mine || null } : { entries: [], mine: null })
+        setMyRating(rs && rs.success ? (typeof rs.mine === 'number' ? rs.mine : null) : null)
+      } catch { /* show the overlay anyway */ }
+    }
+    setResult({ score: numScore, key: k })
+  }
+
+  // Broker CPoint SDK calls + handle runtime errors and the gameOver signal from
+  // the sandboxed artifact. Only messages from THIS artifact's window are
+  // honoured (the opaque-origin iframe sends origin "null", so source identity
+  // is the real guard).
   useEffect(() => {
     if (creationId == null) return
     const base = `/api/builder/${creationId}/data`
@@ -46,9 +85,12 @@ export default function PlayableCreation({ html, title, onClose, creationId }: P
       try { (src as Window | null)?.postMessage({ __cpdata_res: true, rid, ok, result, error }, '*') } catch { /* noop */ }
     }
     const onMsg = async (e: MessageEvent) => {
-      const d = e.data as { __cpdata?: boolean; rid?: string; op?: string; payload?: Record<string, unknown> } | null
-      if (!d || typeof d !== 'object' || !d.__cpdata || !d.rid || !d.op) return
       if (e.source !== iframeRef.current?.contentWindow) return // only our artifact
+      const d = e.data as { __cpdata?: boolean; __cperr?: boolean; __cpend?: boolean; rid?: string; op?: string; payload?: Record<string, unknown>; message?: string; score?: unknown; key?: unknown } | null
+      if (!d || typeof d !== 'object') return
+      if (d.__cperr) { if (onRuntimeError && typeof d.message === 'string') onRuntimeError(d.message); return }
+      if (d.__cpend) { handleGameOver(d.score, d.key); return }
+      if (!d.__cpdata || !d.rid || !d.op) return
       const rid = d.rid
       const p = (d.payload || {}) as Record<string, unknown>
       try {
@@ -125,8 +167,9 @@ export default function PlayableCreation({ html, title, onClose, creationId }: P
       display: 'flex', flexDirection: 'column',
       paddingTop: 'var(--sat-px, 0px)', paddingBottom: 'var(--sab-px, 0px)',
     }}>
+      <style>{`@keyframes cp-sheet-up { from { transform: translateY(100%) } to { transform: translateY(0) } }`}</style>
       <div style={{ flex: '1 1 auto', position: 'relative', overflow: 'hidden', minHeight: 0 }}>
-        <iframe ref={iframeRef} title={title || 'Creation'} sandbox="allow-scripts" srcDoc={srcDoc} style={iframeStyle} />
+        <iframe key={playKey} ref={iframeRef} title={title || 'Creation'} sandbox="allow-scripts" srcDoc={srcDoc} style={iframeStyle} />
       </div>
 
       <button onClick={onClose} aria-label="Close"
@@ -158,6 +201,112 @@ export default function PlayableCreation({ html, title, onClose, creationId }: P
           </div>
         </div>
       )}
+
+      {result && (
+        <ResultOverlay
+          result={result}
+          board={board}
+          myRating={myRating}
+          shared={shared}
+          onRate={async (v) => {
+            setMyRating(v)
+            if (creationId != null) {
+              try { await fetch(`/api/builder/${creationId}/data/rate`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: v }) }) } catch { /* noop */ }
+            }
+          }}
+          onPlayAgain={() => { setResult(null); setBoard(null); setPlayKey((k) => k + 1) }}
+          onShare={onShare}
+          onClose={onClose}
+        />
+      )}
+    </div>
+  )
+}
+
+function CountUp({ to }: { to: number }) {
+  const [n, setN] = useState(0)
+  useEffect(() => {
+    let raf = 0
+    const start = performance.now()
+    const dur = 900
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / dur)
+      const eased = 1 - Math.pow(1 - t, 3) // ease-out cubic
+      setN(Math.round(to * eased))
+      if (t < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [to])
+  return <span style={{ fontVariantNumeric: 'tabular-nums' }}>{n.toLocaleString()}</span>
+}
+
+function ResultOverlay({ result, board, myRating, shared, onRate, onPlayAgain, onShare, onClose }: {
+  result: ResultState
+  board: { entries: Entry[]; mine: Entry | null } | null
+  myRating: number | null
+  shared?: boolean
+  onRate: (v: number) => void
+  onPlayAgain: () => void
+  onShare?: () => void
+  onClose: () => void
+}) {
+  const entries = board?.entries || []
+  const hasScore = result.score != null
+  const isBest = hasScore && board?.mine != null && Number(board.mine.value) <= Number(result.score)
+  return (
+    <div style={{ position: 'absolute', inset: 0, zIndex: 6, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end' }}>
+      <div style={{ width: '100%', background: '#0b0b0b', borderRadius: '20px 20px 0 0', borderTop: '1px solid rgba(255,255,255,0.08)', padding: '10px 18px', paddingBottom: 'calc(var(--sab-px, 0px) + 16px)', animation: 'cp-sheet-up 0.25s cubic-bezier(0.32,0.72,0,1)' }}>
+        <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.18)', margin: '4px auto 14px' }} />
+
+        {hasScore ? (
+          <div style={{ textAlign: 'center', marginBottom: 14 }}>
+            <div style={{ fontSize: 13, color: '#8a8a8a' }}>{isBest ? 'New best!' : 'Your score'}</div>
+            <div style={{ fontSize: 44, fontWeight: 600, color: isBest ? '#EF9F27' : '#00CEC8', textShadow: isBest ? '0 0 18px rgba(239,159,39,0.45)' : 'none', lineHeight: 1.1 }}>
+              <CountUp to={Number(result.score)} />
+            </div>
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', fontSize: 22, color: '#f1f1f1', margin: '4px 0 14px' }}>Nice one!</div>
+        )}
+
+        {hasScore && entries.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, color: '#7a7a7a', marginBottom: 6 }}>Top scores</div>
+            {entries.slice(0, 5).map((en) => {
+              const mine = board?.mine != null && en.rank === board.mine.rank && Number(en.value) === Number(board.mine.value)
+              return (
+                <div key={en.rank} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 8px', borderRadius: 8, background: mine ? 'rgba(0,206,200,0.08)' : 'transparent' }}>
+                  <span style={{ width: 20, color: en.rank === 1 ? '#EF9F27' : '#8a8a8a', fontSize: 13, fontWeight: 600 }}>{en.rank}</span>
+                  <span style={{ flex: 1, minWidth: 0, color: '#e9e9e9', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{en.name}</span>
+                  <span style={{ color: '#f1f1f1', fontSize: 14, fontVariantNumeric: 'tabular-nums' }}>{Number(en.value).toLocaleString()}</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        <div style={{ textAlign: 'center', marginBottom: 16 }}>
+          <div style={{ fontSize: 12, color: '#7a7a7a', marginBottom: 6 }}>Rate it for the maker</div>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
+            {[1, 2, 3, 4, 5].map((s) => (
+              <button key={s} onClick={() => onRate(s)} aria-label={`Rate ${s}`}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 26, color: (myRating || 0) >= s ? '#00CEC8' : 'rgba(255,255,255,0.18)', padding: 2 }}>
+                <i className="ti ti-star-filled" aria-hidden />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onPlayAgain} style={{ flex: 1, background: '#00CEC8', color: '#00302e', border: 'none', borderRadius: 22, padding: '13px 0', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>Play again</button>
+          {onShare ? (
+            <button onClick={onShare} disabled={shared} style={{ flex: 1, background: 'transparent', color: '#00CEC8', border: '1px solid rgba(0,206,200,0.5)', borderRadius: 22, padding: '13px 0', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>{shared ? 'Shared ✓' : 'Share'}</button>
+          ) : (
+            <button onClick={onClose} style={{ flex: 1, background: 'transparent', color: '#cfcfcf', border: '1px solid rgba(255,255,255,0.16)', borderRadius: 22, padding: '13px 0', fontSize: 15, fontWeight: 500, cursor: 'pointer' }}>Done</button>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

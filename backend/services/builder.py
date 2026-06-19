@@ -87,15 +87,20 @@ _SYSTEM_PROMPT = (
     "drive animation with a single requestAnimationFrame loop (never schedule rAF from inside resize/scroll/ResizeObserver "
     "handlers); make layout idempotent so it doesn't thrash; the page must reach a stable resting state and never visibly "
     "flash or re-mount itself.\n"
+    "5c) NEVER RENDER BLANK: show meaningful content on first paint (within ~1s) without waiting on the network; if a CDN "
+    "library fails to load, degrade gracefully to a working built-in fallback rather than a blank/broken screen; never gate "
+    "the first render on a fetch.\n"
     "6) Set a short, catchy, human-friendly <title> that NAMES the creation (e.g. \"Neon Block Drop\", "
     "\"Which Pizza Are You?\") — never \"Document\", \"Untitled\", or a copy of the user's prompt.\n"
     "COMMUNITY DATA (optional — use ONLY when the creation has a score, a result, or something worth rating, "
     "e.g. a game high score or a quiz): a `window.CPoint` API may exist at runtime for community-shared data. "
     "ALWAYS feature-detect (`if (window.CPoint) { ... }`) and work fully without it (degrade to local-only). "
     "It returns Promises: `CPoint.submitScore(n)` saves the player's score; `CPoint.getLeaderboard()` -> "
-    "`{entries:[{name,value,rank}], mine}` for a top-scores list; `CPoint.rate(1..5)` and `CPoint.getResults()` -> "
-    "`{average,count,mine}` for ratings. For a score-based game, call `submitScore` on game over and render the "
-    "returned leaderboard on the result screen. Never block gameplay on it; wrap calls in try/catch."
+    "`{entries:[{name,value,rank}], mine}`; `CPoint.rate(1..5)` and `CPoint.getResults()` -> `{average,count,mine}`. "
+    "WHEN A RUN/ROUND ENDS, call `CPoint.gameOver({score})` (pass the score for a game; call it with no args for a "
+    "quiz/result with no number). The app then shows a NATIVE results screen — score count-up, community top-scores, "
+    "a rating prompt, and Play again — so you do NOT need to build your own end screen or leaderboard UI. Always "
+    "feature-detect (`if (window.CPoint)`), never block gameplay on it, and wrap calls in try/catch."
 )
 
 _CREATION_COLS = [

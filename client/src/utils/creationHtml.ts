@@ -29,10 +29,27 @@ const FIT_REPORTER = `<script>(function(){
   setTimeout(measure, 300); setTimeout(measure, 1200);
 })();<\/script>`
 
+// Health reporter — posts a typed __cperr so the host can offer a fix. Catches
+// (1) uncaught errors, (2) unhandled rejections, (3) FAILED RESOURCE loads
+// (a broken CDN <script>/<link>/<img> — these only surface on the capture
+// phase, not window.onerror), and (4) a blank render (nothing painted after
+// settle — the silent-failure mode a thrown-error net can't see). One report
+// per kind so a single broken CDN can't spam.
 const ERROR_REPORTER = `<script>(function(){
-  function report(msg){ try{ parent.postMessage({__cperr:true, message:String(msg).slice(0,400)}, '*'); }catch(_){ } }
-  window.addEventListener('error', function(e){ report((e && e.message) || 'Script error'); });
-  window.addEventListener('unhandledrejection', function(e){ report((e && e.reason && e.reason.message) || 'Unhandled promise rejection'); });
+  var sent={};
+  function report(kind,msg){ if(sent[kind])return; sent[kind]=1; try{ parent.postMessage({__cperr:true, kind:kind, message:String(msg||kind).slice(0,400)}, '*'); }catch(_){ } }
+  window.addEventListener('error', function(e){
+    var t=e&&e.target;
+    if(t && t!==window && (t.tagName==='SCRIPT'||t.tagName==='LINK'||t.tagName==='IMG')){
+      report('cdn','Could not load '+(t.src||t.href||t.tagName)); return;
+    }
+    report('error',(e && e.message) || 'Script error');
+  }, true);
+  window.addEventListener('unhandledrejection', function(e){ report('error',(e && e.reason && e.reason.message) || 'Unhandled promise rejection'); });
+  function checkBlank(){ try{ var b=document.body; if(!b)return;
+    var txt=(b.innerText||'').trim().length, els=b.querySelectorAll('*').length, painted=document.querySelector('canvas,svg,img,video,button,input');
+    if(txt<2 && els<3 && !painted) report('blank','The page rendered blank'); }catch(_){ } }
+  window.addEventListener('load', function(){ setTimeout(checkBlank, 1600); });
 })();<\/script>`
 
 // Community data SDK. The artifact gets a promise-based window.CPoint that
@@ -58,7 +75,11 @@ const DATA_BRIDGE = `<script>(function(){
     submitScore:function(n,opts){return call('submitScore',{value:n,key:(opts&&opts.key)||'highscore',name:(opts&&opts.name)});},
     getLeaderboard:function(opts){return call('getLeaderboard',{key:(opts&&opts.key)||'highscore',limit:(opts&&opts.limit)||10});},
     rate:function(x,opts){return call('rate',{value:x,name:(opts&&opts.name)});},
-    getResults:function(){return call('getResults',{});}
+    getResults:function(){return call('getResults',{});},
+    // Signal the run/round ended — the host shows a native result screen
+    // (score count-up, top scores, rate, play again, share). Pass the score
+    // for a game; call with no args for a quiz/result with no number.
+    gameOver:function(opts){ try{ parent.postMessage({__cpend:true, score:(opts&&opts.score), key:(opts&&opts.key)||'highscore'}, '*'); }catch(_){ } }
   };
 })();<\/script>`
 
@@ -76,7 +97,7 @@ const CONTROL_BRIDGE = `<script>(function(){
   });
 })();<\/script>`
 
-export function prepareCreationHtml(html: string, opts: { controlBridge?: boolean; dataBridge?: boolean } = {}): string {
+export function prepareCreationHtml(html: string, opts: { controlBridge?: boolean; dataBridge?: boolean; errorReporter?: boolean } = {}): string {
   if (!html) return html
   let out = html
   const headInject = VIEWPORT_META + BASE_CSS
@@ -89,7 +110,8 @@ export function prepareCreationHtml(html: string, opts: { controlBridge?: boolea
     out = headInject + out
   }
 
-  const tail = ERROR_REPORTER + FIT_REPORTER
+  const tail = FIT_REPORTER
+    + (opts.errorReporter ? ERROR_REPORTER : '')
     + (opts.controlBridge ? CONTROL_BRIDGE : '')
     + (opts.dataBridge ? DATA_BRIDGE : '')
   out = out.includes('</body>') ? out.replace('</body>', tail + '</body>') : out + tail
