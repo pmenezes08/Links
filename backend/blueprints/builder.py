@@ -29,6 +29,12 @@ def _safe_int(value):
         return None
 
 
+def _safe_tier(value):
+    """Validate the user-facing quality tier ('fast' | 'best')."""
+    t = value.strip().lower() if isinstance(value, str) else "fast"
+    return t if t in ("fast", "best") else "fast"
+
+
 def _can_access_community(username: str, community_id: int) -> bool:
     """Server-side authorization: can this user see content in the community."""
     ph = get_sql_placeholder()
@@ -66,6 +72,7 @@ def builder_create():
         return jsonify({"success": False, "error": "community_id and prompt are required"}), 400
     if len(prompt) > 4000:
         return jsonify({"success": False, "error": "prompt too long"}), 400
+    tier = _safe_tier(data.get("tier"))
 
     if not _can_access_community(username, community_id):
         return jsonify({"success": False, "error": "not_found"}), 404
@@ -78,7 +85,7 @@ def builder_create():
 
     try:
         creation = builder_svc.create_creation(
-            username=username, community_id=community_id, prompt=prompt,
+            username=username, community_id=community_id, prompt=prompt, tier=tier,
         )
     except Exception:
         logger.exception("builder: create_creation failed")
@@ -90,7 +97,7 @@ def builder_create():
 
     ai_usage.log_usage(username, surface=ai_usage.SURFACE_BUILDER,
                        request_type="builder_create", community_id=community_id,
-                       model=builder_svc.MODEL_LABEL)
+                       model=creation.get("model") or builder_svc.MODEL_LABEL)
     return jsonify({"success": True, "creation": creation})
 
 
@@ -106,6 +113,7 @@ def builder_iterate(creation_id: int):
         return jsonify({"success": False, "error": "message is required"}), 400
     if len(message) > 4000:
         return jsonify({"success": False, "error": "message too long"}), 400
+    tier = _safe_tier(data.get("tier"))
 
     existing = builder_svc.get_creation(creation_id)
     if not existing or existing.get("created_by") != username:
@@ -120,7 +128,7 @@ def builder_iterate(creation_id: int):
 
     try:
         creation = builder_svc.iterate_creation(
-            creation_id=creation_id, username=username, message=message,
+            creation_id=creation_id, username=username, message=message, tier=tier,
         )
     except PermissionError:
         return jsonify({"success": False, "error": "not_found"}), 404
@@ -134,7 +142,7 @@ def builder_iterate(creation_id: int):
 
     ai_usage.log_usage(username, surface=ai_usage.SURFACE_BUILDER,
                        request_type="builder_iterate", community_id=community_id,
-                       model=builder_svc.MODEL_LABEL)
+                       model=creation.get("model") or builder_svc.MODEL_LABEL)
     return jsonify({"success": True, "creation": creation})
 
 

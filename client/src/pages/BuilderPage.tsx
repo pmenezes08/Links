@@ -33,11 +33,12 @@ export default function BuilderPage() {
   const { community_id } = useParams()
   const navigate = useNavigate()
   const cid = String(community_id || '')
-  const { creation, messages, loading, error, limit, rev, build, publish } = useBuilder(cid)
+  const { creation, messages, loading, error, limit, rev, tier, setTier, build, publish } = useBuilder(cid)
   const [input, setInput] = useState('')
   const [publishing, setPublishing] = useState(false)
   const [publishedPostId, setPublishedPostId] = useState<number | null>(null)
   const [playing, setPlaying] = useState(false)
+  const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
   const scrollToBottom = () => {
@@ -48,12 +49,32 @@ export default function BuilderPage() {
 
   useEffect(scrollToBottom, [messages, loading])
 
+  // Reset the runtime-error flag when a new build/iteration renders.
+  useEffect(() => { setRuntimeError(null) }, [rev])
+  // The artifact (preview + play) reports its own runtime errors via postMessage.
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      const d = e.data as { __cperr?: boolean; message?: string } | null
+      if (d && typeof d === 'object' && d.__cperr && typeof d.message === 'string') setRuntimeError(d.message)
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [])
+
   const send = () => {
     const v = input.trim()
     if (!v || loading) return
     setInput('')
     setPublishedPostId(null)
+    setRuntimeError(null)
     build(v)
+  }
+
+  const fixErrors = () => {
+    if (!runtimeError || loading) return
+    const msg = runtimeError
+    setRuntimeError(null)
+    build(`Fix this runtime error so the creation works correctly: ${msg}`)
   }
 
   const onPublish = async () => {
@@ -129,6 +150,25 @@ export default function BuilderPage() {
           {limit ? limit.message : error}
         </div>
       )}
+
+      {runtimeError && !loading && (
+        <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', fontSize: 13, color: '#ffcf8a', background: 'rgba(255,207,138,0.08)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <span style={{ flex: 1 }}>This build hit an error.</span>
+          <button onClick={fixErrors} style={{ background: '#00CEC8', color: '#00302e', border: 'none', borderRadius: 999, padding: '6px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>Have Steve fix it</button>
+        </div>
+      )}
+
+      <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px 0' }}>
+        <span style={{ fontSize: 12, color: '#7d7d7d' }}>Quality</span>
+        <div style={{ display: 'flex', background: '#141414', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 999, padding: 2 }}>
+          {(['fast', 'best'] as const).map((t) => (
+            <button key={t} onClick={() => setTier(t)} disabled={loading}
+              style={{ border: 'none', borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer', background: tier === t ? '#00CEC8' : 'transparent', color: tier === t ? '#00302e' : '#cfcfcf' }}>
+              {t === 'fast' ? 'Fast' : 'Best quality'}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div style={{ flex: '0 0 auto', display: 'flex', gap: 8, padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,0.08)', background: '#000' }}>
         <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') send() }}

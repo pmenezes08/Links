@@ -27,12 +27,18 @@ from backend.services.content_generation import llm
 
 logger = logging.getLogger(__name__)
 
-# Codegen quality depends heavily on the model. Default to a *reasoning* Grok
-# model (the fast non-reasoning content model produces poor code). Override
-# via STEVE_BUILDER_MODEL to A/B a different model without touching other
-# Steve surfaces.
-BUILDER_MODEL = os.getenv("STEVE_BUILDER_MODEL", "grok-4.3")
-MODEL_LABEL = BUILDER_MODEL
+# User-facing tiers map to models. Users only ever see "Fast" / "Best quality"
+# — never raw model names (Steve is the single face). Env-overridable so a tier
+# can be repointed without code. "best" routes to OpenAI GPT-5.x via the
+# provider router in llm.py; "fast" stays on Grok.
+_MODEL_FAST = os.getenv("STEVE_BUILDER_MODEL_FAST", os.getenv("STEVE_BUILDER_MODEL", "grok-4.3"))
+_MODEL_BEST = os.getenv("STEVE_BUILDER_MODEL_BEST", "gpt-5.5")
+BUILDER_TIERS = {"fast": _MODEL_FAST, "best": _MODEL_BEST}
+MODEL_LABEL = _MODEL_FAST  # default label; the actual model used is logged per build
+
+
+def resolve_model(tier: Optional[str]) -> str:
+    return BUILDER_TIERS.get((tier or "fast").strip().lower(), _MODEL_FAST)
 MAX_HTML_BYTES = 400_000  # reject pathologically large artifacts
 _CODEGEN_MAX_TOKENS = 32000
 
@@ -185,7 +191,8 @@ def _append_history(prior_json: Optional[str], message: str) -> str:
     return json.dumps(history[-40:])
 
 
-def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperature: float = 0.8) -> str:
+def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperature: float = 0.8,
+                     model: Optional[str] = None) -> str:
     """Generate (or revise) a self-contained HTML artifact via Steve/Grok.
 
     ``caps`` is deliberately not passed to ``llm.generate_text`` — the small
@@ -212,7 +219,7 @@ def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperat
             max_tokens=_CODEGEN_MAX_TOKENS,
             temperature=temperature,
             caps=None,
-            model=BUILDER_MODEL,
+            model=model or _MODEL_FAST,
         )
     )
     if not html:
@@ -222,10 +229,25 @@ def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperat
     return html
 
 
+def _generate_with_fallback(prompt: str, *, prior_html: Optional[str] = None,
+                           temperature: float, model: str) -> tuple:
+    """Generate via ``model``; if a non-fast model (e.g. OpenAI 'best') errors,
+    fall back to the fast model so a build never hard-fails. Returns
+    ``(html, model_actually_used)``."""
+    try:
+        return generate_artifact(prompt, prior_html=prior_html, temperature=temperature, model=model), model
+    except Exception:
+        if model != _MODEL_FAST:
+            logger.warning("builder: model %s failed; falling back to %s", model, _MODEL_FAST)
+            return (generate_artifact(prompt, prior_html=prior_html, temperature=temperature, model=_MODEL_FAST),
+                    _MODEL_FAST)
+        raise
+
+
 def create_creation(*, username: str, community_id: int, prompt: str,
-                    title: Optional[str] = None) -> Dict[str, Any]:
+                    title: Optional[str] = None, tier: str = "fast") -> Dict[str, Any]:
     """Generate a first artifact from ``prompt`` and persist it as a draft."""
-    html = generate_artifact(prompt)
+    html, model_used = _generate_with_fallback(prompt, temperature=0.8, model=resolve_model(tier))
     resolved_title = (title or _derive_title(prompt))[:200]
     history = _append_history(None, prompt)
     now = _now()
@@ -244,7 +266,7 @@ def create_creation(*, username: str, community_id: int, prompt: str,
         )
         creation_id = c.lastrowid
         conn.commit()
-    return {"id": creation_id, "title": resolved_title, "html": html, "status": "draft"}
+    return {"id": creation_id, "title": resolved_title, "html": html, "status": "draft", "model": model_used}
 
 
 def get_creation(creation_id: int) -> Optional[Dict[str, Any]]:
@@ -264,12 +286,13 @@ def get_creation(creation_id: int) -> Optional[Dict[str, Any]]:
     return _row_to_dict(row) if row else None
 
 
-def iterate_creation(*, creation_id: int, username: str, message: str) -> Dict[str, Any]:
+def iterate_creation(*, creation_id: int, username: str, message: str, tier: str = "fast") -> Dict[str, Any]:
     """Revise an existing creation with a follow-up instruction (full-file regen)."""
     row = get_creation(creation_id)
     if not row or row.get("created_by") != username:
         raise PermissionError("creation not found")
-    html = generate_artifact(message, prior_html=row.get("html_content"), temperature=0.2)
+    html, model_used = _generate_with_fallback(
+        message, prior_html=row.get("html_content"), temperature=0.2, model=resolve_model(tier))
     history = _append_history(row.get("prompt_history"), message)
     now = _now()
     ph = get_sql_placeholder()
@@ -280,7 +303,7 @@ def iterate_creation(*, creation_id: int, username: str, message: str) -> Dict[s
             (html, history, now, creation_id),
         )
         conn.commit()
-    return {"id": creation_id, "title": row.get("title"), "html": html, "status": row.get("status")}
+    return {"id": creation_id, "title": row.get("title"), "html": html, "status": row.get("status"), "model": model_used}
 
 
 def publish_creation(*, creation_id: int, username: str,

@@ -14,6 +14,7 @@ from openai import OpenAI
 logger = logging.getLogger(__name__)
 
 XAI_API_KEY = os.getenv("XAI_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 GROK_MODEL_FAST = os.getenv("STEVE_CONTENT_MODEL", "grok-4.20-non-reasoning")
 
 # Tech, culture, analysis, fashion, music — US/Europe-oriented; bare + www for filter_links netloc match.
@@ -98,6 +99,12 @@ def _require_client() -> OpenAI:
     if not XAI_API_KEY:
         raise RuntimeError("XAI_API_KEY is not configured")
     return OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+
+
+def _is_openai_model(model: str) -> bool:
+    """OpenAI models (gpt-*, o-series) route to OpenAI; everything else to xAI."""
+    m = (model or "").lower()
+    return m.startswith("gpt") or m.startswith("o1") or m.startswith("o3") or m.startswith("o4")
 
 
 def _strip_markdown_json_fence(raw_text: str) -> str:
@@ -330,14 +337,31 @@ def generate_text(
     by the builder's own monthly cap, not per-turn tokens. ``model`` lets a
     caller pick a stronger (e.g. reasoning) model than the fast default.
     """
-    client = _require_client()
     effective_max = _apply_output_cap(max_tokens, caps)
+    mdl = model or GROK_MODEL_FAST
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    if _is_openai_model(mdl):
+        # OpenAI GPT-5.x runs through the Responses API with max_output_tokens
+        # (mirrors the onboarding services); these models reject chat-style
+        # max_tokens and a non-default temperature, so we omit temperature.
+        if not OPENAI_API_KEY:
+            raise RuntimeError("OPENAI_API_KEY is not configured")
+        oai = OpenAI(api_key=OPENAI_API_KEY)
+        response = oai.responses.create(
+            model=mdl,
+            input=messages,
+            max_output_tokens=effective_max,
+        )
+        if hasattr(response, "output_text") and response.output_text:
+            return response.output_text
+        return ""
+    client = _require_client()
     completion = client.chat.completions.create(
-        model=model or GROK_MODEL_FAST,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
+        model=mdl,
+        messages=messages,
         temperature=temperature,
         max_tokens=effective_max,
     )

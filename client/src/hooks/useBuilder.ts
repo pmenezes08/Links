@@ -21,6 +21,9 @@ export function useBuilder(communityId: string) {
   // keyed off it — iOS WKWebView does not reliably reload on srcDoc change,
   // so we remount the iframe each turn.
   const [rev, setRev] = useState(0)
+  // User-facing quality tier — "fast" (Grok) or "best" (GPT-5.x). Users only
+  // ever see "Fast" / "Best quality", never the model name.
+  const [tier, setTier] = useState<'fast' | 'best'>('fast')
 
   const build = useCallback(async (prompt: string) => {
     const text = (prompt || '').trim()
@@ -32,8 +35,8 @@ export function useBuilder(communityId: string) {
     try {
       const url = creation ? `/api/builder/${creation.id}/iterate` : '/api/builder/create'
       const body = creation
-        ? { message: text }
-        : { community_id: Number(communityId), prompt: text }
+        ? { message: text, tier }
+        : { community_id: Number(communityId), prompt: text, tier }
       const res = await fetch(url, {
         method: 'POST',
         credentials: 'include',
@@ -60,7 +63,7 @@ export function useBuilder(communityId: string) {
     } finally {
       setLoading(false)
     }
-  }, [communityId, creation, loading])
+  }, [communityId, creation, loading, tier])
 
   const publish = useCallback(async (caption?: string): Promise<number | null> => {
     if (!creation) return null
@@ -83,5 +86,5 @@ export function useBuilder(communityId: string) {
     }
   }, [creation])
 
-  return { creation, messages, loading, error, limit, rev, build, publish }
+  return { creation, messages, loading, error, limit, rev, tier, setTier, build, publish }
 }

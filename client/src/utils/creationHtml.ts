@@ -13,6 +13,12 @@ const VIEWPORT_META =
 const BASE_CSS =
   '<style>html,body{margin:0;padding:0;background:#000}</style>'
 
+const ERROR_REPORTER = `<script>(function(){
+  function report(msg){ try{ parent.postMessage({__cperr:true, message:String(msg).slice(0,400)}, '*'); }catch(_){ } }
+  window.addEventListener('error', function(e){ report((e && e.message) || 'Script error'); });
+  window.addEventListener('unhandledrejection', function(e){ report((e && e.reason && e.reason.message) || 'Unhandled promise rejection'); });
+})();<\/script>`
+
 const CONTROL_BRIDGE = `<script>(function(){
   function fire(type,key){
     try{
@@ -40,8 +46,7 @@ export function prepareCreationHtml(html: string, opts: { controlBridge?: boolea
     out = headInject + out
   }
 
-  if (opts.controlBridge) {
-    out = out.includes('</body>') ? out.replace('</body>', CONTROL_BRIDGE + '</body>') : out + CONTROL_BRIDGE
-  }
+  const tail = ERROR_REPORTER + (opts.controlBridge ? CONTROL_BRIDGE : '')
+  out = out.includes('</body>') ? out.replace('</body>', tail + '</body>') : out + tail
   return out
 }
