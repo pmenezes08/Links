@@ -32,13 +32,19 @@ logger = logging.getLogger(__name__)
 # can be repointed without code. "best" routes to OpenAI GPT-5.x via the
 # provider router in llm.py; "fast" stays on Grok.
 _MODEL_FAST = os.getenv("STEVE_BUILDER_MODEL_FAST", os.getenv("STEVE_BUILDER_MODEL", "grok-4.3"))
+_MODEL_MID = os.getenv("STEVE_BUILDER_MODEL_BALANCED", "gpt-5.5")
 _MODEL_BEST = os.getenv("STEVE_BUILDER_MODEL_BEST", "claude-opus-4-8")
-BUILDER_TIERS = {"fast": _MODEL_FAST, "best": _MODEL_BEST}
+# Three user-facing quality tiers (users see only the labels Quick/Polished/
+# Showpiece, never these model names — Steve is the single face). "balanced"
+# routes to OpenAI (GPT-5.x) via the provider router; "fast" to Grok; "best"
+# to Anthropic (Opus). Env-overridable so a tier can be repointed without code.
+BUILDER_TIERS = {"fast": _MODEL_FAST, "balanced": _MODEL_MID, "best": _MODEL_BEST}
+_DEFAULT_TIER = "balanced"
 MODEL_LABEL = _MODEL_FAST  # default label; the actual model used is logged per build
 
 
 def resolve_model(tier: Optional[str]) -> str:
-    return BUILDER_TIERS.get((tier or "fast").strip().lower(), _MODEL_FAST)
+    return BUILDER_TIERS.get((tier or _DEFAULT_TIER).strip().lower(), _MODEL_MID)
 MAX_HTML_BYTES = 400_000  # reject pathologically large artifacts
 # Output ceiling. Kept well above what a rich single-file artifact needs so the
 # 400KB byte limit (not the token budget) is the real ceiling — a low ceiling

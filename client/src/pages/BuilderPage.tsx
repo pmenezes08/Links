@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useBuilder, type Creation } from '../hooks/useBuilder'
+import { useBuilder, type Creation, type BuilderTier } from '../hooks/useBuilder'
 import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
 import PlayableCreation from '../components/builder/PlayableCreation'
 import CreationPreview from '../components/builder/CreationPreview'
@@ -13,6 +13,23 @@ const SUGGESTIONS = [
 ]
 
 const STAGES = ["Steve's on it", 'Making it', 'Adding the fun bits', 'Almost there']
+
+// Quality tiers shown as "how hard Steve tries" — never a model name.
+const TIERS: { key: BuilderTier; name: string; sub: string; accent: string; level: number }[] = [
+  { key: 'fast', name: 'Quick', sub: 'Fast drafts — great for trying an idea.', accent: '#7F77DD', level: 1 },
+  { key: 'balanced', name: 'Polished', sub: "Steve's everyday best.", accent: '#00CEC8', level: 2 },
+  { key: 'best', name: 'Showpiece', sub: 'Steve goes all out. Slower, most polished.', accent: '#EF9F27', level: 3 },
+]
+
+function Meter({ level, accent }: { level: number; accent: string }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 2, height: 16 }} aria-hidden>
+      {[1, 2, 3].map((n) => (
+        <span key={n} style={{ width: 4, height: 4 + n * 4, borderRadius: 1, background: n <= level ? accent : 'rgba(255,255,255,0.15)' }} />
+      ))}
+    </span>
+  )
+}
 
 function BuildingRow() {
   const [secs, setSecs] = useState(0)
@@ -46,8 +63,10 @@ export default function BuilderPage() {
   const [publishedPostId, setPublishedPostId] = useState<number | null>(null)
   const [playingCreation, setPlayingCreation] = useState<Creation | null>(null)
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
+  const [tierSheetOpen, setTierSheetOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const currentTier = TIERS.find((t) => t.key === tier) || TIERS[1]
 
   // Auto-grow the composer upward as the user types (same pattern as the DM
   // composer) so a long prompt is fully visible.
@@ -114,7 +133,7 @@ export default function BuilderPage() {
       paddingTop: 'var(--sat-px, 0px)',
       paddingBottom: `${keyboardLift > 0 ? keyboardLift : safeBottomPx}px`,
     }}>
-      <style>{`@keyframes cp-spin { to { transform: rotate(360deg) } }`}</style>
+      <style>{`@keyframes cp-spin { to { transform: rotate(360deg) } } @keyframes cp-sheet-up { from { transform: translateY(100%) } to { transform: translateY(0) } }`}</style>
 
       <div style={{ flex: '0 0 auto', height: 44, display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px 0 6px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <button onClick={goBack} aria-label="Back" style={{ background: 'none', border: 'none', color: '#cfcfcf', fontSize: 24, lineHeight: 1, padding: '4px 8px', cursor: 'pointer' }}>‹</button>
@@ -172,9 +191,9 @@ export default function BuilderPage() {
       </div>
 
       <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'flex-end', gap: 8, padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,0.06)', background: '#000' }}>
-        <button onClick={() => setTier(tier === 'fast' ? 'best' : 'fast')} disabled={loading} aria-label="Quality"
-          style={{ flex: '0 0 auto', border: 'none', borderRadius: 999, padding: '8px 12px', height: 40, fontSize: 12, fontWeight: 500, cursor: 'pointer', background: 'rgba(255,255,255,0.06)', color: tier === 'best' ? '#00CEC8' : '#cfcfcf' }}>
-          {tier === 'best' ? 'Best' : 'Fast'}
+        <button onClick={() => setTierSheetOpen(true)} disabled={loading} aria-label="Quality"
+          style={{ flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', gap: 4, border: 'none', borderRadius: 999, padding: '8px 12px', height: 40, fontSize: 12, fontWeight: 500, cursor: 'pointer', background: 'rgba(255,255,255,0.06)', color: currentTier.accent }}>
+          {currentTier.name}<span style={{ fontSize: 9, opacity: 0.7 }}>▲</span>
         </button>
         <textarea ref={textareaRef} value={input} rows={1}
           onChange={(e) => setInput(e.target.value)}
@@ -184,6 +203,31 @@ export default function BuilderPage() {
         <button onClick={send} disabled={loading || !input.trim()} aria-label="Send"
           style={{ flex: '0 0 auto', background: loading || !input.trim() ? 'rgba(255,255,255,0.08)' : '#00CEC8', color: loading || !input.trim() ? '#6e6e6e' : '#00302e', border: 'none', borderRadius: '50%', width: 40, height: 40, fontSize: 18, fontWeight: 500, cursor: 'pointer' }}>↑</button>
       </div>
+
+      {tierSheetOpen && (
+        <div onClick={() => setTierSheetOpen(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end' }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ width: '100%', background: '#0b0b0b', borderRadius: '20px 20px 0 0', borderTop: '1px solid rgba(255,255,255,0.08)', padding: '8px 14px', paddingBottom: `calc(var(--sab-px, 0px) + ${Math.max(safeBottomPx, 14)}px)`, animation: 'cp-sheet-up 0.25s cubic-bezier(0.32,0.72,0,1)' }}>
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.18)', margin: '6px auto 12px' }} />
+            <div style={{ fontSize: 12, color: '#7a7a7a', padding: '0 6px 6px' }}>How hard should Steve try?</div>
+            {TIERS.map((t) => {
+              const selected = t.key === tier
+              return (
+                <button key={t.key} onClick={() => { setTier(t.key); setTierSheetOpen(false) }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left', border: 'none', background: selected ? 'rgba(255,255,255,0.05)' : 'transparent', borderRadius: 12, padding: '12px 8px', cursor: 'pointer' }}>
+                  <Meter level={t.level} accent={t.accent} />
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 15, color: '#f1f1f1' }}>{t.name}</span>
+                    <span style={{ display: 'block', fontSize: 12, color: '#8a8a8a', marginTop: 1 }}>{t.sub}</span>
+                  </span>
+                  {selected && <i className="ti ti-check" style={{ color: t.accent, fontSize: 18 }} aria-hidden />}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {playingCreation && (
         <PlayableCreation html={playingCreation.html} title={playingCreation.title} onClose={() => setPlayingCreation(null)} creationId={playingCreation.id} />

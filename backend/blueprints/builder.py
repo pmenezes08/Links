@@ -30,9 +30,9 @@ def _safe_int(value):
 
 
 def _safe_tier(value):
-    """Validate the user-facing quality tier ('fast' | 'best')."""
-    t = value.strip().lower() if isinstance(value, str) else "fast"
-    return t if t in ("fast", "best") else "fast"
+    """Validate the user-facing quality tier (Quick='fast' | Polished='balanced' | Showpiece='best')."""
+    t = value.strip().lower() if isinstance(value, str) else "balanced"
+    return t if t in ("fast", "balanced", "best") else "balanced"
 
 
 def _can_access_community(username: str, community_id: int) -> bool:

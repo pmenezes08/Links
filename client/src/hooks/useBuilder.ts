@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 
 export type Creation = { id: number; title: string; html: string; status: string }
+export type BuilderTier = 'fast' | 'balanced' | 'best'
 export type BuilderMessage = { role: 'user' | 'steve'; text: string; creation?: Creation }
 export type BuilderLimit = { cap: number | null; message: string }
 
@@ -21,9 +22,9 @@ export function useBuilder(communityId: string) {
   // keyed off it — iOS WKWebView does not reliably reload on srcDoc change,
   // so we remount the iframe each turn.
   const [rev, setRev] = useState(0)
-  // User-facing quality tier — "fast" (Grok) or "best" (GPT-5.x). Users only
-  // ever see "Fast" / "Best quality", never the model name.
-  const [tier, setTier] = useState<'fast' | 'best'>('fast')
+  // User-facing quality tier. Users only ever see the labels Quick / Polished /
+  // Showpiece, never the model behind them (Steve is the single face).
+  const [tier, setTier] = useState<BuilderTier>('balanced')
 
   const build = useCallback(async (prompt: string) => {
     const text = (prompt || '').trim()
