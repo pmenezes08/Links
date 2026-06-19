@@ -38,6 +38,7 @@ import {
   type DetectedLink,
 } from '../utils/linkUtils.tsx'
 import EditableAISummary from '../components/EditableAISummary'
+import CreationPreview from '../components/builder/CreationPreview'
 import GifPicker from '../components/GifPicker'
 import FeedBottomNav from '../components/FeedBottomNav'
 import AskSteveEntry from '../components/feed/AskSteveEntry'
@@ -5158,20 +5159,16 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
             <button
               onClick={(e) => { e.stopPropagation(); navigate(`/community/${communityId}/creation/${post.creation_id}`) }}
               className="relative w-full overflow-hidden rounded-xl border border-c-border bg-c-bg-app"
-              style={{ height: 150 }}
+              style={{ height: 180 }}
             >
-              <span className="absolute left-3 top-3 flex gap-1">
-                <span className="h-3 w-3 rounded-[3px]" style={{ background: '#00CEC8' }} />
-                <span className="h-3 w-3 rounded-[3px]" style={{ background: '#EF9F27' }} />
-                <span className="h-3 w-3 rounded-[3px]" style={{ background: '#7F77DD' }} />
-              </span>
-              <span className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-cpoint-turquoise text-black">
+              <CreationPreview creationId={post.creation_id} />
+              <span className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0) 35%, rgba(0,0,0,0.6) 100%)' }} />
+              <span className="absolute inset-0 flex items-center justify-center">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full text-black" style={{ background: 'rgba(0,206,200,0.92)', boxShadow: '0 4px 18px rgba(0,0,0,0.45)' }}>
                   <i className="fa-solid fa-play" />
                 </span>
-                <span className="text-sm text-c-text-secondary">Tap to play</span>
               </span>
-              <span className="absolute left-3 bottom-3 text-xs text-c-text-tertiary">{post.username} made this with Steve</span>
+              <span className="absolute left-3 bottom-2.5 text-xs text-white" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}>{post.username} made this with Steve</span>
             </button>
           </div>
         ) : null}

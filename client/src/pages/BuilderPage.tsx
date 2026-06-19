@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useBuilder, type Creation } from '../hooks/useBuilder'
 import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
 import PlayableCreation from '../components/builder/PlayableCreation'
+import CreationPreview from '../components/builder/CreationPreview'
 
 const SUGGESTIONS = [
   'A block-stacking game for the group',
@@ -46,6 +47,17 @@ export default function BuilderPage() {
   const [playingCreation, setPlayingCreation] = useState<Creation | null>(null)
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+
+  // Auto-grow the composer upward as the user types (same pattern as the DM
+  // composer) so a long prompt is fully visible.
+  const adjustTextareaHeight = () => {
+    const ta = textareaRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'
+  }
+  useLayoutEffect(() => { adjustTextareaHeight() }, [input])
 
   const scrollToBottom = () => {
     const el = scrollRef.current
@@ -112,14 +124,13 @@ export default function BuilderPage() {
 
       <div ref={scrollRef} style={{ flex: '1 1 auto', overflowY: 'auto', padding: '16px 16px 8px' }}>
         {showEmpty && (
-          <div style={{ minHeight: '60%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18 }}>
-            <span style={{ width: 40, height: 40, borderRadius: '50%', background: '#00CEC8', color: '#00302e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 500 }}>S</span>
-            <div style={{ fontSize: 20, color: '#f1f1f1' }}>What should we make?</div>
-            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, paddingTop: '14vh' }}>
+            <div style={{ fontSize: 15, color: '#9a9a9a' }}>What should we make?</div>
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 6, marginTop: 2 }}>
               {SUGGESTIONS.map((s) => (
                 <button key={s} onClick={() => build(s)} disabled={loading}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, width: '100%', textAlign: 'left', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 12, padding: '12px 14px', background: 'transparent', color: '#cfcfcf', fontSize: 14, cursor: 'pointer' }}>
-                  <span>{s}</span><span style={{ color: '#5f5f5f' }}>›</span>
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, width: '100%', textAlign: 'left', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '9px 12px', background: 'transparent', color: '#bdbdbd', fontSize: 13, cursor: 'pointer' }}>
+                  <span>{s}</span><span style={{ color: '#555' }}>›</span>
                 </button>
               ))}
             </div>
@@ -160,14 +171,16 @@ export default function BuilderPage() {
         )}
       </div>
 
-      <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,0.06)', background: '#000' }}>
+      <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'flex-end', gap: 8, padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,0.06)', background: '#000' }}>
         <button onClick={() => setTier(tier === 'fast' ? 'best' : 'fast')} disabled={loading} aria-label="Quality"
-          style={{ flex: '0 0 auto', border: 'none', borderRadius: 999, padding: '8px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer', background: 'rgba(255,255,255,0.06)', color: tier === 'best' ? '#00CEC8' : '#cfcfcf' }}>
+          style={{ flex: '0 0 auto', border: 'none', borderRadius: 999, padding: '8px 12px', height: 40, fontSize: 12, fontWeight: 500, cursor: 'pointer', background: 'rgba(255,255,255,0.06)', color: tier === 'best' ? '#00CEC8' : '#cfcfcf' }}>
           {tier === 'best' ? 'Best' : 'Fast'}
         </button>
-        <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') send() }}
+        <textarea ref={textareaRef} value={input} rows={1}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
           placeholder={creation ? 'What should we tweak?' : 'Message Steve…'}
-          style={{ flex: 1, minWidth: 0, background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 22, padding: '12px 16px', color: '#f1f1f1', fontSize: 16, outline: 'none' }} />
+          style={{ flex: 1, minWidth: 0, background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 20, padding: '10px 16px', color: '#f1f1f1', fontSize: 16, lineHeight: 1.35, outline: 'none', resize: 'none', maxHeight: 140, overflowY: 'auto', fontFamily: 'inherit' }} />
         <button onClick={send} disabled={loading || !input.trim()} aria-label="Send"
           style={{ flex: '0 0 auto', background: loading || !input.trim() ? 'rgba(255,255,255,0.08)' : '#00CEC8', color: loading || !input.trim() ? '#6e6e6e' : '#00302e', border: 'none', borderRadius: '50%', width: 40, height: 40, fontSize: 18, fontWeight: 500, cursor: 'pointer' }}>↑</button>
       </div>
@@ -189,26 +202,25 @@ function CreationCard({ creation, isLatest, onOpen, publishing, publishedPostId,
 }) {
   return (
     <button onClick={onOpen}
-      style={{ position: 'relative', display: 'block', width: '100%', maxWidth: 320, height: 132, marginTop: 10, borderRadius: 14, border: '1px solid rgba(255,255,255,0.10)', background: '#0b0b0b', overflow: 'hidden', cursor: 'pointer', opacity: isLatest ? 1 : 0.85 }}>
-      <span style={{ position: 'absolute', left: 12, top: 12, display: 'flex', gap: 5 }}>
-        <span style={{ width: 10, height: 10, borderRadius: 3, background: '#00CEC8' }} />
-        <span style={{ width: 10, height: 10, borderRadius: 3, background: '#EF9F27' }} />
-        <span style={{ width: 10, height: 10, borderRadius: 3, background: '#7F77DD' }} />
-      </span>
-      <span style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-        <span style={{ width: 44, height: 44, borderRadius: '50%', background: '#00CEC8', color: '#00302e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>
+      style={{ position: 'relative', display: 'block', width: '100%', maxWidth: 320, height: 168, marginTop: 10, borderRadius: 14, border: '1px solid rgba(255,255,255,0.10)', background: '#0b0b0b', overflow: 'hidden', cursor: 'pointer', opacity: isLatest ? 1 : 0.85 }}>
+      <CreationPreview html={creation.html} />
+      {/* dim so the title/affordances stay legible over the live preview */}
+      <span style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.0) 35%, rgba(0,0,0,0.55) 100%)' }} />
+      <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(0,206,200,0.92)', color: '#00302e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, boxShadow: '0 4px 18px rgba(0,0,0,0.45)' }}>
           <i className="ti ti-player-play" aria-hidden="true" />
         </span>
-        <span style={{ fontSize: 14, color: '#e9e9e9', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{creation.title}</span>
       </span>
-      <span style={{ position: 'absolute', left: 12, bottom: 10, fontSize: 11, color: '#6e6e6e' }}>Tap to play</span>
-      {isLatest && (
-        <span role="button" tabIndex={0}
-          onClick={(e) => { e.stopPropagation(); if (!publishedPostId) onShare() }}
-          style={{ position: 'absolute', right: 12, bottom: 8, fontSize: 13, fontWeight: 500, color: '#00CEC8', padding: '4px 6px' }}>
-          {publishedPostId ? 'Shared ✓' : publishing ? 'Sharing…' : 'Share'}
-        </span>
-      )}
+      <span style={{ position: 'absolute', left: 12, right: 12, bottom: 10, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontSize: 14, fontWeight: 500, color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.6)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{creation.title}</span>
+        {isLatest && (
+          <span role="button" tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); if (!publishedPostId) onShare() }}
+            style={{ flex: '0 0 auto', fontSize: 13, fontWeight: 500, color: '#00CEC8', textShadow: '0 1px 4px rgba(0,0,0,0.6)', padding: '2px 2px' }}>
+            {publishedPostId ? 'Shared ✓' : publishing ? 'Sharing…' : 'Share'}
+          </span>
+        )}
+      </span>
     </button>
   )
 }

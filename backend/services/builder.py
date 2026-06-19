@@ -72,7 +72,9 @@ _SYSTEM_PROMPT = (
     "(%, vw, vh, flexbox, clamp()); never hard-code widths wider than the screen; scale boards/canvases to the width.\n"
     "4) TOUCH-ONLY (no physical keyboard): clearly visible on-screen buttons for ALL controls; anything that needs "
     "starting begins on a tap/touch (on-screen Start or auto-start) — never 'press a key to start'.\n"
-    "5) Dark background; no analytics, ads, tracking, or login; keep the document under 400KB."
+    "5) Dark background; no analytics, ads, tracking, or login; keep the document under 400KB.\n"
+    "6) Set a short, catchy, human-friendly <title> that NAMES the creation (e.g. \"Neon Block Drop\", "
+    "\"Which Pizza Are You?\") — never \"Document\", \"Untitled\", or a copy of the user's prompt."
 )
 
 _CREATION_COLS = [
@@ -174,6 +176,24 @@ def _derive_title(prompt: str) -> str:
     return (title[:1].upper() + title[1:])[:200] or "Creation"
 
 
+_GENERIC_TITLES = {"document", "untitled", "title", "creation", "index", "page", "home", "html", "app"}
+
+
+def _extract_title(html: str, prompt: str) -> str:
+    """Prefer a meaningful name from the artifact itself — the model is told to
+    set a descriptive <title> — falling back to the artifact's <h1>, then to a
+    prompt-derived title (last resort, the old behaviour)."""
+    for pattern in (r"<title[^>]*>([\s\S]*?)</title>", r"<h1[^>]*>([\s\S]*?)</h1>"):
+        m = re.search(pattern, html or "", re.IGNORECASE)
+        if not m:
+            continue
+        cand = re.sub(r"<[^>]+>", " ", m.group(1))  # strip any nested markup
+        cand = re.sub(r"\s+", " ", cand).strip(" .,!?-—|·")
+        if cand and len(cand) >= 2 and cand.lower() not in _GENERIC_TITLES:
+            return cand[:200]
+    return _derive_title(prompt)
+
+
 def _row_to_dict(row: Any) -> Dict[str, Any]:
     if hasattr(row, "keys"):
         return {k: row[k] for k in row.keys()}
@@ -248,7 +268,7 @@ def create_creation(*, username: str, community_id: int, prompt: str,
                     title: Optional[str] = None, tier: str = "fast") -> Dict[str, Any]:
     """Generate a first artifact from ``prompt`` and persist it as a draft."""
     html, model_used = _generate_with_fallback(prompt, temperature=0.8, model=resolve_model(tier))
-    resolved_title = (title or _derive_title(prompt))[:200]
+    resolved_title = (title or _extract_title(html, prompt))[:200]
     history = _append_history(None, prompt)
     now = _now()
     ph = get_sql_placeholder()
