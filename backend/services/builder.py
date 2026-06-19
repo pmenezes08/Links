@@ -34,24 +34,39 @@ logger = logging.getLogger(__name__)
 BUILDER_MODEL = os.getenv("STEVE_BUILDER_MODEL", "grok-4.3")
 MODEL_LABEL = BUILDER_MODEL
 MAX_HTML_BYTES = 400_000  # reject pathologically large artifacts
-_CODEGEN_MAX_TOKENS = 8000
+_CODEGEN_MAX_TOKENS = 32000
 
 _SYSTEM_PROMPT = (
-    "You are Steve, building a small, fun, self-contained web creation for a community to play with. "
+    "You are Steve, a world-class creative front-end engineer and game designer. Build a single self-contained web "
+    "creation a community will want to PLAY and SHARE — something that makes someone go 'whoa, you made this?'. "
+    "Aim for genuine polish and delight; never ship something that feels like a basic demo. "
     "Return ONE complete HTML document and nothing else — no explanation, no commentary, no markdown fences. "
-    "Everything must be inline in a single `<!doctype html>` file: inline `<style>` and inline `<script>`. "
-    "It MUST be front-end only: no backend, no database, no fetch/XHR/websocket calls, and no external "
-    "resources EXCEPT scripts or styles loaded from cdnjs.cloudflare.com, cdn.jsdelivr.net, unpkg.com, or "
-    "fonts.googleapis.com. It must run fully offline inside a sandboxed iframe with no access to cookies or storage. "
-    "MOBILE-FIRST AND TOUCH-ONLY — this is critical, it runs in a small embedded frame on a phone with NO physical keyboard: "
-    "1) Include <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\"> in <head>. "
-    "2) The layout MUST be fully responsive and fit a ~390px-wide phone screen with NO horizontal scrolling and, where possible, "
-    "no vertical scrolling — use relative units (%, vw, vh, flexbox, clamp()); never hard-code widths wider than the screen; "
-    "scale game boards/canvases to the available width. "
-    "3) Every interaction must work by TOUCH: provide clearly visible on-screen buttons for ALL controls. Do NOT rely on arrow "
-    "keys, Enter, Space, or any physical key. "
-    "4) Anything that needs starting MUST start on a tap/touch (an on-screen Start/Play button or auto-start) — never 'press a key to start'. "
-    "Use a dark background and clean, modern visuals. No analytics, ads, tracking, or login. Keep the whole document well under 400KB."
+    "Everything inline in a single `<!doctype html>` file (inline `<style>` and `<script>`).\n"
+    "MAKE IT FEEL ALIVE AND SATISFYING — every creation MUST have:\n"
+    "- JUICE: nothing snaps — animate with easing; scale-pop elements on success; burst particles/confetti on rewards; "
+    "screenshake on big moments; count numbers up instead of jumping.\n"
+    "- SOUND: generate audio procedurally (Tone.js or the Web Audio API — no audio files): a soft tap sound on every "
+    "interaction plus success/fail cues; include a sound on/off toggle.\n"
+    "- MOTION: fade or slide between screens (never hard-cut); animate entrances.\n"
+    "- ART DIRECTION: a deliberate 2-3 colour palette plus one accent; a display font from Google Fonts; a living "
+    "background (animated gradient or drifting particles); generous radius and spacing; use emoji/SVG/canvas as art.\n"
+    "- A SATISFYING ENDING: a results/score screen with a count-up, a celebratory confetti moment, a 'Play again' button, "
+    "and a 'Share' affordance.\n"
+    "REACH FOR THE RIGHT LIBRARY instead of hand-rolling (load a pinned version from cdnjs.cloudflare.com, "
+    "cdn.jsdelivr.net or unpkg.com; degrade gracefully if it fails to load): kaboom.js or Phaser for games, p5.js for "
+    "generative visuals, three.js for 3D, anime.js for motion, Tone.js for sound, canvas-confetti for celebration.\n"
+    "Aim for this bar: a juicy one-thumb arcade game with particles + sound + screenshake; a screenshot-worthy "
+    "personality quiz with animated cards and a designed result; a physical-feeling spin-the-wheel; a beautiful "
+    "generative-art toy. Surprise people.\n"
+    "TECHNICAL REQUIREMENTS (all MUST hold):\n"
+    "1) Front-end only: no backend, no database, no fetch/XHR/websocket to anything except the allowed CDNs above and "
+    "fonts.googleapis.com / fonts.gstatic.com. Runs inside a sandboxed iframe with no access to cookies or storage.\n"
+    "2) Include <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">.\n"
+    "3) MOBILE-FIRST: fully responsive, fit a ~390px-wide phone screen with NO horizontal scrolling; use relative units "
+    "(%, vw, vh, flexbox, clamp()); never hard-code widths wider than the screen; scale boards/canvases to the width.\n"
+    "4) TOUCH-ONLY (no physical keyboard): clearly visible on-screen buttons for ALL controls; anything that needs "
+    "starting begins on a tap/touch (on-screen Start or auto-start) — never 'press a key to start'.\n"
+    "5) Dark background; no analytics, ads, tracking, or login; keep the document under 400KB."
 )
 
 _CREATION_COLS = [
@@ -170,19 +185,22 @@ def _append_history(prior_json: Optional[str], message: str) -> str:
     return json.dumps(history[-40:])
 
 
-def generate_artifact(prompt: str, *, prior_html: Optional[str] = None) -> str:
+def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperature: float = 0.8) -> str:
     """Generate (or revise) a self-contained HTML artifact via Steve/Grok.
 
     ``caps`` is deliberately not passed to ``llm.generate_text`` — the small
     chat per-turn token ceilings would truncate the document. Builder cost is
-    governed by the monthly turn cap, not per-turn tokens.
+    governed by the monthly turn cap, not per-turn tokens. First builds use a
+    higher temperature for flair; iteration passes a low temperature to
+    preserve what already works.
     """
     if prior_html:
         user_prompt = (
             "Here is the current HTML document for the creation:\n\n"
             f"{prior_html}\n\n"
-            "Apply the following change and return the COMPLETE updated HTML document "
-            f"(the full file, not a diff):\n{prompt}"
+            "Apply ONLY the following change and return the COMPLETE updated HTML document "
+            "(the full file, not a diff). Preserve everything that already works — do not refactor, "
+            f"rename, restyle, or remove existing features:\n{prompt}"
         )
     else:
         user_prompt = f"Build this as a single self-contained HTML document:\n{prompt}"
@@ -192,7 +210,7 @@ def generate_artifact(prompt: str, *, prior_html: Optional[str] = None) -> str:
             _SYSTEM_PROMPT,
             user_prompt,
             max_tokens=_CODEGEN_MAX_TOKENS,
-            temperature=0.5,
+            temperature=temperature,
             caps=None,
             model=BUILDER_MODEL,
         )
@@ -251,7 +269,7 @@ def iterate_creation(*, creation_id: int, username: str, message: str) -> Dict[s
     row = get_creation(creation_id)
     if not row or row.get("created_by") != username:
         raise PermissionError("creation not found")
-    html = generate_artifact(message, prior_html=row.get("html_content"))
+    html = generate_artifact(message, prior_html=row.get("html_content"), temperature=0.2)
     history = _append_history(row.get("prompt_history"), message)
     now = _now()
     ph = get_sql_placeholder()
