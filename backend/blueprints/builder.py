@@ -101,6 +101,25 @@ def builder_create():
     return jsonify({"success": True, "creation": creation})
 
 
+@builder_bp.route("/api/builder/plan", methods=["POST"])
+def builder_plan():
+    """A quick 'here's what I'll make' narration shown while a build runs. Logged
+    under a distinct surface so it does NOT consume a build turn."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    data = request.get_json(silent=True) or {}
+    prompt = (data.get("prompt") or data.get("message") or "").strip()
+    if not prompt:
+        return jsonify({"success": False, "error": "prompt required"}), 400
+    plan = builder_svc.plan_build(prompt[:4000], is_iteration=bool(data.get("iteration")))
+    if plan:
+        ai_usage.log_usage(username, surface=ai_usage.SURFACE_BUILDER_PLAN,
+                           request_type="builder_plan", community_id=_safe_int(data.get("community_id")),
+                           model=builder_svc.MODEL_LABEL)
+    return jsonify({"success": True, "plan": plan})
+
+
 @builder_bp.route("/api/builder/<int:creation_id>/iterate", methods=["POST"])
 def builder_iterate(creation_id: int):
     username = session.get("username")

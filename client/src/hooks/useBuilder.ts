@@ -33,6 +33,19 @@ export function useBuilder(communityId: string) {
     setLimit(null)
     setLoading(true)
     setMessages((m) => [...m, { role: 'user', text }])
+    const isIteration = !!creation
+    // Narrate intent while the (slower) build runs — Steve says what he's about
+    // to make. Best-effort and shown only if it lands before the build does, so
+    // it never appears out of order. Does not consume a build turn server-side.
+    let settled = false
+    fetch('/api/builder/plan', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: text, iteration: isIteration, community_id: Number(communityId) }),
+    })
+      .then((r) => r.json()).then((d) => {
+        if (!settled && d?.plan) setMessages((m) => [...m, { role: 'steve', text: d.plan }])
+      })
+      .catch(() => { /* narration is optional */ })
     try {
       const url = creation ? `/api/builder/${creation.id}/iterate` : '/api/builder/create'
       const body = creation
@@ -44,6 +57,7 @@ export function useBuilder(communityId: string) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
+      settled = true // build is back — don't show a late plan line after the result
       const data = (await res.json().catch(() => null)) as ApiResult | null
       if (res.status === 402) {
         setLimit({ cap: data?.cap ?? null, message: data?.message || 'You have reached your build limit.' })

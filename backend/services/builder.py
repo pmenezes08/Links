@@ -287,6 +287,31 @@ def _append_history(prior_json: Optional[str], message: str) -> str:
     return json.dumps(history[-40:])
 
 
+_PLAN_SYSTEM = (
+    "You are Steve, a friendly maker. In ONE or TWO short first-person sentences, tell the user what you're "
+    "about to make (or change) for them — concrete and a little playful. Name the key things you'll include "
+    "(controls, sound, a score or leaderboard, the look/vibe). NO code, no preamble, no lists, no markdown — "
+    "just the sentence(s)."
+)
+
+
+def plan_build(prompt: str, *, is_iteration: bool = False) -> str:
+    """A quick, cheap 'here's what I'll do' line shown while the real build runs
+    so Steve narrates his intent. Best-effort — returns '' on any failure so it
+    never blocks or delays a build. Always uses the fast model (it's narration)."""
+    try:
+        intro = ("The user wants to change their current creation: " if is_iteration
+                 else "The user asked you to make: ")
+        text = llm.generate_text(
+            _PLAN_SYSTEM, intro + (prompt or "").strip(),
+            max_tokens=200, temperature=0.7, caps=None, model=_MODEL_FAST,
+        )
+        return re.sub(r"\s+", " ", (text or "").strip())[:400]
+    except Exception:
+        logger.warning("builder: plan_build failed", exc_info=True)
+        return ""
+
+
 def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperature: float = 0.8,
                      model: Optional[str] = None) -> str:
     """Generate (or revise) a self-contained HTML artifact via Steve/Grok.

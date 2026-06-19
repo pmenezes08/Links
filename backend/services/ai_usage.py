@@ -65,6 +65,10 @@ SURFACE_WHISPER = "whisper"
 SURFACE_NETWORKING_STEVE = "networking_steve"
 SURFACE_ONBOARDING_AI = "onboarding_ai"
 SURFACE_BUILDER = "builder"
+# A tiny "here's what I'll make" narration call shown while a build runs. Logged
+# for AI-spend visibility but deliberately a DISTINCT surface so it does NOT
+# count against the builder_turns_per_month cap (which filters surface='builder').
+SURFACE_BUILDER_PLAN = "builder_plan"
 
 ALL_SURFACES = (
     SURFACE_DM,
