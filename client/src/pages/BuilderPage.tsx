@@ -85,9 +85,9 @@ export default function BuilderPage() {
   const navigate = useNavigate()
   const cid = String(community_id || '')
   const {
-    creation, messages, loading, building, busy, error, limit,
+    creation, messages, loading, building, busy, activeJob, error, limit,
     tier, setTier, mode, setMode, agentMode, setAgentMode, proposal,
-    chat, build, confirmBuild, retry, stop, publish, loadCreation,
+    chat, build, confirmBuild, retry, stop, publish, loadCreation, watchJob,
   } = useBuilder(cid)
   const [input, setInput] = useState('')
   const [publishing, setPublishing] = useState(false)
@@ -169,6 +169,18 @@ export default function BuilderPage() {
     await loadCreation(id)
   }
 
+  // Push/in-app notifications deep-link here after Steve finishes a build.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search || '')
+    const creationId = Number(params.get('creation_id') || 0)
+    const jobId = Number(params.get('job_id') || 0)
+    if (creationId > 0) {
+      loadCreation(creationId)
+    } else if (jobId > 0) {
+      watchJob(jobId)
+    }
+  }, [loadCreation, watchJob])
+
   const showEmpty = messages.length === 0 && !creation && !busy
 
   return (
@@ -231,7 +243,18 @@ export default function BuilderPage() {
         ))}
 
         {loading && <TypingRow />}
-        {building && <BuildingRow />}
+        {building && (
+          <>
+            <BuildingRow />
+            <div style={{ display: 'flex', gap: 10, margin: '2px 0 14px' }}>
+              <span style={{ width: 22, flex: '0 0 auto' }} />
+              <div style={{ fontSize: 13, lineHeight: 1.45, color: '#8a8a8a' }}>
+                Steve is building on the server. You can leave this screen, lock your phone, or use other apps — you'll get a notification when it's ready to test.
+                {activeJob?.id ? <span style={{ display: 'block', marginTop: 3 }}>Build #{activeJob.id} · {activeJob.status}</span> : null}
+              </div>
+            </div>
+          </>
+        )}
 
         {proposal && !busy && (
           <div style={{ display: 'flex', gap: 10, margin: '8px 0 14px' }}>

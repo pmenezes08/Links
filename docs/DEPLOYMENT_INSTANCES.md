@@ -69,6 +69,7 @@ Before broad launch, set **`ENTITLEMENTS_ENFORCEMENT_ENABLED=true`** on producti
 | **Firestore** | Database id commonly **`cpoint`**; DM/group/chat/doc mirrors — see [MYSQL_AND_FIRESTORE.md](MYSQL_AND_FIRESTORE.md). |
 | **Stripe** | Webhooks must target the correct **Run URL** and signing secret per environment (prod vs staging dashboards). |
 | **Secrets** | Secret Manager: MySQL password, cron secrets, Stripe, AI keys — **OPERATIONS**. |
+| **Steve Builder async jobs** | `builder_jobs` can run through Cloud Tasks when `BUILDER_TASKS_QUEUE`, `BUILDER_TASKS_LOCATION`, `PUBLIC_BASE_URL`, and `BUILDER_JOB_SECRET` (or `CRON_SHARED_SECRET`) are set on the Run service. Without queue config, the app falls back to an in-process worker thread for local/staging convenience; production durability should use Cloud Tasks calling `/api/internal/builder/jobs/<id>/run` with `X-Builder-Job-Secret`. |
 
 ---
 

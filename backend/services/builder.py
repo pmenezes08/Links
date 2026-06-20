@@ -19,6 +19,8 @@ import json
 import logging
 import os
 import re
+import threading
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -114,6 +116,12 @@ _CREATION_COLS = [
     "id", "community_id", "created_by", "title", "kind", "html_content",
     "prompt_history", "parent_creation_id", "status", "published_post_id",
     "created_at", "updated_at",
+]
+
+_JOB_COLS = [
+    "id", "username", "community_id", "creation_id", "kind", "prompt", "tier",
+    "status", "result_creation_id", "error", "attempts", "created_at",
+    "updated_at", "started_at", "finished_at",
 ]
 
 
@@ -248,6 +256,62 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
             cursor.execute("ALTER TABLE creation_data ADD COLUMN data_value " + ("MEDIUMTEXT" if USE_MYSQL else "TEXT"))
         except Exception:
             pass
+        if USE_MYSQL:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS builder_jobs (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    username VARCHAR(191) NOT NULL,
+                    community_id INT NOT NULL,
+                    creation_id INT NULL,
+                    kind VARCHAR(16) NOT NULL,
+                    prompt MEDIUMTEXT NOT NULL,
+                    tier VARCHAR(16) NOT NULL DEFAULT 'balanced',
+                    status VARCHAR(16) NOT NULL DEFAULT 'queued',
+                    result_creation_id INT NULL,
+                    error VARCHAR(255) NULL,
+                    attempts INT NOT NULL DEFAULT 0,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    started_at DATETIME NULL,
+                    finished_at DATETIME NULL,
+                    INDEX idx_builder_jobs_user_status (username, status, created_at),
+                    INDEX idx_builder_jobs_status (status, created_at),
+                    INDEX idx_builder_jobs_creation (creation_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS builder_jobs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    community_id INTEGER NOT NULL,
+                    creation_id INTEGER NULL,
+                    kind TEXT NOT NULL,
+                    prompt TEXT NOT NULL,
+                    tier TEXT NOT NULL DEFAULT 'balanced',
+                    status TEXT NOT NULL DEFAULT 'queued',
+                    result_creation_id INTEGER NULL,
+                    error TEXT NULL,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    started_at TEXT NULL,
+                    finished_at TEXT NULL
+                )
+                """
+            )
+            for stmt in (
+                "CREATE INDEX IF NOT EXISTS idx_builder_jobs_user_status ON builder_jobs (username, status, created_at)",
+                "CREATE INDEX IF NOT EXISTS idx_builder_jobs_status ON builder_jobs (status, created_at)",
+                "CREATE INDEX IF NOT EXISTS idx_builder_jobs_creation ON builder_jobs (creation_id)",
+            ):
+                try:
+                    cursor.execute(stmt)
+                except Exception:
+                    pass
         if owns_connection and conn is not None:
             conn.commit()
     finally:
@@ -299,6 +363,12 @@ def _row_to_dict(row: Any) -> Dict[str, Any]:
     if hasattr(row, "keys"):
         return {k: row[k] for k in row.keys()}
     return {col: row[i] for i, col in enumerate(_CREATION_COLS)}
+
+
+def _job_row_to_dict(row: Any) -> Dict[str, Any]:
+    if hasattr(row, "keys"):
+        return {k: row[k] for k in row.keys()}
+    return {col: row[i] for i, col in enumerate(_JOB_COLS)}
 
 
 def _append_history(prior_json: Optional[str], message: str) -> str:
@@ -551,6 +621,234 @@ def iterate_creation(*, creation_id: int, username: str, message: str, tier: str
         )
         conn.commit()
     return {"id": creation_id, "title": row.get("title"), "html": html, "status": row.get("status"), "model": model_used}
+
+
+# --- Async build jobs ---------------------------------------------------------
+
+_ACTIVE_JOB_STATUSES = ("queued", "running")
+
+
+def create_build_job(*, username: str, community_id: int, prompt: str, tier: str,
+                     kind: str = "create", creation_id: Optional[int] = None) -> Dict[str, Any]:
+    """Persist a build request so generation can continue after the client leaves.
+
+    ``kind`` is ``create`` for a new artifact or ``iterate`` for updating an
+    existing creation. The actual model call runs later via ``run_build_job``.
+    """
+    ensure_tables()
+    k = kind if kind in ("create", "iterate") else "create"
+    now = _now()
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""INSERT INTO builder_jobs
+                (username, community_id, creation_id, kind, prompt, tier, status, created_at, updated_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, 'queued', {ph}, {ph})""",
+            (username, community_id, creation_id, k, prompt, tier or _DEFAULT_TIER, now, now),
+        )
+        job_id = c.lastrowid
+        conn.commit()
+    return get_build_job(job_id) or {"id": job_id, "status": "queued"}
+
+
+def get_build_job(job_id: int) -> Optional[Dict[str, Any]]:
+    ensure_tables()
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""SELECT id, username, community_id, creation_id, kind, prompt, tier, status,
+                       result_creation_id, error, attempts, created_at, updated_at, started_at, finished_at
+                FROM builder_jobs WHERE id = {ph}""",
+            (job_id,),
+        )
+        row = c.fetchone()
+    return _job_row_to_dict(row) if row else None
+
+
+def user_has_active_job(username: str) -> bool:
+    """Limit each user to one in-flight build to avoid accidental queue spam."""
+    ensure_tables()
+    ph = get_sql_placeholder()
+    placeholders = ", ".join([ph for _ in _ACTIVE_JOB_STATUSES])
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"SELECT id FROM builder_jobs WHERE username = {ph} AND status IN ({placeholders}) LIMIT 1",
+            (username, *_ACTIVE_JOB_STATUSES),
+        )
+        return c.fetchone() is not None
+
+
+def _set_job_status(job_id: int, status: str, *, result_creation_id: Optional[int] = None,
+                    error: Optional[str] = None, started: bool = False, finished: bool = False) -> None:
+    now = _now()
+    parts = ["status = ?", "updated_at = ?"]
+    params: List[Any] = [status, now]
+    if result_creation_id is not None:
+        parts.append("result_creation_id = ?")
+        params.append(result_creation_id)
+    if error is not None:
+        parts.append("error = ?")
+        params.append(error[:255])
+    if started:
+        parts.append("started_at = ?")
+        parts.append("attempts = attempts + 1")
+        params.append(now)
+    if finished:
+        parts.append("finished_at = ?")
+        params.append(now)
+    ph = get_sql_placeholder()
+    sql = f"UPDATE builder_jobs SET {', '.join(parts).replace('?', ph)} WHERE id = {ph}"
+    params.append(job_id)
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(sql, tuple(params))
+        conn.commit()
+
+
+def _notify_build_complete(username: str, *, community_id: int, creation_id: int,
+                           title: str, failed: bool = False) -> None:
+    """Send in-app + push notification when an async build finishes."""
+    try:
+        from backend.services import notification_copy
+        from backend.services.notifications import create_notification, send_push_to_user
+
+        event = "builder_failed" if failed else "builder_complete"
+        locale = notification_copy.recipient_locale(username)
+        safe_title = (title or "your build")[:120]
+        link = (
+            f"/community/{community_id}/builder?creation_id={creation_id}"
+            if creation_id else f"/community/{community_id}/builder"
+        )
+        params = {"title": safe_title}
+        create_notification(
+            user_id=username,
+            from_user="steve",
+            notification_type=event,
+            community_id=community_id,
+            message=notification_copy.in_app_text(event, locale, **params),
+            link=link,
+        )
+        payload = notification_copy.push_payload(event, locale, **params)
+        payload.update({"url": link, "tag": f"builder:{creation_id}:{event}"})
+        send_push_to_user(username, payload)
+    except Exception:
+        logger.warning("builder: completion notification failed", exc_info=True)
+
+
+def run_build_job(job_id: int) -> Dict[str, Any]:
+    """Execute a queued builder job. Safe for Cloud Tasks retries."""
+    job = get_build_job(job_id)
+    if not job:
+        return {"success": False, "error": "not_found"}
+    if job.get("status") == "succeeded":
+        return {"success": True, "already_done": True, "job": job}
+    if job.get("status") == "running" and job.get("started_at"):
+        # Avoid duplicate concurrent workers. Cloud Tasks will retry if needed.
+        return {"success": True, "already_running": True, "job": job}
+    if job.get("status") not in ("queued", "failed", "running"):
+        return {"success": False, "error": "invalid_status", "job": job}
+
+    job_id_int = int(job["id"])
+    username = str(job["username"])
+    community_id = int(job["community_id"])
+    kind = str(job.get("kind") or "create")
+    prompt = str(job.get("prompt") or "")
+    tier = str(job.get("tier") or _DEFAULT_TIER)
+    creation_id = job.get("creation_id")
+
+    _set_job_status(job_id_int, "running", started=True, error="")
+    request_type = "builder_iterate" if kind == "iterate" else "builder_create"
+    try:
+        if kind == "iterate":
+            creation = iterate_creation(
+                creation_id=int(creation_id), username=username, message=prompt, tier=tier,
+            )
+        else:
+            creation = create_creation(
+                username=username, community_id=community_id, prompt=prompt, tier=tier,
+            )
+        result_id = int(creation["id"])
+        _set_job_status(job_id_int, "succeeded", result_creation_id=result_id, finished=True)
+        try:
+            from backend.services import ai_usage
+            ai_usage.log_usage(
+                username,
+                surface=ai_usage.SURFACE_BUILDER,
+                request_type=request_type,
+                community_id=community_id,
+                model=creation.get("model") or MODEL_LABEL,
+            )
+        except Exception:
+            logger.warning("builder: usage logging failed for job %s", job_id, exc_info=True)
+        _notify_build_complete(
+            username, community_id=community_id, creation_id=result_id,
+            title=creation.get("title") or "your build",
+        )
+        return {"success": True, "creation": creation, "job": get_build_job(job_id_int)}
+    except Exception as exc:
+        logger.exception("builder: run_build_job failed")
+        _set_job_status(job_id_int, "failed", error="build_failed", finished=True)
+        try:
+            from backend.services import ai_usage
+            ai_usage.log_usage(
+                username,
+                surface=ai_usage.SURFACE_BUILDER,
+                request_type=request_type,
+                success=False,
+                reason_blocked="generation_error",
+                community_id=community_id,
+                model=MODEL_LABEL,
+            )
+        except Exception:
+            logger.warning("builder: failure usage logging failed for job %s", job_id, exc_info=True)
+        _notify_build_complete(
+            username, community_id=community_id, creation_id=int(creation_id or 0),
+            title="your build", failed=True,
+        )
+        return {"success": False, "error": str(exc)[:255], "job": get_build_job(job_id_int)}
+
+
+def enqueue_build_job(job_id: int) -> bool:
+    """Enqueue a builder job.
+
+    Production can set ``BUILDER_TASKS_QUEUE`` + ``BUILDER_TASKS_LOCATION`` to
+    use Cloud Tasks. Without that config, a daemon thread keeps local/staging
+    development functional, but Cloud Tasks is the durable production path.
+    """
+    queue = (os.getenv("BUILDER_TASKS_QUEUE") or "").strip()
+    location = (os.getenv("BUILDER_TASKS_LOCATION") or "").strip()
+    project = (os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GCP_PROJECT") or "").strip()
+    base_url = (os.getenv("PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    secret = (os.getenv("BUILDER_JOB_SECRET") or os.getenv("CRON_SHARED_SECRET") or "").strip()
+    if queue and location and project and base_url and secret:
+        try:
+            from google.cloud import tasks_v2
+
+            client = tasks_v2.CloudTasksClient()
+            parent = client.queue_path(project, location, queue)
+            url = f"{base_url}/api/internal/builder/jobs/{job_id}/run"
+            task = {
+                "http_request": {
+                    "http_method": tasks_v2.HttpMethod.POST,
+                    "url": url,
+                    "headers": {"X-Builder-Job-Secret": secret},
+                }
+            }
+            client.create_task(request={"parent": parent, "task": task})
+            return True
+        except Exception:
+            logger.warning("builder: Cloud Tasks enqueue failed; falling back to local thread", exc_info=True)
+
+    def _worker() -> None:
+        # Tiny delay lets the request return before CPU-heavy generation starts.
+        time.sleep(0.2)
+        run_build_job(job_id)
+
+    threading.Thread(target=_worker, name=f"builder-job-{job_id}", daemon=True).start()
+    return False
 
 
 def publish_creation(*, creation_id: int, username: str,

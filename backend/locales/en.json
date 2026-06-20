@@ -252,6 +252,16 @@
       "body": "You're in — {community} accepted your request.",
       "message": "You're in — {community} accepted your request."
     },
+    "builder_complete": {
+      "title": "Steve finished your build",
+      "body": "{title} is ready to test.",
+      "message": "Steve finished {title}. Test it now."
+    },
+    "builder_failed": {
+      "title": "Steve could not finish this build",
+      "body": "Tap to retry when you're ready.",
+      "message": "Steve could not finish your build. Tap to retry."
+    },
     "profile_section_professional": {
       "title": "A question from Steve",
       "body": "What do you do? I can't introduce someone I don't know.",

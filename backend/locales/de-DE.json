@@ -252,6 +252,16 @@
       "body": "Du bist dabei — {community} hat deine Anfrage angenommen.",
       "message": "Du bist dabei — {community} hat deine Anfrage angenommen."
     },
+    "builder_complete": {
+      "title": "Steve hat deinen Build fertiggestellt",
+      "body": "{title} ist bereit zum Testen.",
+      "message": "Steve hat {title} fertiggestellt. Teste es jetzt."
+    },
+    "builder_failed": {
+      "title": "Steve konnte diesen Build nicht fertigstellen",
+      "body": "Tippe, um es erneut zu versuchen, wenn du bereit bist.",
+      "message": "Steve konnte deinen Build nicht fertigstellen. Tippe, um es erneut zu versuchen."
+    },
     "profile_section_professional": {
       "title": "Eine Frage von Steve",
       "body": "Was machst du? Ich kann niemanden vorstellen, den ich nicht kenne.",

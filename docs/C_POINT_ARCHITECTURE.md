@@ -117,6 +117,7 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 | `post_views.py` | Server-side post view model. |
 | `platform_activity_digest.py` | Digest builder for `platform_activity` blueprint. |
 | `admin_metrics.py` | Admin dashboard metrics computation. |
+| `builder.py` | Steve Builder creation service: artifact generation, async build jobs, community-scoped creation data, and completion notifications. |
 
 ### Entitlements & AI usage (revenue-sensitive)
 

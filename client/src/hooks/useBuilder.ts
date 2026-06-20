@@ -14,8 +14,17 @@ export type BuilderMode = 'simple' | 'technical'
 export type BuilderAgentMode = 'ask' | 'agent'
 export type BuilderMessage = { role: 'user' | 'steve'; text: string; creation?: Creation }
 export type BuilderLimit = { cap: number | null; message: string }
+export type BuilderJob = {
+  id: number
+  status: 'queued' | 'running' | 'succeeded' | 'failed'
+  kind?: 'create' | 'iterate'
+  community_id?: number
+  creation_id?: number | null
+  result_creation_id?: number | null
+  error?: string | null
+}
 
-type ApiResult = { success?: boolean; error?: string; creation?: Creation; cap?: number | null; message?: string; post_id?: number }
+type ApiResult = { success?: boolean; error?: string; creation?: Creation; cap?: number | null; message?: string; post_id?: number; queued?: boolean; job?: BuilderJob }
 type ChatResult = { success?: boolean; error?: string; reply?: string; ready?: boolean; brief?: string }
 
 /**
@@ -30,6 +39,7 @@ export function useBuilder(communityId: string) {
   const [messages, setMessages] = useState<BuilderMessage[]>([])
   const [loading, setLoading] = useState(false)   // a chat turn is in flight
   const [building, setBuilding] = useState(false)  // an artifact is being generated
+  const [activeJob, setActiveJob] = useState<BuilderJob | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [limit, setLimit] = useState<BuilderLimit | null>(null)
   const [rev, setRev] = useState(0)
@@ -48,6 +58,7 @@ export function useBuilder(communityId: string) {
 
   const abortRef = useRef<AbortController | null>(null)
   const lastBriefRef = useRef<string>('')
+  const activeJobKey = `cp_builder_active_job:${communityId}`
   const busy = loading || building
 
   // Talk with Steve (reason / ideate / discuss / propose). The default action.
@@ -78,6 +89,61 @@ export function useBuilder(communityId: string) {
       setLoading(false); abortRef.current = null
     }
   }, [loading, building, messages, mode, agentMode, tier, creation, communityId])
+
+  const clearActiveJob = useCallback(() => {
+    setActiveJob(null)
+    try { localStorage.removeItem(activeJobKey) } catch { /* ignore */ }
+  }, [activeJobKey])
+
+  const pollJob = useCallback(async (jobId: number): Promise<BuilderJob | null> => {
+    try {
+      const res = await fetch(`/api/builder/jobs/${jobId}`, { credentials: 'include' })
+      const data = (await res.json().catch(() => null)) as (ApiResult & { job?: BuilderJob }) | null
+      if (!res.ok || !data?.success || !data.job) return null
+      setActiveJob(data.job)
+      if (data.job.status === 'succeeded' && data.creation) {
+        setCreation(data.creation)
+        setRev((r) => r + 1)
+        setMessages((m) => [...m, {
+          role: 'steve',
+          text: data.job?.kind === 'iterate' ? 'Done — I updated it. Test it now.' : 'Done — I finished your build. Test it now.',
+          creation: data.creation,
+        }])
+        setBuilding(false)
+        clearActiveJob()
+      } else if (data.job.status === 'failed') {
+        setError('Steve could not finish this one. Try again when you are ready.')
+        setBuilding(false)
+        clearActiveJob()
+      }
+      return data.job
+    } catch {
+      return null
+    }
+  }, [clearActiveJob])
+
+  useEffect(() => {
+    if (!activeJob || activeJob.status === 'succeeded' || activeJob.status === 'failed') return
+    setBuilding(true)
+    const id = window.setInterval(() => { pollJob(activeJob.id).catch(() => { /* keep waiting */ }) }, 3000)
+    pollJob(activeJob.id).catch(() => { /* keep waiting */ })
+    return () => window.clearInterval(id)
+  }, [activeJob, pollJob])
+
+  useEffect(() => {
+    if (!communityId) return
+    try {
+      const raw = localStorage.getItem(activeJobKey)
+      const jobId = raw ? Number(raw) : 0
+      if (jobId > 0) {
+        setActiveJob({ id: jobId, status: 'queued' })
+        setMessages((m) => m.length ? m : [{
+          role: 'steve',
+          text: "I'm still building this. You can leave the app — I'll notify you when it's ready.",
+        }])
+      }
+    } catch { /* ignore */ }
+  }, [activeJobKey, communityId])
 
   // Persist the conversation per creation (debounced) so the user can return to
   // it. Runs whenever the thread changes and a creation exists; lean payload
@@ -115,6 +181,19 @@ export function useBuilder(communityId: string) {
         setLimit({ cap: data?.cap ?? null, message: data?.message || "You've used all your makes this month." })
         return
       }
+      if (res.status === 409) {
+        setError(data?.message || "Steve is already building something for you.")
+        return
+      }
+      if (data?.queued && data.job?.id) {
+        setActiveJob(data.job)
+        try { localStorage.setItem(activeJobKey, String(data.job.id)) } catch { /* ignore */ }
+        setMessages((m) => [...m, {
+          role: 'steve',
+          text: data.message || "I'm building it now. You can leave this screen — I'll notify you when it's ready.",
+        }])
+        return
+      }
       if (!res.ok || !data?.success || !data.creation) {
         setError(data?.error || 'Hmm, that one got away from me.')
         return
@@ -127,7 +206,7 @@ export function useBuilder(communityId: string) {
     } finally {
       setBuilding(false); abortRef.current = null
     }
-  }, [loading, building, creation, tier, communityId])
+  }, [loading, building, creation, tier, communityId, activeJobKey])
 
   // User confirmed Steve's proposal — build it.
   const confirmBuild = useCallback(() => {
@@ -143,8 +222,15 @@ export function useBuilder(communityId: string) {
   const stop = useCallback(() => {
     abortRef.current?.abort()
     abortRef.current = null
+    if (activeJob) {
+      setMessages((m) => [...m, {
+        role: 'steve',
+        text: "I'm still building on the server. You can leave this screen — I'll notify you when it's ready.",
+      }])
+      return
+    }
     setLoading(false); setBuilding(false)
-  }, [])
+  }, [activeJob])
 
   const publish = useCallback(async (caption?: string): Promise<number | null> => {
     if (!creation) return null
@@ -193,9 +279,17 @@ export function useBuilder(communityId: string) {
     return false
   }, [])
 
+  const watchJob = useCallback((jobId: number) => {
+    if (!jobId) return
+    setError(null); setLimit(null); setProposal(null)
+    setActiveJob({ id: jobId, status: 'queued' })
+    setBuilding(true)
+    try { localStorage.setItem(activeJobKey, String(jobId)) } catch { /* ignore */ }
+  }, [activeJobKey])
+
   return {
-    creation, messages, loading, building, busy, error, limit, rev,
+    creation, messages, loading, building, busy, activeJob, error, limit, rev,
     tier, setTier, mode, setMode, agentMode, setAgentMode, proposal,
-    chat, build, confirmBuild, retry, stop, publish, loadCreation,
+    chat, build, confirmBuild, retry, stop, publish, loadCreation, watchJob,
   }
 }

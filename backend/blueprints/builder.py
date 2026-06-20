@@ -9,6 +9,7 @@ Builder deliberately does NOT use the Steve credit-pool gate.
 from __future__ import annotations
 
 import logging
+import os
 
 from flask import Blueprint, jsonify, request, session
 
@@ -59,6 +60,26 @@ def _limit_response(ent, reason):
     }), 402
 
 
+def _active_job_response():
+    return jsonify({
+        "success": False,
+        "error": "builder_job_active",
+        "message": "Steve is already building something for you. You can leave this screen — we'll notify you when it's ready.",
+    }), 409
+
+
+def _job_payload(job):
+    return {
+        "id": job.get("id"),
+        "status": job.get("status"),
+        "kind": job.get("kind"),
+        "community_id": job.get("community_id"),
+        "creation_id": job.get("creation_id"),
+        "result_creation_id": job.get("result_creation_id"),
+        "error": job.get("error"),
+    }
+
+
 @builder_bp.route("/api/builder/create", methods=["POST"])
 def builder_create():
     username = session.get("username")
@@ -83,22 +104,20 @@ def builder_create():
                            reason=reason or "builder_monthly_cap", community_id=community_id)
         return _limit_response(ent, reason)
 
-    try:
-        creation = builder_svc.create_creation(
-            username=username, community_id=community_id, prompt=prompt, tier=tier,
-        )
-    except Exception:
-        logger.exception("builder: create_creation failed")
-        ai_usage.log_usage(username, surface=ai_usage.SURFACE_BUILDER,
-                           request_type="builder_create", success=False,
-                           reason_blocked="generation_error", community_id=community_id,
-                           model=builder_svc.MODEL_LABEL)
-        return jsonify({"success": False, "error": "build_failed"}), 502
+    if builder_svc.user_has_active_job(username):
+        return _active_job_response()
 
-    ai_usage.log_usage(username, surface=ai_usage.SURFACE_BUILDER,
-                       request_type="builder_create", community_id=community_id,
-                       model=creation.get("model") or builder_svc.MODEL_LABEL)
-    return jsonify({"success": True, "creation": creation})
+    job = builder_svc.create_build_job(
+        username=username, community_id=community_id, prompt=prompt, tier=tier, kind="create",
+    )
+    queued_with_cloud_tasks = builder_svc.enqueue_build_job(int(job["id"]))
+    return jsonify({
+        "success": True,
+        "queued": True,
+        "job": _job_payload(job),
+        "queued_with_cloud_tasks": queued_with_cloud_tasks,
+        "message": "Steve is building now. You can leave this screen — we'll notify you when it's ready.",
+    }), 202
 
 
 @builder_bp.route("/api/builder/chat", methods=["POST"])
@@ -178,24 +197,56 @@ def builder_iterate(creation_id: int):
                            reason=reason or "builder_monthly_cap", community_id=community_id)
         return _limit_response(ent, reason)
 
-    try:
-        creation = builder_svc.iterate_creation(
-            creation_id=creation_id, username=username, message=message, tier=tier,
-        )
-    except PermissionError:
-        return jsonify({"success": False, "error": "not_found"}), 404
-    except Exception:
-        logger.exception("builder: iterate_creation failed")
-        ai_usage.log_usage(username, surface=ai_usage.SURFACE_BUILDER,
-                           request_type="builder_iterate", success=False,
-                           reason_blocked="generation_error", community_id=community_id,
-                           model=builder_svc.MODEL_LABEL)
-        return jsonify({"success": False, "error": "build_failed"}), 502
+    if builder_svc.user_has_active_job(username):
+        return _active_job_response()
 
-    ai_usage.log_usage(username, surface=ai_usage.SURFACE_BUILDER,
-                       request_type="builder_iterate", community_id=community_id,
-                       model=creation.get("model") or builder_svc.MODEL_LABEL)
-    return jsonify({"success": True, "creation": creation})
+    job = builder_svc.create_build_job(
+        username=username, community_id=community_id, creation_id=creation_id,
+        prompt=message, tier=tier, kind="iterate",
+    )
+    queued_with_cloud_tasks = builder_svc.enqueue_build_job(int(job["id"]))
+    return jsonify({
+        "success": True,
+        "queued": True,
+        "job": _job_payload(job),
+        "queued_with_cloud_tasks": queued_with_cloud_tasks,
+        "message": "Steve is updating it now. You can leave this screen — we'll notify you when it's ready.",
+    }), 202
+
+
+@builder_bp.route("/api/builder/jobs/<int:job_id>", methods=["GET"])
+def builder_job_get(job_id: int):
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    job = builder_svc.get_build_job(job_id)
+    if not job or job.get("username") != username:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    creation = None
+    result_id = _safe_int(job.get("result_creation_id"))
+    if result_id:
+        row = builder_svc.get_creation(result_id)
+        if row and row.get("created_by") == username:
+            creation = {
+                "id": row.get("id"),
+                "title": row.get("title"),
+                "html": row.get("html_content"),
+                "status": row.get("status"),
+                "community_id": row.get("community_id"),
+                "created_by": row.get("created_by"),
+                "published_post_id": row.get("published_post_id"),
+            }
+    return jsonify({"success": True, "job": _job_payload(job), "creation": creation})
+
+
+@builder_bp.route("/api/internal/builder/jobs/<int:job_id>/run", methods=["POST"])
+def builder_job_run_internal(job_id: int):
+    expected = (os.environ.get("BUILDER_JOB_SECRET") or os.environ.get("CRON_SHARED_SECRET") or "").strip()
+    provided = request.headers.get("X-Builder-Job-Secret") or request.headers.get("X-Cron-Secret") or ""
+    if not expected or provided != expected:
+        return jsonify({"success": False, "error": "forbidden"}), 403
+    result = builder_svc.run_build_job(job_id)
+    return jsonify(result), (200 if result.get("success") else 500)
 
 
 @builder_bp.route("/api/builder/<int:creation_id>/publish", methods=["POST"])

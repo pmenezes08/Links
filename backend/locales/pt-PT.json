@@ -252,6 +252,16 @@
       "body": "Estás dentro — {community} aceitou o teu pedido.",
       "message": "Estás dentro — {community} aceitou o teu pedido."
     },
+    "builder_complete": {
+      "title": "O Steve terminou a tua criação",
+      "body": "{title} está pronta para testar.",
+      "message": "O Steve terminou {title}. Testa agora."
+    },
+    "builder_failed": {
+      "title": "O Steve não conseguiu terminar esta criação",
+      "body": "Toca para tentar outra vez quando estiveres pronto.",
+      "message": "O Steve não conseguiu terminar a tua criação. Toca para tentar outra vez."
+    },
     "profile_section_professional": {
       "title": "Uma pergunta do Steve",
       "body": "O que fazes? Não consigo apresentar quem não conheço.",

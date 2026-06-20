@@ -119,7 +119,8 @@ Also: **`groups`** (optional **`steve_agent_enabled`**, **`steve_agent_preset`**
 | `event_invitations` | Event invitations tracking distinct invited users and viewed status. |
 | `event_rsvps` | Event RSVPs tracking responses (`going`, `maybe`, `not_going`) and optional notes. |
 | `event_notification_log` | Deduplication log for event reminder notifications. |
-| `creations` | Steve Builder front-end creations (`backend/services/builder.py`). One row per creation: owner, `community_id`, `title`, self-contained `html_content`, `prompt_history`, `parent_creation_id` (remix lineage), `status` (`draft`/`published`), `published_post_id`. Published creations are referenced from `posts.creation_id`. |
+| `creations` | Steve Builder front-end creations (`backend/services/builder.py`). One row per creation: owner, `community_id`, `title`, self-contained `html_content`, `prompt_history`, `chat_history`, `parent_creation_id` (remix lineage), `status` (`draft`/`published`), `published_post_id`. Published creations are referenced from `posts.creation_id`. |
+| `builder_jobs` | Durable async Steve Builder jobs. Public build/iterate requests enqueue `queued` rows, the worker marks `running`/`succeeded`/`failed`, writes `result_creation_id`, and sends the owner in-app + push notification when the build is ready to test. |
 
 ### Steve / networking (SQL)
 
