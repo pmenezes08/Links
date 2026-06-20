@@ -190,7 +190,7 @@ export default function BuilderPage() {
       paddingTop: 'var(--sat-px, 0px)',
       paddingBottom: `${keyboardLift > 0 ? keyboardLift : safeBottomPx}px`,
     }}>
-      <style>{`@keyframes cp-spin { to { transform: rotate(360deg) } } @keyframes cp-sheet-up { from { transform: translateY(100%) } to { transform: translateY(0) } } @keyframes cp-typing { 0%,60%,100% { opacity: 0.25; transform: translateY(0) } 30% { opacity: 1; transform: translateY(-3px) } }`}</style>
+      <style>{`@keyframes cp-spin { to { transform: rotate(360deg) } } @keyframes cp-sheet-up { from { transform: translateY(100%) } to { transform: translateY(0) } } @keyframes cp-typing { 0%,60%,100% { opacity: 0.25; transform: translateY(0) } 30% { opacity: 1; transform: translateY(-3px) } } .cp-builder-composer::placeholder { color: rgba(241,241,241,0.58); opacity: 1; }`}</style>
 
       <div style={{ flex: '0 0 auto', height: 44, display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px 0 6px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <button onClick={goBack} aria-label="Back" style={{ background: 'none', border: 'none', color: '#cfcfcf', fontSize: 24, lineHeight: 1, padding: '4px 8px', cursor: 'pointer' }}>‹</button>
@@ -231,7 +231,7 @@ export default function BuilderPage() {
             <div key={i} style={{ display: 'flex', gap: 10, margin: '14px 0' }}>
               <Avatar />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 15, lineHeight: 1.5, color: '#e9e9e9' }}>{m.text}</div>
+                <div style={{ fontSize: 15, lineHeight: 1.5, color: '#e9e9e9', whiteSpace: 'pre-line' }}>{m.text}</div>
                 {m.creation && (
                   <CreationCard creation={m.creation} isLatest={!!creation && m.creation.id === creation.id}
                     onOpen={() => setPlayingCreation(m.creation!)}
@@ -287,17 +287,18 @@ export default function BuilderPage() {
         )}
       </div>
 
-      <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'flex-end', gap: 8, padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,0.06)', background: '#000' }}>
+      <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'flex-end', gap: 8, padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,0.08)', background: '#050505', boxShadow: '0 -10px 24px rgba(0,0,0,0.45)' }}>
         <button onClick={() => setOptionsOpen(true)} aria-label="Mode and quality"
           style={{ flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', gap: 5, border: 'none', borderRadius: 999, padding: '8px 12px', height: 40, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'rgba(255,255,255,0.06)', color: agentMode === 'ask' ? '#7F77DD' : '#00CEC8' }}>
           <i className={`ti ${agentMode === 'ask' ? 'ti-message-circle' : 'ti-bolt'}`} style={{ fontSize: 14 }} aria-hidden />
           {agentMode === 'ask' ? 'Ask' : 'Agent'}<span style={{ fontSize: 9, opacity: 0.7 }}>▲</span>
         </button>
         <textarea ref={textareaRef} value={input} rows={1}
+          className="cp-builder-composer"
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
           placeholder={agentMode === 'ask' ? 'Ask Steve anything…' : (creation ? 'What should we change?' : 'Message Steve…')}
-          style={{ flex: 1, minWidth: 0, background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 20, padding: '10px 16px', color: '#f1f1f1', fontSize: 16, lineHeight: 1.35, outline: 'none', resize: 'none', maxHeight: 140, overflowY: 'auto', fontFamily: 'inherit' }} />
+          style={{ flex: 1, minWidth: 0, minHeight: 40, background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 20, padding: '10px 16px', color: '#f1f1f1', caretColor: '#00CEC8', fontSize: 16, lineHeight: 1.35, outline: 'none', resize: 'none', maxHeight: 140, overflowY: 'auto', fontFamily: 'inherit', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }} />
         {busy ? (
           <button onClick={stop} aria-label="Stop"
             style={{ flex: '0 0 auto', background: 'rgba(255,255,255,0.10)', color: '#f1f1f1', border: 'none', borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>

@@ -414,6 +414,9 @@ _CONVERSE_BASE = (
     "- REASON about what the user actually wants.\n"
     "- CONTRIBUTE IDEAS: proactively offer 1-2 concrete, exciting suggestions or directions that make it better — never just repeat the request back.\n"
     "- Ask a clarifying question ONLY when something essential is genuinely unclear. Most people want to see something fast, so keep momentum and don't interrogate.\n"
+    "- FORMAT FOR MOBILE: keep replies easy to scan. Use short paragraphs, blank lines between ideas, and bullets when "
+    "listing features, options, or a build plan. Avoid long walls of text. Default to 2-4 short chunks unless the user "
+    "explicitly asks for depth.\n"
     "- KNOW WHAT YOUR CREATIONS CAN DO, and offer these proactively: they CAN show REAL PHOTOS pulled from the web "
     "(actual photos of places, food, landmarks — perfect for guides & recommendations); SAVE each player's progress / "
     "state / preferences so they can pick up where they left off; and track COMMUNITY scores, ratings and leaderboards "
@@ -443,7 +446,7 @@ _CONVERSE_TECH = (
 )
 _CONVERSE_JSON = (
     "Reply with ONLY a JSON object, nothing else:\n"
-    '{"reply": "<what you say to the user, in their register; if proposing, end with a clear yes/no confirmation question>", '
+    '{"reply": "<what you say to the user, in their register, formatted with short paragraphs and bullets where useful; if proposing, end with a clear yes/no confirmation question>", '
     '"ready": <true ONLY when you have proposed a concrete plan and are asking to start building; false while still discussing or ideating>, '
     '"brief": "<when ready=true: a complete, self-contained description of exactly what to build, capturing everything agreed so it can be built from this alone; otherwise empty>"}'
 )
