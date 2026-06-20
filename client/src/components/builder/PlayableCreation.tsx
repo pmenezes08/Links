@@ -5,8 +5,8 @@ import { prepareCreationHtml } from '../../utils/creationHtml'
  * Full-screen play surface for a front-end creation. Renders the artifact in a
  * sandboxed iframe (opaque origin — no app-session access) and scales it to fit
  * the frame: the injected fit-reporter posts the content size out, and we apply
- * a transform so fixed-pixel artifacts can't overflow or clip. An optional
- * on-screen D-pad drives keyboard games via the injected control bridge.
+ * a transform so fixed-pixel artifacts can't overflow or clip. Host controls are
+ * intentionally minimal so the generated creation feels self-contained.
  */
 
 type Props = {
@@ -22,23 +22,15 @@ type Props = {
 type Entry = { name: string; value: number; rank: number }
 type ResultState = { score: number | null; key: string }
 
-const ARROWS: Array<{ key: string; icon: string; gridArea: string; label: string }> = [
-  { key: 'ArrowUp', icon: 'ti-chevron-up', gridArea: '1 / 2 / 2 / 3', label: 'Up' },
-  { key: 'ArrowLeft', icon: 'ti-chevron-left', gridArea: '2 / 1 / 3 / 2', label: 'Left' },
-  { key: 'ArrowDown', icon: 'ti-chevron-down', gridArea: '2 / 2 / 3 / 3', label: 'Down' },
-  { key: 'ArrowRight', icon: 'ti-chevron-right', gridArea: '2 / 3 / 3 / 4', label: 'Right' },
-]
-
 export default function PlayableCreation({ html, title, onClose, creationId, onRuntimeError, onShare, shared }: Props) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
-  const [showPad, setShowPad] = useState(false)
   const [fit, setFit] = useState(1)
   const [playKey, setPlayKey] = useState(0)
   const [result, setResult] = useState<ResultState | null>(null)
   const [board, setBoard] = useState<{ entries: Entry[]; mine: Entry | null } | null>(null)
   const [myRating, setMyRating] = useState<number | null>(null)
   const srcDoc = useMemo(
-    () => prepareCreationHtml(html, { controlBridge: true, dataBridge: creationId != null, errorReporter: true }),
+    () => prepareCreationHtml(html, { dataBridge: creationId != null, errorReporter: true }),
     [html, creationId],
   )
 
@@ -147,22 +139,6 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
     return () => window.removeEventListener('message', onMsg)
   }, [])
 
-  const sendKey = (key: string, down: boolean) => {
-    try { iframeRef.current?.contentWindow?.postMessage({ __cpctl: true, key, down }, '*') } catch { /* noop */ }
-  }
-  const hold = (key: string) => ({
-    onPointerDown: (e: React.PointerEvent) => { e.preventDefault(); sendKey(key, true) },
-    onPointerUp: (e: React.PointerEvent) => { e.preventDefault(); sendKey(key, false) },
-    onPointerLeave: () => sendKey(key, false),
-    onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
-  })
-
-  const padBtn: React.CSSProperties = {
-    width: 52, height: 52, borderRadius: 12, background: 'rgba(20,20,20,0.82)',
-    border: '1px solid rgba(255,255,255,0.16)', color: '#f1f1f1', fontSize: 22,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'none', userSelect: 'none',
-  }
-
   const scaled = fit < 1
   const iframeStyle: React.CSSProperties = scaled
     ? { position: 'absolute', top: 0, left: 0, width: `${100 / fit}%`, height: `${100 / fit}%`, transform: `scale(${fit})`, transformOrigin: 'top left', border: 0, display: 'block' }
@@ -180,34 +156,9 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
       </div>
 
       <button onClick={onClose} aria-label="Close"
-        style={{ position: 'absolute', top: 'calc(var(--sat-px, 0px) + 10px)', left: 10, zIndex: 3, width: 38, height: 38, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.18)', color: '#fff', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        style={{ position: 'absolute', top: 'calc(var(--sat-px, 0px) + 12px)', left: 12, zIndex: 3, width: 46, height: 46, borderRadius: '50%', background: 'rgba(0,0,0,0.78)', border: '1px solid rgba(255,255,255,0.34)', color: '#fff', fontSize: 23, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 24px rgba(0,0,0,0.45)' }}>
         <i className="ti ti-x" aria-hidden="true" />
       </button>
-
-      <button onClick={() => setShowPad((v) => !v)} aria-label={showPad ? 'Hide controls' : 'Show controls'}
-        style={{ position: 'absolute', top: 'calc(var(--sat-px, 0px) + 10px)', right: 10, zIndex: 3, width: 38, height: 38, borderRadius: '50%', background: showPad ? '#00CEC8' : 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.18)', color: showPad ? '#00302e' : '#fff', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <i className="ti ti-device-gamepad-2" aria-hidden="true" />
-      </button>
-
-      {showPad && (
-        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 'calc(var(--sab-px, 0px) + 14px)', zIndex: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', padding: '0 18px', pointerEvents: 'none' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 52px)', gridTemplateRows: 'repeat(2, 52px)', gap: 6, pointerEvents: 'auto' }}>
-            {ARROWS.map((a) => (
-              <button key={a.key} aria-label={a.label} style={{ ...padBtn, gridArea: a.gridArea }} {...hold(a.key)}>
-                <i className={`ti ${a.icon}`} aria-hidden="true" />
-              </button>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 10, pointerEvents: 'auto' }}>
-            <button aria-label="Rotate / up" style={{ ...padBtn, width: 60, height: 60, borderRadius: '50%' }} {...hold('ArrowUp')}>
-              <i className="ti ti-rotate-clockwise" aria-hidden="true" />
-            </button>
-            <button aria-label="Action" style={{ ...padBtn, width: 60, height: 60, borderRadius: '50%', background: 'rgba(0,206,200,0.22)', borderColor: 'rgba(0,206,200,0.5)' }} {...hold(' ')}>
-              <span style={{ fontSize: 13, fontWeight: 500, color: '#bdeeeb' }}>GO</span>
-            </button>
-          </div>
-        </div>
-      )}
 
       {result && (
         <ResultOverlay

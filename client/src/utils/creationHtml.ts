@@ -4,8 +4,6 @@
  * - Injects a `width=device-width` viewport meta so the artifact lays out to
  *   the frame width instead of a desktop default (fixes content overflowing
  *   the phone screen). Forced even if the artifact already declared one.
- * - Optionally injects a postMessage->KeyboardEvent bridge so the host's
- *   on-screen touch controls can drive keyboard-controlled games.
  */
 
 const VIEWPORT_META =
@@ -90,21 +88,7 @@ const DATA_BRIDGE = `<script>(function(){
   };
 })();<\/script>`
 
-const CONTROL_BRIDGE = `<script>(function(){
-  function fire(type,key){
-    try{
-      var e=new KeyboardEvent(type,{key:key,code:key,bubbles:true,cancelable:true});
-      var t=document.activeElement||document.body||document.documentElement;
-      t.dispatchEvent(e);document.dispatchEvent(e);window.dispatchEvent(e);
-    }catch(_){}
-  }
-  window.addEventListener('message',function(ev){
-    var d=ev&&ev.data||{};
-    if(d&&d.__cpctl&&d.key){fire(d.down?'keydown':'keyup',d.key);}
-  });
-})();<\/script>`
-
-export function prepareCreationHtml(html: string, opts: { controlBridge?: boolean; dataBridge?: boolean; errorReporter?: boolean } = {}): string {
+export function prepareCreationHtml(html: string, opts: { dataBridge?: boolean; errorReporter?: boolean } = {}): string {
   if (!html) return html
   let out = html
   const headInject = VIEWPORT_META + BASE_CSS
@@ -119,7 +103,6 @@ export function prepareCreationHtml(html: string, opts: { controlBridge?: boolea
 
   const tail = FIT_REPORTER
     + (opts.errorReporter ? ERROR_REPORTER : '')
-    + (opts.controlBridge ? CONTROL_BRIDGE : '')
     + (opts.dataBridge ? DATA_BRIDGE : '')
   out = out.includes('</body>') ? out.replace('</body>', tail + '</body>') : out + tail
   return out
