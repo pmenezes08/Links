@@ -118,8 +118,16 @@ def builder_chat():
     raw_history = data.get("history") if isinstance(data.get("history"), list) else []
     history = [{"role": h.get("role"), "text": h.get("text")}
                for h in raw_history if isinstance(h, dict) and h.get("text")][-20:]
-    has_creation = _safe_int(data.get("creation_id")) is not None
-    result = builder_svc.converse(history, message[:4000], mode=mode, agent_mode=agent_mode, has_creation=has_creation)
+    # Give Steve the ACTUAL current build to reason with (owner-scoped), so he
+    # reasons against the real code, not just the prompt.
+    current_html = None
+    cid_int = _safe_int(data.get("creation_id"))
+    if cid_int is not None:
+        creation = builder_svc.get_creation(cid_int)
+        if creation and creation.get("created_by") == username:
+            current_html = creation.get("html_content")
+    result = builder_svc.converse(history, message[:4000], mode=mode, agent_mode=agent_mode,
+                                  has_creation=bool(current_html), current_html=current_html)
     ai_usage.log_usage(username, surface=ai_usage.SURFACE_BUILDER_CHAT, request_type="builder_chat",
                        community_id=_safe_int(data.get("community_id")), model=builder_svc.MODEL_LABEL)
     return jsonify({"success": True, **result})

@@ -353,8 +353,14 @@ _CONVERSE_JSON = (
 def _converse_system(*, mode: str, agent_mode: bool, has_creation: bool) -> str:
     capability = _CONVERSE_AGENT if agent_mode else _CONVERSE_ASK
     register = _CONVERSE_TECH if mode == "technical" else _CONVERSE_SIMPLE
-    ctx = ("The user already has a creation in progress; you're discussing a CHANGE or addition they want. "
-           "The brief should describe just the change.\n" if has_creation else "")
+    ctx = (
+        "The user already has a creation in progress and its FULL current code is provided below. "
+        "READ IT and reason WITH it — inspect what is ACTUALLY there before you answer. Reference the real "
+        "existing features and behaviour, and base every answer, assessment, and proposal on the real current "
+        "state of the build, never on assumptions. If the user asks why something happens or what to change, "
+        "look at the code first. When you propose a change (Agent mode), the brief should describe just the "
+        "change to make to this existing build.\n"
+        if has_creation else "")
     return _CONVERSE_BASE + capability + register + ctx + _CONVERSE_JSON
 
 
@@ -377,11 +383,13 @@ def _parse_converse(raw: str) -> Dict[str, Any]:
 
 
 def converse(history: List[Dict[str, str]], message: str, *, mode: str = "simple",
-             agent_mode: bool = True, has_creation: bool = False) -> Dict[str, Any]:
-    """Steve's design conversation: reason, ideate, discuss honestly. In Agent
-    mode he may propose a concrete plan and ask the user to confirm before
-    building; in Ask mode he can only discuss (never proposes, ready always
-    false). Returns {reply, ready, brief}. Uses the fast model (snappy chat)."""
+             agent_mode: bool = True, has_creation: bool = False,
+             current_html: Optional[str] = None) -> Dict[str, Any]:
+    """Steve's design conversation: reason, ideate, discuss honestly — WITH the
+    actual current build in context (he reads the real code, not just the
+    prompt). In Agent mode he may propose a concrete plan and ask the user to
+    confirm before building; in Ask mode he can only discuss (never proposes).
+    Returns {reply, ready, brief}. Uses the fast model (snappy chat)."""
     lines = []
     for h in (history or [])[-20:]:
         t = (h.get("text") or "").strip()
@@ -389,7 +397,12 @@ def converse(history: List[Dict[str, str]], message: str, *, mode: str = "simple
             continue
         lines.append(f"{'User' if h.get('role') == 'user' else 'Steve'}: {t}")
     convo = "\n".join(lines)
-    user = (f"Conversation so far:\n{convo}\n\n" if convo else "") + \
+    build_ctx = ""
+    if current_html:
+        build_ctx = (
+            "CURRENT BUILD — this is the actual code of what exists right now. Read it and reason with it:\n"
+            "<<<BUILD>>>\n" + current_html + "\n<<<END BUILD>>>\n\n")
+    user = build_ctx + (f"Conversation so far:\n{convo}\n\n" if convo else "") + \
         f"User's latest message: {message}\n\nReply with ONLY the JSON object."
     try:
         raw = llm.generate_text(_converse_system(mode=mode, agent_mode=agent_mode, has_creation=has_creation), user,
