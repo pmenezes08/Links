@@ -2000,6 +2000,10 @@ def _seed_pages() -> List[Dict[str, Any]]:
                         {"title": "Monolith reduction — large KB / Steve / networking services", "area": "backend", "phase": "later", "status": "not_started", "effort": "L", "target_quarter": "2027-Q1", "notes": "Split `knowledge_base.py`, `steve_knowledge_base.py`, `networking_retrieval.py` — see `docs/MONOLITH_REDUCTION_ROADMAP.md`."},
                         {"title": "Monolith reduction — Flask bodybuilding_app migration", "area": "backend", "phase": "later", "status": "not_started", "effort": "XL", "target_quarter": "2027-Q1", "notes": "Move legacy `@app.route` to blueprints when touching an area. `docs/MONOLITH_REDUCTION_ROADMAP.md`."},
                         {"title": "Steve conversation memory and recursive learning for chats", "area": "Steve", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q4", "notes": "Bounded summaries, episodic memory events, and RAG on top of existing steve_dm_reply.py bounded context and steve_knowledge_base synthesis. Related to chat surfaces. See docs/MONOLITH_REDUCTION_ROADMAP.md § Chat UI kernel and docs/STEVE_AND_VOICE_NOTES.md. Test with AI usage counters.", "test": "steve:chat-memory", "test_status": "not_run"},
+                        {"title": "Steve Build — R2-backed artifact storage", "area": "infra", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q4", "test": "builder:artifact-storage", "test_status": "not_run", "notes": "Move generated creation HTML out of inline MySQL MEDIUMTEXT into Cloudflare R2 (sha-keyed, deduped) behind a new `backend/services/builder_artifacts.py` with a MEDIUMTEXT fallback for small/legacy artifacts. Phase 3 scalability foundation for Steve Build (see `docs/STEVE_BUILD.md`). Keeps the DB row small and lets the feed/playback read artifacts via CDN."},
+                        {"title": "Steve Build — feed read-path decoupling (thumbnail + ETag)", "area": "backend", "phase": "next", "status": "not_started", "effort": "M", "target_quarter": "2026-Q4", "test": "builder:feed-readpath", "test_status": "not_run", "notes": "Stop loading full creation HTML into community feed cards. Serve a lightweight thumbnail/poster + metadata and gate playback behind a tap, with ETag/conditional GETs on the artifact. Pairs with R2 artifact storage. `docs/STEVE_BUILD.md`."},
+                        {"title": "Steve Build — isolated *.builds.c-point.co sandbox origin", "area": "infra", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2027-Q1", "test": "builder:sandbox-origin", "test_status": "not_run", "notes": "Serve creations from a dedicated origin (`*.builds.c-point.co`) instead of an opaque `srcDoc` iframe, with a `postMessage` host bridge replacing the inline `window.CPoint` injection. Hardens isolation before any public release. `docs/STEVE_BUILD.md` § Sandbox And Runtime."},
+                        {"title": "Steve Build — builder_jobs retention/cleanup cron", "area": "backend", "phase": "next", "status": "not_started", "effort": "S", "target_quarter": "2026-Q4", "test": "builder:jobs-retention", "test_status": "not_run", "notes": "Scheduled job under `/api/cron/*` that prunes terminal `builder_jobs` rows older than ~30 days so the table doesn't grow unbounded. Complements the `/api/cron/builder/sweep` reaper (which only reclaims stuck jobs). `docs/cloud-scheduler-cron.md`."},
                         {"title": "Steve — community-owned agents (owners create/configure)", "area": "Steve", "phase": "exploring", "status": "not_started", "effort": "L", "target_quarter": "TBD", "notes": "Community owners instantiate one or more Steve-style agents for their space: display name and persona/system instructions, tool policy (community KB vs scoped web/topic search), optional knowledge pinning, default surfaces (DM with agent, group @mention routing, optional feed autopilot). Spend debits against the Paid community Steve package pool with per-agent caps; ai_usage_log records need a stable agent/instance id. Depends on entitlement + abuse guardrails (rate limits, mod review queue for first publish). Complements today's single-platform Steve baseline.", "test": "steve:community-agents", "test_status": "not_run"},
                         {"title": "Steve — KB-backed model costs, entitlement output caps, and prompt policy", "area": "Steve", "phase": "now", "status": "completed", "effort": "M", "target_quarter": "2026-Q2", "notes": "Shipped May 2026: `backend/services/steve_model_config.py` (official Grok 4.3 $/M + cached input + web/tool-call $ via KB), `steve_prompt_policy.py` (adaptive substantive-reply formatting, no visible chain-of-thought), DM/group/feed wiring to KB-backed `max_output_tokens_*` and context caps, richer `ai_usage` logging. KB seeds updated (Credits & Entitlements, Hard Limits, community Steve package, Networking AI pricing fields). Docs: `docs/STEVE_AND_VOICE_NOTES.md`, `PRODUCT_JOURNEYS.md`, `C_POINT_ARCHITECTURE.md`. Staging: `origin/staging` + Cloud Run `cpoint-app-staging` build. Reseed KB in admin after deploy so MySQL picks up seed-only field deltas.", "test": "pytest:steve_model_config+prompt_policy", "test_status": "successful"},
                         {"title": "Usage / credit calculator (admin)", "area": "admin", "phase": "now", "status": "ongoing", "effort": "M", "target_quarter": "2026-Q2", "notes": "Single-call, month sim, pricing what-if."},
@@ -2378,6 +2382,41 @@ def _seed_pages() -> List[Dict[str, Any]]:
                             "behaviour": "Signup uniqueness check collides on canonical_email, blocking Gmail dot/plus alias abuse while allowing distinct users.",
                             "runner": "pytest",
                             "target": "tests/test_signup_canonical_uniqueness.py",
+                            "status": "not_run",
+                            "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                        {
+                            "id": "builder:async-jobs",
+                            "feature": "Steve Builder — async build jobs",
+                            "behaviour": (
+                                "Async build/iterate jobs are at-least-once safe: claim_build_job "
+                                "is an atomic conditional UPDATE so duplicate Cloud Tasks delivery "
+                                "never double-runs or double-logs; exactly one ai_usage row per build "
+                                "turn (one success=0 on terminal failure); _mark_notified fires the "
+                                "completion notification once; the active-job guard returns 409; the "
+                                "internal worker route requires the shared secret; job GET is "
+                                "owner-scoped (non-enumerating 404); the sweep reaper requeues "
+                                "lease-expired jobs and terminally fails those past max_attempts; the "
+                                "_set_job_status placeholder bug ('?' in value) stays fixed."
+                            ),
+                            "runner": "pytest",
+                            "target": "tests/test_builder.py",
+                            "status": "not_run",
+                            "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                        {
+                            "id": "builder:async-builds",
+                            "feature": "Steve Builder — async build jobs",
+                            "behaviour": (
+                                "Mobile build-while-away: build continues after lock / navigate-away / "
+                                "app-kill; completion push deep-links to the finished creation; failure "
+                                "notifies once with a retry affordance; 409 active-job guard; Cloud Tasks "
+                                "is the active path at startup (not the thread fallback); the sweep cron "
+                                "clears stuck jobs; play surface shows only the close control; "
+                                "creation-owned sound; pt-PT / de-DE notification copy."
+                            ),
+                            "runner": "manual",
+                            "target": "QA_CHECKLIST.md §17",
                             "status": "not_run",
                             "last_run_at": "", "last_run_by": "", "last_run_notes": "",
                         },

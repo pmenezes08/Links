@@ -120,7 +120,7 @@ Also: **`groups`** (optional **`steve_agent_enabled`**, **`steve_agent_preset`**
 | `event_rsvps` | Event RSVPs tracking responses (`going`, `maybe`, `not_going`) and optional notes. |
 | `event_notification_log` | Deduplication log for event reminder notifications. |
 | `creations` | Steve Builder front-end creations (`backend/services/builder.py`). One row per creation: owner, `community_id`, `title`, self-contained `html_content`, `prompt_history`, `chat_history`, `parent_creation_id` (remix lineage), `status` (`draft`/`published`), `published_post_id`. Published creations are referenced from `posts.creation_id`. |
-| `builder_jobs` | Durable async Steve Builder jobs. Public build/iterate requests enqueue `queued` rows, the worker marks `running`/`succeeded`/`failed`, writes `result_creation_id`, and sends the owner in-app + push notification when the build is ready to test. |
+| `builder_jobs` | Durable async Steve Builder jobs. Public build/iterate requests enqueue `queued` rows; the worker claims a job atomically (`claim_build_job`: conditional `UPDATE`-to-`running` with `worker_token` + `lease_expires_at`, only one worker can win) so at-least-once Cloud Tasks delivery never double-runs a build or double-logs `ai_usage`. On finish it marks `succeeded`/`failed`, writes `result_creation_id`, and stamps `notified_at` exactly once before sending the owner in-app + push notification. `attempts`/`max_attempts` bound retries; the `/api/cron/builder/sweep` reaper requeues jobs whose lease expired (crashed worker) and terminally fails those past `max_attempts`. |
 
 ### Steve / networking (SQL)
 

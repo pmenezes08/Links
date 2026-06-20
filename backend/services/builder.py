@@ -21,7 +21,8 @@ import os
 import re
 import threading
 import time
-from datetime import datetime
+import uuid
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from backend.services.database import get_db_connection, get_sql_placeholder, USE_MYSQL
@@ -123,7 +124,8 @@ _CREATION_COLS = [
 
 _JOB_COLS = [
     "id", "username", "community_id", "creation_id", "kind", "prompt", "tier",
-    "status", "result_creation_id", "error", "attempts", "created_at",
+    "status", "result_creation_id", "error", "attempts", "max_attempts",
+    "worker_token", "lease_expires_at", "notified_at", "created_at",
     "updated_at", "started_at", "finished_at",
 ]
 
@@ -274,6 +276,10 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
                     result_creation_id INT NULL,
                     error VARCHAR(255) NULL,
                     attempts INT NOT NULL DEFAULT 0,
+                    max_attempts INT NOT NULL DEFAULT 3,
+                    worker_token VARCHAR(64) NULL,
+                    lease_expires_at DATETIME NULL,
+                    notified_at DATETIME NULL,
                     created_at DATETIME NOT NULL,
                     updated_at DATETIME NOT NULL,
                     started_at DATETIME NULL,
@@ -299,6 +305,10 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
                     result_creation_id INTEGER NULL,
                     error TEXT NULL,
                     attempts INTEGER NOT NULL DEFAULT 0,
+                    max_attempts INTEGER NOT NULL DEFAULT 3,
+                    worker_token TEXT NULL,
+                    lease_expires_at TEXT NULL,
+                    notified_at TEXT NULL,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     started_at TEXT NULL,
@@ -315,6 +325,21 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
                     cursor.execute(stmt)
                 except Exception:
                     pass
+        # Migration-light: reliability columns for the atomic-claim + lease +
+        # idempotent-notify model. Existing builder_jobs tables predate these.
+        _int = "INT" if USE_MYSQL else "INTEGER"
+        _dt = "DATETIME" if USE_MYSQL else "TEXT"
+        _txt = "VARCHAR(64)" if USE_MYSQL else "TEXT"
+        for stmt in (
+            f"ALTER TABLE builder_jobs ADD COLUMN max_attempts {_int} NOT NULL DEFAULT 3",
+            f"ALTER TABLE builder_jobs ADD COLUMN worker_token {_txt} NULL",
+            f"ALTER TABLE builder_jobs ADD COLUMN lease_expires_at {_dt} NULL",
+            f"ALTER TABLE builder_jobs ADD COLUMN notified_at {_dt} NULL",
+        ):
+            try:
+                cursor.execute(stmt)
+            except Exception:
+                pass
         if owns_connection and conn is not None:
             conn.commit()
     finally:
@@ -641,6 +666,9 @@ def iterate_creation(*, creation_id: int, username: str, message: str, tier: str
 # --- Async build jobs ---------------------------------------------------------
 
 _ACTIVE_JOB_STATUSES = ("queued", "running")
+# A worker holds a lease for this long; the sweep cron reclaims jobs whose
+# lease expired (worker crashed / Cloud Run instance recycled mid-build).
+_LEASE_SECONDS = 600
 
 
 def create_build_job(*, username: str, community_id: int, prompt: str, tier: str,
@@ -674,7 +702,8 @@ def get_build_job(job_id: int) -> Optional[Dict[str, Any]]:
         c = conn.cursor()
         c.execute(
             f"""SELECT id, username, community_id, creation_id, kind, prompt, tier, status,
-                       result_creation_id, error, attempts, created_at, updated_at, started_at, finished_at
+                       result_creation_id, error, attempts, max_attempts, worker_token,
+                       lease_expires_at, notified_at, created_at, updated_at, started_at, finished_at
                 FROM builder_jobs WHERE id = {ph}""",
             (job_id,),
         )
@@ -697,30 +726,101 @@ def user_has_active_job(username: str) -> bool:
 
 
 def _set_job_status(job_id: int, status: str, *, result_creation_id: Optional[int] = None,
-                    error: Optional[str] = None, started: bool = False, finished: bool = False) -> None:
+                    error: Optional[str] = None, started: bool = False, finished: bool = False,
+                    clear_worker: bool = False) -> None:
+    """Update a job's terminal/intermediate state.
+
+    Builds the SET clause with the live placeholder directly — never via a
+    string ``replace('?', ph)``, which would corrupt any value containing a
+    literal ``?`` (e.g. a prompt-derived error string).
+    """
     now = _now()
-    parts = ["status = ?", "updated_at = ?"]
+    ph = get_sql_placeholder()
+    parts = [f"status = {ph}", f"updated_at = {ph}"]
     params: List[Any] = [status, now]
     if result_creation_id is not None:
-        parts.append("result_creation_id = ?")
+        parts.append(f"result_creation_id = {ph}")
         params.append(result_creation_id)
     if error is not None:
-        parts.append("error = ?")
+        parts.append(f"error = {ph}")
         params.append(error[:255])
     if started:
-        parts.append("started_at = ?")
+        parts.append(f"started_at = {ph}")
+        params.append(now)
         parts.append("attempts = attempts + 1")
-        params.append(now)
     if finished:
-        parts.append("finished_at = ?")
+        parts.append(f"finished_at = {ph}")
         params.append(now)
-    ph = get_sql_placeholder()
-    sql = f"UPDATE builder_jobs SET {', '.join(parts).replace('?', ph)} WHERE id = {ph}"
+    if clear_worker:
+        # Release the lease so a re-queued job can be re-claimed cleanly.
+        parts.append("worker_token = NULL")
+        parts.append("lease_expires_at = NULL")
+    sql = f"UPDATE builder_jobs SET {', '.join(parts)} WHERE id = {ph}"
     params.append(job_id)
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute(sql, tuple(params))
         conn.commit()
+
+
+def claim_build_job(job_id: int, worker_token: str, lease_seconds: int = _LEASE_SECONDS) -> bool:
+    """Atomically claim a job for this worker.
+
+    Cloud Tasks is at-least-once: a job can be delivered more than once. This
+    single conditional UPDATE is the concurrency gate — only the worker whose
+    UPDATE affects exactly one row owns the run, so duplicate deliveries cannot
+    both produce a creation / usage row. A ``running`` job whose lease has
+    expired (crashed worker) is reclaimable; one at ``max_attempts`` is not.
+    """
+    ensure_tables()
+    ph = get_sql_placeholder()
+    now = _now()
+    lease = (datetime.utcnow() + timedelta(seconds=lease_seconds)).strftime("%Y-%m-%d %H:%M:%S")
+    sql = (
+        f"UPDATE builder_jobs SET status='running', worker_token={ph}, started_at={ph}, "
+        f"lease_expires_at={ph}, attempts=attempts+1, updated_at={ph} "
+        f"WHERE id={ph} AND attempts < max_attempts AND ("
+        f"status IN ('queued','failed') OR "
+        f"(status='running' AND lease_expires_at IS NOT NULL AND lease_expires_at < {ph}))"
+    )
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(sql, (worker_token, now, lease, now, job_id, now))
+        claimed = c.rowcount == 1
+        conn.commit()
+    return claimed
+
+
+def _mark_notified(job_id: int) -> bool:
+    """Stamp ``notified_at`` exactly once. Returns True for the first caller
+    only, so a retried/duplicated worker never re-sends the completion push."""
+    ph = get_sql_placeholder()
+    now = _now()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"UPDATE builder_jobs SET notified_at={ph} WHERE id={ph} AND notified_at IS NULL",
+            (now, job_id),
+        )
+        won = c.rowcount == 1
+        conn.commit()
+    return won
+
+
+# Generation/validation failures are terminal (the same prompt will fail again);
+# only genuine infra blips warrant a Cloud Tasks retry. Default to terminal so a
+# bad build never retry-storms log_usage(success=0).
+_TRANSIENT_MARKERS = (
+    "timeout", "timed out", "temporarily", "rate limit", "rate_limit", "429",
+    "502", "503", "504", "connection", "unavailable", "overloaded",
+)
+
+
+def _is_transient_error(exc: Exception) -> bool:
+    if isinstance(exc, (TimeoutError, ConnectionError)):
+        return True
+    msg = str(exc).lower()
+    return any(marker in msg for marker in _TRANSIENT_MARKERS)
 
 
 def _notify_build_complete(username: str, *, community_id: int, creation_id: int,
@@ -754,17 +854,31 @@ def _notify_build_complete(username: str, *, community_id: int, creation_id: int
 
 
 def run_build_job(job_id: int) -> Dict[str, Any]:
-    """Execute a queued builder job. Safe for Cloud Tasks retries."""
+    """Execute a queued builder job. Safe for Cloud Tasks at-least-once delivery.
+
+    Concurrency/idempotency is enforced by ``claim_build_job``: only the worker
+    that wins the atomic claim runs generation and produces side effects
+    (creation write, one ``ai_usage`` row, one completion notification). A
+    duplicate delivery loses the claim and is a no-op. The return dict carries a
+    ``transient`` flag so the HTTP worker can ask Cloud Tasks to retry only when
+    a retry could actually help.
+    """
     job = get_build_job(job_id)
     if not job:
         return {"success": False, "error": "not_found"}
     if job.get("status") == "succeeded":
         return {"success": True, "already_done": True, "job": job}
-    if job.get("status") == "running" and job.get("started_at"):
-        # Avoid duplicate concurrent workers. Cloud Tasks will retry if needed.
-        return {"success": True, "already_running": True, "job": job}
-    if job.get("status") not in ("queued", "failed", "running"):
-        return {"success": False, "error": "invalid_status", "job": job}
+
+    worker_token = uuid.uuid4().hex
+    if not claim_build_job(job_id, worker_token):
+        # Lost the claim: another worker owns it, or it is terminal / exhausted.
+        fresh = get_build_job(job_id) or job
+        status = fresh.get("status")
+        if status == "succeeded":
+            return {"success": True, "already_done": True, "job": fresh}
+        if status == "running":
+            return {"success": True, "already_running": True, "job": fresh}
+        return {"success": False, "error": "not_claimable", "transient": False, "job": fresh}
 
     job_id_int = int(job["id"])
     username = str(job["username"])
@@ -773,9 +887,8 @@ def run_build_job(job_id: int) -> Dict[str, Any]:
     prompt = str(job.get("prompt") or "")
     tier = str(job.get("tier") or _DEFAULT_TIER)
     creation_id = job.get("creation_id")
-
-    _set_job_status(job_id_int, "running", started=True, error="")
     request_type = "builder_iterate" if kind == "iterate" else "builder_create"
+
     try:
         if kind == "iterate":
             creation = iterate_creation(
@@ -786,7 +899,8 @@ def run_build_job(job_id: int) -> Dict[str, Any]:
                 username=username, community_id=community_id, prompt=prompt, tier=tier,
             )
         result_id = int(creation["id"])
-        _set_job_status(job_id_int, "succeeded", result_creation_id=result_id, finished=True)
+        _set_job_status(job_id_int, "succeeded", result_creation_id=result_id,
+                        finished=True, clear_worker=True)
         try:
             from backend.services import ai_usage
             ai_usage.log_usage(
@@ -798,14 +912,28 @@ def run_build_job(job_id: int) -> Dict[str, Any]:
             )
         except Exception:
             logger.warning("builder: usage logging failed for job %s", job_id, exc_info=True)
-        _notify_build_complete(
-            username, community_id=community_id, creation_id=result_id,
-            title=creation.get("title") or "your build",
-        )
+        if _mark_notified(job_id_int):
+            _notify_build_complete(
+                username, community_id=community_id, creation_id=result_id,
+                title=creation.get("title") or "your build",
+            )
         return {"success": True, "creation": creation, "job": get_build_job(job_id_int)}
     except Exception as exc:
-        logger.exception("builder: run_build_job failed")
-        _set_job_status(job_id_int, "failed", error="build_failed", finished=True)
+        if _is_transient_error(exc):
+            fresh = get_build_job(job_id_int) or job
+            attempts = int(fresh.get("attempts") or 0)
+            max_attempts = int(fresh.get("max_attempts") or 3)
+            if attempts < max_attempts:
+                # Release the claim and let Cloud Tasks retry. No usage row, no
+                # notification — this build has not reached a terminal outcome.
+                logger.warning("builder: transient error on job %s (attempt %s/%s); will retry",
+                               job_id, attempts, max_attempts, exc_info=True)
+                _set_job_status(job_id_int, "queued", clear_worker=True)
+                return {"success": False, "error": "transient", "transient": True,
+                        "job": get_build_job(job_id_int)}
+            # Attempts exhausted → fall through to a terminal failure.
+        logger.exception("builder: run_build_job failed (terminal)")
+        _set_job_status(job_id_int, "failed", error="build_failed", finished=True, clear_worker=True)
         try:
             from backend.services import ai_usage
             ai_usage.log_usage(
@@ -819,11 +947,43 @@ def run_build_job(job_id: int) -> Dict[str, Any]:
             )
         except Exception:
             logger.warning("builder: failure usage logging failed for job %s", job_id, exc_info=True)
-        _notify_build_complete(
-            username, community_id=community_id, creation_id=int(creation_id or 0),
-            title="your build", failed=True,
+        if _mark_notified(job_id_int):
+            _notify_build_complete(
+                username, community_id=community_id, creation_id=int(creation_id or 0),
+                title="your build", failed=True,
+            )
+        return {"success": False, "error": str(exc)[:255], "transient": False,
+                "job": get_build_job(job_id_int)}
+
+
+def _cloud_tasks_config() -> Dict[str, str]:
+    return {
+        "queue": (os.getenv("BUILDER_TASKS_QUEUE") or "").strip(),
+        "location": (os.getenv("BUILDER_TASKS_LOCATION") or "").strip(),
+        "project": (os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GCP_PROJECT") or "").strip(),
+        "base_url": (os.getenv("PUBLIC_BASE_URL") or "").strip().rstrip("/"),
+        "secret": (os.getenv("BUILDER_JOB_SECRET") or os.getenv("CRON_SHARED_SECRET") or "").strip(),
+    }
+
+
+def builder_async_health() -> Dict[str, Any]:
+    """Report (and log once) whether async builds run via durable Cloud Tasks or
+    the in-process thread fallback. Called at startup so prod never silently
+    degrades to the non-durable path without an operator noticing."""
+    cfg = _cloud_tasks_config()
+    ready = all(cfg.values())
+    missing = [k for k, v in cfg.items() if not v]
+    info = {"cloud_tasks_ready": ready, "missing": missing}
+    if ready:
+        logger.info("builder: async builds via Cloud Tasks (queue=%s location=%s)",
+                    cfg["queue"], cfg["location"])
+    else:
+        logger.warning(
+            "builder: async builds using IN-PROCESS THREAD fallback (NOT durable). "
+            "Set Cloud Tasks env to enable the durable path. Missing: %s",
+            ", ".join(missing) or "(none)",
         )
-        return {"success": False, "error": str(exc)[:255], "job": get_build_job(job_id_int)}
+    return info
 
 
 def enqueue_build_job(job_id: int) -> bool:
@@ -833,23 +993,19 @@ def enqueue_build_job(job_id: int) -> bool:
     use Cloud Tasks. Without that config, a daemon thread keeps local/staging
     development functional, but Cloud Tasks is the durable production path.
     """
-    queue = (os.getenv("BUILDER_TASKS_QUEUE") or "").strip()
-    location = (os.getenv("BUILDER_TASKS_LOCATION") or "").strip()
-    project = (os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GCP_PROJECT") or "").strip()
-    base_url = (os.getenv("PUBLIC_BASE_URL") or "").strip().rstrip("/")
-    secret = (os.getenv("BUILDER_JOB_SECRET") or os.getenv("CRON_SHARED_SECRET") or "").strip()
-    if queue and location and project and base_url and secret:
+    cfg = _cloud_tasks_config()
+    if all(cfg.values()):
         try:
             from google.cloud import tasks_v2
 
             client = tasks_v2.CloudTasksClient()
-            parent = client.queue_path(project, location, queue)
-            url = f"{base_url}/api/internal/builder/jobs/{job_id}/run"
+            parent = client.queue_path(cfg["project"], cfg["location"], cfg["queue"])
+            url = f"{cfg['base_url']}/api/internal/builder/jobs/{job_id}/run"
             task = {
                 "http_request": {
                     "http_method": tasks_v2.HttpMethod.POST,
                     "url": url,
-                    "headers": {"X-Builder-Job-Secret": secret},
+                    "headers": {"X-Builder-Job-Secret": cfg["secret"]},
                 }
             }
             client.create_task(request={"parent": parent, "task": task})
@@ -864,6 +1020,60 @@ def enqueue_build_job(job_id: int) -> bool:
 
     threading.Thread(target=_worker, name=f"builder-job-{job_id}", daemon=True).start()
     return False
+
+
+def sweep_build_jobs(*, now: Optional[str] = None) -> Dict[str, int]:
+    """Reaper: reclaim jobs orphaned by a crashed worker / recycled instance.
+
+    A ``running`` job whose lease expired is requeued and re-dispatched if it
+    still has attempts left; otherwise it is marked terminally ``failed`` with a
+    single block row + (idempotent) notification. Invoked by Cloud Scheduler at
+    ``/api/cron/builder/sweep``.
+    """
+    ensure_tables()
+    ph = get_sql_placeholder()
+    now_s = now or _now()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""SELECT id, username, community_id, creation_id, attempts, max_attempts
+                FROM builder_jobs
+                WHERE status='running' AND lease_expires_at IS NOT NULL AND lease_expires_at < {ph}""",
+            (now_s,),
+        )
+        rows = c.fetchall() or []
+
+    def _field(row: Any, idx: int, key: str) -> Any:
+        return row[key] if hasattr(row, "keys") else row[idx]
+
+    requeued = 0
+    failed = 0
+    for row in rows:
+        jid = int(_field(row, 0, "id"))
+        username = str(_field(row, 1, "username"))
+        community_id = int(_field(row, 2, "community_id") or 0)
+        creation_id = _field(row, 3, "creation_id")
+        attempts = int(_field(row, 4, "attempts") or 0)
+        max_attempts = int(_field(row, 5, "max_attempts") or 3)
+        if attempts >= max_attempts:
+            _set_job_status(jid, "failed", error="build_timed_out", finished=True, clear_worker=True)
+            try:
+                from backend.services import ai_usage
+                ai_usage.log_block(username, surface=ai_usage.SURFACE_BUILDER,
+                                   reason="build_timed_out", community_id=community_id)
+            except Exception:
+                logger.warning("builder: sweep block logging failed for job %s", jid, exc_info=True)
+            if _mark_notified(jid):
+                _notify_build_complete(username, community_id=community_id,
+                                       creation_id=int(creation_id or 0), title="your build", failed=True)
+            failed += 1
+        else:
+            _set_job_status(jid, "queued", clear_worker=True)
+            enqueue_build_job(jid)
+            requeued += 1
+    if requeued or failed:
+        logger.info("builder: sweep requeued=%s failed=%s", requeued, failed)
+    return {"requeued": requeued, "failed": failed}
 
 
 def publish_creation(*, creation_id: int, username: str,

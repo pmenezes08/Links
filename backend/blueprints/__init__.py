@@ -106,6 +106,9 @@ def register_blueprints(app: Flask) -> None:
         _chat_uploads.ensure_tables()
         from backend.services import builder as _builder
         _builder.ensure_tables()
+        # Surface whether async builds run via durable Cloud Tasks or the
+        # in-process thread fallback (NOT durable) once at startup.
+        _builder.builder_async_health()
         from backend.services import remember_tokens as _remember_tokens
         _remember_tokens.ensure_tables()
         from backend.services import community_join_requests as _community_join_requests

@@ -9,12 +9,12 @@ Builder deliberately does NOT use the Steve credit-pool gate.
 from __future__ import annotations
 
 import logging
-import os
 
 from flask import Blueprint, jsonify, request, session
 
 from backend.services import ai_usage
 from backend.services import builder as builder_svc
+from backend.services.cron_auth import cron_authed
 from backend.services.entitlements_gate import gate_builder_or_reason
 from backend.services.community_access import can_view_community_content
 from backend.services.database import get_db_connection, get_sql_placeholder
@@ -242,12 +242,24 @@ def builder_job_get(job_id: int):
 
 @builder_bp.route("/api/internal/builder/jobs/<int:job_id>/run", methods=["POST"])
 def builder_job_run_internal(job_id: int):
-    expected = (os.environ.get("BUILDER_JOB_SECRET") or os.environ.get("CRON_SHARED_SECRET") or "").strip()
-    provided = request.headers.get("X-Builder-Job-Secret") or request.headers.get("X-Cron-Secret") or ""
-    if not expected or provided != expected:
+    # Cloud Tasks worker callback — shared-secret auth, not a session.
+    if not cron_authed(request, extra_secret_env="BUILDER_JOB_SECRET", extra_header="X-Builder-Job-Secret"):
         return jsonify({"success": False, "error": "forbidden"}), 403
     result = builder_svc.run_build_job(job_id)
-    return jsonify(result), (200 if result.get("success") else 500)
+    # 500 ONLY when a retry could help (transient infra error). Terminal failures
+    # return 200 so Cloud Tasks stops retrying — otherwise it would retry-storm
+    # and re-log success=0 rows for a build that can never succeed.
+    status = 500 if (not result.get("success") and result.get("transient")) else 200
+    return jsonify(result), status
+
+
+@builder_bp.route("/api/cron/builder/sweep", methods=["POST"])
+def builder_sweep_cron():
+    """Cloud Scheduler reaper — reclaim builds orphaned by a crashed worker."""
+    if not cron_authed(request):
+        return jsonify({"success": False, "error": "forbidden"}), 403
+    result = builder_svc.sweep_build_jobs()
+    return jsonify({"success": True, **result})
 
 
 @builder_bp.route("/api/builder/<int:creation_id>/publish", methods=["POST"])

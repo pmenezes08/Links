@@ -849,3 +849,38 @@ Wave 2 (`Pilot Wave 2 — composer & profile polish`, KB test ref `manual:pilot_
 - [ ] **Delete account clears cookies**: After account deletion, `remember_token`, `cpoint_session`, and `native_push_install_id` cookies are cleared in the response headers.
 - [ ] **Password login isolation**: Log in as User A via password. Without logging out, log in as User B via password on the same browser. No remnants of User A's session data leak into User B's session.
 - [ ] **Vitest passes**: Run `npx vitest run src/utils/logout.test.ts` — all tests pass, including the FCMNotifications.deleteToken test.
+
+## §17 — Steve Builder (async builds)
+
+Run after any change to the builder create/iterate flow, job polling,
+notifications, or creation playback. Maps to the `runner=manual` Tests row
+`builder:async-builds`.
+
+#### §17.A — Build while away (mobile)
+
+- [ ] **Locked phone**: Start a build (any tier), then lock the phone. Wait ~30s–2min, unlock. A push notification arrives ("Steve finished {title}"); tapping it deep-links to the Builder with the finished `creation_id` and the creation loads.
+- [ ] **Navigate away**: Start a build, then go to the feed (do NOT lock). The completion shows in the in-app notification list; tapping it opens the creation.
+- [ ] **App killed**: Start a build, hard-close (swipe-kill) the app, re-open, go to Builder. The creation list shows the result (succeeded or failed); no orphan "building…" state.
+
+#### §17.B — Error path (mobile)
+
+- [ ] **Forced failure** (staging): trigger a build failure (e.g. point `STEVE_BUILDER_MODEL_FAST` at a broken value). Push says "couldn't finish"; tapping opens the Builder with a retry affordance; no phantom spinner. Exactly one failure notification (not repeated).
+
+#### §17.C — Active-job guard (409)
+
+- [ ] While a build is queued/running, starting a second build from the same account shows the "already building" message and does NOT enqueue a second job.
+
+#### §17.D — Reliability (durability)
+
+- [ ] **Cloud Tasks active**: On staging/prod startup logs, confirm `builder: async builds via Cloud Tasks` (NOT the in-process thread fallback warning).
+- [ ] **Reaper**: Manually `POST /api/cron/builder/sweep` with `X-Cron-Secret`. Returns `{"success": true, "requeued": N, "failed": M}`. A job stuck in `running` past its lease is requeued or terminally failed (never stuck forever).
+
+#### §17.E — Play surface controls (mobile)
+
+- [ ] Open a finished creation full-screen. The ONLY host control is the close (X) button — no D-pad, no host sound icon, no browser chrome.
+- [ ] If a creation has sound, its own in-creation mute toggle works; there is no duplicate host-level sound control.
+
+#### §17.F — Notification copy (i18n)
+
+- [ ] Set device locale to pt-PT, trigger a successful build → push title/body are in Portuguese.
+- [ ] Repeat for de-DE.

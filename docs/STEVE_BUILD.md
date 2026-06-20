@@ -29,7 +29,8 @@ Backend routes:
 - `POST /api/builder/create` - enqueue a first build.
 - `POST /api/builder/<id>/iterate` - enqueue an iteration.
 - `GET /api/builder/jobs/<id>` - poll async job status.
-- `POST /api/internal/builder/jobs/<id>/run` - protected worker entry point.
+- `POST /api/internal/builder/jobs/<id>/run` - protected Cloud Tasks worker entry point (shared-secret auth via `cron_auth.cron_authed`, accepting `X-Cron-Secret` or `X-Builder-Job-Secret`).
+- `POST /api/cron/builder/sweep` - Cloud Scheduler reaper for orphaned jobs.
 - `GET /api/builder/<id>` - load a creation for owner/playback.
 - `POST /api/builder/<id>/publish` - publish as a community post.
 - `/api/builder/<id>/data/*` - host-brokered creation data APIs.
@@ -51,21 +52,32 @@ Builds must not depend on the browser staying open.
 Flow:
 
 1. User confirms a build.
-2. Backend gates the turn with `entitlements_gate.gate_builder_or_reason`.
-3. Backend creates a `builder_jobs` row and returns `202`.
-4. The client can leave the screen and poll while open.
-5. The worker runs generation server-side.
-6. On success, the worker writes/updates the creation, logs `ai_usage`, and sends in-app plus push notification.
-7. The notification deep-links back to the Builder page with the finished `creation_id`.
+2. Backend gates the turn with `entitlements_gate.gate_builder_or_reason` and logs a block row if denied.
+3. `user_has_active_job` limits one in-flight build per user (`409` otherwise).
+4. Backend creates a `builder_jobs` row (`queued`) and returns `202`.
+5. The client can leave the screen and poll `GET /api/builder/jobs/<id>` while open.
+6. The worker runs generation server-side.
+7. On finish, the worker writes/updates the creation, logs exactly one `ai_usage` row, stamps `notified_at`, and sends in-app plus push notification.
+8. The notification deep-links back to the Builder page with the finished `creation_id`.
 
-Production durability should use Cloud Tasks with:
+### Reliability model (at-least-once safe)
+
+Cloud Tasks delivers at-least-once, so the worker is built to be idempotent:
+
+- **Atomic claim.** `run_build_job` calls `claim_build_job` - a single conditional `UPDATE` that flips `queued`/`failed` (or a lease-expired `running`) to `running` and stamps a `worker_token` + `lease_expires_at`. Only the worker whose `UPDATE` affects one row runs generation, so a duplicate delivery is a no-op and can never produce two creations or two usage rows.
+- **Exactly-one side effects.** The creation write, the single `ai_usage.log_usage` row, and the notification all hang off the winning claim. `notified_at` is stamped once (`_mark_notified`) so retries never re-notify.
+- **Terminal vs transient.** Generation/validation errors are terminal: the job goes `failed`, logs one `success=0` row, and the worker route returns `200` so Cloud Tasks stops retrying. Only genuine infra blips (`_is_transient_error`) requeue and return `500` to request a retry, bounded by `attempts < max_attempts`.
+- **Reaper.** `/api/cron/builder/sweep` (`sweep_build_jobs`) requeues `running` jobs whose lease expired (crashed worker / recycled instance) and terminally fails those past `max_attempts`, with one block row + one notification.
+
+Production durability uses Cloud Tasks with:
 
 - `BUILDER_TASKS_QUEUE`
 - `BUILDER_TASKS_LOCATION`
+- `GOOGLE_CLOUD_PROJECT` (or `GCP_PROJECT`)
 - `PUBLIC_BASE_URL`
 - `BUILDER_JOB_SECRET` or `CRON_SHARED_SECRET`
 
-Without Cloud Tasks config, the code falls back to an in-process worker for local/staging convenience.
+Without full Cloud Tasks config the code falls back to a non-durable in-process thread for local/staging convenience; `builder_async_health` logs which path is active at startup so prod never degrades silently.
 
 ## Sandbox And Runtime
 
