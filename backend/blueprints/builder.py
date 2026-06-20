@@ -21,6 +21,7 @@ from backend.services.database import get_db_connection, get_sql_placeholder
 
 builder_bp = Blueprint("builder", __name__)
 logger = logging.getLogger(__name__)
+_MAX_BUILD_REQUEST_CHARS = 20_000
 
 
 def _safe_int(value):
@@ -91,7 +92,7 @@ def builder_create():
     prompt = (data.get("prompt") or "").strip()
     if community_id is None or not prompt:
         return jsonify({"success": False, "error": "community_id and prompt are required"}), 400
-    if len(prompt) > 4000:
+    if len(prompt) > _MAX_BUILD_REQUEST_CHARS:
         return jsonify({"success": False, "error": "prompt too long"}), 400
     tier = _safe_tier(data.get("tier"))
 
@@ -182,7 +183,7 @@ def builder_iterate(creation_id: int):
     message = (data.get("message") or "").strip()
     if not message:
         return jsonify({"success": False, "error": "message is required"}), 400
-    if len(message) > 4000:
+    if len(message) > _MAX_BUILD_REQUEST_CHARS:
         return jsonify({"success": False, "error": "message too long"}), 400
     tier = _safe_tier(data.get("tier"))
 

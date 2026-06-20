@@ -448,7 +448,7 @@ _CONVERSE_JSON = (
     "Reply with ONLY a JSON object, nothing else:\n"
     '{"reply": "<what you say to the user, in their register, formatted with short paragraphs and bullets where useful; if proposing, end with a clear yes/no confirmation question>", '
     '"ready": <true ONLY when you have proposed a concrete plan and are asking to start building; false while still discussing or ideating>, '
-    '"brief": "<when ready=true: a complete, self-contained description of exactly what to build, capturing everything agreed so it can be built from this alone; otherwise empty>"}'
+    '"brief": "<when ready=true: a concise but complete build brief, ideally under 3000 characters, capturing only the agreed requirements Steve needs to build from this alone; otherwise empty>"}'
 )
 
 
