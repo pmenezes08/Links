@@ -317,6 +317,93 @@ def plan_build(prompt: str, *, is_iteration: bool = False) -> str:
         return ""
 
 
+_CONVERSE_BASE = (
+    "You are Steve, a friendly, imaginative maker who builds small FRONT-END web creations (games, quizzes, "
+    "generators, simple sites) WITH the user, through conversation. You are a creative collaborator, not an order-taker.\n"
+    "In this chat you:\n"
+    "- REASON about what the user actually wants.\n"
+    "- CONTRIBUTE IDEAS: proactively offer 1-2 concrete, exciting suggestions or directions that make it better — never just repeat the request back.\n"
+    "- Ask a clarifying question ONLY when something essential is genuinely unclear. Most people want to see something fast, so keep momentum and don't interrogate.\n"
+    "- Be HONEST about limitations and explain them plainly. You build front-end-only things that run inside the app, so you CANNOT make: real user accounts/logins, payments, anything that saves private data to a server (beyond the simple shared scores / ratings / leaderboards the app already provides), sending email or texts, connecting to outside or private services or real databases, or native phone features (camera, GPS, contacts, notifications). If the user asks for something out of reach, say so kindly and offer the closest thing you CAN make.\n"
+)
+_CONVERSE_AGENT = (
+    "You are in AGENT mode: you can build. When you have enough to make a great first version, PROPOSE a concrete plan "
+    "in plain language and ASK the user to confirm before you build — do not start building without a yes.\n"
+)
+_CONVERSE_ASK = (
+    "You are in ASK mode: you can ONLY discuss, advise, brainstorm, and explain — you CANNOT build or change anything "
+    "right now. Never propose to build, never say you're building, and ALWAYS return ready=false with an empty brief. "
+    "If the user wants you to actually make it, tell them to switch to Agent mode (the Mode setting) and you'll build it together.\n"
+)
+_CONVERSE_SIMPLE = (
+    "The user is NON-TECHNICAL. Never use technical words or jargon (no 'API', 'function', 'code', 'deploy', "
+    "'framework', 'database', etc.) and never show code. Talk warmly about what the creation will DO and FEEL like.\n"
+)
+_CONVERSE_TECH = (
+    "The user is comfortable with technical detail — you may briefly discuss approach, libraries, and trade-offs when it helps.\n"
+)
+_CONVERSE_JSON = (
+    "Reply with ONLY a JSON object, nothing else:\n"
+    '{"reply": "<what you say to the user, in their register; if proposing, end with a clear yes/no confirmation question>", '
+    '"ready": <true ONLY when you have proposed a concrete plan and are asking to start building; false while still discussing or ideating>, '
+    '"brief": "<when ready=true: a complete, self-contained description of exactly what to build, capturing everything agreed so it can be built from this alone; otherwise empty>"}'
+)
+
+
+def _converse_system(*, mode: str, agent_mode: bool, has_creation: bool) -> str:
+    capability = _CONVERSE_AGENT if agent_mode else _CONVERSE_ASK
+    register = _CONVERSE_TECH if mode == "technical" else _CONVERSE_SIMPLE
+    ctx = ("The user already has a creation in progress; you're discussing a CHANGE or addition they want. "
+           "The brief should describe just the change.\n" if has_creation else "")
+    return _CONVERSE_BASE + capability + register + ctx + _CONVERSE_JSON
+
+
+def _parse_converse(raw: str) -> Dict[str, Any]:
+    text = (raw or "").strip()
+    m = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+    if m:
+        text = m.group(1).strip()
+    s, e = text.find("{"), text.rfind("}")
+    if s != -1 and e > s:
+        try:
+            obj = json.loads(text[s:e + 1])
+            reply = str(obj.get("reply") or "").strip()
+            brief = str(obj.get("brief") or "").strip()
+            if reply:
+                return {"reply": reply, "ready": bool(obj.get("ready")) and bool(brief), "brief": brief}
+        except Exception:
+            pass
+    return {"reply": text or "Tell me a bit more about what you'd like to make.", "ready": False, "brief": ""}
+
+
+def converse(history: List[Dict[str, str]], message: str, *, mode: str = "simple",
+             agent_mode: bool = True, has_creation: bool = False) -> Dict[str, Any]:
+    """Steve's design conversation: reason, ideate, discuss honestly. In Agent
+    mode he may propose a concrete plan and ask the user to confirm before
+    building; in Ask mode he can only discuss (never proposes, ready always
+    false). Returns {reply, ready, brief}. Uses the fast model (snappy chat)."""
+    lines = []
+    for h in (history or [])[-20:]:
+        t = (h.get("text") or "").strip()
+        if not t:
+            continue
+        lines.append(f"{'User' if h.get('role') == 'user' else 'Steve'}: {t}")
+    convo = "\n".join(lines)
+    user = (f"Conversation so far:\n{convo}\n\n" if convo else "") + \
+        f"User's latest message: {message}\n\nReply with ONLY the JSON object."
+    try:
+        raw = llm.generate_text(_converse_system(mode=mode, agent_mode=agent_mode, has_creation=has_creation), user,
+                                max_tokens=900, temperature=0.7, caps=None, model=_MODEL_FAST)
+    except Exception:
+        logger.warning("builder: converse failed", exc_info=True)
+        return {"reply": "I had a hiccup there — could you say that again?", "ready": False, "brief": ""}
+    result = _parse_converse(raw)
+    if not agent_mode:  # Ask mode can never trigger a build, whatever the model returned
+        result["ready"] = False
+        result["brief"] = ""
+    return result
+
+
 def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperature: float = 0.8,
                      model: Optional[str] = None) -> str:
     """Generate (or revise) a self-contained HTML artifact via Steve/Grok.

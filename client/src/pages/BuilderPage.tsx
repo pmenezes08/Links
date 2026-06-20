@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useBuilder, type Creation, type BuilderTier } from '../hooks/useBuilder'
+import { useBuilder, type Creation, type BuilderTier, type BuilderMode, type BuilderAgentMode } from '../hooks/useBuilder'
 import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
 import PlayableCreation from '../components/builder/PlayableCreation'
 import CreationPreview from '../components/builder/CreationPreview'
@@ -21,6 +21,18 @@ const TIERS: { key: BuilderTier; name: string; sub: string; accent: string; leve
   { key: 'fast', name: 'Quick', sub: 'Fast drafts — great for trying an idea.', accent: '#7F77DD', level: 1 },
   { key: 'balanced', name: 'Polished', sub: "Steve's everyday best.", accent: '#00CEC8', level: 2 },
   { key: 'best', name: 'Showpiece', sub: 'Steve goes all out. Slower, most polished.', accent: '#EF9F27', level: 3 },
+]
+
+// Ask vs Agent (Cursor-style): does Steve only discuss, or can he build?
+const MODES: { key: BuilderAgentMode; name: string; sub: string; icon: string; accent: string }[] = [
+  { key: 'agent', name: 'Agent', sub: 'Steve builds what you agree on.', icon: 'ti-bolt', accent: '#00CEC8' },
+  { key: 'ask', name: 'Ask', sub: "Just chat — Steve won't build anything.", icon: 'ti-message-circle', accent: '#7F77DD' },
+]
+
+// Conversation register (a saved Setting, not a per-build choice).
+const STYLES: { key: BuilderMode; name: string; sub: string; icon: string }[] = [
+  { key: 'simple', name: 'Simple', sub: 'Plain language, no technical talk.', icon: 'ti-message-2' },
+  { key: 'technical', name: 'Technical', sub: 'Steve can get into the how and the trade-offs.', icon: 'ti-code' },
 ]
 
 function Meter({ level, accent }: { level: number; accent: string }) {
@@ -55,23 +67,39 @@ function Avatar() {
   )
 }
 
+function TypingRow() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '14px 0' }}>
+      <Avatar />
+      <span style={{ display: 'inline-flex', gap: 4 }}>
+        {[0, 1, 2].map((n) => (
+          <span key={n} style={{ width: 6, height: 6, borderRadius: '50%', background: '#8a8a8a', animation: `cp-typing 1.2s ${n * 0.15}s infinite ease-in-out` }} />
+        ))}
+      </span>
+    </div>
+  )
+}
+
 export default function BuilderPage() {
   const { community_id } = useParams()
   const navigate = useNavigate()
   const cid = String(community_id || '')
-  const { creation, messages, loading, error, limit, tier, setTier, build, publish, loadCreation } = useBuilder(cid)
+  const {
+    creation, messages, loading, building, busy, error, limit,
+    tier, setTier, mode, setMode, agentMode, setAgentMode, proposal,
+    chat, build, confirmBuild, retry, stop, publish, loadCreation,
+  } = useBuilder(cid)
   const [input, setInput] = useState('')
   const [publishing, setPublishing] = useState(false)
   const [publishedPostId, setPublishedPostId] = useState<number | null>(null)
   const [playingCreation, setPlayingCreation] = useState<Creation | null>(null)
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
-  const [tierSheetOpen, setTierSheetOpen] = useState(false)
+  const [optionsOpen, setOptionsOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [myBuildsOpen, setMyBuildsOpen] = useState(false)
   const [myBuilds, setMyBuilds] = useState<BuildSummary[] | null>(null)
-  const [lastPrompt, setLastPrompt] = useState('')
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
-  const currentTier = TIERS.find((t) => t.key === tier) || TIERS[1]
 
   // Auto-grow the composer upward as the user types (same pattern as the DM
   // composer) so a long prompt is fully visible.
@@ -88,29 +116,24 @@ export default function BuilderPage() {
     if (el) el.scrollTo({ top: el.scrollHeight })
   }
   const { keyboardLift, safeBottomPx } = useFixedComposerKeyboard({ onLayoutNudge: scrollToBottom })
-  useEffect(scrollToBottom, [messages, loading])
+  useEffect(scrollToBottom, [messages, loading, building, proposal])
 
-  // Runtime errors now arrive (scoped to the played artifact) via
-  // PlayableCreation's onRuntimeError — no global listener, so non-interactive
-  // posters can't trigger a false "fix it".
+  // Runtime errors arrive scoped to the played artifact via PlayableCreation's
+  // onRuntimeError — no global listener, so non-interactive posters can't fire
+  // a false "fix it". The default composer action is now CHAT (talk to Steve);
+  // building happens only when the user confirms Steve's proposal.
 
   const send = () => {
     const v = input.trim()
-    if (!v || loading) return
+    if (!v || busy) return
     setInput('')
-    setLastPrompt(v)
     setPublishedPostId(null)
     setRuntimeError(null)
-    build(v)
-  }
-
-  const retry = () => {
-    if (!lastPrompt || loading) return
-    build(lastPrompt) // build() clears error/limit itself
+    chat(v)
   }
 
   const fixErrors = () => {
-    if (!runtimeError || loading) return
+    if (!runtimeError || busy) return
     const msg = runtimeError
     setRuntimeError(null)
     build(`The creation has a problem when it runs: "${msg}". Fix it so it works correctly, and make sure the page never renders blank — keep everything else that already works.`)
@@ -146,7 +169,7 @@ export default function BuilderPage() {
     await loadCreation(id)
   }
 
-  const showEmpty = messages.length === 0 && !creation && !loading
+  const showEmpty = messages.length === 0 && !creation && !busy
 
   return (
     <div style={{
@@ -155,7 +178,7 @@ export default function BuilderPage() {
       paddingTop: 'var(--sat-px, 0px)',
       paddingBottom: `${keyboardLift > 0 ? keyboardLift : safeBottomPx}px`,
     }}>
-      <style>{`@keyframes cp-spin { to { transform: rotate(360deg) } } @keyframes cp-sheet-up { from { transform: translateY(100%) } to { transform: translateY(0) } }`}</style>
+      <style>{`@keyframes cp-spin { to { transform: rotate(360deg) } } @keyframes cp-sheet-up { from { transform: translateY(100%) } to { transform: translateY(0) } } @keyframes cp-typing { 0%,60%,100% { opacity: 0.25; transform: translateY(0) } 30% { opacity: 1; transform: translateY(-3px) } }`}</style>
 
       <div style={{ flex: '0 0 auto', height: 44, display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px 0 6px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <button onClick={goBack} aria-label="Back" style={{ background: 'none', border: 'none', color: '#cfcfcf', fontSize: 24, lineHeight: 1, padding: '4px 8px', cursor: 'pointer' }}>‹</button>
@@ -166,6 +189,10 @@ export default function BuilderPage() {
           style={{ background: 'none', border: 'none', color: '#cfcfcf', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, padding: '6px 8px', cursor: 'pointer' }}>
           <i className="ti ti-stack-2" aria-hidden /> My builds
         </button>
+        <button onClick={() => setSettingsOpen(true)} aria-label="Settings"
+          style={{ background: 'none', border: 'none', color: '#cfcfcf', fontSize: 18, padding: '6px 8px', cursor: 'pointer' }}>
+          <i className="ti ti-settings" aria-hidden />
+        </button>
       </div>
 
       <div ref={scrollRef} style={{ flex: '1 1 auto', overflowY: 'auto', padding: '16px 16px 8px' }}>
@@ -174,7 +201,7 @@ export default function BuilderPage() {
             <div style={{ fontSize: 15, color: '#9a9a9a' }}>What should we make?</div>
             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 6, marginTop: 2 }}>
               {SUGGESTIONS.map((s) => (
-                <button key={s} onClick={() => build(s)} disabled={loading}
+                <button key={s} onClick={() => chat(s)} disabled={busy}
                   style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, width: '100%', textAlign: 'left', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '9px 12px', background: 'transparent', color: '#bdbdbd', fontSize: 13, cursor: 'pointer' }}>
                   <span>{s}</span><span style={{ color: '#555' }}>›</span>
                 </button>
@@ -203,20 +230,30 @@ export default function BuilderPage() {
           )
         ))}
 
-        {loading && <BuildingRow />}
-        {error && !loading && (
+        {loading && <TypingRow />}
+        {building && <BuildingRow />}
+
+        {proposal && !busy && (
+          <div style={{ display: 'flex', gap: 10, margin: '8px 0 14px' }}>
+            <span style={{ width: 22, flex: '0 0 auto' }} />
+            <button onClick={confirmBuild}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#00CEC8', color: '#00302e', border: 'none', borderRadius: 999, padding: '10px 18px', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+              <i className="ti ti-sparkles" aria-hidden /> Build it
+            </button>
+          </div>
+        )}
+
+        {error && !busy && (
           <div style={{ display: 'flex', gap: 10, margin: '14px 0' }}>
             <Avatar />
             <div style={{ fontSize: 15, lineHeight: 1.5, color: '#e9e9e9' }}>
-              Hmm, that one got away from me.{lastPrompt ? ' ' : ''}
-              {lastPrompt && (
-                <button onClick={retry} style={{ background: 'none', border: 'none', color: '#00CEC8', fontSize: 15, fontWeight: 500, padding: 0, cursor: 'pointer' }}>Try again</button>
-              )}
+              {error}{' '}
+              <button onClick={retry} style={{ background: 'none', border: 'none', color: '#00CEC8', fontSize: 15, fontWeight: 500, padding: 0, cursor: 'pointer' }}>Try again</button>
             </div>
           </div>
         )}
-        {limit && !loading && <div style={{ display: 'flex', gap: 10, margin: '14px 0' }}><Avatar /><div style={{ fontSize: 15, color: '#ffcf8a' }}>{limit.message}</div></div>}
-        {runtimeError && !loading && (
+        {limit && !busy && <div style={{ display: 'flex', gap: 10, margin: '14px 0' }}><Avatar /><div style={{ fontSize: 15, color: '#ffcf8a' }}>{limit.message}</div></div>}
+        {runtimeError && !busy && (
           <div style={{ display: 'flex', gap: 10, margin: '14px 0' }}>
             <Avatar />
             <div style={{ fontSize: 15, lineHeight: 1.5, color: '#e9e9e9' }}>
@@ -228,30 +265,55 @@ export default function BuilderPage() {
       </div>
 
       <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'flex-end', gap: 8, padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,0.06)', background: '#000' }}>
-        <button onClick={() => setTierSheetOpen(true)} disabled={loading} aria-label="Quality"
-          style={{ flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', gap: 4, border: 'none', borderRadius: 999, padding: '8px 12px', height: 40, fontSize: 12, fontWeight: 500, cursor: 'pointer', background: 'rgba(255,255,255,0.06)', color: currentTier.accent }}>
-          {currentTier.name}<span style={{ fontSize: 9, opacity: 0.7 }}>▲</span>
+        <button onClick={() => setOptionsOpen(true)} aria-label="Mode and quality"
+          style={{ flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', gap: 5, border: 'none', borderRadius: 999, padding: '8px 12px', height: 40, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'rgba(255,255,255,0.06)', color: agentMode === 'ask' ? '#7F77DD' : '#00CEC8' }}>
+          <i className={`ti ${agentMode === 'ask' ? 'ti-message-circle' : 'ti-bolt'}`} style={{ fontSize: 14 }} aria-hidden />
+          {agentMode === 'ask' ? 'Ask' : 'Agent'}<span style={{ fontSize: 9, opacity: 0.7 }}>▲</span>
         </button>
         <textarea ref={textareaRef} value={input} rows={1}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-          placeholder={creation ? 'What should we tweak?' : 'Message Steve…'}
+          placeholder={agentMode === 'ask' ? 'Ask Steve anything…' : (creation ? 'What should we change?' : 'Message Steve…')}
           style={{ flex: 1, minWidth: 0, background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 20, padding: '10px 16px', color: '#f1f1f1', fontSize: 16, lineHeight: 1.35, outline: 'none', resize: 'none', maxHeight: 140, overflowY: 'auto', fontFamily: 'inherit' }} />
-        <button onClick={send} disabled={loading || !input.trim()} aria-label="Send"
-          style={{ flex: '0 0 auto', background: loading || !input.trim() ? 'rgba(255,255,255,0.08)' : '#00CEC8', color: loading || !input.trim() ? '#6e6e6e' : '#00302e', border: 'none', borderRadius: '50%', width: 40, height: 40, fontSize: 18, fontWeight: 500, cursor: 'pointer' }}>↑</button>
+        {busy ? (
+          <button onClick={stop} aria-label="Stop"
+            style={{ flex: '0 0 auto', background: 'rgba(255,255,255,0.10)', color: '#f1f1f1', border: 'none', borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <span style={{ width: 12, height: 12, borderRadius: 3, background: '#f1f1f1' }} />
+          </button>
+        ) : (
+          <button onClick={send} disabled={!input.trim()} aria-label="Send"
+            style={{ flex: '0 0 auto', background: !input.trim() ? 'rgba(255,255,255,0.08)' : '#00CEC8', color: !input.trim() ? '#6e6e6e' : '#00302e', border: 'none', borderRadius: '50%', width: 40, height: 40, fontSize: 18, fontWeight: 500, cursor: 'pointer' }}>↑</button>
+        )}
       </div>
 
-      {tierSheetOpen && (
-        <div onClick={() => setTierSheetOpen(false)}
+      {optionsOpen && (
+        <div onClick={() => setOptionsOpen(false)}
           style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end' }}>
           <div onClick={(e) => e.stopPropagation()}
             style={{ width: '100%', background: '#0b0b0b', borderRadius: '20px 20px 0 0', borderTop: '1px solid rgba(255,255,255,0.08)', padding: '8px 14px', paddingBottom: `calc(var(--sab-px, 0px) + ${Math.max(safeBottomPx, 14)}px)`, animation: 'cp-sheet-up 0.25s cubic-bezier(0.32,0.72,0,1)' }}>
             <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.18)', margin: '6px auto 12px' }} />
-            <div style={{ fontSize: 12, color: '#7a7a7a', padding: '0 6px 6px' }}>How hard should Steve try?</div>
+
+            <div style={{ fontSize: 12, color: '#7a7a7a', padding: '0 6px 6px' }}>Mode</div>
+            {MODES.map((mo) => {
+              const selected = mo.key === agentMode
+              return (
+                <button key={mo.key} onClick={() => { setAgentMode(mo.key); setOptionsOpen(false) }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left', border: 'none', background: selected ? 'rgba(255,255,255,0.05)' : 'transparent', borderRadius: 12, padding: '12px 8px', cursor: 'pointer' }}>
+                  <i className={`ti ${mo.icon}`} style={{ fontSize: 18, color: mo.accent, width: 22, textAlign: 'center' }} aria-hidden />
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 15, color: '#f1f1f1' }}>{mo.name}</span>
+                    <span style={{ display: 'block', fontSize: 12, color: '#8a8a8a', marginTop: 1 }}>{mo.sub}</span>
+                  </span>
+                  {selected && <i className="ti ti-check" style={{ color: mo.accent, fontSize: 18 }} aria-hidden />}
+                </button>
+              )
+            })}
+
+            <div style={{ fontSize: 12, color: '#7a7a7a', padding: '14px 6px 6px' }}>Quality</div>
             {TIERS.map((t) => {
               const selected = t.key === tier
               return (
-                <button key={t.key} onClick={() => { setTier(t.key); setTierSheetOpen(false) }}
+                <button key={t.key} onClick={() => { setTier(t.key); setOptionsOpen(false) }}
                   style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left', border: 'none', background: selected ? 'rgba(255,255,255,0.05)' : 'transparent', borderRadius: 12, padding: '12px 8px', cursor: 'pointer' }}>
                   <Meter level={t.level} accent={t.accent} />
                   <span style={{ flex: 1, minWidth: 0 }}>
@@ -259,6 +321,32 @@ export default function BuilderPage() {
                     <span style={{ display: 'block', fontSize: 12, color: '#8a8a8a', marginTop: 1 }}>{t.sub}</span>
                   </span>
                   {selected && <i className="ti ti-check" style={{ color: t.accent, fontSize: 18 }} aria-hidden />}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {settingsOpen && (
+        <div onClick={() => setSettingsOpen(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end' }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ width: '100%', background: '#0b0b0b', borderRadius: '20px 20px 0 0', borderTop: '1px solid rgba(255,255,255,0.08)', padding: '8px 14px', paddingBottom: `calc(var(--sab-px, 0px) + ${Math.max(safeBottomPx, 14)}px)`, animation: 'cp-sheet-up 0.25s cubic-bezier(0.32,0.72,0,1)' }}>
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.18)', margin: '6px auto 12px' }} />
+            <div style={{ fontSize: 15, color: '#f1f1f1', fontWeight: 500, padding: '0 6px 2px' }}>Settings</div>
+            <div style={{ fontSize: 12, color: '#7a7a7a', padding: '10px 6px 6px' }}>How Steve talks to you</div>
+            {STYLES.map((st) => {
+              const selected = st.key === mode
+              return (
+                <button key={st.key} onClick={() => setMode(st.key)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left', border: 'none', background: selected ? 'rgba(255,255,255,0.05)' : 'transparent', borderRadius: 12, padding: '12px 8px', cursor: 'pointer' }}>
+                  <i className={`ti ${st.icon}`} style={{ fontSize: 18, color: '#00CEC8', width: 22, textAlign: 'center' }} aria-hidden />
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 15, color: '#f1f1f1' }}>{st.name}</span>
+                    <span style={{ display: 'block', fontSize: 12, color: '#8a8a8a', marginTop: 1 }}>{st.sub}</span>
+                  </span>
+                  {selected && <i className="ti ti-check" style={{ color: '#00CEC8', fontSize: 18 }} aria-hidden />}
                 </button>
               )
             })}

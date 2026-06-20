@@ -191,6 +191,36 @@ def test_play_count_and_summary(monkeypatch):
     assert summary["rating_avg"] == 4.0 and summary["rating_count"] == 1
 
 
+def test_converse_proposes_in_agent_mode(monkeypatch):
+    monkeypatch.setattr(
+        builder.llm, "generate_text",
+        lambda *a, **k: '{"reply":"I\'ll make a neon snake with a leaderboard. Build it?","ready":true,"brief":"Neon snake with on-screen controls, sound, and a community leaderboard."}',
+    )
+    out = builder.converse([], "make a snake game", mode="simple", agent_mode=True)
+    assert out["ready"] is True
+    assert out["brief"]
+    assert "snake" in out["reply"].lower()
+
+
+def test_converse_ask_mode_never_builds(monkeypatch):
+    # Even if the model says it's ready, Ask mode must never trigger a build.
+    monkeypatch.setattr(
+        builder.llm, "generate_text",
+        lambda *a, **k: '{"reply":"Here is an idea you could try.","ready":true,"brief":"a thing"}',
+    )
+    out = builder.converse([], "make a snake game", agent_mode=False)
+    assert out["ready"] is False
+    assert out["brief"] == ""
+    assert out["reply"]
+
+
+def test_converse_tolerates_non_json(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: "Sure! Tell me more about the vibe you want.")
+    out = builder.converse([], "hi", agent_mode=True)
+    assert out["ready"] is False
+    assert "vibe" in out["reply"].lower()
+
+
 def test_invalid_score_is_rejected(monkeypatch):
     _make_user("maker")
     cid = _make_community()

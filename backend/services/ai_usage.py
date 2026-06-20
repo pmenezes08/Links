@@ -69,6 +69,9 @@ SURFACE_BUILDER = "builder"
 # for AI-spend visibility but deliberately a DISTINCT surface so it does NOT
 # count against the builder_turns_per_month cap (which filters surface='builder').
 SURFACE_BUILDER_PLAN = "builder_plan"
+# Steve's design conversation (reason / ideate / discuss / confirm) before a
+# build. Distinct surface so chatting never consumes a build turn.
+SURFACE_BUILDER_CHAT = "builder_chat"
 
 ALL_SURFACES = (
     SURFACE_DM,

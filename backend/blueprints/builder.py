@@ -101,6 +101,30 @@ def builder_create():
     return jsonify({"success": True, "creation": creation})
 
 
+@builder_bp.route("/api/builder/chat", methods=["POST"])
+def builder_chat():
+    """Steve's design conversation — reason / ideate / discuss / propose-and-confirm
+    before building. AI-free of the build cap (distinct surface)."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    data = request.get_json(silent=True) or {}
+    message = (data.get("message") or "").strip()
+    if not message:
+        return jsonify({"success": False, "error": "message required"}), 400
+    mode = "technical" if str(data.get("mode") or "").lower() == "technical" else "simple"
+    # Ask (discuss only) vs Agent (can build). Defaults to Agent.
+    agent_mode = str(data.get("agent_mode") or "agent").lower() != "ask"
+    raw_history = data.get("history") if isinstance(data.get("history"), list) else []
+    history = [{"role": h.get("role"), "text": h.get("text")}
+               for h in raw_history if isinstance(h, dict) and h.get("text")][-20:]
+    has_creation = _safe_int(data.get("creation_id")) is not None
+    result = builder_svc.converse(history, message[:4000], mode=mode, agent_mode=agent_mode, has_creation=has_creation)
+    ai_usage.log_usage(username, surface=ai_usage.SURFACE_BUILDER_CHAT, request_type="builder_chat",
+                       community_id=_safe_int(data.get("community_id")), model=builder_svc.MODEL_LABEL)
+    return jsonify({"success": True, **result})
+
+
 @builder_bp.route("/api/builder/plan", methods=["POST"])
 def builder_plan():
     """A quick 'here's what I'll make' narration shown while a build runs. Logged
