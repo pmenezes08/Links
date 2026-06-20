@@ -62,7 +62,7 @@ export function useBuilder(communityId: string) {
       const history = messages.map((m) => ({ role: m.role, text: m.text }))
       const res = await fetch('/api/builder/chat', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history, mode, agent_mode: agentMode, creation_id: creation?.id, community_id: Number(communityId) }),
+        body: JSON.stringify({ message: text, history, mode, agent_mode: agentMode, tier, creation_id: creation?.id, community_id: Number(communityId) }),
         signal: ctrl.signal,
       })
       const data = (await res.json().catch(() => null)) as ChatResult | null
@@ -77,7 +77,22 @@ export function useBuilder(communityId: string) {
     } finally {
       setLoading(false); abortRef.current = null
     }
-  }, [loading, building, messages, mode, agentMode, creation, communityId])
+  }, [loading, building, messages, mode, agentMode, tier, creation, communityId])
+
+  // Persist the conversation per creation (debounced) so the user can return to
+  // it. Runs whenever the thread changes and a creation exists; lean payload
+  // (role/text/creation_id only — never the artifact HTML).
+  useEffect(() => {
+    if (!creation || messages.length === 0) return
+    const id = window.setTimeout(() => {
+      const payload = messages.map((m) => ({ role: m.role, text: m.text, creation_id: m.creation?.id }))
+      fetch(`/api/builder/${creation.id}/history`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: payload }),
+      }).catch(() => { /* best-effort */ })
+    }, 700)
+    return () => window.clearTimeout(id)
+  }, [messages, creation])
 
   // Generate (or revise) the artifact from a confirmed brief.
   const build = useCallback(async (brief: string) => {
@@ -154,11 +169,23 @@ export function useBuilder(communityId: string) {
     setError(null); setLimit(null); setProposal(null)
     try {
       const res = await fetch(`/api/builder/${id}`, { credentials: 'include' })
-      const data = (await res.json().catch(() => null)) as ApiResult | null
+      const data = (await res.json().catch(() => null)) as (ApiResult & { chat_history?: { role: string; text: string; creation_id?: number }[] | null }) | null
       if (res.ok && data?.success && data.creation) {
-        setCreation(data.creation)
+        const c = data.creation
+        setCreation(c)
         setRev((r) => r + 1)
-        setMessages([{ role: 'steve', text: 'Picking up where we left off — what would you like to change?', creation: data.creation }])
+        const hist = data.chat_history
+        if (Array.isArray(hist) && hist.length > 0) {
+          // Restore the saved conversation; re-attach the build card to the
+          // messages that referenced this creation.
+          setMessages(hist.map((m) => ({
+            role: m.role === 'user' ? 'user' : 'steve',
+            text: m.text || '',
+            creation: m.creation_id === c.id ? c : undefined,
+          })))
+        } else {
+          setMessages([{ role: 'steve', text: 'Picking up where we left off — what would you like to change?', creation: c }])
+        }
         return true
       }
     } catch { /* fall through */ }

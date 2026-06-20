@@ -104,6 +104,13 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
           res = await fetch(`${base}/leaderboard?${q.toString()}`, { credentials: 'include' })
         } else if (d.op === 'getResults') {
           res = await fetch(`${base}/results`, { credentials: 'include' })
+        } else if (d.op === 'save') {
+          res = await fetch(`${base}/save`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: p.key, value: p.value }) })
+        } else if (d.op === 'load') {
+          res = await fetch(`${base}/load?key=${encodeURIComponent(String(p.key || 'save'))}`, { credentials: 'include' })
+        } else if (d.op === 'images') {
+          const q = new URLSearchParams({ q: String(p.q || ''), limit: String(p.limit || 8) })
+          res = await fetch(`${base}/images?${q.toString()}`, { credentials: 'include' })
         } else {
           reply(e.source, rid, false, undefined, 'unknown_op'); return
         }

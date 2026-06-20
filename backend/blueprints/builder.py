@@ -126,8 +126,9 @@ def builder_chat():
         creation = builder_svc.get_creation(cid_int)
         if creation and creation.get("created_by") == username:
             current_html = creation.get("html_content")
+    tier = _safe_tier(data.get("tier"))
     result = builder_svc.converse(history, message[:4000], mode=mode, agent_mode=agent_mode,
-                                  has_creation=bool(current_html), current_html=current_html)
+                                  has_creation=bool(current_html), current_html=current_html, tier=tier)
     ai_usage.log_usage(username, surface=ai_usage.SURFACE_BUILDER_CHAT, request_type="builder_chat",
                        community_id=_safe_int(data.get("community_id")), model=builder_svc.MODEL_LABEL)
     return jsonify({"success": True, **result})
@@ -263,7 +264,25 @@ def builder_get(creation_id: int):
         "community_id": creation.get("community_id"),
         "created_by": creation.get("created_by"),
         "published_post_id": creation.get("published_post_id"),
-    }})
+    }, "chat_history": builder_svc.get_chat_history(creation_id)})
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/history", methods=["POST"])
+def builder_save_history(creation_id: int):
+    """Persist the design conversation for a creation so the user can resume it."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    data = request.get_json(silent=True) or {}
+    messages = data.get("messages")
+    if not isinstance(messages, list):
+        return jsonify({"success": False, "error": "messages required"}), 400
+    try:
+        saved = builder_svc.save_chat_history(creation_id=creation_id, username=username, messages=messages)
+    except Exception:
+        logger.exception("builder: save_chat_history failed")
+        return jsonify({"success": False, "error": "save_failed"}), 500
+    return jsonify({"success": saved})
 
 
 # --- Community interaction data (scores / ratings / plays) --------------------
@@ -346,6 +365,76 @@ def builder_data_rate(creation_id: int):
         logger.exception("builder: rate_creation failed")
         return jsonify({"success": False, "error": "data_error"}), 500
     return jsonify(result)
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/data/save", methods=["POST"])
+def builder_data_save(creation_id: int):
+    """Per-player save slot (localStorage is blocked in the sandbox)."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    _creation, community_id = _resolve_accessible_creation(creation_id, username)
+    if community_id is None:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    if not _data_write_ok(username, creation_id):
+        return jsonify({"success": False, "error": "rate_limited"}), 429
+    data = request.get_json(silent=True) or {}
+    try:
+        result = builder_svc.save_record(
+            creation_id=creation_id, community_id=community_id, username=username,
+            key=data.get("key") or "save", value=data.get("value"),
+        )
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception:
+        logger.exception("builder: save_record failed")
+        return jsonify({"success": False, "error": "data_error"}), 500
+    return jsonify(result)
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/data/load", methods=["GET"])
+def builder_data_load(creation_id: int):
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    _creation, community_id = _resolve_accessible_creation(creation_id, username)
+    if community_id is None:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    return jsonify({"success": True, **builder_svc.load_record(creation_id, username=username, key=request.args.get("key") or "save")})
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/data/images", methods=["GET"])
+def builder_data_images(creation_id: int):
+    """Real freely-licensed photos for a query (keyless). Cached; rate-limited."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    _creation, community_id = _resolve_accessible_creation(creation_id, username)
+    if community_id is None:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    q = (request.args.get("q") or "").strip()
+    if not q:
+        return jsonify({"success": True, "images": []})
+    limit = min(_safe_int(request.args.get("limit")) or 8, 20)
+    cache = None
+    ckey = f"cpdata:img:{q.lower()[:80]}:{limit}"
+    try:
+        from redis_cache import cache as _c
+        cache = _c
+        hit = cache.get(ckey)
+        if hit is not None:
+            return jsonify({"success": True, "images": hit})
+    except Exception:
+        cache = None
+    if not _data_write_ok(username, creation_id):
+        return jsonify({"success": False, "error": "rate_limited", "images": []}), 429
+    images = builder_svc.search_images(q, limit=limit)
+    try:
+        if cache is not None and images:
+            cache.set(ckey, images, ttl=21600)
+    except Exception:
+        pass
+    return jsonify({"success": True, "images": images})
 
 
 @builder_bp.route("/api/builder/<int:creation_id>/data/leaderboard", methods=["GET"])

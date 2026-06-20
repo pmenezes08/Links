@@ -76,6 +76,13 @@ const DATA_BRIDGE = `<script>(function(){
     getLeaderboard:function(opts){return call('getLeaderboard',{key:(opts&&opts.key)||'highscore',limit:(opts&&opts.limit)||10});},
     rate:function(x,opts){return call('rate',{value:x,name:(opts&&opts.name)});},
     getResults:function(){return call('getResults',{});},
+    // Per-player save slot — localStorage is BLOCKED in this sandbox, so use
+    // these to persist progress/state/preferences. value is any JSON.
+    save:function(key,value){return call('save',{key:key||'save',value:value});},
+    load:function(key){return call('load',{key:key||'save'});},
+    // Real, freely-licensed web photos for a query -> {images:[{url,full,title}]}.
+    // Use 'url' directly as an <img> src. Fetch at runtime; don't hard-code URLs.
+    images:function(query,opts){return call('images',{q:query,limit:(opts&&opts.limit)||8});},
     // Signal the run/round ended — the host shows a native result screen
     // (score count-up, top scores, rate, play again, share). Pass the score
     // for a game; call with no args for a quiz/result with no number.

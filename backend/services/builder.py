@@ -99,8 +99,15 @@ _SYSTEM_PROMPT = (
     "`{entries:[{name,value,rank}], mine}`; `CPoint.rate(1..5)` and `CPoint.getResults()` -> `{average,count,mine}`. "
     "WHEN A RUN/ROUND ENDS, call `CPoint.gameOver({score})` (pass the score for a game; call it with no args for a "
     "quiz/result with no number). The app then shows a NATIVE results screen — score count-up, community top-scores, "
-    "a rating prompt, and Play again — so you do NOT need to build your own end screen or leaderboard UI. Always "
-    "feature-detect (`if (window.CPoint)`), never block gameplay on it, and wrap calls in try/catch."
+    "a rating prompt, and Play again — so you do NOT need to build your own end screen or leaderboard UI. "
+    "TO SAVE per-player progress/state/preferences (game saves, settings, 'continue where I left off'), use "
+    "`CPoint.save(key, value)` (value = any JSON) and `CPoint.load(key)` -> `{value}`. CRITICAL: localStorage, "
+    "sessionStorage and cookies are BLOCKED in this sandbox and will NOT persist — NEVER use them to save; always use "
+    "CPoint.save/load. "
+    "FOR REAL PHOTOS from the web (places, food, recommendations, etc.), call `CPoint.images(query)` -> "
+    "`{images:[{url, full, title}]}` and set an `<img>` src to `url` (display-ready, real freely-licensed photos). "
+    "Fetch at RUNTIME; show a graceful placeholder while loading and if none return; NEVER hard-code image URLs from "
+    "memory (they 404). Always feature-detect (`if (window.CPoint)`), never block gameplay on it, and wrap calls in try/catch."
 )
 
 _CREATION_COLS = [
@@ -178,6 +185,11 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
             cursor.execute("ALTER TABLE creations ADD COLUMN play_count INTEGER NOT NULL DEFAULT 0")
         except Exception:
             pass
+        # Migration-light: the full design conversation so the user can return to it.
+        try:
+            cursor.execute("ALTER TABLE creations ADD COLUMN chat_history " + ("MEDIUMTEXT" if USE_MYSQL else "TEXT"))
+        except Exception:
+            pass
         # Community-scoped interaction data (scores, ratings). One row per user
         # per (creation, namespace, key) — UNIQUE makes "one score/rating per
         # user" a DB invariant (upsert). The artifact never writes here directly;
@@ -194,6 +206,7 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
                     username VARCHAR(191) NOT NULL,
                     display_name VARCHAR(64),
                     num_value DOUBLE,
+                    data_value MEDIUMTEXT,
                     created_at DATETIME NOT NULL,
                     updated_at DATETIME NOT NULL,
                     UNIQUE KEY uq_creation_data (creation_id, namespace, data_key, username),
@@ -214,6 +227,7 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
                     username TEXT NOT NULL,
                     display_name TEXT,
                     num_value REAL,
+                    data_value TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     UNIQUE (creation_id, namespace, data_key, username)
@@ -228,6 +242,12 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
                     cursor.execute(stmt)
                 except Exception:
                     pass
+        # Migration-light: per-player save slot (game saves / preferences). The
+        # sandbox blocks localStorage, so saving is host-brokered into this column.
+        try:
+            cursor.execute("ALTER TABLE creation_data ADD COLUMN data_value " + ("MEDIUMTEXT" if USE_MYSQL else "TEXT"))
+        except Exception:
+            pass
         if owns_connection and conn is not None:
             conn.commit()
     finally:
@@ -384,12 +404,13 @@ def _parse_converse(raw: str) -> Dict[str, Any]:
 
 def converse(history: List[Dict[str, str]], message: str, *, mode: str = "simple",
              agent_mode: bool = True, has_creation: bool = False,
-             current_html: Optional[str] = None) -> Dict[str, Any]:
+             current_html: Optional[str] = None, tier: str = "balanced") -> Dict[str, Any]:
     """Steve's design conversation: reason, ideate, discuss honestly — WITH the
     actual current build in context (he reads the real code, not just the
     prompt). In Agent mode he may propose a concrete plan and ask the user to
     confirm before building; in Ask mode he can only discuss (never proposes).
-    Returns {reply, ready, brief}. Uses the fast model (snappy chat)."""
+    Returns {reply, ready, brief}. Reasons with the SELECTED tier's model
+    (Polished/Showpiece actually reason; Quick stays snappy)."""
     lines = []
     for h in (history or [])[-20:]:
         t = (h.get("text") or "").strip()
@@ -406,7 +427,7 @@ def converse(history: List[Dict[str, str]], message: str, *, mode: str = "simple
         f"User's latest message: {message}\n\nReply with ONLY the JSON object."
     try:
         raw = llm.generate_text(_converse_system(mode=mode, agent_mode=agent_mode, has_creation=has_creation), user,
-                                max_tokens=900, temperature=0.7, caps=None, model=_MODEL_FAST)
+                                max_tokens=4000, temperature=0.7, caps=None, model=resolve_model(tier))
     except Exception:
         logger.warning("builder: converse failed", exc_info=True)
         return {"reply": "I had a hiccup there — could you say that again?", "ready": False, "brief": ""}
@@ -636,6 +657,113 @@ def _upsert_value(*, creation_id: int, community_id: int, namespace: str, key: s
         conn.commit()
 
 
+_SAVE_MAX_BYTES = 40_000
+_SAVE_MAX_KEYS = 20
+
+
+def save_record(*, creation_id: int, community_id: int, username: str, key: str, value: Any) -> Dict[str, Any]:
+    """Per-player save slot (game saves / preferences). localStorage is blocked
+    in the sandbox, so saving is brokered here. One row per (creation, key, user)."""
+    k = _safe_key(key)
+    payload = value if isinstance(value, str) else json.dumps(value)
+    if len(payload.encode("utf-8")) > _SAVE_MAX_BYTES:
+        raise ValueError("save_too_large")
+    now = _now()
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""SELECT data_value FROM creation_data
+                WHERE creation_id = {ph} AND namespace = 'save' AND data_key = {ph} AND username = {ph}""",
+            (creation_id, k, username),
+        )
+        existing = c.fetchone()
+        if existing is None:
+            c.execute(
+                f"""SELECT COUNT(*) FROM creation_data
+                    WHERE creation_id = {ph} AND namespace = 'save' AND username = {ph}""",
+                (creation_id, username),
+            )
+            if int(_cell(c.fetchone(), 0) or 0) >= _SAVE_MAX_KEYS:
+                raise ValueError("too_many_saves")
+            c.execute(
+                f"""INSERT INTO creation_data
+                    (creation_id, community_id, namespace, data_key, username, data_value, created_at, updated_at)
+                    VALUES ({ph}, {ph}, 'save', {ph}, {ph}, {ph}, {ph}, {ph})""",
+                (creation_id, community_id, k, username, payload, now, now),
+            )
+        else:
+            c.execute(
+                f"""UPDATE creation_data SET data_value = {ph}, updated_at = {ph}
+                    WHERE creation_id = {ph} AND namespace = 'save' AND data_key = {ph} AND username = {ph}""",
+                (payload, now, creation_id, k, username),
+            )
+        conn.commit()
+    return {"success": True}
+
+
+def load_record(creation_id: int, *, username: str, key: str = "save") -> Dict[str, Any]:
+    k = _safe_key(key)
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""SELECT data_value FROM creation_data
+                WHERE creation_id = {ph} AND namespace = 'save' AND data_key = {ph} AND username = {ph}""",
+            (creation_id, k, username),
+        )
+        row = c.fetchone()
+    raw = _cell(row, 0) if row else None
+    value: Any = None
+    if raw:
+        try:
+            value = json.loads(raw)
+        except Exception:
+            value = raw
+    return {"success": True, "value": value}
+
+
+_OPENVERSE_URL = "https://api.openverse.org/v1/images/"
+
+
+def search_images(query: str, *, limit: int = 8) -> List[Dict[str, Any]]:
+    """Real, freely-licensed photos for a query (keyless Openverse). Lets a
+    creation pull actual web images (places, recommendations, etc.). Best-effort
+    — returns [] on any failure; the route caches results to limit outbound calls.
+    Returns [{url (display-ready thumbnail), full, title, creator, license}]."""
+    q = re.sub(r"\s+", " ", (query or "").strip())[:120]
+    if not q:
+        return []
+    n = max(1, min(int(limit or 8), 20))
+    try:
+        import requests
+        resp = requests.get(
+            _OPENVERSE_URL,
+            params={"q": q, "page_size": n, "mature": "false"},
+            headers={"User-Agent": "C-Point-Builder/1.0 (+https://c-point.co)"},
+            timeout=8,
+        )
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+    except Exception:
+        logger.warning("builder: image search failed", exc_info=True)
+        return []
+    out: List[Dict[str, Any]] = []
+    for r in (data.get("results") or [])[:n]:
+        thumb = r.get("thumbnail") or r.get("url")
+        if not thumb:
+            continue
+        out.append({
+            "url": thumb,                       # display-ready (Openverse thumbnail proxy; hotlinkable)
+            "full": r.get("url") or thumb,
+            "title": (r.get("title") or "")[:140],
+            "creator": (r.get("creator") or "")[:80],
+            "license": r.get("license") or "",
+        })
+    return out
+
+
 def get_leaderboard(creation_id: int, *, key: str = "highscore", limit: int = 10,
                     username: Optional[str] = None) -> Dict[str, Any]:
     key = _safe_key(key)
@@ -749,6 +877,53 @@ def list_creations(username: str, *, limit: int = 50) -> List[Dict[str, Any]]:
         "updated_at": str(_cell(r, 6)) if _cell(r, 6) is not None else None,
         "plays": int(_cell(r, 7) or 0),
     } for r in rows]
+
+
+def get_chat_history(creation_id: int) -> Optional[List[Dict[str, Any]]]:
+    """The stored design conversation for a creation (list of {role, text, creation_id?})."""
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT chat_history FROM creations WHERE id = {ph}", (creation_id,))
+        row = c.fetchone()
+    raw = _cell(row, 0) if row else None
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, list) else None
+    except Exception:
+        return None
+
+
+def save_chat_history(*, creation_id: int, username: str, messages: List[Dict[str, Any]]) -> bool:
+    """Persist the design conversation (owner-scoped) so the user can resume it.
+    Stores a lean list of {role, text, creation_id?} — never the artifact HTML."""
+    lean: List[Dict[str, Any]] = []
+    for m in (messages or [])[-200:]:
+        if not isinstance(m, dict):
+            continue
+        item: Dict[str, Any] = {
+            "role": "user" if m.get("role") == "user" else "steve",
+            "text": str(m.get("text") or "")[:8000],
+        }
+        cidv = m.get("creation_id", m.get("creationId"))
+        if cidv is not None:
+            try:
+                item["creation_id"] = int(cidv)
+            except (TypeError, ValueError):
+                pass
+        lean.append(item)
+    payload = json.dumps(lean)[:600_000]
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"UPDATE creations SET chat_history = {ph}, updated_at = {ph} WHERE id = {ph} AND created_by = {ph}",
+            (payload, _now(), creation_id, username),
+        )
+        conn.commit()
+        return (c.rowcount or 0) > 0
 
 
 def get_summary(creation_id: int) -> Dict[str, Any]:
