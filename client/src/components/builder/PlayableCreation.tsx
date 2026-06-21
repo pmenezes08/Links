@@ -155,7 +155,14 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
     <div style={{
       position: 'fixed', inset: 0, zIndex: 80, background: '#000',
       display: 'flex', flexDirection: 'column',
-      paddingTop: 'var(--sat-px, 0px)', paddingBottom: 'var(--sab-px, 0px)',
+      paddingTop: 'var(--sat-px, 0px)',
+      // Shrink the surface above the on-screen keyboard. The app runs with
+      // KeyboardResize.None, so the WebView stays full-height and we instead
+      // consume the globally-published --keyboard-offset (App.tsx). This lets a
+      // generated app's focused text input stay visible instead of being hidden
+      // behind the keyboard. Falls back to the safe-area inset when closed.
+      paddingBottom: 'max(var(--sab-px, 0px), var(--keyboard-offset, 0px))',
+      transition: 'padding-bottom 0.2s ease',
     }}>
       <style>{`@keyframes cp-sheet-up { from { transform: translateY(100%) } to { transform: translateY(0) } }`}</style>
       <div style={{ flex: '1 1 auto', position: 'relative', overflow: 'hidden', minHeight: 0 }}>

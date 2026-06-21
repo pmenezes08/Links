@@ -10,6 +10,11 @@ describe('prepareCreationHtml', () => {
     expect(out).toContain('width=device-width')
   })
 
+  it('forces a 16px input font-size floor so iOS does not zoom on focus', () => {
+    const out = prepareCreationHtml(HTML)
+    expect(out).toContain('input,textarea,select{font-size:16px}')
+  })
+
   it('injects the CPoint save/load persistence bridge when dataBridge is on', () => {
     const out = prepareCreationHtml(HTML, { dataBridge: true })
     expect(out).toContain('window.CPoint')

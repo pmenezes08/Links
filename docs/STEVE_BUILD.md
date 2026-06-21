@@ -128,6 +128,10 @@ Important: generated creations must not call arbitrary private services or inven
 
 `/builds` (under `DashboardLayout`) lists the signed-in user's creations from `GET /api/builder/mine` so they can find, play/preview, or continue building without remembering which community they used. Reachable from a dashboard shortcut and the native sidebar.
 
+### On-screen keyboard
+
+The app runs with `KeyboardResize.None`, so the WebView never shrinks for the keyboard; instead `App.tsx` publishes the keyboard height as the `--keyboard-offset` CSS variable. The `PlayableCreation` surface consumes it (`paddingBottom: max(--sab-px, --keyboard-offset)`) so a focused text input in a generated creation is lifted above the keyboard instead of being hidden behind it. Generated creations get a 16px input font-size floor (`creationHtml.ts` `BASE_CSS`) to avoid the iOS focus-zoom, and the codegen prompt tells creations with inputs to use `100dvh`/`100%` layouts and `scrollIntoView` on focus.
+
 ## Host Controls Philosophy
 
 The play surface should feel like the creation, not like a developer tool.

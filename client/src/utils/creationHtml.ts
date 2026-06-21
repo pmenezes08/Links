@@ -9,7 +9,10 @@
 const VIEWPORT_META =
   '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">'
 const BASE_CSS =
-  '<style>html,body{margin:0;padding:0;background:#000;max-width:100%;overflow-x:hidden}img,canvas,svg,video{max-width:100%;height:auto}</style>'
+  '<style>html,body{margin:0;padding:0;background:#000;max-width:100%;overflow-x:hidden}img,canvas,svg,video{max-width:100%;height:auto}'
+  // iOS auto-zooms when a focused input has font-size < 16px (the "screen
+  // jumps" effect). Force a 16px floor so focusing a field never zooms.
+  + 'input,textarea,select{font-size:16px}</style>'
 
 // Reports the artifact's content size out to the host so it can scale the
 // iframe to fit (fixed-pixel layouts overflow even with a viewport meta).
