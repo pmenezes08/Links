@@ -30,6 +30,13 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
   const [board, setBoard] = useState<{ entries: Entry[]; mine: Entry | null } | null>(null)
   const [myRating, setMyRating] = useState<number | null>(null)
   const [bgColor, setBgColor] = useState('#000')
+  const [cpNotice, setCpNotice] = useState<string | null>(null)
+  const noticeTimer = useRef<number | undefined>(undefined)
+  const showNotice = (msg: string) => {
+    setCpNotice(msg)
+    window.clearTimeout(noticeTimer.current)
+    noticeTimer.current = window.setTimeout(() => setCpNotice(null), 6000)
+  }
   const srcDoc = useMemo(
     () => prepareCreationHtml(html, { dataBridge: creationId != null, errorReporter: true }),
     [html, creationId],
@@ -111,16 +118,21 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
           reply(e.source, rid, false, undefined, 'unknown_op'); return
         }
         const data = await res.json().catch(() => null) as { success?: boolean; error?: string } | null
-        if (res.ok && data && data.success !== false) reply(e.source, rid, true, data)
-        else {
-          const err = (data && data.error) || 'request_failed'
-          // Persistence failures used to vanish silently; surface them so QA can
-          // tell apart auth_required / save_too_large / rate_limited / not_found.
-          if (d.op === 'save' || d.op === 'load') console.warn(`[CPoint] ${d.op} failed: ${err}`)
+        if (res.ok && data && data.success !== false) {
+          // Confirm the write landed so it's obvious persistence is working.
+          if (d.op === 'submitScore') showNotice('✓ Score saved')
+          else if (d.op === 'save') showNotice('✓ Saved')
+          reply(e.source, rid, true, data)
+        } else {
+          const err = (data && data.error) || `request_failed (HTTP ${res.status})`
+          console.warn(`[CPoint] ${d.op} failed: ${err}`)
+          showNotice(`Couldn't ${d.op}: ${err}`)
           reply(e.source, rid, false, undefined, err)
         }
-      } catch {
-        if (d.op === 'save' || d.op === 'load') console.warn(`[CPoint] ${d.op} failed: network_error`)
+      } catch (netErr) {
+        const msg = (netErr as { message?: string })?.message || 'network error'
+        console.warn(`[CPoint] ${d.op} failed: ${msg}`)
+        showNotice(`Couldn't ${d.op}: ${msg}`)
         reply(e.source, rid, false, undefined, 'network_error')
       }
     }
@@ -179,6 +191,13 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
         style={{ position: 'absolute', top: 'calc(var(--sat-px, 0px) + 12px)', left: 12, zIndex: 3, width: 46, height: 46, borderRadius: '50%', background: 'rgba(0,0,0,0.78)', border: '1px solid rgba(255,255,255,0.34)', color: '#fff', fontSize: 23, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 24px rgba(0,0,0,0.45)' }}>
         <i className="ti ti-x" aria-hidden="true" />
       </button>
+
+      {cpNotice && (
+        <div onClick={() => setCpNotice(null)}
+          style={{ position: 'absolute', top: 'calc(var(--sat-px, 0px) + 14px)', left: '50%', transform: 'translateX(-50%)', zIndex: 5, maxWidth: '86%', padding: '9px 14px', borderRadius: 12, background: cpNotice.startsWith('✓') ? 'rgba(0,206,200,0.92)' : 'rgba(40,40,40,0.94)', color: cpNotice.startsWith('✓') ? '#00302e' : '#fff', fontSize: 13, fontWeight: 500, textAlign: 'center', boxShadow: '0 8px 24px rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.14)' }}>
+          {cpNotice}
+        </div>
+      )}
 
       {result && (
         <ResultOverlay

@@ -374,7 +374,10 @@ def _resolve_accessible_creation(creation_id: int, username: str):
         return None, None
     community_id = _safe_int(creation.get("community_id"))
     if creation.get("created_by") == username:
-        return creation, community_id
+        # Owner can always interact with their own creation's data, even a draft
+        # with no community yet (stamp 0 so the `community_id is None` route gate
+        # never wrongly 404s the owner).
+        return creation, (community_id if community_id is not None else 0)
     if community_id is not None and _can_access_community(username, community_id):
         return creation, community_id
     return None, None
