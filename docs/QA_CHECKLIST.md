@@ -884,3 +884,16 @@ notifications, or creation playback. Maps to the `runner=manual` Tests row
 
 - [ ] Set device locale to pt-PT, trigger a successful build → push title/body are in Portuguese.
 - [ ] Repeat for de-DE.
+
+#### §17.G — Save slots (CPoint persistence)
+
+- [ ] In a creation with save/load, save `slot-1`, reload the play surface, load `slot-1` → state returns.
+- [ ] Save `slot-2` and confirm it does NOT overwrite `slot-1` (distinct slots).
+- [ ] As a second user, open the same creation and confirm you cannot read the first user's save (per-user scoping).
+- [ ] Generated games persist via `CPoint.save/load`, never `localStorage` (check that progress survives a reload but is empty for a different account).
+
+#### §17.H — My Builds page
+
+- [ ] From the dashboard, the **My Builds** shortcut opens `/builds` with dashboard chrome and bottom nav.
+- [ ] The page lists your creations (title, draft/published, plays, updated time) with loading, empty, and error states.
+- [ ] **Play/Preview** opens the creation; **Continue building** reopens the Builder with the draft; **Open community** lands in the community feed.

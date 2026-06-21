@@ -108,8 +108,15 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
         }
         const data = await res.json().catch(() => null) as { success?: boolean; error?: string } | null
         if (res.ok && data && data.success !== false) reply(e.source, rid, true, data)
-        else reply(e.source, rid, false, undefined, (data && data.error) || 'request_failed')
+        else {
+          const err = (data && data.error) || 'request_failed'
+          // Persistence failures used to vanish silently; surface them so QA can
+          // tell apart auth_required / save_too_large / rate_limited / not_found.
+          if (d.op === 'save' || d.op === 'load') console.warn(`[CPoint] ${d.op} failed: ${err}`)
+          reply(e.source, rid, false, undefined, err)
+        }
       } catch {
+        if (d.op === 'save' || d.op === 'load') console.warn(`[CPoint] ${d.op} failed: network_error`)
         reply(e.source, rid, false, undefined, 'network_error')
       }
     }

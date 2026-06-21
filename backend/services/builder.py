@@ -109,7 +109,11 @@ _SYSTEM_PROMPT = (
     "TO SAVE per-player progress/state/preferences (game saves, settings, 'continue where I left off'), use "
     "`CPoint.save(key, value)` (value = any JSON) and `CPoint.load(key)` -> `{value}`. CRITICAL: localStorage, "
     "sessionStorage and cookies are BLOCKED in this sandbox and will NOT persist — NEVER use them to save; always use "
-    "CPoint.save/load. "
+    "CPoint.save/load. PERSISTENCE PATTERN: on boot, if `window.CPoint?.load` exists, "
+    "`const r = await CPoint.load('slot-1'); if (r && r.value) restore(r.value);` (degrade to fresh in-memory state if "
+    "CPoint is missing or there is no saved value). On each checkpoint / level-up / settings change, "
+    "`await CPoint.save('slot-1', state);`. Use short, stable keys — valid examples: `slot-1`, `slot-2`, `settings` "
+    "(letters, digits, `-`, `_`; one key per save slot, max ~20 slots). Wrap save/load in try/catch and never block gameplay on them. "
     "FOR REAL PHOTOS from the web (places, food, recommendations, etc.), call `CPoint.images(query)` -> "
     "`{images:[{url, full, title}]}` and set an `<img>` src to `url` (display-ready, real freely-licensed photos). "
     "Fetch at RUNTIME; show a graceful placeholder while loading and if none return; NEVER hard-code image URLs from "
@@ -1130,8 +1134,28 @@ def _clean_display_name(name: Any, fallback: str) -> str:
 
 
 def _safe_key(key: Any) -> str:
+    """Strict normalizer for leaderboard/score keys. Falls back to 'highscore'."""
     k = key.strip().lower() if isinstance(key, str) else ""
     return k if _KEY_RE.match(k) else "highscore"
+
+
+# Save-slot keys are more permissive than score keys so common generated names
+# survive normalization instead of collapsing to a single bucket.
+_SAVE_KEY_DISALLOWED = re.compile(r"[^a-z0-9_.\-:]")
+
+
+def _safe_save_key(key: Any) -> str:
+    """Normalize a save-slot key while preserving common generated names like
+    'slot-1', 'saveSlot1', 'save slot 1', and 'level:3'. Whitespace collapses to
+    '_', the result is lowercased for stable lookup, and disallowed characters
+    are dropped. Falls back to 'save' (never 'highscore') so save slots never
+    collide with leaderboard rows."""
+    if not isinstance(key, str):
+        return "save"
+    k = re.sub(r"\s+", "_", key.strip().lower())
+    k = _SAVE_KEY_DISALLOWED.sub("", k)
+    k = k.strip("_.-:")[:64]
+    return k or "save"
 
 
 def _cell(row: Any, idx: int) -> Any:
@@ -1187,7 +1211,7 @@ _SAVE_MAX_KEYS = 20
 def save_record(*, creation_id: int, community_id: int, username: str, key: str, value: Any) -> Dict[str, Any]:
     """Per-player save slot (game saves / preferences). localStorage is blocked
     in the sandbox, so saving is brokered here. One row per (creation, key, user)."""
-    k = _safe_key(key)
+    k = _safe_save_key(key)
     payload = value if isinstance(value, str) else json.dumps(value)
     if len(payload.encode("utf-8")) > _SAVE_MAX_BYTES:
         raise ValueError("save_too_large")
@@ -1226,7 +1250,7 @@ def save_record(*, creation_id: int, community_id: int, username: str, key: str,
 
 
 def load_record(creation_id: int, *, username: str, key: str = "save") -> Dict[str, Any]:
-    k = _safe_key(key)
+    k = _safe_save_key(key)
     ph = get_sql_placeholder()
     with get_db_connection() as conn:
         c = conn.cursor()

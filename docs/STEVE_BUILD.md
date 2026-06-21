@@ -106,12 +106,27 @@ Supported capabilities:
 - `CPoint.getLeaderboard(opts)` - read community leaderboard data.
 - `CPoint.rate(value, opts)` - rate the creation.
 - `CPoint.getResults()` - read aggregate ratings/results.
-- `CPoint.save(key, value)` - save per-player progress/state/preferences.
-- `CPoint.load(key)` - load per-player saved state.
+- `CPoint.save(key, value)` - save per-player progress/state/preferences (`value` is any JSON).
+- `CPoint.load(key)` - load per-player saved state; resolves to `{value}` (`value` is `null` when nothing is saved).
 - `CPoint.images(query, opts)` - fetch real freely licensed web photos.
 - `CPoint.gameOver(opts)` - signal the native result overlay.
+- `CPoint.hasPersistence` - `true` whenever the bridge is injected, so a creation can feature-detect save support.
 
 Important: generated creations must not call arbitrary private services or invent backend APIs. The host bridge is the approved boundary.
+
+### Persistence contract (save slots)
+
+`localStorage`, `sessionStorage`, and cookies are blocked in the sandbox, so save slots are brokered to the host:
+
+- Save: `POST /api/builder/<id>/data/save` `{ key, value }`; Load: `GET /api/builder/<id>/data/load?key=<key>`.
+- Stored in MySQL `creation_data` under `namespace='save'`, **scoped per (creation, key, user)** — one player can never read another's save.
+- Save keys are normalized by `_safe_save_key` (lowercase; whitespace → `_`; only `a-z 0-9 _ - . :` survive; max 64 chars; empty/junk → `save`). This preserves common generated slot names (`slot-1`, `saveSlot1`, `save slot 1`, `level:3`) instead of collapsing them to one bucket. Leaderboard/score keys keep the stricter `_safe_key` (`highscore` fallback).
+- Limits: max ~`_SAVE_MAX_KEYS` (20) distinct slots per user/creation (`too_many_saves`); per-value size cap `_SAVE_MAX_BYTES` (`save_too_large`).
+- The host broker logs save/load failures (`auth_required`, `not_found`, `rate_limited`, `save_too_large`, …) to the console so persistence never fails silently during QA.
+
+### My Builds page
+
+`/builds` (under `DashboardLayout`) lists the signed-in user's creations from `GET /api/builder/mine` so they can find, play/preview, or continue building without remembering which community they used. Reachable from a dashboard shortcut and the native sidebar.
 
 ## Host Controls Philosophy
 
@@ -173,7 +188,10 @@ Before shipping Builder changes:
 - Lock/switch apps, then return and confirm the job resumes/polls.
 - Confirm completion notification opens the finished creation.
 - Test a creation with `CPoint.images`.
-- Test save/load inside a generated creation.
+- Save `slot-1`, reload the play surface, load `slot-1` — state returns.
+- Save `slot-2` and confirm it does not overwrite `slot-1`.
+- As a second user, confirm you cannot read the first user's save.
+- Open `/builds` from the dashboard; play/preview and continue a creation.
 - Test score/rating/result overlay.
 - Confirm the play surface has only a visible top-left close control.
 - Confirm there is no host gamepad button, D-pad overlay, or host sound icon.
@@ -191,3 +209,4 @@ Likely next infrastructure steps:
 - Version history per creation.
 - Community templates and featured builds.
 - Owner analytics: plays, ratings, top scores, shares, replays.
+- Creator monetization marketplace: paid unlocks/tips/packs on creations, Stripe Connect payouts, a C-Point platform fee, moderation, refunds, tax/KYC, and quality thresholds (separate future epic).

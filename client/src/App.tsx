@@ -39,6 +39,7 @@ import CommunityCalendar from './pages/CommunityCalendar'
 import CommunityTasks from './pages/CommunityTasks'
 import CommunityPolls from './pages/CommunityPolls'
 import BuilderPage from './pages/BuilderPage'
+import MyBuilds from './pages/MyBuilds'
 import CreationPlay from './pages/CreationPlay'
 import CommunityResources from './pages/CommunityResources'
 import UsefulLinks from './pages/UsefulLinks'
@@ -955,6 +956,7 @@ function AppRoutes(){
                   <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
                   <Route path="/feed" element={<HomeTimeline mode="dashboard_feed" />} />
                   <Route path="/about_cpoint" element={<AboutCPoint />} />
+                  <Route path="/builds" element={<MyBuilds />} />
                 </Route>
                 <Route path="/crossfit" element={<CrossfitExact />} />
                 <Route path="/crossfit_react" element={<CrossfitExact />} />

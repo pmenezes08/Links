@@ -86,6 +86,9 @@ const DATA_BRIDGE = `<script>(function(){
     // for a game; call with no args for a quiz/result with no number.
     gameOver:function(opts){ try{ parent.postMessage({__cpend:true, score:(opts&&opts.score), key:(opts&&opts.key)||'highscore'}, '*'); }catch(_){ } }
   };
+  // Feature flag so a creation can detect brokered persistence is available
+  // (it always is when this bridge is injected) and show/hide save UI safely.
+  window.CPoint.hasPersistence=true;
 })();<\/script>`
 
 export function prepareCreationHtml(html: string, opts: { dataBridge?: boolean; errorReporter?: boolean } = {}): string {

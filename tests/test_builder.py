@@ -594,3 +594,185 @@ def test_set_job_status_handles_question_mark_in_value():
     fresh = builder.get_build_job(jid)
     assert fresh["status"] == "failed"
     assert fresh["error"] == "why? because the model said so?"
+
+
+# ── CPoint persistence: save slots (save_record / load_record) ──────────────
+#
+# Save slots are how generated games keep progress: localStorage is blocked in
+# the sandbox, so CPoint.save/load is brokered to these service + route paths.
+# These tests pin the key-normalization contract (so common slot names stay
+# distinct) and the per-user scoping that keeps one player's save private.
+
+def _make_creation(username: str, community_id: int, monkeypatch) -> int:
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    created = builder.create_creation(username=username, community_id=community_id, prompt="a game")
+    return int(created["id"])
+
+
+def test_save_then_load_roundtrip(monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+
+    builder.save_record(creation_id=crid, community_id=cid, username="maker",
+                        key="slot-1", value={"level": 2, "hp": 80})
+    loaded = builder.load_record(crid, username="maker", key="slot-1")
+    assert loaded["success"] is True
+    assert loaded["value"] == {"level": 2, "hp": 80}
+
+
+def test_multiple_save_slots_do_not_overwrite(monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+
+    builder.save_record(creation_id=crid, community_id=cid, username="maker",
+                        key="slot-1", value={"level": 1})
+    builder.save_record(creation_id=crid, community_id=cid, username="maker",
+                        key="slot-2", value={"level": 9})
+
+    assert builder.load_record(crid, username="maker", key="slot-1")["value"] == {"level": 1}
+    assert builder.load_record(crid, username="maker", key="slot-2")["value"] == {"level": 9}
+
+
+def test_save_slots_are_user_scoped(monkeypatch):
+    _make_user("alice")
+    _make_user("bob")
+    cid = _make_community()
+    crid = _make_creation("alice", cid, monkeypatch)
+
+    builder.save_record(creation_id=crid, community_id=cid, username="alice",
+                        key="slot-1", value={"secret": "alice-only"})
+    # Bob, even if he can see the creation, has his own (empty) save namespace.
+    assert builder.load_record(crid, username="bob", key="slot-1")["value"] is None
+
+
+def test_save_key_normalization_keeps_common_slots_distinct():
+    # The contract: common generated slot names survive normalization instead
+    # of collapsing to a single bucket (the old bug folded everything to
+    # 'highscore'). Whitespace -> '_', lowercased, save fallback = 'save'.
+    assert builder._safe_save_key("slot-1") == "slot-1"
+    assert builder._safe_save_key("slot_1") == "slot_1"
+    assert builder._safe_save_key("saveSlot1") == "saveslot1"
+    assert builder._safe_save_key("save slot 1") == "save_slot_1"
+    assert builder._safe_save_key("level:3") == "level:3"
+    # Distinct slot names stay distinct.
+    keys = {builder._safe_save_key(k) for k in ("slot-1", "slot-2", "settings")}
+    assert keys == {"slot-1", "slot-2", "settings"}
+    # Empty / junk falls back to 'save', never 'highscore'.
+    assert builder._safe_save_key("") == "save"
+    assert builder._safe_save_key("***") == "save"
+    assert builder._safe_save_key(None) == "save"
+
+
+def test_save_record_roundtrips_under_normalized_keys(monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+
+    # Saving under the raw name and loading under the same raw name resolves to
+    # the same normalized row.
+    builder.save_record(creation_id=crid, community_id=cid, username="maker",
+                        key="save slot 1", value={"checkpoint": "A"})
+    assert builder.load_record(crid, username="maker", key="save slot 1")["value"] == {"checkpoint": "A"}
+    # A genuinely different slot does not collide.
+    builder.save_record(creation_id=crid, community_id=cid, username="maker",
+                        key="save slot 2", value={"checkpoint": "B"})
+    assert builder.load_record(crid, username="maker", key="save slot 1")["value"] == {"checkpoint": "A"}
+    assert builder.load_record(crid, username="maker", key="save slot 2")["value"] == {"checkpoint": "B"}
+
+
+def test_save_too_large_is_rejected(monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+
+    huge = "x" * (builder._SAVE_MAX_BYTES + 1)
+    with pytest.raises(ValueError, match="save_too_large"):
+        builder.save_record(creation_id=crid, community_id=cid, username="maker",
+                            key="slot-1", value=huge)
+
+
+def test_too_many_save_slots_is_rejected(monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+
+    for i in range(builder._SAVE_MAX_KEYS):
+        builder.save_record(creation_id=crid, community_id=cid, username="maker",
+                            key=f"slot-{i}", value={"i": i})
+    with pytest.raises(ValueError, match="too_many_saves"):
+        builder.save_record(creation_id=crid, community_id=cid, username="maker",
+                            key="slot-overflow", value={"i": 99})
+    # Overwriting an existing slot still works at the cap (no new row).
+    builder.save_record(creation_id=crid, community_id=cid, username="maker",
+                        key="slot-0", value={"i": 0, "again": True})
+    assert builder.load_record(crid, username="maker", key="slot-0")["value"] == {"i": 0, "again": True}
+
+
+# ── CPoint persistence: HTTP routes (/data/save, /data/load) ────────────────
+
+def test_route_save_and_load_roundtrip(builder_client, monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+    _login(builder_client, "maker")
+
+    resp = builder_client.post(f"/api/builder/{crid}/data/save",
+                               json={"key": "slot-1", "value": {"level": 3}})
+    assert resp.status_code == 200 and resp.get_json()["success"] is True
+
+    resp = builder_client.get(f"/api/builder/{crid}/data/load?key=slot-1")
+    body = resp.get_json()
+    assert resp.status_code == 200 and body["success"] is True
+    assert body["value"] == {"level": 3}
+
+
+def test_route_load_defaults_to_save_key(builder_client, monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+    _login(builder_client, "maker")
+
+    builder_client.post(f"/api/builder/{crid}/data/save", json={"value": {"a": 1}})
+    body = builder_client.get(f"/api/builder/{crid}/data/load").get_json()
+    assert body["success"] is True and body["value"] == {"a": 1}
+
+
+def test_route_save_requires_auth(builder_client, monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+    # No _login → no session username.
+    resp = builder_client.post(f"/api/builder/{crid}/data/save",
+                               json={"key": "slot-1", "value": {"level": 3}})
+    assert resp.status_code == 401
+    assert resp.get_json()["error"] == "auth_required"
+
+
+def test_route_save_denied_for_inaccessible_creation(builder_client, monkeypatch):
+    _make_user("maker")
+    _make_user("stranger")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+    # Stranger is not the owner and cannot access the community.
+    monkeypatch.setattr(builder_bp_mod, "_can_access_community", lambda *_a, **_k: False)
+    _login(builder_client, "stranger")
+
+    resp = builder_client.post(f"/api/builder/{crid}/data/save",
+                               json={"key": "slot-1", "value": {"x": 1}})
+    assert resp.status_code == 404
+    assert resp.get_json()["error"] == "not_found"
+
+
+def test_route_oversized_save_returns_save_too_large(builder_client, monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+    _login(builder_client, "maker")
+
+    huge = "x" * (builder._SAVE_MAX_BYTES + 1)
+    resp = builder_client.post(f"/api/builder/{crid}/data/save",
+                               json={"key": "slot-1", "value": huge})
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "save_too_large"

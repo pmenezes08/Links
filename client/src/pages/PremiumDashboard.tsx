@@ -1033,6 +1033,7 @@ export default function PremiumDashboard() {
           <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/profile">{t('navigation.profile')}</a>
           <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/user_chat">{t('navigation.messages')}</a>
           <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/followers">{t('navigation.followers')}</a>
+          <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/builds">My Builds</a>
           {hasGymAccess && <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/your_sports">{t('dashboard.your_sports')}</a>}
           <button className="block w-full text-left px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" onClick={requestLogout}>{t('navigation.logout')}</button>
           <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/account_settings">
@@ -1207,6 +1208,21 @@ export default function PremiumDashboard() {
                       <i className="fa-solid fa-at text-sm text-c-text-tertiary" aria-hidden="true" />
                       <span className="min-w-0 flex-1 truncate text-sm font-medium text-c-text-primary">
                         {t('communities.find_entry_label')}
+                      </span>
+                      <i className="fa-solid fa-chevron-right text-xs text-c-text-tertiary" aria-hidden="true" />
+                    </button>
+
+                    {/* My Builds — direct access to Steve Build creations without
+                        remembering which community they were made in. */}
+                    <button
+                      type="button"
+                      onClick={() => navigate('/builds')}
+                      aria-label="My Builds"
+                      className="flex h-11 w-full items-center gap-3 rounded-2xl border border-c-border bg-c-bg-elevated px-3 text-left transition hover:bg-c-hover-bg active:scale-[0.99]"
+                    >
+                      <i className="fa-solid fa-wand-magic-sparkles text-sm text-cpoint-turquoise" aria-hidden="true" />
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-c-text-primary">
+                        My Builds
                       </span>
                       <i className="fa-solid fa-chevron-right text-xs text-c-text-tertiary" aria-hidden="true" />
                     </button>
