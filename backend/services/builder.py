@@ -568,6 +568,10 @@ _CONVERSE_BASE = (
     "their own database/backend, or native phone features (camera, GPS, contacts). Built-in real-photo, vetted public-data, "
     "save, and leaderboard features above DO work — never refuse those. If the user asks for something genuinely out of reach, "
     "say so kindly and offer the closest thing you CAN make.\n"
+    "- NEVER FABRICATE DATA SOURCES. If the user asks where the build's facts/figures came from, look at the ACTUAL build "
+    "(including any 'Sources' it shows) and answer truthfully. If the data was researched from the web there will be real "
+    "source links — cite those. If the build has no cited sources, say plainly that the values may be approximate / from "
+    "general knowledge and offer to rebuild with verified web data — do NOT claim official sources you can't point to.\n"
 )
 _CONVERSE_AGENT = (
     "You are in AGENT mode: you can build. When you have enough to make a great first version, PROPOSE a concrete plan "
@@ -662,29 +666,33 @@ def converse(history: List[Dict[str, str]], message: str, *, mode: str = "simple
 
 
 _RESEARCH_SYSTEM = (
-    "You research CURRENT real-world information for an app a user is building. Use web search when the app needs "
-    "up-to-date facts (recommendations, places, food, prices, news, events, schedules, sports, opening hours — anything "
-    "that changes over time). Respond with JSON ONLY: "
-    '{"needed": true|false, "facts": "<concise but COMPLETE, accurate, current facts to bake into the app: real names '
-    'and details, organised clearly>", "sources": ["<url>", ...]}. '
-    "If the app does NOT need external/current info (e.g. a game, a generic quiz, a tool), return "
-    '{"needed": false, "facts": "", "sources": []}. NEVER invent facts; include only what you actually found.'
+    "You are a research assistant for an app a user is building. ACTUALLY SEARCH THE WEB to gather SPECIFIC, REAL, "
+    "ACCURATE facts the app needs — real names and details of places, golf course pars/scorecards, menus, prices, "
+    "opening hours, statistics, sports/team data, schedules, current events, reviews and recommendations — anything "
+    "where guessing or relying on memory would make the app WRONG. Do NOT answer from memory; use search and cite the "
+    "real pages you used. Respond with JSON ONLY: "
+    '{"needed": true|false, "facts": "<the real facts to bake into the app, organised clearly with the EXACT values>", '
+    '"sources": ["<real url you actually used>", ...]}. '
+    "Set needed=false ONLY for purely generic/creative apps that need no real-world data (a falling-blocks game, a "
+    "generic personality quiz, a calculator). When in doubt, search. NEVER invent facts or sources — include only what "
+    "you genuinely found on the web."
 )
 
 
 def research_for_build(brief: str) -> str:
-    """Build-TIME web research: when a creation needs current real-world info,
-    fetch it now (native model web search) and return facts to bake statically
-    into the artifact (frozen at build time). Best-effort — returns '' on any
-    failure or when no external info is needed, so it never blocks a build."""
+    """Build-TIME web research: when a creation needs real, accurate facts (current
+    OR static — e.g. golf pars), fetch them now via REAL web search and return
+    them (with sources) to bake statically into the artifact. Best-effort —
+    returns '' on any failure or when no real-world data is needed, so it never
+    blocks a build."""
     b = (brief or "").strip()
     if not b:
         return ""
     try:
-        data = llm.generate_web_search_json(
+        data = llm.web_search_json(
             _RESEARCH_SYSTEM,
             f"The user is building this app:\n{b}\n\nReturn the JSON described.",
-            max_output_tokens=1500, temperature=0.2,
+            max_output_tokens=2200,
         )
     except Exception:
         logger.warning("builder: research_for_build failed", exc_info=True)
@@ -695,7 +703,8 @@ def research_for_build(brief: str) -> str:
     if not facts:
         return ""
     sources = data.get("sources")
-    src = "\nSources: " + ", ".join(str(s) for s in sources[:6]) if isinstance(sources, list) and sources else ""
+    src = "\nSOURCES (cite these in the app): " + ", ".join(str(s) for s in sources[:6]) \
+        if isinstance(sources, list) and sources else ""
     return facts[:8000] + src
 
 
@@ -725,8 +734,9 @@ def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperat
     facts = research_for_build(prompt)
     if facts:
         user_prompt = (
-            "CURRENT REAL-WORLD DATA (fetched from the web just now — use these REAL, up-to-date facts in the app; "
-            "do NOT invent or use stale data; bake them statically into the HTML):\n"
+            "REAL-WORLD DATA (fetched from the web just now via search — use these REAL facts EXACTLY; do NOT invent or "
+            "use stale/remembered values; bake them statically into the HTML). Include a small, tasteful 'Sources' line "
+            "or section in the app citing the source links so the data is verifiable:\n"
             f"{facts}\n\n"
         ) + user_prompt
 

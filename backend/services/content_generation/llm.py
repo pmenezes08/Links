@@ -326,6 +326,44 @@ def generate_web_search_json(
         return {}
 
 
+_RESEARCH_MODEL = os.getenv("STEVE_BUILDER_RESEARCH_MODEL", "gpt-4o")
+
+
+def web_search_json(system_prompt: str, user_prompt: str, *, max_output_tokens: int = 1800) -> Dict[str, Any]:
+    """Run a REAL web search via OpenAI's hosted web_search tool and return parsed
+    JSON. NOTE: ``generate_web_search_json`` above targets the xAI endpoint, which
+    does NOT support the OpenAI hosted web_search tool — use THIS for genuine web
+    grounding. Best-effort: returns {} if the key/tool/model is unavailable."""
+    if not OPENAI_API_KEY:
+        raise RuntimeError("OPENAI_API_KEY is not configured")
+    oai = OpenAI(api_key=OPENAI_API_KEY)
+    base = dict(
+        model=_RESEARCH_MODEL,
+        input=[
+            {"role": "system", "content": system_prompt + "\nRespond with valid JSON only."},
+            {"role": "user", "content": user_prompt},
+        ],
+        max_output_tokens=max_output_tokens,
+    )
+    raw = ""
+    for tool_type in ("web_search", "web_search_preview"):  # tool name varies by SDK/model
+        try:
+            response = oai.responses.create(tools=[{"type": tool_type}], **base)
+            raw = (response.output_text or "").strip() if hasattr(response, "output_text") else ""
+            if raw:
+                break
+        except Exception as exc:
+            logger.warning("web_search_json: tool '%s' failed: %s", tool_type, exc)
+            continue
+    if not raw:
+        return {}
+    try:
+        return _extract_json(raw)
+    except ValueError:
+        logger.warning("web_search_json: unparseable JSON (prefix=%r)", raw[:200])
+        return {}
+
+
 def generate_text(
     system_prompt: str,
     user_prompt: str,
