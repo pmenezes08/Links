@@ -80,6 +80,57 @@ function TypingRow() {
   )
 }
 
+// Minimal, injection-safe markdown for Steve's replies: builds React nodes
+// (never sets innerHTML), supporting **bold**, *italic*, `code`, bullet and
+// numbered lists, and paragraph breaks.
+function renderInline(text: string, kp: string): React.ReactNode[] {
+  const out: React.ReactNode[] = []
+  const re = /(\*\*([^*]+)\*\*|`([^`]+)`|\*([^*]+)\*|_([^_]+)_)/g
+  let last = 0, m: RegExpExecArray | null, i = 0
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index))
+    if (m[2] !== undefined) out.push(<strong key={`${kp}-${i}`}>{m[2]}</strong>)
+    else if (m[3] !== undefined) out.push(<code key={`${kp}-${i}`} style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 4, padding: '1px 5px', fontSize: 13 }}>{m[3]}</code>)
+    else out.push(<em key={`${kp}-${i}`}>{m[4] ?? m[5]}</em>)
+    last = m.index + m[0].length; i++
+  }
+  if (last < text.length) out.push(text.slice(last))
+  return out
+}
+
+function SteveText({ text }: { text: string }) {
+  const lines = (text || '').split('\n')
+  const blocks: React.ReactNode[] = []
+  let list: { type: 'ul' | 'ol'; items: string[] } | null = null
+  const flush = () => {
+    if (!list) return
+    const L = list, k = `l${blocks.length}`
+    const lis = L.items.map((it, j) => <li key={j} style={{ margin: '2px 0' }}>{renderInline(it, `${k}-${j}`)}</li>)
+    blocks.push(L.type === 'ul'
+      ? <ul key={k} style={{ margin: '4px 0', paddingLeft: 18 }}>{lis}</ul>
+      : <ol key={k} style={{ margin: '4px 0', paddingLeft: 20 }}>{lis}</ol>)
+    list = null
+  }
+  lines.forEach((raw, idx) => {
+    const line = raw.replace(/\s+$/, '')
+    const bullet = line.match(/^\s*[-*]\s+(.*)$/)
+    const num = line.match(/^\s*\d+\.\s+(.*)$/)
+    if (bullet) {
+      if (!list || list.type !== 'ul') { flush(); list = { type: 'ul', items: [] } }
+      list.items.push(bullet[1])
+    } else if (num) {
+      if (!list || list.type !== 'ol') { flush(); list = { type: 'ol', items: [] } }
+      list.items.push(num[1])
+    } else {
+      flush()
+      if (line.trim() === '') blocks.push(<div key={`b${idx}`} style={{ height: 6 }} />)
+      else blocks.push(<div key={`b${idx}`}>{renderInline(line, `p${idx}`)}</div>)
+    }
+  })
+  flush()
+  return <div style={{ fontSize: 15, lineHeight: 1.5, color: '#e9e9e9' }}>{blocks}</div>
+}
+
 export default function BuilderPage() {
   const { community_id } = useParams()
   const navigate = useNavigate()
@@ -231,7 +282,7 @@ export default function BuilderPage() {
             <div key={i} style={{ display: 'flex', gap: 10, margin: '14px 0' }}>
               <Avatar />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 15, lineHeight: 1.5, color: '#e9e9e9', whiteSpace: 'pre-line' }}>{m.text}</div>
+                <SteveText text={m.text} />
                 {m.creation && (
                   <CreationCard creation={m.creation} isLatest={!!creation && m.creation.id === creation.id}
                     onOpen={() => setPlayingCreation(m.creation!)}

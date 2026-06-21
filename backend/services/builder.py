@@ -85,6 +85,9 @@ _SYSTEM_PROMPT = (
     "2) Include <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">.\n"
     "3) MOBILE-FIRST: fully responsive, fit a ~390px-wide phone screen with NO horizontal scrolling; use relative units "
     "(%, vw, vh, flexbox, clamp()); never hard-code widths wider than the screen; scale boards/canvases to the width.\n"
+    "3b) FULL-BLEED BACKGROUND: paint your background colour on `html, body` (NOT just an inner card), and make your "
+    "top-level container fill the screen (min-height: 100vh). There must be NO blank/black gaps when the page scrolls or "
+    "the on-screen keyboard opens — the background must cover the whole viewport edge to edge.\n"
     "4) TOUCH-ONLY (no physical keyboard): clearly visible in-creation on-screen buttons for ALL controls; anything "
     "that needs starting begins on a tap/touch (on-screen Start or auto-start) — never 'press a key to start' and "
     "never depend on host-provided gamepad/keyboard controls.\n"
@@ -658,6 +661,44 @@ def converse(history: List[Dict[str, str]], message: str, *, mode: str = "simple
     return result
 
 
+_RESEARCH_SYSTEM = (
+    "You research CURRENT real-world information for an app a user is building. Use web search when the app needs "
+    "up-to-date facts (recommendations, places, food, prices, news, events, schedules, sports, opening hours — anything "
+    "that changes over time). Respond with JSON ONLY: "
+    '{"needed": true|false, "facts": "<concise but COMPLETE, accurate, current facts to bake into the app: real names '
+    'and details, organised clearly>", "sources": ["<url>", ...]}. '
+    "If the app does NOT need external/current info (e.g. a game, a generic quiz, a tool), return "
+    '{"needed": false, "facts": "", "sources": []}. NEVER invent facts; include only what you actually found.'
+)
+
+
+def research_for_build(brief: str) -> str:
+    """Build-TIME web research: when a creation needs current real-world info,
+    fetch it now (native model web search) and return facts to bake statically
+    into the artifact (frozen at build time). Best-effort — returns '' on any
+    failure or when no external info is needed, so it never blocks a build."""
+    b = (brief or "").strip()
+    if not b:
+        return ""
+    try:
+        data = llm.generate_web_search_json(
+            _RESEARCH_SYSTEM,
+            f"The user is building this app:\n{b}\n\nReturn the JSON described.",
+            max_output_tokens=1500, temperature=0.2,
+        )
+    except Exception:
+        logger.warning("builder: research_for_build failed", exc_info=True)
+        return ""
+    if not isinstance(data, dict) or not data.get("needed"):
+        return ""
+    facts = str(data.get("facts") or "").strip()
+    if not facts:
+        return ""
+    sources = data.get("sources")
+    src = "\nSources: " + ", ".join(str(s) for s in sources[:6]) if isinstance(sources, list) and sources else ""
+    return facts[:8000] + src
+
+
 def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperature: float = 0.8,
                      model: Optional[str] = None) -> str:
     """Generate (or revise) a self-contained HTML artifact via Steve/Grok.
@@ -678,6 +719,16 @@ def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperat
         )
     else:
         user_prompt = f"Build this as a single self-contained HTML document:\n{prompt}"
+
+    # Build-time web research: if the creation needs current real-world info,
+    # fetch it now and bake it in statically (the running app stays offline).
+    facts = research_for_build(prompt)
+    if facts:
+        user_prompt = (
+            "CURRENT REAL-WORLD DATA (fetched from the web just now — use these REAL, up-to-date facts in the app; "
+            "do NOT invent or use stale data; bake them statically into the HTML):\n"
+            f"{facts}\n\n"
+        ) + user_prompt
 
     html = _clean_html(
         llm.generate_text(

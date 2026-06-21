@@ -29,13 +29,14 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
   const [result, setResult] = useState<ResultState | null>(null)
   const [board, setBoard] = useState<{ entries: Entry[]; mine: Entry | null } | null>(null)
   const [myRating, setMyRating] = useState<number | null>(null)
+  const [bgColor, setBgColor] = useState('#000')
   const srcDoc = useMemo(
     () => prepareCreationHtml(html, { dataBridge: creationId != null, errorReporter: true }),
     [html, creationId],
   )
 
   const fitRef = useRef(1)
-  useEffect(() => { setFit(1); fitRef.current = 1 }, [html])
+  useEffect(() => { setFit(1); fitRef.current = 1; setBgColor('#000') }, [html])
 
   // Count one play when the surface opens (best-effort).
   useEffect(() => {
@@ -136,8 +137,10 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
   // without the latch we'd scale back up, re-narrow, reflow, forever.
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
-      const d = e.data as { __cpfit?: boolean; w?: number; vw?: number } | null
-      if (!d || typeof d !== 'object' || !d.__cpfit) return
+      const d = e.data as { __cpfit?: boolean; __cpbg?: boolean; color?: string; w?: number; vw?: number } | null
+      if (!d || typeof d !== 'object') return
+      if (d.__cpbg && typeof d.color === 'string') { setBgColor(d.color); return }
+      if (!d.__cpfit) return
       const sx = d.vw && d.w ? d.vw / d.w : 1
       const target = sx < 0.999 ? Math.max(0.4, sx) : 1
       if (target < fitRef.current - 0.02) { // only ever shrink, only if meaningful
@@ -156,7 +159,7 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
 
   return (
     <div style={{
-      position: 'fixed', inset: 0, zIndex: 80, background: '#000',
+      position: 'fixed', inset: 0, zIndex: 80, background: bgColor,
       display: 'flex', flexDirection: 'column',
       paddingTop: 'var(--sat-px, 0px)',
       // Shrink the surface above the on-screen keyboard. The app runs with
@@ -168,7 +171,7 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
       transition: 'padding-bottom 0.2s ease',
     }}>
       <style>{`@keyframes cp-sheet-up { from { transform: translateY(100%) } to { transform: translateY(0) } }`}</style>
-      <div style={{ flex: '1 1 auto', position: 'relative', overflow: 'hidden', minHeight: 0 }}>
+      <div style={{ flex: '1 1 auto', position: 'relative', overflow: 'hidden', minHeight: 0, background: bgColor }}>
         <iframe key={playKey} ref={iframeRef} title={title || 'Creation'} sandbox="allow-scripts" srcDoc={srcDoc} style={iframeStyle} />
       </div>
 

@@ -9,7 +9,7 @@
 const VIEWPORT_META =
   '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">'
 const BASE_CSS =
-  '<style>html,body{margin:0;padding:0;background:#000;max-width:100%;overflow-x:hidden}img,canvas,svg,video{max-width:100%;height:auto}'
+  '<style>html,body{margin:0;padding:0;min-height:100%;background:#000;max-width:100%;overflow-x:hidden}img,canvas,svg,video{max-width:100%;height:auto}'
   // iOS auto-zooms when a focused input has font-size < 16px (the "screen
   // jumps" effect). Force a 16px floor so focusing a field never zooms.
   + 'input,textarea,select{font-size:16px}</style>'
@@ -28,6 +28,15 @@ const FIT_REPORTER = `<script>(function(){
   window.addEventListener('load', measure);
   try{ new ResizeObserver(measure).observe(document.documentElement); }catch(_){ }
   setTimeout(measure, 300); setTimeout(measure, 1200);
+})();<\/script>`
+
+// Reports the artifact's computed body background colour so the host can match
+// it — then any area revealed when the page scrolls or the keyboard opens is
+// seamless, not a contrasting black band.
+const BG_REPORTER = `<script>(function(){
+  function rep(){ try{ var c=getComputedStyle(document.body).backgroundColor;
+    if(c && c!=='rgba(0, 0, 0, 0)' && c!=='transparent') parent.postMessage({__cpbg:true, color:c}, '*'); }catch(_){ } }
+  window.addEventListener('load', rep); setTimeout(rep, 400); setTimeout(rep, 1500);
 })();<\/script>`
 
 // Health reporter — posts a typed __cperr so the host can offer a fix. Catches
@@ -110,7 +119,7 @@ export function prepareCreationHtml(html: string, opts: { dataBridge?: boolean; 
     out = headInject + out
   }
 
-  const tail = FIT_REPORTER
+  const tail = FIT_REPORTER + BG_REPORTER
     + (opts.errorReporter ? ERROR_REPORTER : '')
     + (opts.dataBridge ? DATA_BRIDGE : '')
   out = out.includes('</body>') ? out.replace('</body>', tail + '</body>') : out + tail
