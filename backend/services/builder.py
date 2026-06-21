@@ -122,13 +122,23 @@ _SYSTEM_PROMPT = (
     "FOR REAL PHOTOS from the web (places, food, recommendations, etc.), call `CPoint.images(query)` -> "
     "`{images:[{url, full, title}]}` and set an `<img>` src to `url` (display-ready, real freely-licensed photos). "
     "Fetch at RUNTIME; show a graceful placeholder while loading and if none return; NEVER hard-code image URLs from "
-    "memory (they 404). Always feature-detect (`if (window.CPoint)`), never block gameplay on it, and wrap calls in try/catch."
+    "memory (they 404). Always feature-detect (`if (window.CPoint)`), never block gameplay on it, and wrap calls in try/catch. "
+    "REAL-TIME / RECENT PUBLIC DATA: if the user's idea needs public facts, weather, fixtures/results, recipes, cocktails, "
+    "Pokemon, jokes, facts, advice, tech news, or Wikipedia, use `CPoint.data(connector, params)` only after feature-detecting "
+    "`if (window.CPoint?.data)`. Available connectors and common params: `weather` {place} or {lat,lon}; `country` {name|code}; "
+    "`wikipedia` {search|title}; `recipe` {search} or {random:true}; `cocktail` {search} or {random:true}; `pokemon` {name|id}; "
+    "`joke` {category}; `fact` {random:true}; `advice` {search} or {}; `technews` {feed:'top'|'new'|'best',limit}; "
+    "`sports` {day:'YYYY-MM-DD',sport:'Soccer'} or {leagueId,mode:'next'|'past'} or {teamId,mode:'next'|'past'}. "
+    "This data is RECENT and cached, not millisecond-live; for sports, build fixtures/results apps such as yesterday's scores "
+    "or tomorrow's games, not live minute-by-minute scoreboards. Always render useful fallback content first, update when data "
+    "arrives, wrap in try/catch, and display the returned `attribution` string visibly near the data. Random connectors return "
+    "a batch in `data.items`; pick one client-side so many players can share one cached fetch."
 )
 
 _CREATION_COLS = [
     "id", "community_id", "created_by", "title", "kind", "html_content",
     "prompt_history", "parent_creation_id", "status", "published_post_id",
-    "created_at", "updated_at",
+    "created_at", "updated_at", "html_r2_key",
 ]
 
 _JOB_COLS = [
@@ -205,6 +215,12 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
         # Migration-light: total play count surfaced on the feed card.
         try:
             cursor.execute("ALTER TABLE creations ADD COLUMN play_count INTEGER NOT NULL DEFAULT 0")
+        except Exception:
+            pass
+        # Migration-light: private R2 object key for artifact HTML. html_content
+        # remains as a legacy fallback when R2 is disabled or unavailable.
+        try:
+            cursor.execute("ALTER TABLE creations ADD COLUMN html_r2_key " + ("VARCHAR(512)" if USE_MYSQL else "TEXT"))
         except Exception:
             pass
         # Migration-light: the full design conversation so the user can return to it.
@@ -402,6 +418,89 @@ def _row_to_dict(row: Any) -> Dict[str, Any]:
     return {col: row[i] for i, col in enumerate(_CREATION_COLS)}
 
 
+def artifact_r2_key(creation_id: int, updated_at: Optional[str] = None) -> str:
+    stamp = re.sub(r"[^0-9A-Za-z]+", "-", updated_at or _now()).strip("-") or uuid.uuid4().hex
+    return f"private/creations/{int(creation_id)}/{stamp}.html"
+
+
+def _artifact_cache_key(creation_id: int, updated_at: Optional[str]) -> str:
+    return f"cpbuild:html:{creation_id}:{updated_at or 'unknown'}"
+
+
+def _cache_artifact_html(creation_id: int, updated_at: Optional[str], html: str) -> None:
+    if not html or len(html.encode("utf-8", errors="ignore")) > MAX_HTML_BYTES:
+        return
+    try:
+        from redis_cache import cache
+        cache.set(_artifact_cache_key(creation_id, updated_at), html, ttl=300)
+    except Exception:
+        pass
+
+
+def _cached_artifact_html(creation_id: int, updated_at: Optional[str]) -> Optional[str]:
+    try:
+        from redis_cache import cache
+        hit = cache.get(_artifact_cache_key(creation_id, updated_at))
+        return hit if isinstance(hit, str) else None
+    except Exception:
+        return None
+
+
+def _delete_cached_artifact_html(creation_id: int, updated_at: Optional[str]) -> None:
+    try:
+        from redis_cache import cache
+        cache.delete(_artifact_cache_key(creation_id, updated_at))
+    except Exception:
+        pass
+
+
+def store_artifact_html(creation_id: int, html: str, *, updated_at: Optional[str] = None) -> Optional[str]:
+    """Upload artifact HTML to private R2. Returns the object key on success."""
+    try:
+        from backend.services.r2_storage import upload_private_bytes_to_r2
+        key = artifact_r2_key(creation_id, updated_at)
+        ok = upload_private_bytes_to_r2(html.encode("utf-8"), key, content_type="text/html; charset=utf-8")
+        if ok:
+            _cache_artifact_html(creation_id, updated_at, html)
+            return key
+    except Exception:
+        logger.warning("builder: R2 artifact upload failed for creation %s", creation_id, exc_info=True)
+    return None
+
+
+def load_artifact_html(creation_id: int, html_r2_key: Optional[str], *,
+                       updated_at: Optional[str] = None) -> Optional[str]:
+    if not html_r2_key:
+        return None
+    cached = _cached_artifact_html(creation_id, updated_at)
+    if cached is not None:
+        return cached
+    try:
+        from backend.services.r2_storage import download_bytes_from_r2
+        raw = download_bytes_from_r2(str(html_r2_key))
+        if raw is None:
+            return None
+        html = raw.decode("utf-8", errors="replace")
+        _cache_artifact_html(creation_id, updated_at, html)
+        return html
+    except Exception:
+        logger.warning("builder: R2 artifact download failed for creation %s", creation_id, exc_info=True)
+        return None
+
+
+def delete_artifact_html(html_r2_key: Optional[str], *, creation_id: Optional[int] = None,
+                         updated_at: Optional[str] = None) -> None:
+    if creation_id is not None:
+        _delete_cached_artifact_html(int(creation_id), updated_at)
+    if not html_r2_key:
+        return
+    try:
+        from backend.services.r2_storage import delete_from_r2
+        delete_from_r2(str(html_r2_key))
+    except Exception:
+        logger.debug("builder: R2 artifact delete skipped for key %s", html_r2_key, exc_info=True)
+
+
 def _job_row_to_dict(row: Any) -> Dict[str, Any]:
     if hasattr(row, "keys"):
         return {k: row[k] for k in row.keys()}
@@ -455,14 +554,16 @@ _CONVERSE_BASE = (
     "listing features, options, or a build plan. Avoid long walls of text. Default to 2-4 short chunks unless the user "
     "explicitly asks for depth.\n"
     "- KNOW WHAT YOUR CREATIONS CAN DO, and offer these proactively: they CAN show REAL PHOTOS pulled from the web "
-    "(actual photos of places, food, landmarks — perfect for guides & recommendations); SAVE each player's progress / "
-    "state / preferences so they can pick up where they left off; and track COMMUNITY scores, ratings and leaderboards "
-    "across the people in the community, plus play counts. So 'pull in real Lisbon photos', 'save my progress', and "
-    "'add a leaderboard' are all YES — affirm them and build them; never say you can't do these.\n"
+    "(actual photos of places, food, landmarks — perfect for guides & recommendations); pull RECENT PUBLIC DATA through "
+    "vetted built-in connectors (weather/forecast, country facts, Wikipedia summaries, recipes/cocktails, Pokemon, jokes, "
+    "facts, advice, tech news, and sports fixtures/results such as yesterday's scores or tomorrow's games); SAVE each player's "
+    "progress / state / preferences so they can pick up where they left off; and track COMMUNITY scores, ratings and leaderboards "
+    "across the people in the community, plus play counts. So 'pull in real Lisbon photos', 'show tomorrow's World Cup fixtures', "
+    "'save my progress', and 'add a leaderboard' are all YES — affirm them and build them; never say you can't do these.\n"
     "- Be HONEST about REAL limitations and explain them plainly. Front-end-only creations CANNOT have: real user "
     "accounts/logins, payments, sending email or texts, connecting to ARBITRARY external or private services, running "
-    "their own database/backend, or native phone features (camera, GPS, contacts). The built-in real-photo, save, and "
-    "leaderboard features above DO work — never refuse those. If the user asks for something genuinely out of reach, "
+    "their own database/backend, or native phone features (camera, GPS, contacts). Built-in real-photo, vetted public-data, "
+    "save, and leaderboard features above DO work — never refuse those. If the user asks for something genuinely out of reach, "
     "say so kindly and offer the closest thing you CAN make.\n"
 )
 _CONVERSE_AGENT = (
@@ -632,6 +733,18 @@ def create_creation(*, username: str, community_id: int, prompt: str,
         )
         creation_id = c.lastrowid
         conn.commit()
+    html_r2_key = store_artifact_html(int(creation_id), html, updated_at=now)
+    if html_r2_key:
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                c.execute(
+                    f"UPDATE creations SET html_r2_key = {ph}, html_content = {ph} WHERE id = {ph}",
+                    (html_r2_key, "", creation_id),
+                )
+                conn.commit()
+        except Exception:
+            logger.warning("builder: failed to store R2 artifact key for creation %s", creation_id, exc_info=True)
     return {"id": creation_id, "title": resolved_title, "html": html, "status": "draft", "model": model_used}
 
 
@@ -643,13 +756,21 @@ def get_creation(creation_id: int) -> Optional[Dict[str, Any]]:
             f"""
             SELECT id, community_id, created_by, title, kind, html_content,
                    prompt_history, parent_creation_id, status, published_post_id,
-                   created_at, updated_at
+                   created_at, updated_at, html_r2_key
             FROM creations WHERE id = {ph}
             """,
             (creation_id,),
         )
         row = c.fetchone()
-    return _row_to_dict(row) if row else None
+    if not row:
+        return None
+    out = _row_to_dict(row)
+    html = load_artifact_html(
+        int(out["id"]), out.get("html_r2_key"), updated_at=str(out.get("updated_at") or "")
+    )
+    if html is not None:
+        out["html_content"] = html
+    return out
 
 
 def iterate_creation(*, creation_id: int, username: str, message: str, tier: str = "fast") -> Dict[str, Any]:
@@ -662,13 +783,19 @@ def iterate_creation(*, creation_id: int, username: str, message: str, tier: str
     history = _append_history(row.get("prompt_history"), message)
     now = _now()
     ph = get_sql_placeholder()
+    old_r2_key = row.get("html_r2_key")
+    html_r2_key = store_artifact_html(int(creation_id), html, updated_at=now)
+    stored_html = "" if html_r2_key else html
+    stored_r2_key = html_r2_key if html_r2_key else None
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute(
-            f"UPDATE creations SET html_content = {ph}, prompt_history = {ph}, updated_at = {ph} WHERE id = {ph}",
-            (html, history, now, creation_id),
+            f"UPDATE creations SET html_content = {ph}, html_r2_key = {ph}, prompt_history = {ph}, updated_at = {ph} WHERE id = {ph}",
+            (stored_html, stored_r2_key, history, now, creation_id),
         )
         conn.commit()
+    if old_r2_key and old_r2_key != stored_r2_key:
+        delete_artifact_html(old_r2_key)
     return {"id": creation_id, "title": row.get("title"), "html": html, "status": row.get("status"), "model": model_used}
 
 
@@ -1145,7 +1272,7 @@ def delete_creation(username: str, creation_id: int) -> Tuple[Dict[str, Any], in
         with get_db_connection() as conn:
             c = conn.cursor()
             c.execute(
-                f"SELECT id, created_by, published_post_id FROM creations WHERE id = {ph}",
+                f"SELECT id, created_by, published_post_id, html_r2_key, updated_at FROM creations WHERE id = {ph}",
                 (creation_id,),
             )
             row = c.fetchone()
@@ -1153,6 +1280,8 @@ def delete_creation(username: str, creation_id: int) -> Tuple[Dict[str, Any], in
                 return {"success": False, "error": "not_found"}, 404
 
             published_post_id = _cell(row, 2)
+            html_r2_key = _cell(row, 3)
+            updated_at = _cell(row, 4)
             if published_post_id is not None:
                 post_id = int(published_post_id)
                 _try_delete_post_dependents(c, ph, post_id)
@@ -1162,6 +1291,8 @@ def delete_creation(username: str, creation_id: int) -> Tuple[Dict[str, Any], in
             c.execute(f"DELETE FROM builder_jobs WHERE creation_id = {ph}", (creation_id,))
             c.execute(f"DELETE FROM creations WHERE id = {ph}", (creation_id,))
             conn.commit()
+
+        delete_artifact_html(html_r2_key, creation_id=creation_id, updated_at=str(updated_at or ""))
 
         try:
             from redis_cache import cache

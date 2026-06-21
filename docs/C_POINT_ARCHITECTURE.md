@@ -118,6 +118,7 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 | `platform_activity_digest.py` | Digest builder for `platform_activity` blueprint. |
 | `admin_metrics.py` | Admin dashboard metrics computation. |
 | `builder.py` | Steve Build creation service: artifact generation, async build jobs, community-scoped creation data, completion notifications, runtime/host-control policy. See [`STEVE_BUILD.md`](STEVE_BUILD.md). |
+| `builder_feeds.py` | Steve Build public-data connector registry (`CPoint.data`): vetted keyless/free public sources, global caching, budgets, stale-while-revalidate, and circuit-breaker fallbacks for sandboxed creations. |
 
 ### Entitlements & AI usage (revenue-sensitive)
 

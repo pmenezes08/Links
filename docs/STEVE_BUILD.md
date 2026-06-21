@@ -41,7 +41,7 @@ Core service:
 
 Storage:
 
-- `creations` stores generated HTML, owner, community, status, prompt history, and chat history.
+- `creations` stores owner, community, status, prompt history, chat history, and artifact metadata. New/updated artifact HTML is uploaded to private Cloudflare R2 via `html_r2_key`; `html_content` remains a MySQL fallback for legacy rows or R2-disabled environments.
 - `builder_jobs` stores async build/iterate jobs so builds continue if the user leaves, locks the phone, or switches apps.
 - `creation_data` stores host-brokered scores, ratings, saves, and related creation data.
 
@@ -109,10 +109,49 @@ Supported capabilities:
 - `CPoint.save(key, value)` - save per-player progress/state/preferences (`value` is any JSON).
 - `CPoint.load(key)` - load per-player saved state; resolves to `{value}` (`value` is `null` when nothing is saved).
 - `CPoint.images(query, opts)` - fetch real freely licensed web photos.
+- `CPoint.data(connector, params)` - fetch recent public data from vetted host-side connectors.
 - `CPoint.gameOver(opts)` - signal the native result overlay.
 - `CPoint.hasPersistence` - `true` whenever the bridge is injected, so a creation can feature-detect save support.
+- `CPoint.hasData` - `true` whenever brokered public-data connectors are available.
 
 Important: generated creations must not call arbitrary private services or invent backend APIs. The host bridge is the approved boundary.
+
+### Public data connectors
+
+`CPoint.data(connector, params)` calls `GET /api/builder/<id>/data/feed`. The sandbox passes a connector ID and typed params; the backend constructs every upstream URL server-side. Raw URLs are never accepted.
+
+Supported connectors:
+
+| Connector | Typical params | Source | Cache |
+| --- | --- | --- | --- |
+| `weather` | `{place}` or `{lat, lon}` | Open-Meteo | ~15 min |
+| `country` | `{name}` or `{code}` | REST Countries | ~24 h |
+| `wikipedia` | `{search}` or `{title}` | Wikimedia REST | ~1 h |
+| `recipe` | `{search}` or `{random:true}` | TheMealDB | batched/random cache |
+| `cocktail` | `{search}` or `{random:true}` | TheCocktailDB | batched/random cache |
+| `pokemon` | `{name}` or `{id}` | PokeAPI | ~24 h |
+| `joke` | `{category}` | JokeAPI | batched/random cache |
+| `fact` | `{random:true}` | Useless Facts | batched/random cache |
+| `advice` | `{search}` or `{}` | Advice Slip | batched/random cache |
+| `technews` | `{feed:'top'|'new'|'best', limit}` | Hacker News | ~5 min |
+| `sports` | `{day:'YYYY-MM-DD', sport:'Soccer'}` or `{leagueId, mode:'next'|'past'}` | TheSportsDB | ~5 min |
+
+Connector rules:
+
+- Data is **recent**, not millisecond-live. Sports is for fixtures/results ("yesterday's scores", "tomorrow's games"), not second-by-second scoreboards.
+- Every response includes `attribution`; generated creations must display it near the data.
+- Connectors are cached globally because the data is public. `cpfeed:cache:*` holds fresh data, `cpfeed:stale:*` holds last-good data for stale-while-revalidate fallbacks, `cpfeed:budget:*` tracks per-connector budget windows, and `cpfeed:cb:*` tracks circuit-breaker cooldowns.
+- Random connectors return a batch (`data.items`) so the artifact can pick one client-side; this prevents one upstream call per player.
+- Redis keys all carry TTLs. Budget/circuit counters should not be evicted under memory pressure; avoid a shared-cache eviction policy that can silently drop those counters.
+
+### Artifact storage
+
+Creation HTML is still returned through `GET /api/builder/<id>` as `creation.html`, but the backing store is private R2 when available:
+
+- Write path: after create/iterate, `backend.services.builder.store_artifact_html` uploads the HTML to R2 with a key like `private/creations/<id>/<updated_at>.html`, then stores that key in `creations.html_r2_key` and clears the inline blob.
+- Read path: `get_creation` resolves `html_r2_key` through `download_bytes_from_r2`, with a short Redis body cache keyed by creation ID and `updated_at`; if R2 is unavailable or the key is absent, it falls back to `html_content`.
+- Delete path: `delete_creation` deletes the private R2 object, `creation_data`, related `builder_jobs`, and the published post/dependents.
+- Backfill: `scripts/backfill_builder_artifacts_to_r2.py` migrates legacy inline rows in batches and is idempotent.
 
 ### Persistence contract (save slots)
 

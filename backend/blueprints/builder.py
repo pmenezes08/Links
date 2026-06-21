@@ -8,12 +8,14 @@ Builder deliberately does NOT use the Steve credit-pool gate.
 
 from __future__ import annotations
 
+import json
 import logging
 
 from flask import Blueprint, jsonify, request, session
 
 from backend.services import ai_usage
 from backend.services import builder as builder_svc
+from backend.services import builder_feeds
 from backend.services.cron_auth import cron_authed
 from backend.services.entitlements_gate import gate_builder_or_reason
 from backend.services.community_access import can_view_community_content
@@ -392,6 +394,24 @@ def _data_write_ok(username: str, creation_id: int) -> bool:
     return True
 
 
+def _data_read_ok(username: str, creation_id: int, connector: str = "") -> bool:
+    """Best-effort read throttle for brokered public data polling."""
+    try:
+        from redis_cache import cache
+        safe_connector = (connector or "feed")[:32]
+        key = f"cpfeed:rl:{username}:{creation_id}:{safe_connector}"
+        if hasattr(cache, "incr"):
+            count = cache.incr(key, ttl=60)
+        else:
+            count = int(cache.get(key) or 0) + 1
+            cache.set(key, count, ttl=60)
+        if count is not None and int(count) >= 120:  # ~120 reads / 60s / connector / creation
+            return False
+    except Exception:
+        pass
+    return True
+
+
 @builder_bp.route("/api/builder/<int:creation_id>/data/score", methods=["POST"])
 def builder_data_score(creation_id: int):
     username = session.get("username")
@@ -509,6 +529,35 @@ def builder_data_images(creation_id: int):
     except Exception:
         pass
     return jsonify({"success": True, "images": images})
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/data/feed", methods=["GET"])
+def builder_data_feed(creation_id: int):
+    """Brokered public data connector. The artifact passes a connector id, never a URL."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    _creation, community_id = _resolve_accessible_creation(creation_id, username)
+    if community_id is None:
+        return jsonify({"success": False, "error": "not_found"}), 404
+
+    connector = (request.args.get("connector") or "").strip().lower()
+    raw_params = request.args.get("params") or "{}"
+    try:
+        params = json.loads(raw_params) if raw_params else {}
+    except Exception:
+        return jsonify({"success": False, "error": "invalid_params"}), 400
+    if not isinstance(params, dict):
+        return jsonify({"success": False, "error": "invalid_params"}), 400
+
+    if not _data_read_ok(username, creation_id, connector):
+        return jsonify({"success": False, "error": "rate_limited", "data": None}), 429
+
+    result = builder_feeds.fetch_feed(connector, params)
+    status = 200
+    if not result.get("success") and result.get("error") in {"unknown_connector", "invalid_params"}:
+        status = 400
+    return jsonify(result), status
 
 
 @builder_bp.route("/api/builder/<int:creation_id>/data/leaderboard", methods=["GET"])

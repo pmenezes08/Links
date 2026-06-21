@@ -103,6 +103,9 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
         } else if (d.op === 'images') {
           const q = new URLSearchParams({ q: String(p.q || ''), limit: String(p.limit || 8) })
           res = await fetch(`${base}/images?${q.toString()}`, { credentials: 'include' })
+        } else if (d.op === 'feed') {
+          const q = new URLSearchParams({ connector: String(p.connector || ''), params: JSON.stringify(p.params || {}) })
+          res = await fetch(`${base}/feed?${q.toString()}`, { credentials: 'include' })
         } else {
           reply(e.source, rid, false, undefined, 'unknown_op'); return
         }

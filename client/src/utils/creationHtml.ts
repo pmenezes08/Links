@@ -84,6 +84,8 @@ const DATA_BRIDGE = `<script>(function(){
     // Real, freely-licensed web photos for a query -> {images:[{url,full,title}]}.
     // Use 'url' directly as an <img> src. Fetch at runtime; don't hard-code URLs.
     images:function(query,opts){return call('images',{q:query,limit:(opts&&opts.limit)||8});},
+    // Recent public data via vetted host-side connectors -> {data, attribution}.
+    data:function(connector,params){return call('feed',{connector:connector,params:params||{}});},
     // Signal the run/round ended — the host shows a native result screen
     // (score count-up, top scores, rate, play again, share). Pass the score
     // for a game; call with no args for a quiz/result with no number.
@@ -92,6 +94,7 @@ const DATA_BRIDGE = `<script>(function(){
   // Feature flag so a creation can detect brokered persistence is available
   // (it always is when this bridge is injected) and show/hide save UI safely.
   window.CPoint.hasPersistence=true;
+    window.CPoint.hasData=true;
 })();<\/script>`
 
 export function prepareCreationHtml(html: string, opts: { dataBridge?: boolean; errorReporter?: boolean } = {}): string {

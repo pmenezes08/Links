@@ -24,10 +24,18 @@ describe('prepareCreationHtml', () => {
     expect(out).toContain('hasPersistence=true')
   })
 
+  it('injects the CPoint public data bridge when dataBridge is on', () => {
+    const out = prepareCreationHtml(HTML, { dataBridge: true })
+    expect(out).toContain('data:function')
+    expect(out).toContain("call('feed'")
+    expect(out).toContain('hasData=true')
+  })
+
   it('omits the data bridge entirely when dataBridge is off', () => {
     const out = prepareCreationHtml(HTML, { dataBridge: false })
     expect(out).not.toContain('window.CPoint')
     expect(out).not.toContain('hasPersistence')
+    expect(out).not.toContain('hasData')
   })
 
   it('injects the error reporter only when requested', () => {

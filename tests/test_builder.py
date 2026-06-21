@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from backend.services.database import get_db_connection, get_sql_placeholder
-from backend.services import ai_usage, builder
+from backend.services import ai_usage, builder, builder_feeds
 from backend.services.entitlements_gate import gate_builder_or_reason
 
 pytestmark = pytest.mark.usefixtures("mysql_dsn")
@@ -848,3 +848,207 @@ def test_route_delete_creation_owner_success(builder_client, monkeypatch):
     assert resp.status_code == 200
     assert resp.get_json()["success"] is True
     assert builder.get_creation(crid) is None
+
+
+# ── CPoint public feeds: brokered, cached, defensive connectors ──────────────
+
+class _FakeFeedCache:
+    def __init__(self):
+        self.values = {}
+
+    def get(self, key):
+        return self.values.get(key)
+
+    def set(self, key, value, ttl=60):
+        self.values[key] = value
+        return True
+
+    def delete(self, key):
+        self.values.pop(key, None)
+        return True
+
+    def incr(self, key, ttl=60):
+        self.values[key] = int(self.values.get(key) or 0) + 1
+        return self.values[key]
+
+
+def test_feed_unknown_connector_rejected():
+    assert builder_feeds.fetch_feed("not-real", {})["error"] == "unknown_connector"
+
+
+def test_feed_weather_normalizes_and_caches(monkeypatch):
+    fake_cache = _FakeFeedCache()
+    monkeypatch.setattr(builder_feeds, "_cache", lambda: fake_cache)
+    calls = []
+
+    def fake_json(url, *, params=None):
+        calls.append((url, params))
+        if "geocoding" in url:
+            return {"results": [{"name": "Lisbon", "country": "Portugal", "latitude": 38.72, "longitude": -9.14}]}
+        return {
+            "current_weather": {"temperature": 22, "weathercode": 1},
+            "daily": {
+                "time": ["2026-06-21"],
+                "weather_code": [1],
+                "temperature_2m_max": [26],
+                "temperature_2m_min": [18],
+                "precipitation_probability_max": [10],
+            },
+        }
+
+    monkeypatch.setattr(builder_feeds, "_http_get_json", fake_json)
+
+    first = builder_feeds.fetch_feed("weather", {"place": "Lisbon"})
+    second = builder_feeds.fetch_feed("weather", {"place": "Lisbon"})
+
+    assert first["success"] is True
+    assert first["data"]["location"]["name"] == "Lisbon, Portugal"
+    assert first["data"]["daily"][0]["tempMaxC"] == 26
+    assert second["cached"] is True
+    assert len(calls) == 2  # geocode + forecast once; second result came from cache
+
+
+def test_feed_budget_serves_stale(monkeypatch):
+    fake_cache = _FakeFeedCache()
+    stale = {"success": True, "connector": "sports", "data": {"events": []}, "attribution": "Data by TheSportsDB"}
+    fake_cache.set(builder_feeds._stale_key("sports", {"day": "2026-06-21"}), stale)
+    monkeypatch.setattr(builder_feeds, "_cache", lambda: fake_cache)
+    spec = builder_feeds.CONNECTORS["sports"]
+    monkeypatch.setitem(builder_feeds.CONNECTORS, "sports", builder_feeds.Connector(
+        ttl=spec.ttl, stale_ttl=spec.stale_ttl, budget_limit=0,
+        attribution=spec.attribution, fetch=spec.fetch,
+    ))
+
+    out = builder_feeds.fetch_feed("sports", {"day": "2026-06-21"})
+    assert out["success"] is True
+    assert out["stale"] is True
+    assert out["degraded"] == "budget_exceeded"
+    monkeypatch.setitem(builder_feeds.CONNECTORS, "sports", spec)
+
+
+def test_feed_sports_normalizes_fixtures(monkeypatch):
+    monkeypatch.setattr(builder_feeds, "_cache", lambda: None)
+    monkeypatch.setattr(builder_feeds, "_http_get_json", lambda *_a, **_k: {
+        "events": [{
+            "idEvent": "1", "dateEvent": "2026-06-21", "strLeague": "World Cup",
+            "strHomeTeam": "Portugal", "strAwayTeam": "Germany",
+            "intHomeScore": "2", "intAwayScore": "1", "strStatus": "Match Finished",
+        }]
+    })
+
+    out = builder_feeds.fetch_feed("sports", {"day": "2026-06-21"})
+    assert out["success"] is True
+    assert out["data"]["events"][0]["homeTeam"] == "Portugal"
+    assert out["data"]["events"][0]["homeScore"] == "2"
+
+
+def test_feed_route_requires_auth(builder_client, monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+
+    resp = builder_client.get(f"/api/builder/{crid}/data/feed?connector=weather&params=%7B%7D")
+    assert resp.status_code == 401
+
+
+def test_feed_route_owner_success(builder_client, monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+    monkeypatch.setattr(builder_bp_mod, "_data_read_ok", lambda *_a, **_k: True)
+    monkeypatch.setattr(builder_bp_mod.builder_feeds, "fetch_feed", lambda connector, params: {
+        "success": True, "connector": connector, "data": params, "attribution": "Test",
+    })
+    _login(builder_client, "maker")
+
+    resp = builder_client.get(f"/api/builder/{crid}/data/feed?connector=weather&params=%7B%22place%22%3A%22Lisbon%22%7D")
+    body = resp.get_json()
+    assert resp.status_code == 200
+    assert body["success"] is True
+    assert body["connector"] == "weather"
+    assert body["data"]["place"] == "Lisbon"
+
+
+def test_feed_route_read_rate_limited(builder_client, monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+    monkeypatch.setattr(builder_bp_mod, "_data_read_ok", lambda *_a, **_k: False)
+    _login(builder_client, "maker")
+
+    resp = builder_client.get(f"/api/builder/{crid}/data/feed?connector=weather&params=%7B%7D")
+    assert resp.status_code == 429
+    assert resp.get_json()["error"] == "rate_limited"
+
+
+# ── R2 artifact storage: dual-read, delete cleanup, backfill ─────────────────
+
+def test_create_creation_uses_r2_key_when_upload_succeeds(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    monkeypatch.setattr(builder, "store_artifact_html", lambda creation_id, html, *, updated_at=None: f"private/creations/{creation_id}/x.html")
+    monkeypatch.setattr(builder, "load_artifact_html", lambda creation_id, key, *, updated_at=None: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a game")
+    row = builder.get_creation(int(created["id"]))
+
+    assert row["html_r2_key"].endswith("/x.html")
+    assert row["html_content"] == _FAKE_HTML
+
+
+def test_iterate_creation_clears_old_r2_key_when_upload_fails(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    monkeypatch.setattr(builder, "store_artifact_html", lambda creation_id, html, *, updated_at=None: "private/old.html")
+    monkeypatch.setattr(builder, "load_artifact_html", lambda creation_id, key, *, updated_at=None: _FAKE_HTML)
+    deleted = []
+    monkeypatch.setattr(builder, "delete_artifact_html", lambda key, **_k: deleted.append(key))
+    _make_user("maker")
+    cid = _make_community()
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a game")
+
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: "<!doctype html><html><body>v2</body></html>")
+    monkeypatch.setattr(builder, "store_artifact_html", lambda creation_id, html, *, updated_at=None: None)
+    updated = builder.iterate_creation(creation_id=int(created["id"]), username="maker", message="v2")
+    row = builder.get_creation(int(created["id"]))
+
+    assert "v2" in updated["html"]
+    assert row["html_r2_key"] is None
+    assert "v2" in row["html_content"]
+    assert deleted == ["private/old.html"]
+
+
+def test_delete_creation_removes_r2_artifact(monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"UPDATE creations SET html_r2_key = {ph} WHERE id = {ph}", ("private/creations/test.html", crid))
+        conn.commit()
+    deleted = []
+    monkeypatch.setattr(builder, "delete_artifact_html", lambda key, **kw: deleted.append((key, kw)))
+
+    result, status = builder.delete_creation("maker", crid)
+
+    assert status == 200 and result["success"] is True
+    assert deleted and deleted[0][0] == "private/creations/test.html"
+
+
+def test_r2_backfill_is_idempotent(monkeypatch):
+    from scripts import backfill_builder_artifacts_to_r2
+
+    _make_user("maker")
+    cid = _make_community()
+    monkeypatch.setattr(builder, "store_artifact_html", lambda creation_id, html, *, updated_at=None: None)
+    crid = _make_creation("maker", cid, monkeypatch)
+    monkeypatch.setattr(builder, "store_artifact_html", lambda creation_id, html, *, updated_at=None: f"private/creations/{creation_id}/backfilled.html")
+
+    migrated = backfill_builder_artifacts_to_r2.run(limit=10)
+    migrated_again = backfill_builder_artifacts_to_r2.run(limit=10)
+    row = builder.get_creation(crid)
+
+    assert migrated == 1
+    assert migrated_again == 0
+    assert row["html_r2_key"].endswith("backfilled.html")

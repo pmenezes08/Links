@@ -2000,12 +2000,14 @@ def _seed_pages() -> List[Dict[str, Any]]:
                         {"title": "Monolith reduction — large KB / Steve / networking services", "area": "backend", "phase": "later", "status": "not_started", "effort": "L", "target_quarter": "2027-Q1", "notes": "Split `knowledge_base.py`, `steve_knowledge_base.py`, `networking_retrieval.py` — see `docs/MONOLITH_REDUCTION_ROADMAP.md`."},
                         {"title": "Monolith reduction — Flask bodybuilding_app migration", "area": "backend", "phase": "later", "status": "not_started", "effort": "XL", "target_quarter": "2027-Q1", "notes": "Move legacy `@app.route` to blueprints when touching an area. `docs/MONOLITH_REDUCTION_ROADMAP.md`."},
                         {"title": "Steve conversation memory and recursive learning for chats", "area": "Steve", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q4", "notes": "Bounded summaries, episodic memory events, and RAG on top of existing steve_dm_reply.py bounded context and steve_knowledge_base synthesis. Related to chat surfaces. See docs/MONOLITH_REDUCTION_ROADMAP.md § Chat UI kernel and docs/STEVE_AND_VOICE_NOTES.md. Test with AI usage counters.", "test": "steve:chat-memory", "test_status": "not_run"},
-                        {"title": "Steve Build — R2-backed artifact storage", "area": "infra", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q4", "test": "builder:artifact-storage", "test_status": "not_run", "notes": "Move generated creation HTML out of inline MySQL MEDIUMTEXT into Cloudflare R2 (sha-keyed, deduped) behind a new `backend/services/builder_artifacts.py` with a MEDIUMTEXT fallback for small/legacy artifacts. Phase 3 scalability foundation for Steve Build (see `docs/STEVE_BUILD.md`). Keeps the DB row small and lets the feed/playback read artifacts via CDN."},
+                        {"title": "Steve Build — R2-backed artifact storage", "area": "infra", "phase": "now", "status": "in_progress", "effort": "L", "target_quarter": "2026-Q4", "test": "builder:artifact-storage", "test_status": "not_run", "notes": "Move generated creation HTML out of inline MySQL MEDIUMTEXT into private Cloudflare R2 via `creations.html_r2_key`, served through the existing authenticated `GET /api/builder/<id>` route with `html_content` as the legacy/R2-disabled fallback. Includes idempotent backfill script and delete cleanup. See `docs/STEVE_BUILD.md`."},
                         {"title": "Steve Build — feed read-path decoupling (thumbnail + ETag)", "area": "backend", "phase": "next", "status": "not_started", "effort": "M", "target_quarter": "2026-Q4", "test": "builder:feed-readpath", "test_status": "not_run", "notes": "Stop loading full creation HTML into community feed cards. Serve a lightweight thumbnail/poster + metadata and gate playback behind a tap, with ETag/conditional GETs on the artifact. Pairs with R2 artifact storage. `docs/STEVE_BUILD.md`."},
                         {"title": "Steve Build — isolated *.builds.c-point.co sandbox origin", "area": "infra", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2027-Q1", "test": "builder:sandbox-origin", "test_status": "not_run", "notes": "Serve creations from a dedicated origin (`*.builds.c-point.co`) instead of an opaque `srcDoc` iframe, with a `postMessage` host bridge replacing the inline `window.CPoint` injection. Hardens isolation before any public release. `docs/STEVE_BUILD.md` § Sandbox And Runtime."},
                         {"title": "Steve Build — builder_jobs retention/cleanup cron", "area": "backend", "phase": "next", "status": "not_started", "effort": "S", "target_quarter": "2026-Q4", "test": "builder:jobs-retention", "test_status": "not_run", "notes": "Scheduled job under `/api/cron/*` that prunes terminal `builder_jobs` rows older than ~30 days so the table doesn't grow unbounded. Complements the `/api/cron/builder/sweep` reaper (which only reclaims stuck jobs). `docs/cloud-scheduler-cron.md`."},
                         {"title": "Steve Build — creator monetization marketplace", "area": "Subscriptions", "phase": "exploring", "status": "not_started", "effort": "XL", "target_quarter": "TBD", "test": "builder:creator-monetization", "test_status": "not_run", "notes": "Let creators earn from their Steve Build creations: paid unlocks / tips / packs, Stripe Connect onboarding + payouts, a C-Point platform fee, moderation + refunds, tax/KYC, and quality thresholds before a creation can be sold. Separate future epic — not part of the save-slots / My Builds work. `docs/STEVE_BUILD.md` § Roadmap."},
-                        {"title": "Steve Build — real-time information bridge", "area": "backend", "phase": "exploring", "status": "not_started", "effort": "L", "target_quarter": "TBD", "test": "builder:realtime-info", "test_status": "not_run", "notes": "Explore a controlled `window.CPoint` host bridge for apps that need live or frequently refreshed information. Prefer whitelisted server-brokered polling/ETag reads first; do not let sandboxed creations call private platform APIs directly. Needs product scope, privacy model, rate limits, cache strategy, and prompt rules before implementation."},
+                        {"title": "Steve Build — real-time information bridge", "area": "backend", "phase": "now", "status": "in_progress", "effort": "L", "target_quarter": "2026-Q4", "test": "builder:realtime-info", "test_status": "not_run", "notes": "Implement `CPoint.data(connector, params)` as a controlled host bridge for keyless/free public data: weather, country facts, Wikipedia, recipes/cocktails, Pokemon, jokes/facts/advice, tech news, and TheSportsDB fixtures/results. No arbitrary URLs; connectors are server-built, cached, budgeted, circuit-broken, and stale-while-revalidate. See `docs/STEVE_BUILD.md`."},
+                        {"title": "Steve Build — connector cache and provider hardening", "area": "backend", "phase": "now", "status": "in_progress", "effort": "M", "target_quarter": "2026-Q4", "test": "builder:realtime-info", "test_status": "not_run", "notes": "Defensive layer for public-data connectors: `cpfeed:*` Redis prefixes, read throttles, per-connector budget windows, random-result batching, stale last-good data, and circuit-breaker cooldowns so provider outages or free-tier exhaustion do not break live apps."},
+                        {"title": "Steve Build — scale foundations after real-time/R2", "area": "infra", "phase": "later", "status": "not_started", "effort": "L", "target_quarter": "TBD", "test": "builder:scale-foundations", "test_status": "not_run", "notes": "Deferred until traffic/metrics justify cost: Redis managed HA/read replicas, signed short-lived CDN URLs for artifact bytes, leaderboard write-buffering, Cloud SQL read replicas, and LLM cost/revenue wiring."},
                         {"title": "Steve Build — community notification bridge", "area": "backend", "phase": "exploring", "status": "not_started", "effort": "L", "target_quarter": "TBD", "test": "builder:community-notifications", "test_status": "not_run", "notes": "Explore how creations can request community-facing notifications without crossing trust boundaries. Preferred direction is a native host confirmation flow that creates a real community post/announcement, reusing existing notification fan-out; direct iframe-to-notification sending is out of scope for safety/abuse reasons."},
                         {"title": "Steve — community-owned agents (owners create/configure)", "area": "Steve", "phase": "exploring", "status": "not_started", "effort": "L", "target_quarter": "TBD", "notes": "Community owners instantiate one or more Steve-style agents for their space: display name and persona/system instructions, tool policy (community KB vs scoped web/topic search), optional knowledge pinning, default surfaces (DM with agent, group @mention routing, optional feed autopilot). Spend debits against the Paid community Steve package pool with per-agent caps; ai_usage_log records need a stable agent/instance id. Depends on entitlement + abuse guardrails (rate limits, mod review queue for first publish). Complements today's single-platform Steve baseline.", "test": "steve:community-agents", "test_status": "not_run"},
                         {"title": "Steve — KB-backed model costs, entitlement output caps, and prompt policy", "area": "Steve", "phase": "now", "status": "completed", "effort": "M", "target_quarter": "2026-Q2", "notes": "Shipped May 2026: `backend/services/steve_model_config.py` (official Grok 4.3 $/M + cached input + web/tool-call $ via KB), `steve_prompt_policy.py` (adaptive substantive-reply formatting, no visible chain-of-thought), DM/group/feed wiring to KB-backed `max_output_tokens_*` and context caps, richer `ai_usage` logging. KB seeds updated (Credits & Entitlements, Hard Limits, community Steve package, Networking AI pricing fields). Docs: `docs/STEVE_AND_VOICE_NOTES.md`, `PRODUCT_JOURNEYS.md`, `C_POINT_ARCHITECTURE.md`. Staging: `origin/staging` + Cloud Run `cpoint-app-staging` build. Reseed KB in admin after deploy so MySQL picks up seed-only field deltas.", "test": "pytest:steve_model_config+prompt_policy", "test_status": "successful"},
@@ -2420,6 +2422,47 @@ def _seed_pages() -> List[Dict[str, Any]]:
                             ),
                             "runner": "manual",
                             "target": "QA_CHECKLIST.md §17",
+                            "status": "not_run",
+                            "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                        {
+                            "id": "builder:realtime-info",
+                            "feature": "Steve Builder — public data connectors",
+                            "behaviour": (
+                                "`CPoint.data` exposes only vetted connector IDs (no arbitrary URLs), "
+                                "normalizes weather/country/Wikipedia/recipe/cocktail/Pokemon/joke/fact/"
+                                "advice/tech-news/sports data, displays attribution, and degrades through "
+                                "read throttles, budgets, stale last-good data, and circuit breakers."
+                            ),
+                            "runner": "pytest+manual",
+                            "target": "tests/test_builder.py + QA_CHECKLIST.md §17.J",
+                            "status": "not_run",
+                            "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                        {
+                            "id": "builder:artifact-storage",
+                            "feature": "Steve Builder — R2 artifact storage",
+                            "behaviour": (
+                                "Generated artifact HTML is stored in private R2 via `html_r2_key` and "
+                                "served through the existing authenticated `GET /api/builder/<id>` route "
+                                "with MySQL `html_content` fallback, cache invalidation on iterate, R2 "
+                                "delete cleanup, and an idempotent backfill path."
+                            ),
+                            "runner": "pytest+manual",
+                            "target": "tests/test_builder.py + QA_CHECKLIST.md §17.K",
+                            "status": "not_run",
+                            "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                        {
+                            "id": "builder:scale-foundations",
+                            "feature": "Steve Builder — deferred scale foundations",
+                            "behaviour": (
+                                "Tracked follow-up for Redis HA/read replicas, signed CDN artifact URLs, "
+                                "leaderboard write-buffering, Cloud SQL read replicas, and LLM cost/revenue "
+                                "wiring once traffic and metrics justify the extra cost."
+                            ),
+                            "runner": "manual",
+                            "target": "Roadmap review",
                             "status": "not_run",
                             "last_run_at": "", "last_run_by": "", "last_run_notes": "",
                         },

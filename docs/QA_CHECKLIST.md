@@ -904,3 +904,18 @@ notifications, or creation playback. Maps to the `runner=manual` Tests row
 - [ ] Delete a published build. Expected: the build disappears from `/builds`, the linked community feed post disappears, and play/preview no longer loads.
 - [ ] Confirm saved data is gone: after delete, a new build with the same save slot cannot load the deleted build's `CPoint.save/load` data.
 - [ ] As a second user, attempt to delete another user's build (or call the endpoint directly). Expected: `404 not_found` / no deletion.
+
+#### §17.J — Public data connectors
+
+- [ ] Build a weather app using a city name (for example Lisbon). Expected: the creation renders immediately with a loading/fallback state, then updates with forecast data and visible `Weather by Open-Meteo` attribution.
+- [ ] Build a sports fixtures/results app using `sports` for a date. Expected: it shows fixtures/results for that day (recent/cached is OK; not second-by-second live scores) and visible TheSportsDB attribution.
+- [ ] Build one random connector app (`joke`, `fact`, `advice`, `recipe`, or `cocktail`). Expected: the app receives a batch and picks one result client-side, with no repeated rapid upstream spinner/fetch loop.
+- [ ] Temporarily force a provider failure on staging (or use a blocked connector budget in a test build). Expected: the creation degrades gracefully, shows stale last-good data if available, and never renders blank.
+- [ ] Confirm a generated creation does not use raw `fetch()` to arbitrary APIs; it uses `CPoint.data(...)` and works without it when the bridge is absent.
+
+#### §17.K — R2 artifact storage
+
+- [ ] Create a new build on staging with R2 enabled. Expected: `GET /api/builder/<id>` still returns `creation.html`, while the DB row has `html_r2_key` set and a small/empty legacy `html_content` fallback.
+- [ ] Play the creation from `/builds` and from the community feed. Expected: both paths load the same artifact and preserve the sandbox/`CPoint` bridge behavior.
+- [ ] Iterate the creation. Expected: the new version loads, old HTML is not served from cache, and the previous R2 object is cleaned up best-effort.
+- [ ] Delete the build. Expected: the DB row, `creation_data`, `builder_jobs`, linked post, and private R2 object are removed or no longer retrievable.
