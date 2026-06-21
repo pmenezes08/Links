@@ -128,6 +128,8 @@ Important: generated creations must not call arbitrary private services or inven
 
 `/builds` (under `DashboardLayout`) lists the signed-in user's creations from `GET /api/builder/mine` so they can find, play/preview, or continue building without remembering which community they used. Reachable from a dashboard shortcut and the native sidebar.
 
+Owners can permanently delete their builds from this page. The delete action calls `DELETE /api/builder/<id>` and removes the artifact row, `creation_data` rows (saves, scores, ratings), related `builder_jobs`, and the published community post if one exists. Deletion is owner-only and returns non-enumerating errors for non-owners.
+
 ### On-screen keyboard
 
 The app runs with `KeyboardResize.None`, so the WebView never shrinks for the keyboard; instead `App.tsx` publishes the keyboard height as the `--keyboard-offset` CSS variable. The `PlayableCreation` surface consumes it (`paddingBottom: max(--sab-px, --keyboard-offset)`) so a focused text input in a generated creation is lifted above the keyboard instead of being hidden behind it. Generated creations get a 16px input font-size floor (`creationHtml.ts` `BASE_CSS`) to avoid the iOS focus-zoom, and the codegen prompt tells creations with inputs to use `100dvh`/`100%` layouts and `scrollIntoView` on focus.

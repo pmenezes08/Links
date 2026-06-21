@@ -776,3 +776,75 @@ def test_route_oversized_save_returns_save_too_large(builder_client, monkeypatch
                                json={"key": "slot-1", "value": huge})
     assert resp.status_code == 400
     assert resp.get_json()["error"] == "save_too_large"
+
+
+# ── CPoint persistence: delete builds ────────────────────────────────────────
+
+def _count_rows(table: str, where: str, params: tuple) -> int:
+    ph = get_sql_placeholder()
+    assert ph in where
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT COUNT(*) FROM {table} WHERE {where}", params)
+        row = c.fetchone()
+    return int(builder._cell(row, 0) or 0)
+
+
+def test_delete_creation_removes_artifact_data_post_and_jobs(monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+    builder.save_record(creation_id=crid, community_id=cid, username="maker",
+                        key="slot-1", value={"level": 1})
+    builder.save_record(creation_id=crid, community_id=cid, username="maker",
+                        key="slot-2", value={"level": 2})
+    builder.create_build_job(username="maker", community_id=cid, prompt="make it harder",
+                             tier="balanced", kind="iterate", creation_id=crid)
+    published = builder.publish_creation(creation_id=crid, username="maker", caption="play this")
+    post_id = int(published["post_id"])
+
+    result, status = builder.delete_creation("maker", crid)
+    assert status == 200
+    assert result["success"] is True
+    assert builder.get_creation(crid) is None
+
+    ph = get_sql_placeholder()
+    assert _count_rows("creation_data", f"creation_id = {ph}", (crid,)) == 0
+    assert _count_rows("builder_jobs", f"creation_id = {ph}", (crid,)) == 0
+    assert _count_rows("posts", f"id = {ph}", (post_id,)) == 0
+
+
+def test_delete_creation_non_owner_is_non_enumerating(monkeypatch):
+    _make_user("maker")
+    _make_user("stranger")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+
+    result, status = builder.delete_creation("stranger", crid)
+    assert status == 404
+    assert result["error"] == "not_found"
+    assert builder.get_creation(crid) is not None
+
+
+def test_route_delete_creation_requires_auth(builder_client, monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+
+    resp = builder_client.delete(f"/api/builder/{crid}")
+    assert resp.status_code == 401
+    assert resp.get_json()["error"] == "auth_required"
+
+
+def test_route_delete_creation_owner_success(builder_client, monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+    builder.save_record(creation_id=crid, community_id=cid, username="maker",
+                        key="slot-1", value={"level": 4})
+    _login(builder_client, "maker")
+
+    resp = builder_client.delete(f"/api/builder/{crid}")
+    assert resp.status_code == 200
+    assert resp.get_json()["success"] is True
+    assert builder.get_creation(crid) is None

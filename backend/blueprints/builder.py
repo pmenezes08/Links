@@ -331,6 +331,16 @@ def builder_get(creation_id: int):
     }, "chat_history": builder_svc.get_chat_history(creation_id)})
 
 
+@builder_bp.route("/api/builder/<int:creation_id>", methods=["DELETE"])
+def builder_delete(creation_id: int):
+    """Owner-only permanent delete for a Steve Build creation."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    result, status = builder_svc.delete_creation(username, creation_id)
+    return jsonify(result), status
+
+
 @builder_bp.route("/api/builder/<int:creation_id>/history", methods=["POST"])
 def builder_save_history(creation_id: int):
     """Persist the design conversation for a creation so the user can resume it."""

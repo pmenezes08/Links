@@ -23,7 +23,7 @@ import threading
 import time
 import uuid
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from backend.services.database import get_db_connection, get_sql_placeholder, USE_MYSQL
 from backend.services.content_generation import llm
@@ -1110,6 +1110,69 @@ def publish_creation(*, creation_id: int, username: str,
         )
         conn.commit()
     return {"post_id": post_id, "already_published": False}
+
+
+def _try_delete_post_dependents(c, ph: str, post_id: int) -> None:
+    """Best-effort cleanup for rows that point at a published creation post.
+
+    Older deployments may not have every auxiliary table, so missing-table
+    errors are logged at debug level and deletion continues.
+    """
+    for sql, params in (
+        (
+            f"DELETE FROM reply_reactions WHERE reply_id IN (SELECT id FROM replies WHERE post_id = {ph})",
+            (post_id,),
+        ),
+        (f"DELETE FROM replies WHERE post_id = {ph}", (post_id,)),
+        (f"DELETE FROM reactions WHERE post_id = {ph}", (post_id,)),
+        (f"DELETE FROM notifications WHERE post_id = {ph}", (post_id,)),
+        (f"DELETE FROM post_views WHERE post_id = {ph}", (post_id,)),
+    ):
+        try:
+            c.execute(sql, params)
+        except Exception as exc:
+            logger.debug("builder: post dependent cleanup skipped for post %s: %s", post_id, exc)
+
+
+def delete_creation(username: str, creation_id: int) -> Tuple[Dict[str, Any], int]:
+    """Owner-only permanent deletion for a Steve Build creation.
+
+    Removes the artifact row, all CPoint data (saves/scores/ratings), the
+    published feed post if present, and related builder job history.
+    """
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"SELECT id, created_by, published_post_id FROM creations WHERE id = {ph}",
+                (creation_id,),
+            )
+            row = c.fetchone()
+            if not row or _cell(row, 1) != username:
+                return {"success": False, "error": "not_found"}, 404
+
+            published_post_id = _cell(row, 2)
+            if published_post_id is not None:
+                post_id = int(published_post_id)
+                _try_delete_post_dependents(c, ph, post_id)
+                c.execute(f"DELETE FROM posts WHERE id = {ph}", (post_id,))
+
+            c.execute(f"DELETE FROM creation_data WHERE creation_id = {ph}", (creation_id,))
+            c.execute(f"DELETE FROM builder_jobs WHERE creation_id = {ph}", (creation_id,))
+            c.execute(f"DELETE FROM creations WHERE id = {ph}", (creation_id,))
+            conn.commit()
+
+        try:
+            from redis_cache import cache
+            cache.delete(f"cpdata:summary:{creation_id}")
+        except Exception:
+            logger.debug("builder: delete cache cleanup skipped for creation %s", creation_id, exc_info=True)
+
+        return {"success": True}, 200
+    except Exception:
+        logger.exception("builder: delete_creation failed for %s", creation_id)
+        return {"success": False, "error": "delete_failed"}, 500
 
 
 # --- Community-scoped interaction data (scores / ratings / plays) -------------

@@ -34,6 +34,7 @@ export default function MyBuilds() {
   const { setTitle } = useHeader()
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [creations, setCreations] = useState<Creation[]>([])
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(() => new Set())
 
   useEffect(() => {
     setTitle('My Builds')
@@ -62,6 +63,39 @@ export default function MyBuilds() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const deleteBuild = useCallback(async (creation: Creation) => {
+    if (deletingIds.has(creation.id)) return
+    const title = creation.title?.trim() || 'Untitled build'
+    const ok = window.confirm(
+      `Delete "${title}"? This removes the build, all saves, scores, ratings, and the community post if published. This cannot be undone.`,
+    )
+    if (!ok) return
+    setDeletingIds(prev => new Set(prev).add(creation.id))
+    try {
+      const r = await fetch(`/api/builder/${creation.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok || !j?.success) {
+        window.alert(j?.error === 'auth_required'
+          ? 'Please sign in again to delete this build.'
+          : 'Could not delete this build. Please try again.')
+        return
+      }
+      setCreations(prev => prev.filter(item => item.id !== creation.id))
+    } catch {
+      window.alert('Could not delete this build. Please check your connection and try again.')
+    } finally {
+      setDeletingIds(prev => {
+        const next = new Set(prev)
+        next.delete(creation.id)
+        return next
+      })
+    }
+  }, [deletingIds])
 
   return (
     <div className="app-content min-h-screen chat-thread-bg text-c-text-primary">
@@ -119,7 +153,7 @@ export default function MyBuilds() {
                 className="rounded-2xl border border-c-border bg-c-bg-elevated p-4 shadow-c-card"
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="truncate text-[15px] font-semibold text-c-text-primary">
                       {c.title?.trim() || 'Untitled build'}
                     </div>
@@ -145,6 +179,15 @@ export default function MyBuilds() {
                       )}
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => { void deleteBuild(c) }}
+                    disabled={deletingIds.has(c.id)}
+                    aria-label={`Delete ${c.title?.trim() || 'build'}`}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-c-border bg-c-hover-bg text-c-text-tertiary transition hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <i className={`fa-solid ${deletingIds.has(c.id) ? 'fa-spinner fa-spin' : 'fa-trash-can'} text-xs`} aria-hidden="true" />
+                  </button>
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-2">

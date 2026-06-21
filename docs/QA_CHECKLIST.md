@@ -897,3 +897,10 @@ notifications, or creation playback. Maps to the `runner=manual` Tests row
 - [ ] From the dashboard, the **My Builds** shortcut opens `/builds` with dashboard chrome and bottom nav.
 - [ ] The page lists your creations (title, draft/published, plays, updated time) with loading, empty, and error states.
 - [ ] **Play/Preview** opens the creation; **Continue building** reopens the Builder with the draft; **Open community** lands in the community feed.
+
+#### §17.I — Delete builds
+
+- [ ] From `/builds`, delete a draft build. Expected: confirmation appears, the row disappears, direct `/community/<id>/creation/<creation_id>` returns not found.
+- [ ] Delete a published build. Expected: the build disappears from `/builds`, the linked community feed post disappears, and play/preview no longer loads.
+- [ ] Confirm saved data is gone: after delete, a new build with the same save slot cannot load the deleted build's `CPoint.save/load` data.
+- [ ] As a second user, attempt to delete another user's build (or call the endpoint directly). Expected: `404 not_found` / no deletion.

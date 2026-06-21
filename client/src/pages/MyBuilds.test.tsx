@@ -67,4 +67,51 @@ describe('MyBuilds', () => {
     await waitFor(() => expect(getByText("We couldn't load your builds.")).toBeTruthy())
     expect(getByText('Try again')).toBeTruthy()
   })
+
+  it('deletes a build after confirmation and removes it from the list', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          creations: [
+            { id: 7, title: 'Lisbon Quiz', kind: 'quiz', status: 'published', community_id: 3, published_post_id: 9, updated_at: null, plays: 12 },
+          ],
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true }),
+      } as Response)
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    vi.stubGlobal('alert', vi.fn())
+
+    const { getByText, getByLabelText, queryByText } = render(<MyBuilds />)
+    await waitFor(() => expect(getByText('Lisbon Quiz')).toBeTruthy())
+    fireEvent.click(getByLabelText('Delete Lisbon Quiz'))
+
+    await waitFor(() => expect(queryByText('Lisbon Quiz')).toBeNull())
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/builder/7', expect.objectContaining({ method: 'DELETE' }))
+  })
+
+  it('does not call delete when confirmation is cancelled', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        success: true,
+        creations: [
+          { id: 5, title: 'WIP Game', kind: 'game', status: 'draft', community_id: 2, published_post_id: null, updated_at: null, plays: 0 },
+        ],
+      }),
+    } as Response)
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('confirm', vi.fn(() => false))
+
+    const { getByText, getByLabelText } = render(<MyBuilds />)
+    await waitFor(() => expect(getByText('WIP Game')).toBeTruthy())
+    fireEvent.click(getByLabelText('Delete WIP Game'))
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
 })
