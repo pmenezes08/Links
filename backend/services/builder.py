@@ -667,45 +667,38 @@ def converse(history: List[Dict[str, str]], message: str, *, mode: str = "simple
 
 _RESEARCH_SYSTEM = (
     "You are a research assistant for an app a user is building. ACTUALLY SEARCH THE WEB to gather SPECIFIC, REAL, "
-    "ACCURATE facts the app needs — real names and details of places, golf course pars/scorecards, menus, prices, "
-    "opening hours, statistics, sports/team data, schedules, current events, reviews and recommendations — anything "
-    "where guessing or relying on memory would make the app WRONG. Do NOT answer from memory; use search and cite the "
-    "real pages you used. Respond with JSON ONLY: "
-    '{"needed": true|false, "facts": "<the real facts to bake into the app, organised clearly with the EXACT values>", '
-    '"sources": ["<real url you actually used>", ...]}. '
-    "Set needed=false ONLY for purely generic/creative apps that need no real-world data (a falling-blocks game, a "
-    "generic personality quiz, a calculator). When in doubt, search. NEVER invent facts or sources — include only what "
-    "you genuinely found on the web."
+    "ACCURATE facts the app needs — real names and details of places, golf course pars/scorecards (hole by hole), menus, "
+    "prices, opening hours, statistics, sports/team data, schedules, current events, reviews and recommendations — "
+    "anything where guessing or relying on memory would make the app WRONG. Do NOT answer from memory; search, and "
+    "include the source links you used. Reply as clear plain TEXT: the real facts (with EXACT values), then the sources. "
+    "If — and only if — the app needs NO real-world data at all (a falling-blocks game, a generic personality quiz, a "
+    "calculator), reply with EXACTLY the single word: NONE. When in doubt, search. Never invent facts or sources."
 )
 
 
 def research_for_build(brief: str) -> str:
     """Build-TIME web research: when a creation needs real, accurate facts (current
-    OR static — e.g. golf pars), fetch them now via REAL web search and return
-    them (with sources) to bake statically into the artifact. Best-effort —
-    returns '' on any failure or when no real-world data is needed, so it never
-    blocks a build."""
+    OR static — e.g. golf pars), fetch them now via REAL web search and return the
+    raw text (facts + sources) to bake statically into the artifact. We use raw
+    text, NOT JSON — the search model returns prose/citations, and JSON parsing was
+    silently dropping every real result. Best-effort — '' on failure or when no
+    real-world data is needed, so it never blocks a build."""
     b = (brief or "").strip()
     if not b:
         return ""
     try:
-        data = llm.web_search_json(
+        text = llm.web_search_text(
             _RESEARCH_SYSTEM,
-            f"The user is building this app:\n{b}\n\nReturn the JSON described.",
-            max_output_tokens=2200,
+            f"The user is building this app:\n{b}\n\nResearch and report as instructed.",
+            max_output_tokens=2600,
         )
     except Exception:
         logger.warning("builder: research_for_build failed", exc_info=True)
         return ""
-    if not isinstance(data, dict) or not data.get("needed"):
+    t = (text or "").strip().strip("*").strip()  # drop a leading markdown-bold wrapper
+    if not t or len(t) < 25 or t.upper().startswith("NONE"):
         return ""
-    facts = str(data.get("facts") or "").strip()
-    if not facts:
-        return ""
-    sources = data.get("sources")
-    src = "\nSOURCES (cite these in the app): " + ", ".join(str(s) for s in sources[:6]) \
-        if isinstance(sources, list) and sources else ""
-    return facts[:8000] + src
+    return t[:9000]
 
 
 def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperature: float = 0.8,

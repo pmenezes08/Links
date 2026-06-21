@@ -364,6 +364,25 @@ def web_search_json(system_prompt: str, user_prompt: str, *, max_output_tokens: 
         return {}
 
 
+def web_search_text(system_prompt: str, user_prompt: str, *, max_output_tokens: int = 2400) -> str:
+    """Run a web search and return the RAW text answer. Uses the xAI responses
+    API + hosted web_search tool — the path proven (in prod logs) to return real,
+    current data. We deliberately do NOT ask for / parse JSON: the search model
+    reliably returns prose with citations, and JSON parsing was silently dropping
+    every result. Best-effort; raises on hard failure so the caller can fall back."""
+    client = _require_client()
+    response = client.responses.create(
+        model=GROK_MODEL_FAST,
+        input=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        tools=[{"type": "web_search"}],
+        max_output_tokens=max_output_tokens,
+    )
+    return (response.output_text or "").strip() if hasattr(response, "output_text") else ""
+
+
 def generate_text(
     system_prompt: str,
     user_prompt: str,
