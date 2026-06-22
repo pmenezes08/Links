@@ -6,10 +6,10 @@ import PlayableCreation from '../components/builder/PlayableCreation'
 import CreationPreview from '../components/builder/CreationPreview'
 
 const SUGGESTIONS = [
-  'A block-stacking game for the group',
-  'Quiz: which pizza topping are you?',
-  'A spin-the-wheel to pick who buys coffee',
-  'A countdown to our next meetup',
+  'An app to track World Cup scores',
+  'A retro Snake game',
+  'An app to share city recommendations',
+  'A "which ___ are you?" quiz',
 ]
 
 const STAGES = ["Steve's on it", 'Making it', 'Adding the fun bits', 'Almost there']
@@ -260,12 +260,17 @@ export default function BuilderPage() {
 
       <div ref={scrollRef} style={{ flex: '1 1 auto', overflowY: 'auto', padding: '16px 16px 8px' }}>
         {showEmpty && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, paddingTop: '14vh' }}>
-            <div style={{ fontSize: 15, color: '#9a9a9a' }}>What should we make?</div>
-            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 6, marginTop: 2 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 4 }}>
+            <div>
+              <div style={{ fontSize: 19, fontWeight: 600, color: '#f1f1f1' }}>Build with Steve</div>
+              <div style={{ fontSize: 14, lineHeight: 1.45, color: '#9a9a9a', marginTop: 4 }}>
+                Websites, apps, games — interactive, with leaderboards and scores — built to share with your community.
+              </div>
+            </div>
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 6 }}>
               {SUGGESTIONS.map((s) => (
                 <button key={s} onClick={() => chat(s)} disabled={busy}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, width: '100%', textAlign: 'left', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '9px 12px', background: 'transparent', color: '#bdbdbd', fontSize: 13, cursor: 'pointer' }}>
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, width: '100%', textAlign: 'left', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '8px 12px', background: 'transparent', color: '#bdbdbd', fontSize: 13, cursor: 'pointer' }}>
                   <span>{s}</span><span style={{ color: '#555' }}>›</span>
                 </button>
               ))}

@@ -3994,7 +3994,7 @@ export default function CommunityFeed() {
             style={{ marginBottom: 'var(--app-feed-bottom-nav-height)' }}
           >
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg flex items-center justify-end gap-2" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/builder`) }}>
-              <span style={{ color: '#00CEC8' }}>Make something fun</span>
+              <span style={{ color: '#00CEC8' }}>Build with Steve</span>
             </button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/key_posts`) }}>
               {t('feed.key_posts')}
