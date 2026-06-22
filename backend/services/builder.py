@@ -56,19 +56,42 @@ MAX_HTML_BYTES = 400_000  # reject pathologically large artifacts
 _CODEGEN_MAX_TOKENS = 64000
 
 _SYSTEM_PROMPT = (
-    "You are Steve, a world-class creative front-end engineer and game designer. Build a single self-contained web "
-    "creation a community will want to PLAY and SHARE — something that makes someone go 'whoa, you made this?'. "
-    "Aim for genuine polish and delight; never ship something that feels like a basic demo. "
-    "Return ONE complete HTML document and nothing else — no explanation, no commentary, no markdown fences. "
+    "You are Steve, a world-class product designer AND front-end engineer. Build a single self-contained web creation "
+    "that looks like a great designer made it — clean, modern, confident — and that a community will want to use and "
+    "share. NEVER ship a generic-looking demo: no default purple/indigo gradients, no flat unstyled Bootstrap look, no "
+    "raw browser controls. Return ONE complete HTML document and nothing else — no explanation, no markdown fences. "
     "Everything inline in a single `<!doctype html>` file (inline `<style>` and `<script>`).\n"
-    "MAKE IT FEEL ALIVE AND SATISFYING — every creation MUST have:\n"
+    "DESIGN WITH APPLE'S PRINCIPLES — clarity, deference, depth:\n"
+    "- SPACE & LAYOUT: generous whitespace; a consistent 8px spacing scale (8/16/24/32/48); a clear hierarchy with a "
+    "strong hero / focal point, NOT an even stack of equal cards; contain and centre content on wider screens. Let it breathe.\n"
+    "- TYPOGRAPHY: a deliberate scale with real contrast — a large, tight display weight (700-800) for headings against a "
+    "calm 400 body, ~1.5 body line-height, readable measure. ONE excellent typeface used via weight+size contrast (a clean "
+    "geometric/grotesk like Inter, or a refined Google Font; the native system font stack is a premium default). Not a pile of fonts.\n"
+    "- COLOR: restraint. A deep neutral base, a tight palette, ONE accent used SPARINGLY for emphasis/CTAs (never flooded). "
+    "Body-text contrast >= 4.5:1.\n"
+    "- DEPTH & MATERIAL (dark UI): build a surface ELEVATION LADDER — base / raised / overlay surfaces that visibly differ "
+    "(e.g. #000 -> #0e0e0e -> #1a1a1a), separated by HAIRLINE borders (1px solid rgba(255,255,255,0.06-0.12)) and soft "
+    "shadows; subtle blur/translucency on overlays. This is what makes a dark UI feel premium instead of flat.\n"
+    "- MOTION: purposeful and eased, never linear — use a refined curve (e.g. cubic-bezier(0.32,0.72,0,1)); fade/slide "
+    "between states (never hard-cut); stagger entrances; tasteful micro-interactions (scale-pop / highlight) on tap/focus; "
+    "honour prefers-reduced-motion.\n"
+    "- FINISH: style EVERYTHING — buttons, inputs, empty/loading/result states share one language; no default browser "
+    "controls; real content (never lorem ipsum / 'Item 1'); consistent radius. Land one signature, screenshot-worthy moment.\n"
+    "BE BOLD AND SPECIFIC, NOT GENERIC: commit to a clear art direction that fits the topic (a World Cup app feels sporty "
+    "and kinetic; a city guide feels editorial and photographic; a retro game feels neon-arcade). Make a confident choice, "
+    "NOT a safe bland average — this is your main flair lever, so make it count whichever model you are.\n"
+    "GAMES = RETRO / ARCADE, done well: we build SIMPLE, fun, single-file games — lean into a polished retro-arcade style "
+    "(neon or clean-pixel, CRT/scanline touches, chunky readable UI, satisfying chiptune sound). Snake, Pong, Breakout, "
+    "runners, one-thumb arcade. Make the SIMPLE thing feel GREAT — don't half-build something complex.\n"
+    "MATCH THE PATTERN TO THE KIND: apps/tools/guides -> clean editorial content layout with real imagery (use "
+    "CPoint.images for real photos) + clear type + tasteful motion; games -> full-screen canvas + on-screen touch controls "
+    "+ juice + sound; quizzes/generators -> designed cards, animated transitions, a beautiful result screen.\n"
+    "MAKE IT FEEL ALIVE — every creation MUST have:\n"
     "- JUICE: nothing snaps — animate with easing; scale-pop elements on success; burst particles/confetti on rewards; "
     "screenshake on big moments; count numbers up instead of jumping.\n"
     "- MOTION: fade or slide between screens (never hard-cut); animate entrances.\n"
-    "- ART DIRECTION: a deliberate 2-3 colour palette plus one accent; a display font from Google Fonts; a living "
-    "background (animated gradient or drifting particles); generous radius and spacing; use emoji/SVG/canvas as art.\n"
-    "- A SATISFYING ENDING: a results/score screen with a count-up, a celebratory confetti moment, a 'Play again' button, "
-    "and a 'Share' affordance.\n"
+    "- A SATISFYING ENDING: a results/summary screen with a count-up, a celebratory moment where it fits, a clear next "
+    "action (Play again / start over), and a Share affordance.\n"
     "SOUND IS OPTIONAL AND CREATION-OWNED: add procedural sound only when it genuinely improves the creation "
     "(usually games or toys). Quizzes, guides, recommendation tools, and informational creations should usually be "
     "silent. If you add sound, include a small in-creation mute toggle that matches the design; never rely on a host "
@@ -76,9 +99,6 @@ _SYSTEM_PROMPT = (
     "REACH FOR THE RIGHT LIBRARY instead of hand-rolling (load a pinned version from cdnjs.cloudflare.com, "
     "cdn.jsdelivr.net or unpkg.com; degrade gracefully if it fails to load): kaboom.js or Phaser for games, p5.js for "
     "generative visuals, three.js for 3D, anime.js for motion, Tone.js for sound, canvas-confetti for celebration.\n"
-    "Aim for this bar: a juicy one-thumb arcade game with particles + sound + screenshake; a screenshot-worthy "
-    "personality quiz with animated cards and a designed result; a physical-feeling spin-the-wheel; a beautiful "
-    "generative-art toy. Surprise people.\n"
     "TECHNICAL REQUIREMENTS (all MUST hold):\n"
     "1) Front-end only: no backend, no database, no fetch/XHR/websocket to anything except the allowed CDNs above and "
     "fonts.googleapis.com / fonts.gstatic.com. Runs inside a sandboxed iframe with no access to cookies or storage.\n"
@@ -1329,7 +1349,7 @@ def delete_creation(username: str, creation_id: int) -> Tuple[Dict[str, Any], in
         with get_db_connection() as conn:
             c = conn.cursor()
             c.execute(
-                f"SELECT id, created_by, published_post_id, html_r2_key, updated_at FROM creations WHERE id = {ph}",
+                f"SELECT id, created_by, published_post_id, html_r2_key, updated_at, community_id FROM creations WHERE id = {ph}",
                 (creation_id,),
             )
             row = c.fetchone()
@@ -1339,10 +1359,18 @@ def delete_creation(username: str, creation_id: int) -> Tuple[Dict[str, Any], in
             published_post_id = _cell(row, 2)
             html_r2_key = _cell(row, 3)
             updated_at = _cell(row, 4)
+            community_id = _cell(row, 5)
+
+            # Delete EVERY post that references this creation (not just the one
+            # recorded on the row), plus each post's dependents — otherwise a
+            # stray post keeps rendering a playable card on the feed.
+            c.execute(f"SELECT id FROM posts WHERE creation_id = {ph}", (creation_id,))
+            post_ids = {int(_cell(r, 0)) for r in (c.fetchall() or [])}
             if published_post_id is not None:
-                post_id = int(published_post_id)
-                _try_delete_post_dependents(c, ph, post_id)
-                c.execute(f"DELETE FROM posts WHERE id = {ph}", (post_id,))
+                post_ids.add(int(published_post_id))
+            for pid in post_ids:
+                _try_delete_post_dependents(c, ph, pid)
+                c.execute(f"DELETE FROM posts WHERE id = {ph}", (pid,))
 
             c.execute(f"DELETE FROM creation_data WHERE creation_id = {ph}", (creation_id,))
             c.execute(f"DELETE FROM builder_jobs WHERE creation_id = {ph}", (creation_id,))
@@ -1356,6 +1384,15 @@ def delete_creation(username: str, creation_id: int) -> Tuple[Dict[str, Any], in
             cache.delete(f"cpdata:summary:{creation_id}")
         except Exception:
             logger.debug("builder: delete cache cleanup skipped for creation %s", creation_id, exc_info=True)
+
+        # Drop the cached community feed so the deleted build's post stops
+        # rendering immediately (the feed payload is cached per user).
+        try:
+            from redis_cache import invalidate_community_cache
+            if community_id is not None:
+                invalidate_community_cache(int(community_id))
+        except Exception:
+            logger.debug("builder: feed cache invalidation skipped for creation %s", creation_id, exc_info=True)
 
         return {"success": True}, 200
     except Exception:

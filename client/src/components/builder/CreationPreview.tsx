@@ -17,6 +17,12 @@ type Props = { html?: string; creationId?: number }
 
 const htmlCache = new Map<number, string>()
 
+// Drop a creation's cached HTML (e.g. after it's deleted) so a stale poster
+// can't keep rendering/playing it on-device.
+export function clearCreationCache(id: number) {
+  htmlCache.delete(id)
+}
+
 export default function CreationPreview({ html, creationId }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const [resolved, setResolved] = useState<string | null>(

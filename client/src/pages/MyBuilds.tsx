@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
+import { clearCreationCache } from '../components/builder/CreationPreview'
 
 type Creation = {
   id: number
@@ -86,6 +87,7 @@ export default function MyBuilds() {
         return
       }
       setCreations(prev => prev.filter(item => item.id !== creation.id))
+      clearCreationCache(creation.id) // drop the on-device poster cache so it can't replay
     } catch {
       window.alert('Could not delete this build. Please check your connection and try again.')
     } finally {
