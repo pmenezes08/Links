@@ -214,6 +214,7 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
           onPlayAgain={() => { setResult(null); setBoard(null); setPlayKey((k) => k + 1) }}
           onShare={onShare}
           onClose={onClose}
+          bgColor={bgColor}
         />
       )}
     </div>
@@ -238,7 +239,7 @@ function CountUp({ to }: { to: number }) {
   return <span style={{ fontVariantNumeric: 'tabular-nums' }}>{n.toLocaleString()}</span>
 }
 
-function ResultOverlay({ result, board, myRating, shared, onRate, onPlayAgain, onShare, onClose }: {
+function ResultOverlay({ result, board, myRating, shared, onRate, onPlayAgain, onShare, onClose, bgColor }: {
   result: ResultState
   board: { entries: Entry[]; mine: Entry | null } | null
   myRating: number | null
@@ -247,12 +248,16 @@ function ResultOverlay({ result, board, myRating, shared, onRate, onPlayAgain, o
   onPlayAgain: () => void
   onShare?: () => void
   onClose: () => void
+  bgColor: string
 }) {
   const entries = board?.entries || []
   const hasScore = result.score != null
   const isBest = hasScore && board?.mine != null && Number(board.mine.value) <= Number(result.score)
+  // OPAQUE backdrop (the game's own canvas colour): fully covers the artifact so a
+  // build that drew its OWN game-over screen can't show through this native one or
+  // steal taps meant for its dead buttons. This native sheet is the only end-of-run UI.
   return (
-    <div style={{ position: 'absolute', inset: 0, zIndex: 6, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end' }}>
+    <div style={{ position: 'absolute', inset: 0, zIndex: 6, background: bgColor || '#000', display: 'flex', alignItems: 'flex-end' }}>
       <div style={{ width: '100%', background: '#0b0b0b', borderRadius: '20px 20px 0 0', borderTop: '1px solid rgba(255,255,255,0.08)', padding: '10px 18px', paddingBottom: 'calc(var(--sab-px, 0px) + 16px)', animation: 'cp-sheet-up 0.25s cubic-bezier(0.32,0.72,0,1)' }}>
         <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.18)', margin: '4px auto 14px' }} />
 
