@@ -259,6 +259,77 @@ def test_no_repair_when_no_research_needed(monkeypatch):
     assert "<!doctype html>" in html.lower()
 
 
+def test_render_quality_pass_noop_when_unconfigured(monkeypatch):
+    """With no render service configured, the quality pass is a pure no-op."""
+    from backend.services import render_service
+    monkeypatch.setattr(render_service, "is_configured", lambda: False)
+    calls = {"render": 0}
+    monkeypatch.setattr(render_service, "render",
+                        lambda *a, **k: calls.__setitem__("render", calls["render"] + 1))
+    html = "<!doctype html><html><body>orig</body></html>"
+    out = builder._render_quality_pass(html, prompt="x", facts="", sources=[],
+                                       model=builder._MODEL_FAST, username="u", community_id=1)
+    assert out == html
+    assert calls["render"] == 0
+
+
+def test_render_quality_pass_fixes_blank_render(monkeypatch):
+    """A blank first render triggers exactly one render-fix regeneration."""
+    from backend.services import render_service, vision_judge
+    monkeypatch.setattr(render_service, "is_configured", lambda: True)
+    renders = {"n": 0}
+
+    def fake_render(html, **k):
+        renders["n"] += 1
+        return {"screenshot": "imgdata", "console_errors": [],
+                "blank": renders["n"] == 1, "overflow": False, "dimensions": {}}
+
+    monkeypatch.setattr(render_service, "render", fake_render)
+    monkeypatch.setattr(vision_judge, "judge", lambda *a, **k: {
+        "render_ok": True, "design_score": 90, "data_verified": "na",
+        "data_issues": [], "critique": []})
+    regen = {"n": 0}
+    monkeypatch.setattr(builder, "_repair_regen", lambda h, m, i: (
+        regen.__setitem__("n", regen["n"] + 1) or "<!doctype html><html><body>fixed</body></html>"))
+    out = builder._render_quality_pass("<!doctype html><html><body></body></html>",
+                                       prompt="x", facts="", sources=[],
+                                       model=builder._MODEL_FAST, username="u", community_id=1)
+    assert regen["n"] == 1
+    assert "fixed" in out
+
+
+def test_render_quality_pass_fixes_wrong_data(monkeypatch):
+    """When the judge says on-screen data doesn't match, one data-fix regen runs."""
+    from backend.services import render_service, vision_judge
+    monkeypatch.setattr(render_service, "is_configured", lambda: True)
+    monkeypatch.setattr(render_service, "render", lambda html, **k: {
+        "screenshot": "img", "console_errors": [], "blank": False,
+        "overflow": False, "dimensions": {}})
+    monkeypatch.setattr(vision_judge, "judge", lambda *a, **k: {
+        "render_ok": True, "design_score": 80, "data_verified": "no",
+        "data_issues": ["par for hole 1 is wrong"], "critique": []})
+    regen = {"n": 0}
+    monkeypatch.setattr(builder, "_repair_regen", lambda h, m, i: (
+        regen.__setitem__("n", regen["n"] + 1) or "<!doctype html><html><body>corrected</body></html>"))
+    out = builder._render_quality_pass("<html></html>", prompt="scorecard",
+                                       facts="hole 1 par 4 https://x.com",
+                                       sources=["https://x.com"],
+                                       model=builder._MODEL_FAST, username="u", community_id=1)
+    assert regen["n"] == 1
+    assert "corrected" in out
+
+
+def test_vision_judge_coerce_verdict_clamps():
+    from backend.services import vision_judge
+    v = vision_judge._coerce_verdict({
+        "render_ok": True, "design_score": 150, "data_verified": "MAYBE",
+        "data_issues": ["a", "b", "c", "d", "e", "f"], "critique": ["x"]})
+    assert v["design_score"] == 100
+    assert v["data_verified"] == "na"
+    assert len(v["data_issues"]) <= 5
+    assert v["render_ok"] is True
+
+
 def test_invalid_score_is_rejected(monkeypatch):
     _make_user("maker")
     cid = _make_community()

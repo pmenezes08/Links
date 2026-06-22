@@ -72,6 +72,11 @@ SURFACE_BUILDER_PLAN = "builder_plan"
 # Steve's design conversation (reason / ideate / discuss / confirm) before a
 # build. Distinct surface so chatting never consumes a build turn.
 SURFACE_BUILDER_CHAT = "builder_chat"
+# The vision-judge: a screenshot of a rendered build is graded by a vision model
+# (render OK? data correct? design quality?) to drive render-fix / web-data
+# verification / design-refine inside a build. Logged for AI-spend visibility but
+# a DISTINCT surface so it never counts against the builder_turns_per_month cap.
+SURFACE_BUILDER_JUDGE = "builder_judge"
 
 ALL_SURFACES = (
     SURFACE_DM,

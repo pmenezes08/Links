@@ -787,7 +787,8 @@ def _research_landed(html: str, facts: str, sources: List[str]) -> bool:
 
 
 def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperature: float = 0.8,
-                     model: Optional[str] = None) -> str:
+                     model: Optional[str] = None, verify: bool = False,
+                     username: Optional[str] = None, community_id: Optional[int] = None) -> str:
     """Generate (or revise) a self-contained HTML artifact via Steve/Grok.
 
     ``caps`` is deliberately not passed to ``llm.generate_text`` — the small
@@ -865,28 +866,155 @@ def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperat
             html = repaired
         else:
             logger.warning("builder: research repair did not ground the data; shipping best effort")
+
+    # Phase B render + vision-judge quality pass — async path only, best-effort.
+    # Renders the artifact in real Chromium and applies up to a couple of targeted
+    # repairs (render-fix, web-data verification, design-refine). No-ops when the
+    # render service isn't configured, so sync/local/test paths are unaffected.
+    if verify:
+        html = _render_quality_pass(
+            html, prompt=prompt, facts=facts, sources=sources,
+            model=model or _MODEL_FAST, username=username, community_id=community_id,
+        )
+    return html
+
+
+_DESIGN_REFINE_THRESHOLD = 70  # below "polished" on the judge's 0-100 craft scale
+
+
+def _repair_regen(html: str, model: str, instruction: str) -> Optional[str]:
+    """One low-temperature, preserve-everything regeneration with a repair
+    instruction. Returns the cleaned HTML, or None on failure / size overflow."""
+    try:
+        out = _clean_html(
+            llm.generate_text(
+                _SYSTEM_PROMPT,
+                "Here is the current HTML document for the creation:\n\n" + html + "\n\n" + instruction,
+                max_tokens=_CODEGEN_MAX_TOKENS,
+                temperature=0.2,
+                caps=None,
+                model=model,
+            )
+        )
+    except Exception:
+        logger.warning("builder: repair regen failed", exc_info=True)
+        return None
+    if out and len(out.encode("utf-8")) <= MAX_HTML_BYTES:
+        return out
+    return None
+
+
+def _render_quality_pass(html: str, *, prompt: str, facts: str, sources: List[str],
+                        model: str, username: Optional[str],
+                        community_id: Optional[int]) -> str:
+    """Render the artifact, judge it, and apply up to a couple of targeted repairs.
+    Entirely best-effort: any failure (service down, render error, judge error)
+    returns the artifact unchanged so a build is never blocked or degraded."""
+    from backend.services import render_service, vision_judge  # lazy: optional infra
+
+    if not render_service.is_configured():
+        return html
+
+    MAX_FIXES = 2
+    fixes = 0
+    try:
+        shot = render_service.render(html)
+    except Exception:
+        logger.warning("builder: render quality pass failed to render", exc_info=True)
+        return html
+    if not shot:
+        return html
+
+    # 1) Render-fix: blank page or JS console errors -> one repair.
+    if (shot.get("blank") or shot.get("console_errors")) and fixes < MAX_FIXES:
+        errs = shot.get("console_errors") or []
+        reason = "the page rendered completely blank/empty" if shot.get("blank") \
+            else "the page logged JavaScript errors at runtime"
+        instruction = (
+            f"When rendered in a real browser, {reason}. Find and fix the bug so the app renders "
+            "and works correctly. Return the COMPLETE corrected HTML; preserve the intended design "
+            "and all features."
+        )
+        if errs:
+            instruction += "\n\nConsole errors observed:\n" + "\n".join(errs[:8])
+        repaired = _repair_regen(html, model, instruction)
+        if repaired:
+            html = repaired
+            fixes += 1
+            try:
+                shot2 = render_service.render(html)
+                if shot2:
+                    shot = shot2
+            except Exception:
+                pass
+
+    # 2) Vision-judge the screenshot: data accuracy + design craft.
+    verdict = vision_judge.judge(
+        shot.get("screenshot", ""), username=username or "", brief=prompt, facts=facts,
+        console_errors=shot.get("console_errors") or [], community_id=community_id,
+    )
+    if not verdict:
+        return html
+
+    # 2a) Web-data verification: on-screen values must match the researched data.
+    if facts and verdict.get("data_verified") == "no" and fixes < MAX_FIXES:
+        issues = verdict.get("data_issues") or []
+        instruction = (
+            "The data shown on screen does NOT match the required real-world data. Correct EVERY value "
+            "to exactly match the facts below, and keep a visible 'Sources' section linking the source "
+            "URLs. Return the COMPLETE updated HTML; change nothing else."
+        )
+        if issues:
+            instruction += "\n\nSpecific problems found:\n- " + "\n- ".join(issues)
+        instruction += f"\n\nREAL DATA:\n{facts}\n\nSOURCE LINKS:\n" + "\n".join(sources)
+        repaired = _repair_regen(html, model, instruction)
+        if repaired:
+            html = repaired
+            fixes += 1
+
+    # 2b) Design-refine: only the 'best' tier, only when clearly below the bar.
+    if (model == _MODEL_BEST and fixes < MAX_FIXES
+            and verdict.get("design_score", 100) < _DESIGN_REFINE_THRESHOLD):
+        critique = verdict.get("critique") or []
+        if critique:
+            instruction = (
+                "Raise the visual craft of this app. Apply these specific improvements while preserving "
+                "ALL functionality and content. Return the COMPLETE updated HTML:\n- " + "\n- ".join(critique)
+            )
+            repaired = _repair_regen(html, model, instruction)
+            if repaired:
+                html = repaired
+                fixes += 1
+
     return html
 
 
 def _generate_with_fallback(prompt: str, *, prior_html: Optional[str] = None,
-                           temperature: float, model: str) -> tuple:
+                           temperature: float, model: str, verify: bool = False,
+                           username: Optional[str] = None, community_id: Optional[int] = None) -> tuple:
     """Generate via ``model``; if a non-fast model (e.g. OpenAI 'best') errors,
     fall back to the fast model so a build never hard-fails. Returns
     ``(html, model_actually_used)``."""
     try:
-        return generate_artifact(prompt, prior_html=prior_html, temperature=temperature, model=model), model
+        return generate_artifact(prompt, prior_html=prior_html, temperature=temperature, model=model,
+                                 verify=verify, username=username, community_id=community_id), model
     except Exception:
         if model != _MODEL_FAST:
             logger.warning("builder: model %s failed; falling back to %s", model, _MODEL_FAST)
-            return (generate_artifact(prompt, prior_html=prior_html, temperature=temperature, model=_MODEL_FAST),
+            return (generate_artifact(prompt, prior_html=prior_html, temperature=temperature,
+                                      model=_MODEL_FAST, verify=verify, username=username,
+                                      community_id=community_id),
                     _MODEL_FAST)
         raise
 
 
 def create_creation(*, username: str, community_id: int, prompt: str,
-                    title: Optional[str] = None, tier: str = "fast") -> Dict[str, Any]:
+                    title: Optional[str] = None, tier: str = "fast",
+                    verify: bool = False) -> Dict[str, Any]:
     """Generate a first artifact from ``prompt`` and persist it as a draft."""
-    html, model_used = _generate_with_fallback(prompt, temperature=0.8, model=resolve_model(tier))
+    html, model_used = _generate_with_fallback(
+        prompt, temperature=0.8, model=resolve_model(tier),
+        verify=verify, username=username, community_id=community_id)
     resolved_title = (title or _extract_title(html, prompt))[:200]
     history = _append_history(None, prompt)
     now = _now()
@@ -945,13 +1073,15 @@ def get_creation(creation_id: int) -> Optional[Dict[str, Any]]:
     return out
 
 
-def iterate_creation(*, creation_id: int, username: str, message: str, tier: str = "fast") -> Dict[str, Any]:
+def iterate_creation(*, creation_id: int, username: str, message: str, tier: str = "fast",
+                    verify: bool = False) -> Dict[str, Any]:
     """Revise an existing creation with a follow-up instruction (full-file regen)."""
     row = get_creation(creation_id)
     if not row or row.get("created_by") != username:
         raise PermissionError("creation not found")
     html, model_used = _generate_with_fallback(
-        message, prior_html=row.get("html_content"), temperature=0.2, model=resolve_model(tier))
+        message, prior_html=row.get("html_content"), temperature=0.2, model=resolve_model(tier),
+        verify=verify, username=username, community_id=row.get("community_id"))
     history = _append_history(row.get("prompt_history"), message)
     now = _now()
     ph = get_sql_placeholder()
@@ -1201,10 +1331,12 @@ def run_build_job(job_id: int) -> Dict[str, Any]:
         if kind == "iterate":
             creation = iterate_creation(
                 creation_id=int(creation_id), username=username, message=prompt, tier=tier,
+                verify=True,
             )
         else:
             creation = create_creation(
                 username=username, community_id=community_id, prompt=prompt, tier=tier,
+                verify=True,
             )
         result_id = int(creation["id"])
         _set_job_status(job_id_int, "succeeded", result_creation_id=result_id,

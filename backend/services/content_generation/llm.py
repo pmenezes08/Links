@@ -383,6 +383,42 @@ def web_search_text(system_prompt: str, user_prompt: str, *, max_output_tokens: 
     return (response.output_text or "").strip() if hasattr(response, "output_text") else ""
 
 
+def vision_json(
+    system_prompt: str,
+    user_prompt: str,
+    image_b64_png: str,
+    *,
+    model: str = "claude-opus-4-8",
+    max_tokens: int = 1200,
+) -> Dict[str, Any]:
+    """Vision completion: send a PNG screenshot (base64) + a prompt to a
+    vision-capable Claude model and parse a JSON object from the reply. Used by
+    the Steve Builder vision-judge to grade a rendered artifact. Anthropic-only
+    (Opus/Sonnet are vision-capable); raises if the key is unset or no JSON is
+    found, so the caller can degrade gracefully."""
+    if not ANTHROPIC_API_KEY:
+        raise RuntimeError("ANTHROPIC_API_KEY is not configured")
+    import anthropic
+    aclient = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    msg = aclient.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        system=system_prompt,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "image", "source": {"type": "base64",
+                                             "media_type": "image/png",
+                                             "data": image_b64_png}},
+                {"type": "text", "text": user_prompt},
+            ],
+        }],
+        timeout=120,
+    )
+    text = next((b.text for b in msg.content if getattr(b, "type", None) == "text"), "")
+    return _extract_json(text)
+
+
 def generate_text(
     system_prompt: str,
     user_prompt: str,

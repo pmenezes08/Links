@@ -19,6 +19,7 @@ Out-of-repo or legacy names (`evalio`, `links` as separate cost centres) are cal
 | **`cpoint-admin`** | `cloudbuild-admin.yaml` | Cloud Run hostname for **admin SPA**; **OPERATIONS** references admin alongside the app (team may map **admin.c-point.co** at the edge). | Static **admin-web** build; API calls go to **`cpoint-app`** (check `admin-web/Dockerfile` build args). |
 | **`cpoint-admin-staging`** | `cloudbuild-admin-staging.yaml` | Example: **`https://cpoint-admin-staging-739552904126.europe-west1.run.app`** (confirm in Console) | Staging **admin** — baked to talk to **`cpoint-app-staging`** (`VITE_API_BASE` / `API_PROXY_*` in `cloudbuild-admin-staging.yaml`). |
 | **`cpoint-landing`** | `cloudbuild-landing.yaml` | Marketing / landing only. | Separate **`landing/`** app; no core product API. |
+| **`cpoint-render`** | `cloudbuild-render.yaml` → `cpoint-render:latest` (build context `services/render/`) | **`https://cpoint-render-739552904126.europe-west1.run.app`** (private) | **Headless-Chromium render worker** for the Steve Builder render/vision-judge harness. Playwright on the official image; `POST /render` → screenshot + diagnostics. `--no-allow-unauthenticated`, scale-to-zero (`min-instances=0`), `2Gi`/`cpu=2`/`concurrency=1`. Currently **staging only**. |
 
 ---
 
@@ -32,6 +33,38 @@ Out-of-repo or legacy names (`evalio`, `links` as separate cost centres) are cal
 | **Admin pairing** | Admin prod build targets prod API. | Staging **API** sets **`CSRF_ALLOWED_ORIGINS`** to the **staging admin** origin (`cloudbuild.yaml` — the staging admin **`.run.app`** URL). |
 
 **Shared DB caveat:** Both **`cpoint-app`** and **`cpoint-app-staging`** use the **same Cloud SQL instance** **`cpoint-db`** (same DB + credentials). Staging writes affect “prod” data — see **OPERATIONS** §6 before destructive ops.
+
+---
+
+## `cpoint-render` — Steve Builder render worker
+
+Private Cloud Run service that renders a self-contained HTML artifact in real Chromium and returns a PNG screenshot + diagnostics (console errors, blank/overflow). Used only on the **async build path** by `backend/services/render_service.py` → fed to `backend/services/vision_judge.py` (a paid AI surface logged under `ai_usage` `SURFACE_BUILDER_JUDGE`) for render-fix, web-data verification, and design-refine. Best-effort: if the worker is unreachable, a build silently skips verification — it never fails.
+
+**One-time setup (already done for staging):**
+
+```bash
+# 1. Shared secret (defence-in-depth alongside Cloud Run IAM)
+python -c "import secrets,sys; sys.stdout.write(secrets.token_hex(32))" \
+  | gcloud secrets create render-shared-secret --data-file=- --replication-policy=automatic --project=cpoint-127c2
+gcloud secrets add-iam-policy-binding render-shared-secret \
+  --member="serviceAccount:739552904126-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor" --project=cpoint-127c2
+
+# 2. Build + deploy the worker (private)
+gcloud builds submit --config=cloudbuild-render.yaml --project=cpoint-127c2 .
+
+# 3. Let the main app invoke it (both run as the default compute SA)
+gcloud run services add-iam-policy-binding cpoint-render --region=europe-west1 \
+  --member="serviceAccount:739552904126-compute@developer.gserviceaccount.com" \
+  --role="roles/run.invoker" --project=cpoint-127c2
+
+# 4. Point the main app at it (merges; survives cloudbuild deploys)
+gcloud run services update cpoint-app-staging --region=europe-west1 --project=cpoint-127c2 \
+  --update-env-vars=RENDER_SERVICE_URL=https://cpoint-render-hcvblrg55q-ew.a.run.app \
+  --update-secrets=RENDER_SHARED_SECRET=render-shared-secret:latest
+```
+
+The worker is gated entirely by `RENDER_SERVICE_URL` on the main app: unset ⇒ the whole render/judge pipeline no-ops. **Not yet wired to prod** — replicate steps 1–4 against `cpoint-app` when promoting.
 
 ---
 

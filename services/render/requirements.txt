@@ -1,5 +1,6 @@
-# Playwright itself + the Chromium browser come pre-installed and version-matched
-# in the base image (mcr.microsoft.com/playwright/python). Do NOT add playwright
-# here — pip-installing it would risk a browser/library version mismatch.
+# Pin playwright to EXACTLY the base image's version (v1.49.0-jammy) so the pip
+# package matches the Chromium build already bundled in the image — no browser
+# download happens at build time. Bump this and the Dockerfile tag together.
+playwright==1.49.0
 flask>=3.0,<4
 gunicorn>=21,<24
