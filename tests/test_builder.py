@@ -221,6 +221,44 @@ def test_converse_tolerates_non_json(monkeypatch):
     assert "vibe" in out["reply"].lower()
 
 
+def test_research_repairs_when_data_not_grounded(monkeypatch):
+    """If the first artifact omits the researched data, generate_artifact runs
+    exactly one repair pass and the final HTML cites the real source."""
+    monkeypatch.setattr(
+        builder.llm, "web_search_text",
+        lambda *a, **k: "Pebble Beach front nine pars: 4-5-4-4-3-5-3-4-4. Source: https://example.com/pebble",
+    )
+    calls = {"n": 0}
+
+    def fake_gen(*a, **k):
+        calls["n"] += 1
+        if calls["n"] == 1:  # first artifact ignores the data (no citation)
+            return "<!doctype html><html><body>A scorecard, no real data.</body></html>"
+        return ('<!doctype html><html><body>Pars 4-5-4 '
+                '<a href="https://example.com/pebble">source</a></body></html>')
+
+    monkeypatch.setattr(builder.llm, "generate_text", fake_gen)
+    html = builder.generate_artifact("a Pebble Beach scorecard with the real par for each hole")
+    assert calls["n"] == 2  # one repair pass fired
+    assert "example.com/pebble" in html
+
+
+def test_no_repair_when_no_research_needed(monkeypatch):
+    """A creation needing no real-world data (research returns NONE) generates
+    once — no verification overhead, no repair pass."""
+    monkeypatch.setattr(builder.llm, "web_search_text", lambda *a, **k: "NONE")
+    calls = {"n": 0}
+
+    def fake_gen(*a, **k):
+        calls["n"] += 1
+        return _FAKE_HTML
+
+    monkeypatch.setattr(builder.llm, "generate_text", fake_gen)
+    html = builder.generate_artifact("a retro snake game")
+    assert calls["n"] == 1  # generated once, no repair
+    assert "<!doctype html>" in html.lower()
+
+
 def test_invalid_score_is_rejected(monkeypatch):
     _make_user("maker")
     cid = _make_community()

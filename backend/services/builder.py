@@ -699,16 +699,29 @@ _RESEARCH_SYSTEM = (
 )
 
 
-def research_for_build(brief: str) -> str:
+def _extract_source_urls(text: str) -> List[str]:
+    """Pull cited http(s) source URLs out of research text (deduped, trimmed, capped)."""
+    out: List[str] = []
+    for u in re.findall(r"https?://[^\s)\]<>\"']+", text or ""):
+        u = u.rstrip(".,);]'\"")
+        if u and u not in out:
+            out.append(u)
+        if len(out) >= 12:
+            break
+    return out
+
+
+def research_for_build(brief: str) -> Tuple[str, List[str]]:
     """Build-TIME web research: when a creation needs real, accurate facts (current
     OR static — e.g. golf pars), fetch them now via REAL web search and return the
-    raw text (facts + sources) to bake statically into the artifact. We use raw
-    text, NOT JSON — the search model returns prose/citations, and JSON parsing was
-    silently dropping every real result. Best-effort — '' on failure or when no
-    real-world data is needed, so it never blocks a build."""
+    raw text (facts) plus the cited source URLs, to bake statically into the
+    artifact. We use raw text, NOT JSON — the search model returns prose/citations,
+    and JSON parsing was silently dropping every real result. Best-effort — returns
+    ('', []) on failure or when no real-world data is needed, so it never blocks a
+    build."""
     b = (brief or "").strip()
     if not b:
-        return ""
+        return "", []
     try:
         text = llm.web_search_text(
             _RESEARCH_SYSTEM,
@@ -717,11 +730,60 @@ def research_for_build(brief: str) -> str:
         )
     except Exception:
         logger.warning("builder: research_for_build failed", exc_info=True)
-        return ""
+        return "", []
     t = (text or "").strip().strip("*").strip()  # drop a leading markdown-bold wrapper
     if not t or len(t) < 25 or t.upper().startswith("NONE"):
-        return ""
-    return t[:9000]
+        return "", []
+    facts = t[:9000]
+    return facts, _extract_source_urls(facts)
+
+
+def _domain_of(url: str) -> str:
+    m = re.match(r"https?://(?:www\.)?([^/\s:]+)", url or "")
+    return m.group(1).lower() if m else ""
+
+
+_RESEARCH_TOKEN_RE = re.compile(
+    r"[A-Z][a-zA-Z.'\-]{2,}(?:\s+[A-Z][a-zA-Z.'\-]{2,}){0,3}|\d[\d.,:%\-]{1,}"
+)
+
+
+def _distinctive_tokens(facts: str) -> List[str]:
+    """Distinctive proper-noun phrases and numbers from the facts — a weak fallback
+    grounding signal used only when no source URLs were captured."""
+    out: List[str] = []
+    for tok in _RESEARCH_TOKEN_RE.findall(facts or ""):
+        tok = tok.strip()
+        if len(tok) >= 3 and tok not in out:
+            out.append(tok)
+        if len(out) >= 10:
+            break
+    return out
+
+
+def _research_landed(html: str, facts: str, sources: List[str]) -> bool:
+    """Heuristic: did the researched facts actually get grounded into the artifact?
+    Not a guarantee — a strong 'the model ignored the data' detector. Returns True
+    (assume fine) when there are no facts to judge or no signal to check on."""
+    if not facts:
+        return True
+    h = (html or "").lower()
+    if not h:
+        return False
+    if sources:
+        for url in sources:
+            u = url.lower()
+            if u and u in h:
+                return True
+            dom = _domain_of(u)
+            if dom and dom in h:
+                return True
+        return False  # had sources to cite, cited none -> strong miss
+    tokens = _distinctive_tokens(facts)
+    if not tokens:
+        return True
+    hits = sum(1 for t in tokens if t.lower() in h)
+    return hits >= max(1, len(tokens) // 3)
 
 
 def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperature: float = 0.8,
@@ -747,7 +809,7 @@ def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperat
 
     # Build-time web research: if the creation needs current real-world info,
     # fetch it now and bake it in statically (the running app stays offline).
-    facts = research_for_build(prompt)
+    facts, sources = research_for_build(prompt)
     if facts:
         user_prompt = (
             "REAL-WORLD DATA (fetched from the web just now via search — use these REAL facts EXACTLY; do NOT invent or "
@@ -770,6 +832,39 @@ def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperat
         raise ValueError("Steve returned an empty artifact")
     if len(html.encode("utf-8")) > MAX_HTML_BYTES:
         raise ValueError("Generated artifact exceeds size limit")
+
+    # Verify the researched data actually landed; one targeted repair if not. The
+    # model is only ASKED to use the facts — under a long prompt it can summarize,
+    # approximate, or omit them, and success vs silent-failure look identical.
+    if facts and not _research_landed(html, facts, sources):
+        logger.info("builder: researched data not grounded in artifact; repairing once")
+        try:
+            repaired = _clean_html(
+                llm.generate_text(
+                    _SYSTEM_PROMPT,
+                    (
+                        "Here is the current HTML document for the creation:\n\n"
+                        f"{html}\n\n"
+                        "It OMITS required real-world data that MUST appear in the app. Integrate these EXACT "
+                        "facts (do not invent or round them) and add a visible 'Sources' section that links the "
+                        "source URLs below. Return the COMPLETE updated HTML document — preserve everything that "
+                        "already works; change nothing else:\n"
+                        f"{facts}\n\nSOURCE LINKS:\n" + "\n".join(sources)
+                    ),
+                    max_tokens=_CODEGEN_MAX_TOKENS,
+                    temperature=0.2,
+                    caps=None,
+                    model=model or _MODEL_FAST,
+                )
+            )
+        except Exception:
+            logger.warning("builder: research repair pass failed; shipping original", exc_info=True)
+            repaired = ""
+        if (repaired and len(repaired.encode("utf-8")) <= MAX_HTML_BYTES
+                and _research_landed(repaired, facts, sources)):
+            html = repaired
+        else:
+            logger.warning("builder: research repair did not ground the data; shipping best effort")
     return html
 
 
