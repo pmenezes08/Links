@@ -161,6 +161,34 @@ def test_submit_score_keeps_best_and_ranks(monkeypatch):
     assert r["rank"] == 1 and int(r["best"]) == 200
 
 
+def test_submit_score_repeats_are_atomic_and_keep_max(monkeypatch):
+    """Regression: repeated submits for the same (creation, key, user) must NOT
+    raise an IntegrityError on the unique key and must keep the best — the old
+    non-atomic SELECT-then-INSERT collided under rapid/concurrent submits."""
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation(cid, monkeypatch=monkeypatch)
+
+    for v in (100, 50, 175, 175, 30):  # no exception; best wins; single row
+        builder.submit_score(creation_id=crid, community_id=cid, username="maker", value=v)
+
+    board = builder.get_leaderboard(crid, username="maker")
+    assert len(board["entries"]) == 1
+    assert int(board["mine"]["value"]) == 175
+
+
+def test_save_record_repeats_are_atomic_latest_wins(monkeypatch):
+    """Regression: repeated saves to the same slot must not collide on the unique
+    key; latest value wins and stays a single row."""
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation(cid, monkeypatch=monkeypatch)
+
+    for v in ("a", "bb", "ccc"):
+        builder.save_record(creation_id=crid, community_id=cid, username="maker", key="slot1", value=v)
+    assert builder.load_record(crid, username="maker", key="slot1")["value"] == "ccc"
+
+
 def test_rate_creation_aggregates(monkeypatch):
     _make_user("maker"); _make_user("p2")
     cid = _make_community()

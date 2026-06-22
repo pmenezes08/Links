@@ -1697,29 +1697,36 @@ def _upsert_value(*, creation_id: int, community_id: int, namespace: str, key: s
     keep_max=True keeps the best (highest) value; otherwise the latest wins."""
     now = _now()
     ph = get_sql_placeholder()
+    # ATOMIC upsert: a SELECT-then-INSERT race (two rapid/concurrent submits) used
+    # to both see "no row" and both INSERT -> the 2nd hit the UNIQUE key and 500'd
+    # (IntegrityError), so the score never saved. ON DUPLICATE KEY / ON CONFLICT
+    # collapses it to one race-free statement; keep_max picks the greater in-SQL.
+    vals = (creation_id, community_id, namespace, key, username, display_name, value, now, now)
     with get_db_connection() as conn:
         c = conn.cursor()
-        c.execute(
-            f"""SELECT num_value FROM creation_data
-                WHERE creation_id = {ph} AND namespace = {ph} AND data_key = {ph} AND username = {ph}""",
-            (creation_id, namespace, key, username),
-        )
-        existing = c.fetchone()
-        if existing is None:
+        if USE_MYSQL:
+            set_value = ("num_value = GREATEST(num_value, VALUES(num_value))" if keep_max
+                         else "num_value = VALUES(num_value)")
             c.execute(
                 f"""INSERT INTO creation_data
                     (creation_id, community_id, namespace, data_key, username, display_name,
                      num_value, created_at, updated_at)
-                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})""",
-                (creation_id, community_id, namespace, key, username, display_name, value, now, now),
+                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                    ON DUPLICATE KEY UPDATE {set_value},
+                        display_name = VALUES(display_name), updated_at = VALUES(updated_at)""",
+                vals,
             )
         else:
-            prev = _cell(existing, 0)
-            new_value = max(float(prev), value) if (keep_max and prev is not None) else value
+            set_value = ("num_value = MAX(num_value, excluded.num_value)" if keep_max
+                         else "num_value = excluded.num_value")
             c.execute(
-                f"""UPDATE creation_data SET num_value = {ph}, display_name = {ph}, updated_at = {ph}
-                    WHERE creation_id = {ph} AND namespace = {ph} AND data_key = {ph} AND username = {ph}""",
-                (new_value, display_name, now, creation_id, namespace, key, username),
+                f"""INSERT INTO creation_data
+                    (creation_id, community_id, namespace, data_key, username, display_name,
+                     num_value, created_at, updated_at)
+                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                    ON CONFLICT (creation_id, namespace, data_key, username) DO UPDATE SET {set_value},
+                        display_name = excluded.display_name, updated_at = excluded.updated_at""",
+                vals,
             )
         conn.commit()
 
@@ -1739,13 +1746,13 @@ def save_record(*, creation_id: int, community_id: int, username: str, key: str,
     ph = get_sql_placeholder()
     with get_db_connection() as conn:
         c = conn.cursor()
+        # Best-effort per-user slot cap: only gate when this would be a NEW key.
         c.execute(
-            f"""SELECT data_value FROM creation_data
+            f"""SELECT 1 FROM creation_data
                 WHERE creation_id = {ph} AND namespace = 'save' AND data_key = {ph} AND username = {ph}""",
             (creation_id, k, username),
         )
-        existing = c.fetchone()
-        if existing is None:
+        if c.fetchone() is None:
             c.execute(
                 f"""SELECT COUNT(*) FROM creation_data
                     WHERE creation_id = {ph} AND namespace = 'save' AND username = {ph}""",
@@ -1753,17 +1760,24 @@ def save_record(*, creation_id: int, community_id: int, username: str, key: str,
             )
             if int(_cell(c.fetchone(), 0) or 0) >= _SAVE_MAX_KEYS:
                 raise ValueError("too_many_saves")
+        # ATOMIC upsert (latest wins) — same race fix as _upsert_value.
+        save_vals = (creation_id, community_id, k, username, payload, now, now)
+        if USE_MYSQL:
             c.execute(
                 f"""INSERT INTO creation_data
                     (creation_id, community_id, namespace, data_key, username, data_value, created_at, updated_at)
-                    VALUES ({ph}, {ph}, 'save', {ph}, {ph}, {ph}, {ph}, {ph})""",
-                (creation_id, community_id, k, username, payload, now, now),
+                    VALUES ({ph}, {ph}, 'save', {ph}, {ph}, {ph}, {ph}, {ph})
+                    ON DUPLICATE KEY UPDATE data_value = VALUES(data_value), updated_at = VALUES(updated_at)""",
+                save_vals,
             )
         else:
             c.execute(
-                f"""UPDATE creation_data SET data_value = {ph}, updated_at = {ph}
-                    WHERE creation_id = {ph} AND namespace = 'save' AND data_key = {ph} AND username = {ph}""",
-                (payload, now, creation_id, k, username),
+                f"""INSERT INTO creation_data
+                    (creation_id, community_id, namespace, data_key, username, data_value, created_at, updated_at)
+                    VALUES ({ph}, {ph}, 'save', {ph}, {ph}, {ph}, {ph}, {ph})
+                    ON CONFLICT (creation_id, namespace, data_key, username) DO UPDATE SET
+                        data_value = excluded.data_value, updated_at = excluded.updated_at""",
+                save_vals,
             )
         conn.commit()
     return {"success": True}
