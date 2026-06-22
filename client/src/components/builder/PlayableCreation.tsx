@@ -20,7 +20,7 @@ type Props = {
 }
 
 type Entry = { name: string; value: number; rank: number }
-type ResultState = { score: number | null; key: string }
+type ResultState = { score: number | null; key: string; saved: boolean }
 
 export default function PlayableCreation({ html, title, onClose, creationId, onRuntimeError, onShare, shared }: Props) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
@@ -55,13 +55,15 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
   const handleGameOver = async (score: unknown, key: unknown) => {
     const k = (typeof key === 'string' && key) ? key : 'highscore'
     const numScore = typeof score === 'number' && isFinite(score) ? score : null
+    let saved = false
     if (creationId != null) {
       try {
         if (numScore != null) {
-          await fetch(`/api/builder/${creationId}/data/score`, {
+          const r = await fetch(`/api/builder/${creationId}/data/score`, {
             method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ value: numScore, key: k }),
           })
+          saved = r.ok // 200 only on a real persist (route returns 4xx/5xx otherwise)
         }
         const [lb, rs] = await Promise.all([
           fetch(`/api/builder/${creationId}/data/leaderboard?key=${encodeURIComponent(k)}&limit=5`, { credentials: 'include' }).then((r) => r.json()).catch(() => null),
@@ -71,7 +73,7 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
         setMyRating(rs && rs.success ? (typeof rs.mine === 'number' ? rs.mine : null) : null)
       } catch { /* show the overlay anyway */ }
     }
-    setResult({ score: numScore, key: k })
+    setResult({ score: numScore, key: k, saved })
   }
 
   // Broker CPoint SDK calls + handle runtime errors and the gameOver signal from
@@ -213,7 +215,7 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
           }}
           onPlayAgain={() => { setResult(null); setBoard(null); setPlayKey((k) => k + 1) }}
           onShare={onShare}
-          onClose={onClose}
+          onDismiss={() => setResult(null)}
           bgColor={bgColor}
         />
       )}
@@ -239,7 +241,7 @@ function CountUp({ to }: { to: number }) {
   return <span style={{ fontVariantNumeric: 'tabular-nums' }}>{n.toLocaleString()}</span>
 }
 
-function ResultOverlay({ result, board, myRating, shared, onRate, onPlayAgain, onShare, onClose, bgColor }: {
+function ResultOverlay({ result, board, myRating, shared, onRate, onPlayAgain, onShare, onDismiss, bgColor }: {
   result: ResultState
   board: { entries: Entry[]; mine: Entry | null } | null
   myRating: number | null
@@ -247,12 +249,15 @@ function ResultOverlay({ result, board, myRating, shared, onRate, onPlayAgain, o
   onRate: (v: number) => void
   onPlayAgain: () => void
   onShare?: () => void
-  onClose: () => void
+  onDismiss: () => void
   bgColor: string
 }) {
   const entries = board?.entries || []
   const hasScore = result.score != null
   const isBest = hasScore && board?.mine != null && Number(board.mine.value) <= Number(result.score)
+  // What the player's record now is after this run (best-per-player is kept server-side).
+  const myBest = board?.mine != null ? Number(board.mine.value) : (hasScore ? Number(result.score) : null)
+  const myRank = board?.mine?.rank ?? null
   // OPAQUE backdrop (the game's own canvas colour): fully covers the artifact so a
   // build that drew its OWN game-over screen can't show through this native one or
   // steal taps meant for its dead buttons. This native sheet is the only end-of-run UI.
@@ -270,6 +275,12 @@ function ResultOverlay({ result, board, myRating, shared, onRate, onPlayAgain, o
           </div>
         ) : (
           <div style={{ textAlign: 'center', fontSize: 22, color: '#f1f1f1', margin: '4px 0 14px' }}>Nice one!</div>
+        )}
+
+        {hasScore && result.saved && (
+          <div style={{ textAlign: 'center', marginTop: -8, marginBottom: 14, fontSize: 12.5, color: '#00CEC8' }}>
+            ✓ Saved{myBest != null && <> · Your best {Number(myBest).toLocaleString()}</>}{myRank != null && ` · #${myRank}`}
+          </div>
         )}
 
         {hasScore && entries.length > 0 && (
@@ -305,7 +316,7 @@ function ResultOverlay({ result, board, myRating, shared, onRate, onPlayAgain, o
           {onShare ? (
             <button onClick={onShare} disabled={shared} style={{ flex: 1, background: 'transparent', color: '#00CEC8', border: '1px solid rgba(0,206,200,0.5)', borderRadius: 22, padding: '13px 0', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>{shared ? 'Shared ✓' : 'Share'}</button>
           ) : (
-            <button onClick={onClose} style={{ flex: 1, background: 'transparent', color: '#cfcfcf', border: '1px solid rgba(255,255,255,0.16)', borderRadius: 22, padding: '13px 0', fontSize: 15, fontWeight: 500, cursor: 'pointer' }}>Done</button>
+            <button onClick={onDismiss} style={{ flex: 1, background: 'transparent', color: '#cfcfcf', border: '1px solid rgba(255,255,255,0.16)', borderRadius: 22, padding: '13px 0', fontSize: 15, fontWeight: 500, cursor: 'pointer' }}>Done</button>
           )}
         </div>
       </div>
