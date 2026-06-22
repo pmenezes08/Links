@@ -390,6 +390,7 @@ def vision_json(
     *,
     model: str = "claude-opus-4-8",
     max_tokens: int = 1200,
+    timeout: float = 90,
 ) -> Dict[str, Any]:
     """Vision completion: send a PNG screenshot (base64) + a prompt to a
     vision-capable Claude model and parse a JSON object from the reply. Used by
@@ -413,7 +414,7 @@ def vision_json(
                 {"type": "text", "text": user_prompt},
             ],
         }],
-        timeout=120,
+        timeout=timeout,
     )
     text = next((b.text for b in msg.content if getattr(b, "type", None) == "text"), "")
     return _extract_json(text)
@@ -427,6 +428,7 @@ def generate_text(
     temperature: float = 0.6,
     caps: Optional[Dict[str, Any]] = None,
     model: Optional[str] = None,
+    timeout: Optional[float] = None,
 ) -> str:
     """Plain-text completion from Grok (no JSON coercion).
 
@@ -435,6 +437,9 @@ def generate_text(
     chat per-turn token ceilings don't truncate the output; cost is governed
     by the builder's own monthly cap, not per-turn tokens. ``model`` lets a
     caller pick a stronger (e.g. reasoning) model than the fast default.
+    ``timeout`` (seconds) caps the upstream call — callers on a wall-clock
+    budget (e.g. the builder render/repair pass) pass a tight value so a slow
+    generation can't blow the request/lease budget.
     """
     effective_max = _apply_output_cap(max_tokens, caps)
     mdl = model or GROK_MODEL_FAST
@@ -455,7 +460,7 @@ def generate_text(
             max_tokens=effective_max,
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
-            timeout=600,
+            timeout=timeout if timeout is not None else 600,
         )
         return next((b.text for b in msg.content if getattr(b, "type", None) == "text"), "")
     if _is_openai_model(mdl):
@@ -469,6 +474,7 @@ def generate_text(
             model=mdl,
             input=messages,
             max_output_tokens=effective_max,
+            timeout=timeout,
         )
         if hasattr(response, "output_text") and response.output_text:
             return response.output_text
@@ -479,6 +485,7 @@ def generate_text(
         messages=messages,
         temperature=temperature,
         max_tokens=effective_max,
+        timeout=timeout,
     )
     if not completion.choices:
         return ""

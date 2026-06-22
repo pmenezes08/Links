@@ -881,10 +881,27 @@ def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperat
 
 _DESIGN_REFINE_THRESHOLD = 70  # below "polished" on the judge's 0-100 craft scale
 
+# The render/judge/repair pass runs on the SYNCHRONOUS build path, so it must be
+# strictly time-bounded — a build that overruns Cloud Run's request timeout (600s)
+# / job lease gets killed mid-flight and orphaned (the "endless loop" incident).
+# We cap the whole pass to a wall-clock budget, allow AT MOST ONE repair regen,
+# and give every upstream call a tight timeout. Worst realistic case:
+# render(45) + judge(60) + one regen(150) + re-render(45) ~= 300s, well under 600s.
+_QUALITY_BUDGET_SECONDS = 180
+_RENDER_TIMEOUT_SECONDS = 45
+_JUDGE_TIMEOUT_SECONDS = 60
+_REGEN_TIMEOUT_SECONDS = 150
+# Don't START a step unless at least this much budget remains (a started step is
+# allowed to finish, but its own timeout caps the overrun).
+_MIN_BUDGET_FOR_REGEN = 90
+_MIN_BUDGET_FOR_JUDGE = 25
 
-def _repair_regen(html: str, model: str, instruction: str) -> Optional[str]:
+
+def _repair_regen(html: str, model: str, instruction: str,
+                  timeout: float = _REGEN_TIMEOUT_SECONDS) -> Optional[str]:
     """One low-temperature, preserve-everything regeneration with a repair
-    instruction. Returns the cleaned HTML, or None on failure / size overflow."""
+    instruction. ``timeout`` caps the upstream call. Returns the cleaned HTML,
+    or None on failure / size overflow."""
     try:
         out = _clean_html(
             llm.generate_text(
@@ -894,6 +911,7 @@ def _repair_regen(html: str, model: str, instruction: str) -> Optional[str]:
                 temperature=0.2,
                 caps=None,
                 model=model,
+                timeout=timeout,
             )
         )
     except Exception:
@@ -907,26 +925,34 @@ def _repair_regen(html: str, model: str, instruction: str) -> Optional[str]:
 def _render_quality_pass(html: str, *, prompt: str, facts: str, sources: List[str],
                         model: str, username: Optional[str],
                         community_id: Optional[int]) -> str:
-    """Render the artifact, judge it, and apply up to a couple of targeted repairs.
-    Entirely best-effort: any failure (service down, render error, judge error)
-    returns the artifact unchanged so a build is never blocked or degraded."""
+    """Render the artifact, judge it, and apply AT MOST ONE targeted repair, all
+    within a hard wall-clock budget. Entirely best-effort: any failure (service
+    down, render/judge error, low budget) returns the artifact unchanged, and the
+    whole pass can never push the build past its request/lease timeout."""
     from backend.services import render_service, vision_judge  # lazy: optional infra
 
     if not render_service.is_configured():
         return html
 
-    MAX_FIXES = 2
-    fixes = 0
+    deadline = time.monotonic() + _QUALITY_BUDGET_SECONDS
+
+    def budget_left() -> float:
+        return deadline - time.monotonic()
+
+    if budget_left() < _RENDER_TIMEOUT_SECONDS:
+        return html
     try:
-        shot = render_service.render(html)
+        shot = render_service.render(html, read_timeout=min(_RENDER_TIMEOUT_SECONDS, budget_left()))
     except Exception:
         logger.warning("builder: render quality pass failed to render", exc_info=True)
         return html
     if not shot:
         return html
 
-    # 1) Render-fix: blank page or JS console errors -> one repair.
-    if (shot.get("blank") or shot.get("console_errors")) and fixes < MAX_FIXES:
+    fixed = False  # at most ONE repair regen per build (time + cost bound)
+
+    # 1) Render-fix (highest priority): blank page or JS console errors.
+    if (shot.get("blank") or shot.get("console_errors")) and budget_left() > _MIN_BUDGET_FOR_REGEN:
         errs = shot.get("console_errors") or []
         reason = "the page rendered completely blank/empty" if shot.get("blank") \
             else "the page logged JavaScript errors at runtime"
@@ -937,27 +963,32 @@ def _render_quality_pass(html: str, *, prompt: str, facts: str, sources: List[st
         )
         if errs:
             instruction += "\n\nConsole errors observed:\n" + "\n".join(errs[:8])
-        repaired = _repair_regen(html, model, instruction)
+        repaired = _repair_regen(html, model, instruction, timeout=min(_REGEN_TIMEOUT_SECONDS, budget_left()))
         if repaired:
             html = repaired
-            fixes += 1
-            try:
-                shot2 = render_service.render(html)
-                if shot2:
-                    shot = shot2
-            except Exception:
-                pass
+            fixed = True
+            if budget_left() > _RENDER_TIMEOUT_SECONDS:
+                try:
+                    shot2 = render_service.render(html, read_timeout=min(_RENDER_TIMEOUT_SECONDS, budget_left()))
+                    if shot2:
+                        shot = shot2
+                except Exception:
+                    pass
 
     # 2) Vision-judge the screenshot: data accuracy + design craft.
+    if budget_left() < _MIN_BUDGET_FOR_JUDGE:
+        return html
     verdict = vision_judge.judge(
         shot.get("screenshot", ""), username=username or "", brief=prompt, facts=facts,
         console_errors=shot.get("console_errors") or [], community_id=community_id,
+        timeout=min(_JUDGE_TIMEOUT_SECONDS, budget_left()),
     )
     if not verdict:
         return html
 
     # 2a) Web-data verification: on-screen values must match the researched data.
-    if facts and verdict.get("data_verified") == "no" and fixes < MAX_FIXES:
+    if (not fixed and facts and verdict.get("data_verified") == "no"
+            and budget_left() > _MIN_BUDGET_FOR_REGEN):
         issues = verdict.get("data_issues") or []
         instruction = (
             "The data shown on screen does NOT match the required real-world data. Correct EVERY value "
@@ -967,13 +998,13 @@ def _render_quality_pass(html: str, *, prompt: str, facts: str, sources: List[st
         if issues:
             instruction += "\n\nSpecific problems found:\n- " + "\n- ".join(issues)
         instruction += f"\n\nREAL DATA:\n{facts}\n\nSOURCE LINKS:\n" + "\n".join(sources)
-        repaired = _repair_regen(html, model, instruction)
+        repaired = _repair_regen(html, model, instruction, timeout=min(_REGEN_TIMEOUT_SECONDS, budget_left()))
         if repaired:
             html = repaired
-            fixes += 1
+            fixed = True
 
     # 2b) Design-refine: only the 'best' tier, only when clearly below the bar.
-    if (model == _MODEL_BEST and fixes < MAX_FIXES
+    if (not fixed and model == _MODEL_BEST and budget_left() > _MIN_BUDGET_FOR_REGEN
             and verdict.get("design_score", 100) < _DESIGN_REFINE_THRESHOLD):
         critique = verdict.get("critique") or []
         if critique:
@@ -981,10 +1012,10 @@ def _render_quality_pass(html: str, *, prompt: str, facts: str, sources: List[st
                 "Raise the visual craft of this app. Apply these specific improvements while preserving "
                 "ALL functionality and content. Return the COMPLETE updated HTML:\n- " + "\n- ".join(critique)
             )
-            repaired = _repair_regen(html, model, instruction)
+            repaired = _repair_regen(html, model, instruction, timeout=min(_REGEN_TIMEOUT_SECONDS, budget_left()))
             if repaired:
                 html = repaired
-                fixes += 1
+                fixed = True
 
     return html
 

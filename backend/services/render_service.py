@@ -26,7 +26,9 @@ import requests
 logger = logging.getLogger(__name__)
 
 # (connect, read) — a cold worker may take a few seconds to launch Chromium.
-_TIMEOUT = (5, 75)
+# Read timeout is caller-tunable so a render can't overrun a wall-clock budget.
+_CONNECT_TIMEOUT = 5
+_DEFAULT_READ_TIMEOUT = 45
 _METADATA_IDENTITY_URL = (
     "http://metadata.google.internal/computeMetadata/v1/"
     "instance/service-accounts/default/identity"
@@ -62,9 +64,10 @@ def _id_token(audience: str) -> Optional[str]:
 
 
 def render(html: str, *, width: int = 420, height: int = 760,
-           full_page: bool = True) -> Optional[Dict[str, Any]]:
+           full_page: bool = True, read_timeout: float = _DEFAULT_READ_TIMEOUT) -> Optional[Dict[str, Any]]:
     """Render ``html`` and return ``{screenshot, console_errors, dimensions,
-    blank, overflow}`` — or ``None`` on any failure (degrade gracefully)."""
+    blank, overflow}`` — or ``None`` on any failure (degrade gracefully).
+    ``read_timeout`` caps the wait so a slow render can't overrun the caller's budget."""
     url = _service_url()
     if not url or not html:
         return None
@@ -82,7 +85,7 @@ def render(html: str, *, width: int = 420, height: int = 760,
             f"{url}/render",
             json={"html": html, "width": width, "height": height, "full_page": full_page},
             headers=headers,
-            timeout=_TIMEOUT,
+            timeout=(_CONNECT_TIMEOUT, max(10.0, float(read_timeout))),
         )
     except Exception:
         logger.warning("render_service: request to %s failed", url, exc_info=True)

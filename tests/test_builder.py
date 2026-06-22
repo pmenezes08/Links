@@ -317,7 +317,7 @@ def test_render_quality_pass_fixes_blank_render(monkeypatch):
         "render_ok": True, "design_score": 90, "data_verified": "na",
         "data_issues": [], "critique": []})
     regen = {"n": 0}
-    monkeypatch.setattr(builder, "_repair_regen", lambda h, m, i: (
+    monkeypatch.setattr(builder, "_repair_regen", lambda h, m, i, timeout=None: (
         regen.__setitem__("n", regen["n"] + 1) or "<!doctype html><html><body>fixed</body></html>"))
     out = builder._render_quality_pass("<!doctype html><html><body></body></html>",
                                        prompt="x", facts="", sources=[],
@@ -337,7 +337,7 @@ def test_render_quality_pass_fixes_wrong_data(monkeypatch):
         "render_ok": True, "design_score": 80, "data_verified": "no",
         "data_issues": ["par for hole 1 is wrong"], "critique": []})
     regen = {"n": 0}
-    monkeypatch.setattr(builder, "_repair_regen", lambda h, m, i: (
+    monkeypatch.setattr(builder, "_repair_regen", lambda h, m, i, timeout=None: (
         regen.__setitem__("n", regen["n"] + 1) or "<!doctype html><html><body>corrected</body></html>"))
     out = builder._render_quality_pass("<html></html>", prompt="scorecard",
                                        facts="hole 1 par 4 https://x.com",
@@ -345,6 +345,25 @@ def test_render_quality_pass_fixes_wrong_data(monkeypatch):
                                        model=builder._MODEL_FAST, username="u", community_id=1)
     assert regen["n"] == 1
     assert "corrected" in out
+
+
+def test_render_quality_pass_respects_time_budget(monkeypatch):
+    """With no wall-clock budget left, the pass skips everything and returns the
+    artifact unchanged — the guard that stops a build overrunning its timeout."""
+    from backend.services import render_service
+    monkeypatch.setattr(render_service, "is_configured", lambda: True)
+    rendered = {"n": 0}
+    monkeypatch.setattr(render_service, "render",
+                        lambda h, **k: rendered.__setitem__("n", rendered["n"] + 1))
+    monkeypatch.setattr(builder, "_QUALITY_BUDGET_SECONDS", -1)  # already past deadline
+    regen = {"n": 0}
+    monkeypatch.setattr(builder, "_repair_regen",
+                        lambda h, m, i, timeout=None: regen.__setitem__("n", regen["n"] + 1))
+    html = "<!doctype html><html><body>keep</body></html>"
+    out = builder._render_quality_pass(html, prompt="x", facts="", sources=[],
+                                       model=builder._MODEL_BEST, username="u", community_id=1)
+    assert out == html
+    assert regen["n"] == 0 and rendered["n"] == 0
 
 
 def test_vision_judge_coerce_verdict_clamps():

@@ -100,9 +100,11 @@ def judge(
     console_errors: Optional[List[str]] = None,
     community_id: Optional[int] = None,
     model: str = _JUDGE_MODEL,
+    timeout: float = 60,
 ) -> Optional[Dict[str, Any]]:
     """Grade a rendered build screenshot. Returns the normalized verdict dict, or
-    ``None`` on any failure. Logs one ``ai_usage_log`` row per call."""
+    ``None`` on any failure. ``timeout`` caps the upstream call so the judge can't
+    overrun the build's wall-clock budget. Logs one ``ai_usage_log`` row per call."""
     if not screenshot_b64:
         return None
     started = time.time()
@@ -114,6 +116,7 @@ def judge(
             _build_user_prompt(brief or "", facts or "", list(console_errors or [])),
             screenshot_b64,
             model=model,
+            timeout=timeout,
         )
         if isinstance(raw, dict):
             verdict = _coerce_verdict(raw)
