@@ -10,6 +10,8 @@ __pycache__
 .env
 .env.*
 *.md
+# ...but the Steve Build Guide IS a runtime prompt and must ship in the image.
+!backend/services/builder_guide.md
 .cursor
 .vscode
 admin-web

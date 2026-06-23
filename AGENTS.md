@@ -179,6 +179,7 @@ Route inventory, data-store maps, deploy topology, and journey narratives **must
 | Material shift in a **cross-system** flow (Stripe/checkout/webhook path, AI gate + usage logging, enterprise seat lifecycle, onboarding stages, DM/group storage or read path) | **`docs/PRODUCT_JOURNEYS.md`**. |
 | Monolith reduction **epic** priority or acceptance criteria shift | **`docs/MONOLITH_REDUCTION_ROADMAP.md`**. |
 | New major dependency, supplier, blueprint area, or integration worth a one-line pointer | **`docs/C_POINT_ARCHITECTURE.md`**. |
+| **Steve's build capabilities** — a new `CPoint` API / route / connector, a new build kind, a design-direction change, or a new build quality pass | **`backend/services/builder_guide.md`** (the single guide injected into every build; the CAPS block is also shared into Steve's chat prompt, so updating it keeps both his builds AND his user-facing feedback accurate). |
 
 Full checkbox list: **[docs/AGENT_TASK_CHECKLIST.md](docs/AGENT_TASK_CHECKLIST.md)**.
 

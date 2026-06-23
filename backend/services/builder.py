@@ -55,7 +55,19 @@ MAX_HTML_BYTES = 400_000  # reject pathologically large artifacts
 # NOT throw, so the client error net never sees it).
 _CODEGEN_MAX_TOKENS = 64000
 
-_SYSTEM_PROMPT = (
+def _load_build_guide() -> Optional[str]:
+    """Load the Steve Build Guide markdown shipped next to this module — the
+    single source of truth for codegen. Falls back to the inline prompt below if
+    the file is missing so a build never breaks."""
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "builder_guide.md"), "r", encoding="utf-8") as f:
+            return (f.read().strip() or None)
+    except Exception:
+        logger.warning("builder: builder_guide.md not loaded; using inline fallback", exc_info=True)
+        return None
+
+
+_SYSTEM_PROMPT_FALLBACK = (
     "You are Steve, a world-class product designer AND front-end engineer. Build a single self-contained web creation "
     "that looks like a great designer made it — clean, modern, confident — and that a community will want to use and "
     "share. NEVER ship a generic-looking demo: no default purple/indigo gradients, no flat unstyled Bootstrap look, no "
@@ -179,6 +191,36 @@ _SYSTEM_PROMPT = (
     "your turn). Opponents also get a push notification, so async play works across days. `CPoint.match.resign(id)` forfeits. Keep "
     "`state` compact. DEGRADE: if `hasMultiplayer` is false, offer local hot-seat (both players, one device)."
 )
+
+# The authored guide is the source of truth; the inline string above is the fallback.
+_SYSTEM_PROMPT = _load_build_guide() or _SYSTEM_PROMPT_FALLBACK
+logger.info("builder: codegen prompt = %s (%d chars)",
+            "builder_guide.md" if _SYSTEM_PROMPT is not _SYSTEM_PROMPT_FALLBACK else "INLINE FALLBACK",
+            len(_SYSTEM_PROMPT))
+
+
+def _extract_caps(text: str) -> str:
+    """Pull the shared CAPABILITIES block (between the CAPS markers) out of the
+    guide so chat and codegen describe what Steve can do from ONE source. Returns
+    '' when the markers are absent (e.g. the inline fallback has none)."""
+    a, b = text.find("<!-- CAPS:START -->"), text.find("<!-- CAPS:END -->")
+    if a == -1 or b == -1 or b < a:
+        return ""
+    return text[a + len("<!-- CAPS:START -->"):b].strip()
+
+
+# Concise capabilities summary used in chat if the guide/markers can't be read.
+_CAPS_FALLBACK = (
+    "Your creations run as ONE offline, sandboxed front-end file; identity is the user's C-Point session (no login of "
+    "their own). They CAN: show real web photos; pull recent public data (weather, country, Wikipedia, recipes, "
+    "cocktails, jokes, facts, advice, tech news, sports fixtures/results); bake in REAL facts you research from the web "
+    "AT BUILD TIME (so never say you 'can't fetch from the web'); save per-player state; track community scores, "
+    "leaderboards and ratings; and host invite-a-friend TWO-PLAYER turn-based multiplayer (live + async, persisted, with "
+    "notifications). They CANNOT: have their own accounts/login, call arbitrary external APIs at runtime, take payments, "
+    "send email/SMS, use native phone features, or do simultaneous real-time action (multiplayer is turn-based)."
+)
+
+_CAPS_BLOCK = _extract_caps(_SYSTEM_PROMPT) or _CAPS_FALLBACK
 
 _CREATION_COLS = [
     "id", "community_id", "created_by", "title", "kind", "html_content",
@@ -684,29 +726,13 @@ _CONVERSE_BASE = (
     "- FORMAT FOR MOBILE: keep replies easy to scan. Use short paragraphs, blank lines between ideas, and bullets when "
     "listing features, options, or a build plan. Avoid long walls of text. Default to 2-4 short chunks unless the user "
     "explicitly asks for depth.\n"
-    "- KNOW WHAT YOUR CREATIONS CAN DO, and offer these proactively: they CAN show REAL PHOTOS pulled from the web "
-    "(actual photos of places, food, landmarks); pull RECENT PUBLIC DATA through vetted built-in connectors (weather, "
-    "country facts, Wikipedia summaries, recipes/cocktails, jokes, facts, advice, tech news, sports fixtures/results); "
-    "SAVE each player's progress / state / preferences; and track COMMUNITY scores, ratings and leaderboards plus play "
-    "counts. HOST TWO-PLAYER GAMES — invite another community member to a turn-based game (chess, checkers, Connect-4, "
-    "battleship, tic-tac-toe, word duels): the platform stores the shared game, enforces whose turn it is, syncs each "
-    "move (near-instant while both have it open, and async with a push notification when a player is away), and PERSISTS "
-    "every game so BOTH players see their game-in-progress and past games whenever they come back. "
-    "AND — IMPORTANT — WHEN YOU BUILD, you RESEARCH REAL FACTS FROM THE WEB and bake them in: real golf course "
-    "pars/scorecards (hole by hole), real restaurant lists, menus, prices, opening hours, schedules, statistics — accurate "
-    "as of build time. So 'find the real scorecards online', 'use the actual menu', 'real current prices', 'pull in real "
-    "Lisbon photos', 'add a leaderboard' are all YES — affirm them and build them in. NEVER say you 'can't fetch from the "
-    "web': the FINISHED app is offline, but YOU look the facts up WHILE BUILDING and bake the real values in.\n"
-    "- Be HONEST about REAL limitations and explain them plainly. Front-end-only creations CANNOT have: real user "
-    "accounts/logins, payments, sending email or texts, connecting to ARBITRARY external or private services AT RUNTIME, "
-    "running their own database/backend, or native phone features (camera, GPS, contacts). The features above (real photos, "
-    "build-time web research, vetted public data, save, leaderboards, AND invite-a-friend TWO-PLAYER turn-based "
-    "multiplayer) DO work — never refuse those. So 'two people play chess', 'invite a friend to play', 'play live or "
-    "take turns over days', 'save the game so we both resume it later' are all YES — the platform handles the shared "
-    "game, turns, sync and notifications (you don't run your own server for it). The one honest limit is SIMULTANEOUS "
-    "real-time ACTION (both players moving at once, reflex/arcade together) — that isn't supported; TURN-BASED "
-    "two-player is. If the user asks for "
-    "something genuinely out of reach, say so kindly and offer the closest thing you CAN make.\n"
+    "- KNOW EXACTLY WHAT YOUR CREATIONS CAN AND CANNOT DO (your source of truth — affirm and offer what's supported, "
+    "NEVER wrongly refuse it, and explain a real limit plainly with its honest reason). When you BUILD you research real "
+    "facts from the web and bake them in, so 'use the real scorecard / actual menu / current prices / real photos / add a "
+    "leaderboard / two people play chess / invite a friend / play live or async / save the game so we resume it' are all "
+    "YES. Capabilities & limits:\n"
+    + _CAPS_BLOCK + "\n"
+    "If the user asks for something genuinely out of reach, say so kindly and offer the closest thing you CAN make.\n"
     "- NEVER FABRICATE DATA SOURCES, and DON'T UNDERSELL what you can do. If the current build's facts look approximate or "
     "uncited (e.g. pars from general knowledge), do NOT just offer to add a disclaimer note — offer to RESEARCH THE REAL "
     "VALUES FROM THE WEB AND REBUILD with them (you can — build-time research is real), citing the sources you find. If "

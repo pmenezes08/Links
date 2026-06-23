@@ -249,6 +249,21 @@ def test_converse_tolerates_non_json(monkeypatch):
     assert "vibe" in out["reply"].lower()
 
 
+def test_build_guide_loads_and_has_anchors():
+    """The Steve Build Guide (builder_guide.md) is the codegen source of truth.
+    Guard its key sections so a future edit can't silently drop them, and confirm
+    chat shares the SAME capabilities block (one source of truth, no drift)."""
+    assert builder._load_build_guide(), "builder_guide.md did not load"
+    sp = builder._SYSTEM_PROMPT
+    assert sp is not builder._SYSTEM_PROMPT_FALLBACK, "codegen is using the inline fallback, not the guide"
+    for anchor in ("modern", "minimalist", "x.ai", "CPoint.match", "Websites", "Apps", "Games", "sandbox"):
+        assert anchor.lower() in sp.lower(), f"build-guide anchor missing: {anchor}"
+    caps = builder._CAPS_BLOCK
+    assert caps and "CAPS:START" not in caps, "capabilities block not extracted cleanly"
+    assert "cannot" in caps.lower() and "login" in caps.lower(), "CAN/CANNOT missing from caps block"
+    assert caps in builder._CONVERSE_BASE, "chat prompt does not share the guide's capabilities block"
+
+
 def test_research_repairs_when_data_not_grounded(monkeypatch):
     """If the first artifact omits the researched data, generate_artifact runs
     exactly one repair pass and the final HTML cites the real source."""
