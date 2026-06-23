@@ -9,9 +9,10 @@ __pycache__
 *.pyc
 .env
 .env.*
-*.md
-# ...but the Steve Build Guide IS a runtime prompt and must ship in the image.
-!backend/services/builder_guide.md
+# NOTE: no blanket `*.md` exclude. backend/services/builder_guide.md is a RUNTIME
+# prompt that MUST ship, and `gcloud builds submit` does not reliably honour a `!`
+# negation. The Dockerfile only COPYs backend/ + templates/ + static/, so root/docs
+# markdown never reach the image anyway — `*.md` was only stripping the guide.
 .cursor
 .vscode
 admin-web
