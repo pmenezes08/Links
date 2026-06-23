@@ -19,16 +19,9 @@ type Props = {
   shared?: boolean
 }
 
-type Entry = { name: string; value: number; rank: number }
-type ResultState = { score: number | null; key: string; saved: boolean }
-
-export default function PlayableCreation({ html, title, onClose, creationId, onRuntimeError, onShare, shared }: Props) {
+export default function PlayableCreation({ html, title, onClose, creationId, onRuntimeError }: Props) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const [fit, setFit] = useState(1)
-  const [playKey, setPlayKey] = useState(0)
-  const [result, setResult] = useState<ResultState | null>(null)
-  const [board, setBoard] = useState<{ entries: Entry[]; mine: Entry | null } | null>(null)
-  const [myRating, setMyRating] = useState<number | null>(null)
   const [bgColor, setBgColor] = useState('#000')
   const [cpNotice, setCpNotice] = useState<string | null>(null)
   const noticeTimer = useRef<number | undefined>(undefined)
@@ -51,29 +44,21 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
     fetch(`/api/builder/${creationId}/play`, { method: 'POST', credentials: 'include' }).catch(() => { /* noop */ })
   }, [creationId])
 
-  // Show the native result screen when the artifact signals the run ended.
+  // Persist the final score when the artifact signals a run ended. The game owns
+  // its OWN end screen + leaderboard (built from the CPoint API), so the host shows
+  // no result UI of its own — just a small confirmation toast that the score saved.
   const handleGameOver = async (score: unknown, key: unknown) => {
+    if (creationId == null) return
     const k = (typeof key === 'string' && key) ? key : 'highscore'
     const numScore = typeof score === 'number' && isFinite(score) ? score : null
-    let saved = false
-    if (creationId != null) {
-      try {
-        if (numScore != null) {
-          const r = await fetch(`/api/builder/${creationId}/data/score`, {
-            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ value: numScore, key: k }),
-          })
-          saved = r.ok // 200 only on a real persist (route returns 4xx/5xx otherwise)
-        }
-        const [lb, rs] = await Promise.all([
-          fetch(`/api/builder/${creationId}/data/leaderboard?key=${encodeURIComponent(k)}&limit=5`, { credentials: 'include' }).then((r) => r.json()).catch(() => null),
-          fetch(`/api/builder/${creationId}/data/results`, { credentials: 'include' }).then((r) => r.json()).catch(() => null),
-        ])
-        setBoard(lb && lb.success ? { entries: lb.entries || [], mine: lb.mine || null } : { entries: [], mine: null })
-        setMyRating(rs && rs.success ? (typeof rs.mine === 'number' ? rs.mine : null) : null)
-      } catch { /* show the overlay anyway */ }
-    }
-    setResult({ score: numScore, key: k, saved })
+    if (numScore == null) return
+    try {
+      const r = await fetch(`/api/builder/${creationId}/data/score`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: numScore, key: k }),
+      })
+      if (r.ok) showNotice('✓ Score saved')
+    } catch { /* best-effort */ }
   }
 
   // Broker CPoint SDK calls + handle runtime errors and the gameOver signal from
@@ -184,9 +169,8 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
       paddingBottom: 'max(var(--sab-px, 0px), var(--keyboard-offset, 0px))',
       transition: 'padding-bottom 0.2s ease',
     }}>
-      <style>{`@keyframes cp-sheet-up { from { transform: translateY(100%) } to { transform: translateY(0) } }`}</style>
       <div style={{ flex: '1 1 auto', position: 'relative', overflow: 'hidden', minHeight: 0, background: bgColor }}>
-        <iframe key={playKey} ref={iframeRef} title={title || 'Creation'} sandbox="allow-scripts" srcDoc={srcDoc} style={iframeStyle} />
+        <iframe ref={iframeRef} title={title || 'Creation'} sandbox="allow-scripts" srcDoc={srcDoc} style={iframeStyle} />
       </div>
 
       <button onClick={onClose} aria-label="Close"
@@ -201,125 +185,6 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
         </div>
       )}
 
-      {result && (
-        <ResultOverlay
-          result={result}
-          board={board}
-          myRating={myRating}
-          shared={shared}
-          onRate={async (v) => {
-            setMyRating(v)
-            if (creationId != null) {
-              try { await fetch(`/api/builder/${creationId}/data/rate`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: v }) }) } catch { /* noop */ }
-            }
-          }}
-          onPlayAgain={() => { setResult(null); setBoard(null); setPlayKey((k) => k + 1) }}
-          onShare={onShare}
-          onDismiss={() => setResult(null)}
-          bgColor={bgColor}
-        />
-      )}
-    </div>
-  )
-}
-
-function CountUp({ to }: { to: number }) {
-  const [n, setN] = useState(0)
-  useEffect(() => {
-    let raf = 0
-    const start = performance.now()
-    const dur = 900
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / dur)
-      const eased = 1 - Math.pow(1 - t, 3) // ease-out cubic
-      setN(Math.round(to * eased))
-      if (t < 1) raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [to])
-  return <span style={{ fontVariantNumeric: 'tabular-nums' }}>{n.toLocaleString()}</span>
-}
-
-function ResultOverlay({ result, board, myRating, shared, onRate, onPlayAgain, onShare, onDismiss, bgColor }: {
-  result: ResultState
-  board: { entries: Entry[]; mine: Entry | null } | null
-  myRating: number | null
-  shared?: boolean
-  onRate: (v: number) => void
-  onPlayAgain: () => void
-  onShare?: () => void
-  onDismiss: () => void
-  bgColor: string
-}) {
-  const entries = board?.entries || []
-  const hasScore = result.score != null
-  const isBest = hasScore && board?.mine != null && Number(board.mine.value) <= Number(result.score)
-  // What the player's record now is after this run (best-per-player is kept server-side).
-  const myBest = board?.mine != null ? Number(board.mine.value) : (hasScore ? Number(result.score) : null)
-  const myRank = board?.mine?.rank ?? null
-  // OPAQUE backdrop (the game's own canvas colour): fully covers the artifact so a
-  // build that drew its OWN game-over screen can't show through this native one or
-  // steal taps meant for its dead buttons. This native sheet is the only end-of-run UI.
-  return (
-    <div style={{ position: 'absolute', inset: 0, zIndex: 6, background: bgColor || '#000', display: 'flex', alignItems: 'flex-end' }}>
-      <div style={{ width: '100%', background: '#0b0b0b', borderRadius: '20px 20px 0 0', borderTop: '1px solid rgba(255,255,255,0.08)', padding: '10px 18px', paddingBottom: 'calc(var(--sab-px, 0px) + 16px)', animation: 'cp-sheet-up 0.25s cubic-bezier(0.32,0.72,0,1)' }}>
-        <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.18)', margin: '4px auto 14px' }} />
-
-        {hasScore ? (
-          <div style={{ textAlign: 'center', marginBottom: 14 }}>
-            <div style={{ fontSize: 13, color: '#8a8a8a' }}>{isBest ? 'New best!' : 'Your score'}</div>
-            <div style={{ fontSize: 44, fontWeight: 600, color: isBest ? '#EF9F27' : '#00CEC8', textShadow: isBest ? '0 0 18px rgba(239,159,39,0.45)' : 'none', lineHeight: 1.1 }}>
-              <CountUp to={Number(result.score)} />
-            </div>
-          </div>
-        ) : (
-          <div style={{ textAlign: 'center', fontSize: 22, color: '#f1f1f1', margin: '4px 0 14px' }}>Nice one!</div>
-        )}
-
-        {hasScore && result.saved && (
-          <div style={{ textAlign: 'center', marginTop: -8, marginBottom: 14, fontSize: 12.5, color: '#00CEC8' }}>
-            ✓ Saved{myBest != null && <> · Your best {Number(myBest).toLocaleString()}</>}{myRank != null && ` · #${myRank}`}
-          </div>
-        )}
-
-        {hasScore && entries.length > 0 && (
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, color: '#7a7a7a', marginBottom: 6 }}>Top scores</div>
-            {entries.slice(0, 5).map((en) => {
-              const mine = board?.mine != null && en.rank === board.mine.rank && Number(en.value) === Number(board.mine.value)
-              return (
-                <div key={en.rank} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 8px', borderRadius: 8, background: mine ? 'rgba(0,206,200,0.08)' : 'transparent' }}>
-                  <span style={{ width: 20, color: en.rank === 1 ? '#EF9F27' : '#8a8a8a', fontSize: 13, fontWeight: 600 }}>{en.rank}</span>
-                  <span style={{ flex: 1, minWidth: 0, color: '#e9e9e9', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{en.name}</span>
-                  <span style={{ color: '#f1f1f1', fontSize: 14, fontVariantNumeric: 'tabular-nums' }}>{Number(en.value).toLocaleString()}</span>
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        <div style={{ textAlign: 'center', marginBottom: 16 }}>
-          <div style={{ fontSize: 12, color: '#7a7a7a', marginBottom: 6 }}>Rate it for the maker</div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
-            {[1, 2, 3, 4, 5].map((s) => (
-              <button key={s} onClick={() => onRate(s)} aria-label={`Rate ${s}`}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 26, color: (myRating || 0) >= s ? '#00CEC8' : 'rgba(255,255,255,0.18)', padding: 2 }}>
-                <i className="ti ti-star-filled" aria-hidden />
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={onPlayAgain} style={{ flex: 1, background: '#00CEC8', color: '#00302e', border: 'none', borderRadius: 22, padding: '13px 0', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>Play again</button>
-          {onShare ? (
-            <button onClick={onShare} disabled={shared} style={{ flex: 1, background: 'transparent', color: '#00CEC8', border: '1px solid rgba(0,206,200,0.5)', borderRadius: 22, padding: '13px 0', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>{shared ? 'Shared ✓' : 'Share'}</button>
-          ) : (
-            <button onClick={onDismiss} style={{ flex: 1, background: 'transparent', color: '#cfcfcf', border: '1px solid rgba(255,255,255,0.16)', borderRadius: 22, padding: '13px 0', fontSize: 15, fontWeight: 500, cursor: 'pointer' }}>Done</button>
-          )}
-        </div>
-      </div>
     </div>
   )
 }
