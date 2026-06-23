@@ -16,6 +16,7 @@ from flask import Blueprint, jsonify, request, session
 from backend.services import ai_usage
 from backend.services import builder as builder_svc
 from backend.services import builder_feeds
+from backend.services import creation_match as match_svc
 from backend.services.cron_auth import cron_authed
 from backend.services.entitlements_gate import gate_builder_or_reason
 from backend.services.community_access import can_view_community_content
@@ -612,6 +613,141 @@ def builder_data_summary(creation_id: int):
     except Exception:
         pass
     return jsonify({"success": True, **summary})
+
+
+# --- Two-player turn-based MATCH routes (game-agnostic; see creation_match.py) ---
+
+def _match_fail(e: Exception):
+    """Map a creation_match error to a JSON response. The build keys off the
+    error STRING (e.g. 'not_your_turn','stale_version') to recover, so always
+    pass it through."""
+    msg = str(e) or "match_error"
+    if isinstance(e, PermissionError):
+        return jsonify({"success": False, "error": msg}), 403
+    if isinstance(e, ValueError):
+        code = 404 if msg == "match_not_found" else (
+            409 if msg in ("not_your_turn", "stale_version", "not_active") else 400)
+        return jsonify({"success": False, "error": msg}), code
+    logger.exception("builder: match op failed")
+    return jsonify({"success": False, "error": "match_error"}), 500
+
+
+def _match_access(creation_id: int):
+    """Shared auth for match routes -> (username, community_id) or an error response."""
+    username = session.get("username")
+    if not username:
+        return None, None, (jsonify({"success": False, "error": "auth_required"}), 401)
+    _creation, community_id = _resolve_accessible_creation(creation_id, username)
+    if community_id is None:
+        return None, None, (jsonify({"success": False, "error": "not_found"}), 404)
+    return username, community_id, None
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/match/opponents", methods=["GET"])
+def builder_match_opponents(creation_id: int):
+    username, community_id, err = _match_access(creation_id)
+    if err:
+        return err
+    return jsonify({"success": True, "opponents": match_svc.list_opponents(creation_id, community_id, username)})
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/match/list", methods=["GET"])
+def builder_match_list(creation_id: int):
+    username, community_id, err = _match_access(creation_id)
+    if err:
+        return err
+    return jsonify({"success": True, "matches": match_svc.list_matches(creation_id, username)})
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/match/create", methods=["POST"])
+def builder_match_create(creation_id: int):
+    username, community_id, err = _match_access(creation_id)
+    if err:
+        return err
+    if not _data_write_ok(username, creation_id):
+        return jsonify({"success": False, "error": "rate_limited"}), 429
+    data = request.get_json(silent=True) or {}
+    try:
+        m = match_svc.create_match(creation_id=creation_id, community_id=community_id,
+                                   challenger=username, opponent_handle=str(data.get("opponent") or ""))
+    except Exception as e:
+        return _match_fail(e)
+    return jsonify({"success": True, "match": m})
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/match/<int:match_id>", methods=["GET"])
+def builder_match_get(creation_id: int, match_id: int):
+    username, community_id, err = _match_access(creation_id)
+    if err:
+        return err
+    try:
+        return jsonify({"success": True, "match": match_svc.get_match(match_id, username)})
+    except Exception as e:
+        return _match_fail(e)
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/match/<int:match_id>/move", methods=["POST"])
+def builder_match_move(creation_id: int, match_id: int):
+    username, community_id, err = _match_access(creation_id)
+    if err:
+        return err
+    if not _data_write_ok(username, creation_id):
+        return jsonify({"success": False, "error": "rate_limited"}), 429
+    data = request.get_json(silent=True) or {}
+    try:
+        res = match_svc.submit_move(match_id, username, move=data.get("move"), state=data.get("state"),
+                                    expected_version=int(data.get("version") or 0), result=data.get("result"))
+    except Exception as e:
+        return _match_fail(e)
+    return jsonify({"success": True, **res})
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/match/<int:match_id>/poll", methods=["GET"])
+def builder_match_poll(creation_id: int, match_id: int):
+    username, community_id, err = _match_access(creation_id)
+    if err:
+        return err
+    try:
+        since = int(request.args.get("since") or 0)
+    except (TypeError, ValueError):
+        since = 0
+    try:
+        return jsonify({"success": True, **match_svc.poll_match(match_id, username, since)})
+    except Exception as e:
+        return _match_fail(e)
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/match/<int:match_id>/accept", methods=["POST"])
+def builder_match_accept(creation_id: int, match_id: int):
+    username, community_id, err = _match_access(creation_id)
+    if err:
+        return err
+    try:
+        return jsonify({"success": True, "match": match_svc.accept_match(match_id, username)})
+    except Exception as e:
+        return _match_fail(e)
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/match/<int:match_id>/decline", methods=["POST"])
+def builder_match_decline(creation_id: int, match_id: int):
+    username, community_id, err = _match_access(creation_id)
+    if err:
+        return err
+    try:
+        return jsonify({"success": True, "match": match_svc.decline_match(match_id, username)})
+    except Exception as e:
+        return _match_fail(e)
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/match/<int:match_id>/resign", methods=["POST"])
+def builder_match_resign(creation_id: int, match_id: int):
+    username, community_id, err = _match_access(creation_id)
+    if err:
+        return err
+    try:
+        return jsonify({"success": True, "match": match_svc.resign_match(match_id, username)})
+    except Exception as e:
+        return _match_fail(e)
 
 
 @builder_bp.route("/api/builder/<int:creation_id>/play", methods=["POST"])

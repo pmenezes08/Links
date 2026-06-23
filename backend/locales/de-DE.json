@@ -237,6 +237,21 @@
       "body": "{author} hat dich zu {community} eingeladen",
       "message": "{author} hat dich eingeladen, {community} beizutreten"
     },
+    "match_invite": {
+      "title": "Neue Spielherausforderung",
+      "body": "{name} hat dich zu einem Spiel herausgefordert",
+      "message": "{name} hat dich zu einem Spiel herausgefordert"
+    },
+    "match_move": {
+      "title": "Du bist am Zug",
+      "body": "{name} hat gezogen — du bist dran",
+      "message": "Du bist gegen {name} am Zug"
+    },
+    "match_over": {
+      "title": "Spiel beendet",
+      "body": "Dein Spiel mit {name} ist beendet",
+      "message": "Dein Spiel mit {name} ist beendet"
+    },
     "event_reminder": {
       "title": "Bevorstehendes Event",
       "body": "{event_name} beginnt bald",

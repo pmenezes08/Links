@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import PlayableCreation from '../components/builder/PlayableCreation'
 
 type Creation = { id: number; title: string; html: string }
 
 export default function CreationPlay() {
   const { community_id, creation_id } = useParams()
+  const [searchParams] = useSearchParams()
+  // Deep-link from a "your move" notification: jump straight into that match.
+  const startMatchId = Number(searchParams.get('match')) || null
   const navigate = useNavigate()
   const [creation, setCreation] = useState<Creation | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -37,7 +40,7 @@ export default function CreationPlay() {
   }
 
   if (creation) {
-    return <PlayableCreation html={creation.html} title={creation.title} onClose={goBack} creationId={creation.id} />
+    return <PlayableCreation html={creation.html} title={creation.title} onClose={goBack} creationId={creation.id} startMatchId={startMatchId} />
   }
 
   return (

@@ -237,6 +237,21 @@
       "body": "{author} convidou-te para {community}",
       "message": "{author} convidou-te para entrares em {community}"
     },
+    "match_invite": {
+      "title": "Novo desafio de jogo",
+      "body": "{name} desafiou-te para um jogo",
+      "message": "{name} desafiou-te para um jogo"
+    },
+    "match_move": {
+      "title": "É a tua vez",
+      "body": "{name} jogou — é a tua vez",
+      "message": "É a tua vez contra {name}"
+    },
+    "match_over": {
+      "title": "Jogo terminado",
+      "body": "O teu jogo com {name} terminou",
+      "message": "O teu jogo com {name} terminou"
+    },
     "event_reminder": {
       "title": "Evento a aproximar-se",
       "body": "{event_name} começa em breve",

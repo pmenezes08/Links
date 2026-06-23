@@ -160,7 +160,24 @@ _SYSTEM_PROMPT = (
     "This data is RECENT and cached, not millisecond-live; for sports, build fixtures/results apps such as yesterday's scores "
     "or tomorrow's games, not live minute-by-minute scoreboards. Always render useful fallback content first, update when data "
     "arrives, wrap in try/catch, and display the returned `attribution` string visibly near the data. Random connectors return "
-    "a batch in `data.items`; pick one client-side so many players can share one cached fetch."
+    "a batch in `data.items`; pick one client-side so many players can share one cached fetch. "
+    "TWO-PLAYER TURN-BASED MULTIPLAYER (chess, checkers, connect-4, tic-tac-toe, battleship, dominoes, card games): when "
+    "the user wants two people to play EACH OTHER, feature-detect `if (window.CPoint?.hasMultiplayer)` and use the "
+    "`CPoint.match.*` Promises. YOU build ALL the UI and game rules; the server only stores the shared game state, enforces "
+    "whose turn it is, and notifies the opponent. FLOW: (1) LOBBY on boot — `const {matches} = await CPoint.match.list()` "
+    "lists the player's games (each `{id,status,your_turn,opponent,winner}`); show 'your turn' games first + a 'New game' "
+    "button, and any pending invites to accept. (2) CHALLENGE — `const {opponents} = await CPoint.match.opponents()` returns "
+    "`[{handle,name}]` community members; let the user pick one, then `await CPoint.match.create(handle)` (status 'pending' "
+    "until they accept; the opponent is notified). (3) An invited player calls `CPoint.match.accept(id)` or `decline(id)`. "
+    "(4) PLAY — `const m = await CPoint.match.get(id)` -> `{your_seat,your_turn,opponent,status,state,version,winner}`; render "
+    "the board from `m.state` (state is NULL on a brand-new game — draw the starting position). On the user's move, compute the "
+    "NEW full game state and `await CPoint.match.move(id,{move, state:newState, version:m.version, result})` — omit `result` "
+    "for a normal move, or pass 'win'|'lose'|'draw' (from YOUR perspective) to end the game. ALWAYS send the `version` you read; "
+    "if move rejects with 'not_your_turn' or 'stale_version', re-`get(id)` and re-render (the opponent already moved). (5) LIVE "
+    "SYNC — while it's the OPPONENT's turn and the board is open, poll `await CPoint.match.poll(id, lastSeq)` -> "
+    "`{moves,your_turn,status,winner}` every ~2.5s and apply new moves (clear the interval when you leave the board or it becomes "
+    "your turn). Opponents also get a push notification, so async play works across days. `CPoint.match.resign(id)` forfeits. Keep "
+    "`state` compact. DEGRADE: if `hasMultiplayer` is false, offer local hot-seat (both players, one device)."
 )
 
 _CREATION_COLS = [
@@ -314,6 +331,92 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
             cursor.execute("ALTER TABLE creation_data ADD COLUMN data_value " + ("MEDIUMTEXT" if USE_MYSQL else "TEXT"))
         except Exception:
             pass
+        # Two-player turn-based MATCH state — game-agnostic shared state between the
+        # two seats of a creation. The build supplies ALL rules + UI; the server only
+        # stores the shared state blob + a move log and enforces seat, turn order,
+        # and optimistic concurrency (version). See backend/services/creation_match.py.
+        if USE_MYSQL:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS creation_matches (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    creation_id INT NOT NULL,
+                    community_id INT NOT NULL,
+                    seat1_username VARCHAR(191) NOT NULL,
+                    seat2_username VARCHAR(191) NOT NULL,
+                    status VARCHAR(16) NOT NULL DEFAULT 'pending',
+                    turn_seat TINYINT NULL,
+                    state_json MEDIUMTEXT NULL,
+                    version INT NOT NULL DEFAULT 0,
+                    last_seq INT NOT NULL DEFAULT 0,
+                    winner_seat TINYINT NULL,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    last_move_at DATETIME NULL,
+                    INDEX idx_matches_seat1 (creation_id, seat1_username, status),
+                    INDEX idx_matches_seat2 (creation_id, seat2_username, status),
+                    INDEX idx_matches_status (status)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS creation_match_moves (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    match_id INT NOT NULL,
+                    seq INT NOT NULL,
+                    by_seat TINYINT NOT NULL,
+                    move_json MEDIUMTEXT NULL,
+                    created_at DATETIME NOT NULL,
+                    UNIQUE KEY uq_match_move (match_id, seq),
+                    INDEX idx_match_moves (match_id, seq)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS creation_matches (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    creation_id INTEGER NOT NULL,
+                    community_id INTEGER NOT NULL,
+                    seat1_username TEXT NOT NULL,
+                    seat2_username TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    turn_seat INTEGER NULL,
+                    state_json TEXT NULL,
+                    version INTEGER NOT NULL DEFAULT 0,
+                    last_seq INTEGER NOT NULL DEFAULT 0,
+                    winner_seat INTEGER NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    last_move_at TEXT NULL
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS creation_match_moves (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    match_id INTEGER NOT NULL,
+                    seq INTEGER NOT NULL,
+                    by_seat INTEGER NOT NULL,
+                    move_json TEXT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE (match_id, seq)
+                )
+                """
+            )
+            for stmt in (
+                "CREATE INDEX IF NOT EXISTS idx_matches_seat1 ON creation_matches (creation_id, seat1_username, status)",
+                "CREATE INDEX IF NOT EXISTS idx_matches_seat2 ON creation_matches (creation_id, seat2_username, status)",
+                "CREATE INDEX IF NOT EXISTS idx_matches_status ON creation_matches (status)",
+                "CREATE INDEX IF NOT EXISTS idx_match_moves ON creation_match_moves (match_id, seq)",
+            ):
+                try:
+                    cursor.execute(stmt)
+                except Exception:
+                    pass
         if USE_MYSQL:
             cursor.execute(
                 """

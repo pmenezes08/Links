@@ -95,18 +95,37 @@ const DATA_BRIDGE = `<script>(function(){
     images:function(query,opts){return call('images',{q:query,limit:(opts&&opts.limit)||8});},
     // Recent public data via vetted host-side connectors -> {data, attribution}.
     data:function(connector,params){return call('feed',{connector:connector,params:params||{}});},
-    // Signal the run/round ended — the host shows a native result screen
-    // (score count-up, top scores, rate, play again, share). Pass the score
-    // for a game; call with no args for a quiz/result with no number.
-    gameOver:function(opts){ try{ parent.postMessage({__cpend:true, score:(opts&&opts.score), key:(opts&&opts.key)||'highscore'}, '*'); }catch(_){ } }
+    // Record the final score when a run ends (persists it). The GAME renders its
+    // own end screen; the host shows no UI. Pass the score for a game; omit for a
+    // quiz/result with no number.
+    gameOver:function(opts){ try{ parent.postMessage({__cpend:true, score:(opts&&opts.score), key:(opts&&opts.key)||'highscore'}, '*'); }catch(_){ } },
+    // Two-player turn-based MATCH (chess, checkers, connect-4, cards, ...). The
+    // game owns ALL rules + UI; these only sync shared state, enforce turns, and
+    // notify the opponent. opponents()/create(handle) to challenge a member;
+    // list() for "your games"; get(id)/poll(id,sinceSeq) to read; move(id,{move,
+    // state,version,result}) to act (result: 'win'|'lose'|'draw' ends it).
+    match:{
+      opponents:function(){return call('match.opponents',{});},
+      create:function(handle){return call('match.create',{opponent:handle});},
+      list:function(){return call('match.list',{});},
+      get:function(id){return call('match.get',{id:id});},
+      poll:function(id,sinceSeq){return call('match.poll',{id:id,since:sinceSeq||0});},
+      move:function(id,opts){return call('match.move',{id:id,move:(opts&&opts.move),state:(opts&&opts.state),version:(opts&&opts.version)||0,result:(opts&&opts.result)});},
+      accept:function(id){return call('match.accept',{id:id});},
+      decline:function(id){return call('match.decline',{id:id});},
+      resign:function(id){return call('match.resign',{id:id});}
+    }
   };
-  // Feature flag so a creation can detect brokered persistence is available
-  // (it always is when this bridge is injected) and show/hide save UI safely.
+  // Feature flags so a creation can detect brokered capabilities and show/hide UI.
   window.CPoint.hasPersistence=true;
-    window.CPoint.hasData=true;
+  window.CPoint.hasData=true;
+  window.CPoint.hasMultiplayer=true;
+  // Set by the host to a match id when opened from a "your move" deep-link, so the
+  // game can jump straight into that match on boot (null otherwise).
+  window.CPoint.startMatchId=null;
 })();<\/script>`
 
-export function prepareCreationHtml(html: string, opts: { dataBridge?: boolean; errorReporter?: boolean } = {}): string {
+export function prepareCreationHtml(html: string, opts: { dataBridge?: boolean; errorReporter?: boolean; startMatchId?: number | null } = {}): string {
   if (!html) return html
   let out = html
   const headInject = VIEWPORT_META + BASE_CSS
@@ -119,9 +138,13 @@ export function prepareCreationHtml(html: string, opts: { dataBridge?: boolean; 
     out = headInject + out
   }
 
+  const matchInject = (opts.dataBridge && opts.startMatchId)
+    ? `<script>try{window.CPoint&&(window.CPoint.startMatchId=${Number(opts.startMatchId)})}catch(e){}<\/script>`
+    : ''
   const tail = FIT_REPORTER + BG_REPORTER
     + (opts.errorReporter ? ERROR_REPORTER : '')
     + (opts.dataBridge ? DATA_BRIDGE : '')
+    + matchInject
   out = out.includes('</body>') ? out.replace('</body>', tail + '</body>') : out + tail
   return out
 }

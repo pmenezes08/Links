@@ -17,9 +17,10 @@ type Props = {
   onRuntimeError?: (msg: string) => void
   onShare?: () => void
   shared?: boolean
+  startMatchId?: number | null
 }
 
-export default function PlayableCreation({ html, title, onClose, creationId, onRuntimeError }: Props) {
+export default function PlayableCreation({ html, title, onClose, creationId, onRuntimeError, startMatchId }: Props) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const [fit, setFit] = useState(1)
   const [bgColor, setBgColor] = useState('#000')
@@ -31,8 +32,8 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
     noticeTimer.current = window.setTimeout(() => setCpNotice(null), 6000)
   }
   const srcDoc = useMemo(
-    () => prepareCreationHtml(html, { dataBridge: creationId != null, errorReporter: true }),
-    [html, creationId],
+    () => prepareCreationHtml(html, { dataBridge: creationId != null, errorReporter: true, startMatchId }),
+    [html, creationId, startMatchId],
   )
 
   const fitRef = useRef(1)
@@ -101,6 +102,19 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
         } else if (d.op === 'feed') {
           const q = new URLSearchParams({ connector: String(p.connector || ''), params: JSON.stringify(p.params || {}) })
           res = await fetch(`${base}/feed?${q.toString()}`, { credentials: 'include' })
+        } else if (typeof d.op === 'string' && d.op.indexOf('match.') === 0) {
+          // Two-player match ops -> /api/builder/<id>/match/* (game owns the UI).
+          const sub = d.op.slice(6)
+          const mbase = `/api/builder/${creationId}/match`
+          const jpost = (url: string, body: unknown) => fetch(url, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+          if (sub === 'opponents') res = await fetch(`${mbase}/opponents`, { credentials: 'include' })
+          else if (sub === 'list') res = await fetch(`${mbase}/list`, { credentials: 'include' })
+          else if (sub === 'create') res = await jpost(`${mbase}/create`, { opponent: p.opponent })
+          else if (sub === 'get') res = await fetch(`${mbase}/${Number(p.id)}`, { credentials: 'include' })
+          else if (sub === 'poll') res = await fetch(`${mbase}/${Number(p.id)}/poll?since=${encodeURIComponent(String(p.since || 0))}`, { credentials: 'include' })
+          else if (sub === 'move') res = await jpost(`${mbase}/${Number(p.id)}/move`, { move: p.move, state: p.state, version: p.version, result: p.result })
+          else if (sub === 'accept' || sub === 'decline' || sub === 'resign') res = await jpost(`${mbase}/${Number(p.id)}/${sub}`, {})
+          else { reply(e.source, rid, false, undefined, 'unknown_op'); return }
         } else {
           reply(e.source, rid, false, undefined, 'unknown_op'); return
         }
@@ -113,13 +127,14 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
         } else {
           const err = (data && data.error) || `request_failed (HTTP ${res.status})`
           console.warn(`[CPoint] ${d.op} failed: ${err}`)
-          showNotice(`Couldn't ${d.op}: ${err}`)
+          // Match ops (turns/conflicts) are handled in the game's own UI — no host toast.
+          if (typeof d.op === 'string' && d.op.indexOf('match.') !== 0) showNotice(`Couldn't ${d.op}: ${err}`)
           reply(e.source, rid, false, undefined, err)
         }
       } catch (netErr) {
         const msg = (netErr as { message?: string })?.message || 'network error'
         console.warn(`[CPoint] ${d.op} failed: ${msg}`)
-        showNotice(`Couldn't ${d.op}: ${msg}`)
+        if (typeof d.op === 'string' && d.op.indexOf('match.') !== 0) showNotice(`Couldn't ${d.op}: ${msg}`)
         reply(e.source, rid, false, undefined, 'network_error')
       }
     }
