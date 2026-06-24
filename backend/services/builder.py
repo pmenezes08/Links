@@ -805,7 +805,7 @@ def public_bridge_and_branding_script(*, slug: str, title: str) -> str:
     splash.innerHTML='<div class="cp-logo">C</div><div class="cp-copy">Built with C-Point</div>';
     var badge=document.createElement('a');
     badge.id='cpoint-public-brand';
-    badge.href='https://c-point.co';
+    badge.href='https://www.c-point.co';
     badge.target='_blank';
     badge.rel='noopener noreferrer';
     badge.setAttribute('aria-label','Built with C-Point');

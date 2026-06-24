@@ -16,7 +16,8 @@
       "binding": "BUILDS_BUCKET",
       // Must match the backend Cloud Run CLOUDFLARE_R2_BUCKET so the Worker can
       // read public/builds/<slug>/manifest.json written by publish-web.
-      "bucket_name": "cpoints-uploads"
+      "bucket_name": "cpoints-uploads",
+      "jurisdiction": "eu"
     }
   ],
   "env": {
@@ -29,7 +30,8 @@
         {
           "binding": "BUILDS_BUCKET",
           // Must match staging Cloud Run CLOUDFLARE_R2_BUCKET.
-          "bucket_name": "cpoints-uploads"
+          "bucket_name": "cpoints-uploads",
+          "jurisdiction": "eu"
         }
       ]
     },
@@ -48,7 +50,8 @@
         {
           "binding": "BUILDS_BUCKET",
           // Must match production Cloud Run CLOUDFLARE_R2_BUCKET.
-          "bucket_name": "cpoints-uploads"
+          "bucket_name": "cpoints-uploads",
+          "jurisdiction": "eu"
         }
       ]
     }

@@ -18,4 +18,6 @@ def test_public_html_injects_bridge_branding_and_slug():
     assert "isPublicBuild:true" in out
     assert "public_build_no_private_persistence" in out
     assert "demo-1" in out
+    assert "https://www.c-point.co" in out
+    assert "https://c-point.co" not in out
     assert "CPoint.data" not in out  # exposed as a property on window.CPoint, not raw docs text

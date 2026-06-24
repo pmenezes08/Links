@@ -49,5 +49,8 @@ test('returns branded not found when a manifest is missing', async () => {
   const env = { PUBLIC_API_BASE: 'https://example.test', BUILDS_BUCKET: bucket({}) }
   const response = await handleRequest(new Request('https://builds.example/missing'), env)
   assert.equal(response.status, 404)
-  assert.match(await response.text(), /Build not found|not available/)
+  const body = await response.text()
+  assert.match(body, /Build not found|not available/)
+  assert.match(body, /https:\/\/www\.c-point\.co/)
+  assert.doesNotMatch(body, /https:\/\/c-point\.co/)
 })
