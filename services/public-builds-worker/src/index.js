@@ -50,6 +50,39 @@ function notFound() {
   return new Response(body, { status: 404, headers: htmlHeaders('no-store') })
 }
 
+function normalizePublicBranding(html) {
+  const override = `<style id="cpoint-public-brand-override">
+#cpoint-public-brand{right:max(8px,env(safe-area-inset-right))!important;top:50%!important;bottom:auto!important;left:auto!important;transform:translateY(-50%)!important;opacity:.88!important}
+@media(max-width:520px){#cpoint-public-brand{right:max(6px,env(safe-area-inset-right))!important;top:50%!important;bottom:auto!important;left:auto!important;transform:translateY(-50%)!important;font-size:11px!important;padding:7px 9px!important}}
+</style><script>
+(function(){
+  function fixCPointBrand(){
+    var badge=document.getElementById('cpoint-public-brand');
+    if(!badge) return;
+    badge.href='https://www.c-point.co';
+    badge.target='_blank';
+    badge.rel='noopener noreferrer';
+    if(badge.dataset.cpointClickFixed) return;
+    badge.dataset.cpointClickFixed='1';
+    badge.addEventListener('click',function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      try{
+        var opened=window.open('https://www.c-point.co','_blank','noopener,noreferrer');
+        if(!opened) window.location.href='https://www.c-point.co';
+      }catch(_){ window.location.href='https://www.c-point.co'; }
+    },true);
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',fixCPointBrand,{once:true});
+  else fixCPointBrand();
+})();
+</script>`
+  const body = String(html || '').replaceAll('https://c-point.co', 'https://www.c-point.co')
+  if (body.includes('cpoint-public-brand-override')) return body
+  if (/<\/head>/i.test(body)) return body.replace(/<\/head>/i, `${override}</head>`)
+  return `${override}${body}`
+}
+
 async function readManifest(env, slug) {
   const object = await env.BUILDS_BUCKET.get(manifestKey(slug))
   if (!object) return null
@@ -65,7 +98,8 @@ async function serveBuild(env, slug) {
   if (!object) return notFound()
   const headers = htmlHeaders(object.httpMetadata?.cacheControl || 'public, max-age=300')
   headers.ETag = object.httpEtag
-  return new Response(object.body, { status: 200, headers })
+  const body = normalizePublicBranding(await object.text())
+  return new Response(body, { status: 200, headers })
 }
 
 async function proxyPublicData(request, env, slug) {

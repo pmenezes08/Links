@@ -15,6 +15,9 @@ function bucket(objects) {
         async json() {
           return JSON.parse(value)
         },
+        async text() {
+          return String(value)
+        },
       }
     },
   }
@@ -31,7 +34,7 @@ test('serves a published build from the R2 manifest artifact key', async () => {
     status: 'published',
     artifactKey: 'public/builds/demo-1/v1.html',
   })
-  const html = '<!doctype html><html><body>Demo</body></html>'
+  const html = '<!doctype html><html><body><a href="https://c-point.co">Demo</a></body></html>'
   const env = {
     PUBLIC_API_BASE: 'https://example.test',
     BUILDS_BUCKET: bucket({
@@ -42,7 +45,12 @@ test('serves a published build from the R2 manifest artifact key', async () => {
   const response = await handleRequest(new Request('https://builds.example/demo-1'), env)
   assert.equal(response.status, 200)
   assert.equal(response.headers.get('content-type'), 'text/html; charset=utf-8')
-  assert.equal(await response.text(), html)
+  const body = await response.text()
+  assert.match(body, /https:\/\/www\.c-point\.co/)
+  assert.doesNotMatch(body, /https:\/\/c-point\.co/)
+  assert.match(body, /cpoint-public-brand-override/)
+  assert.match(body, /top:50%/)
+  assert.match(body, /window\.open\('https:\/\/www\.c-point\.co'/)
 })
 
 test('returns branded not found when a manifest is missing', async () => {

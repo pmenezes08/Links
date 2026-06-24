@@ -810,6 +810,14 @@ def public_bridge_and_branding_script(*, slug: str, title: str) -> str:
     badge.rel='noopener noreferrer';
     badge.setAttribute('aria-label','Built with C-Point');
     badge.innerHTML='<span class="cp-dot">C</span><span>Built with C-Point</span>';
+    badge.addEventListener('click',function(e){{
+      e.preventDefault();
+      e.stopPropagation();
+      try{{
+        var opened=window.open('https://www.c-point.co','_blank','noopener,noreferrer');
+        if(!opened) window.location.href='https://www.c-point.co';
+      }}catch(_){{ window.location.href='https://www.c-point.co'; }}
+    }});
     document.body.appendChild(splash);
     document.body.appendChild(badge);
     window.setTimeout(function(){{ splash.className='cp-hide'; }}, 900);
@@ -827,9 +835,9 @@ def public_branding_style() -> str:
 #cpoint-public-splash.cp-hide{opacity:0;visibility:hidden}
 #cpoint-public-splash .cp-logo{width:64px;height:64px;border-radius:22px;display:flex;align-items:center;justify-content:center;background:#00cec8;color:#00302e;font-weight:800;font-size:31px;box-shadow:0 20px 60px rgba(0,206,200,.25)}
 #cpoint-public-splash .cp-copy{font-size:14px;letter-spacing:.02em;color:rgba(246,255,255,.82)}
-#cpoint-public-brand{position:fixed;right:max(12px,env(safe-area-inset-right));bottom:max(12px,env(safe-area-inset-bottom));z-index:2147483645;display:inline-flex;align-items:center;gap:7px;padding:8px 10px;border-radius:999px;background:rgba(0,0,0,.68);color:#efffff;text-decoration:none;font:600 12px/1 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.28);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.14)}
+#cpoint-public-brand{position:fixed;right:max(8px,env(safe-area-inset-right));top:50%;transform:translateY(-50%);z-index:2147483645;display:inline-flex;align-items:center;gap:7px;padding:8px 10px;border-radius:999px;background:rgba(0,0,0,.68);color:#efffff;text-decoration:none;font:600 12px/1 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.28);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.14)}
 #cpoint-public-brand .cp-dot{width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#00cec8;color:#00302e;font-size:11px;font-weight:800}
-@media(max-width:520px){#cpoint-public-brand{left:12px;right:auto;bottom:max(10px,env(safe-area-inset-bottom));font-size:11px;padding:7px 9px}}
+@media(max-width:520px){#cpoint-public-brand{right:max(6px,env(safe-area-inset-right));top:50%;bottom:auto;transform:translateY(-50%);font-size:11px;padding:7px 9px;opacity:.86}}
 </style>"""
 
 
