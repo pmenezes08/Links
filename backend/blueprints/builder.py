@@ -16,6 +16,7 @@ from flask import Blueprint, jsonify, request, session
 from backend.services import ai_usage
 from backend.services import builder as builder_svc
 from backend.services import builder_feeds
+from backend.services import creation_runtime as runtime_svc
 from backend.services import creation_match as match_svc
 from backend.services.cron_auth import cron_authed
 from backend.services.entitlements_gate import gate_builder_or_reason
@@ -239,6 +240,12 @@ def builder_job_get(job_id: int):
                 "community_id": row.get("community_id"),
                 "created_by": row.get("created_by"),
                 "published_post_id": row.get("published_post_id"),
+                "kind": row.get("kind"),
+                "public_slug": row.get("public_slug"),
+                "public_status": row.get("public_status"),
+                "public_url": row.get("public_url"),
+                "public_published_at": str(row.get("public_published_at")) if row.get("public_published_at") else None,
+                "public_kind": row.get("public_kind"),
             }
     return jsonify({"success": True, "job": _job_payload(job), "creation": creation})
 
@@ -297,6 +304,58 @@ def builder_publish(creation_id: int):
     return jsonify({"success": True, **result})
 
 
+@builder_bp.route("/api/builder/<int:creation_id>/publish-web", methods=["GET"])
+def builder_publish_web_status(creation_id: int):
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    creation = builder_svc.get_creation(creation_id)
+    if not creation or creation.get("created_by") != username:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    return jsonify({"success": True, "publication": {
+        "public_slug": creation.get("public_slug"),
+        "public_status": creation.get("public_status"),
+        "public_url": creation.get("public_url"),
+        "public_published_at": str(creation.get("public_published_at")) if creation.get("public_published_at") else None,
+        "public_kind": creation.get("public_kind"),
+        "eligible": builder_svc.public_publish_eligible(creation.get("public_kind") or creation.get("kind")),
+    }})
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/publish-web", methods=["POST"])
+def builder_publish_web(creation_id: int):
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    try:
+        result = builder_svc.publish_creation_to_web(creation_id=creation_id, username=username)
+    except PermissionError:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    except ValueError as exc:
+        error = str(exc)
+        status = 400
+        return jsonify({"success": False, "error": error}), status
+    except Exception:
+        logger.exception("builder: publish_creation_to_web failed")
+        return jsonify({"success": False, "error": "publish_web_failed"}), 500
+    return jsonify({"success": True, **result})
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/publish-web", methods=["DELETE"])
+def builder_unpublish_web(creation_id: int):
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    try:
+        result = builder_svc.unpublish_creation_from_web(creation_id=creation_id, username=username)
+    except PermissionError:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    except Exception:
+        logger.exception("builder: unpublish_creation_from_web failed")
+        return jsonify({"success": False, "error": "unpublish_web_failed"}), 500
+    return jsonify({"success": True, **result})
+
+
 @builder_bp.route("/api/builder/mine", methods=["GET"])
 def builder_mine():
     """The signed-in user's own creations so they can resume unfinished work."""
@@ -331,6 +390,12 @@ def builder_get(creation_id: int):
         "community_id": creation.get("community_id"),
         "created_by": creation.get("created_by"),
         "published_post_id": creation.get("published_post_id"),
+        "kind": creation.get("kind"),
+        "public_slug": creation.get("public_slug"),
+        "public_status": creation.get("public_status"),
+        "public_url": creation.get("public_url"),
+        "public_published_at": str(creation.get("public_published_at")) if creation.get("public_published_at") else None,
+        "public_kind": creation.get("public_kind"),
     }, "chat_history": builder_svc.get_chat_history(creation_id)})
 
 
@@ -564,6 +629,187 @@ def builder_data_feed(creation_id: int):
     return jsonify(result), status
 
 
+def _public_json(payload, status: int = 200):
+    resp = jsonify(payload)
+    resp.status_code = status
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept"
+    resp.headers["Cache-Control"] = "public, max-age=60"
+    return resp
+
+
+@builder_bp.route("/api/builder/public/<slug>/data/feed", methods=["GET", "OPTIONS"])
+def builder_public_data_feed(slug: str):
+    """Unauthenticated public-data connector for published web builds only."""
+    if request.method == "OPTIONS":
+        return _public_json({"success": True})
+    creation = builder_svc.public_creation_for_slug(slug)
+    if not creation:
+        return _public_json({"success": False, "error": "not_found", "data": None}, 404)
+
+    connector = (request.args.get("connector") or "").strip().lower()
+    raw_params = request.args.get("params") or "{}"
+    try:
+        params = json.loads(raw_params) if raw_params else {}
+    except Exception:
+        return _public_json({"success": False, "error": "invalid_params"}, 400)
+    if not isinstance(params, dict):
+        return _public_json({"success": False, "error": "invalid_params"}, 400)
+
+    if not _data_read_ok(f"public:{creation.get('public_slug')}", int(creation["id"]), connector):
+        return _public_json({"success": False, "error": "rate_limited", "data": None}, 429)
+
+    result = builder_feeds.fetch_feed(connector, params)
+    status = 200
+    if not result.get("success") and result.get("error") in {"unknown_connector", "invalid_params"}:
+        status = 400
+    return _public_json(result, status)
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/data/shared", methods=["GET"])
+def builder_data_shared_get(creation_id: int):
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    _creation, community_id = _resolve_accessible_creation(creation_id, username)
+    if community_id is None:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    if not _data_read_ok(username, creation_id, "shared"):
+        return jsonify({"success": False, "error": "rate_limited"}), 429
+    state = runtime_svc.get_shared_state(creation_id=creation_id, key=request.args.get("key") or "main")
+    return jsonify({"success": True, **state})
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/data/shared", methods=["POST"])
+def builder_data_shared_update(creation_id: int):
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    _creation, community_id = _resolve_accessible_creation(creation_id, username)
+    if community_id is None:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    if not _data_write_ok(username, creation_id):
+        return jsonify({"success": False, "error": "rate_limited"}), 429
+    data = request.get_json(silent=True) or {}
+    try:
+        state = runtime_svc.update_shared_state(
+            creation_id=creation_id, community_id=community_id, username=username,
+            key=data.get("key") or "main", value=data.get("value"),
+            expected_version=_safe_int(data.get("version")),
+        )
+        return jsonify({"success": True, **state})
+    except ValueError as e:
+        status = 409 if str(e) == "version_conflict" else 400
+        return jsonify({"success": False, "error": str(e)}), status
+    except Exception:
+        logger.exception("builder: shared state update failed")
+        return jsonify({"success": False, "error": "data_error"}), 500
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/data/collection/<name>", methods=["GET"])
+def builder_data_collection_list(creation_id: int, name: str):
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    _creation, community_id = _resolve_accessible_creation(creation_id, username)
+    if community_id is None:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    if not _data_read_ok(username, creation_id, "collection"):
+        return jsonify({"success": False, "error": "rate_limited"}), 429
+    result = runtime_svc.list_collection(
+        creation_id=creation_id, name=name, limit=_safe_int(request.args.get("limit")) or 100,
+    )
+    return jsonify({"success": True, **result})
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/data/collection/<name>", methods=["POST"])
+def builder_data_collection_create(creation_id: int, name: str):
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    _creation, community_id = _resolve_accessible_creation(creation_id, username)
+    if community_id is None:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    if not _data_write_ok(username, creation_id):
+        return jsonify({"success": False, "error": "rate_limited"}), 429
+    data = request.get_json(silent=True) or {}
+    try:
+        item = runtime_svc.create_collection_item(
+            creation_id=creation_id, community_id=community_id, username=username,
+            name=name, value=data.get("value"),
+        )
+        return jsonify({"success": True, "item": item})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception:
+        logger.exception("builder: collection create failed")
+        return jsonify({"success": False, "error": "data_error"}), 500
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/data/collection/<name>/<row_id>", methods=["PATCH"])
+def builder_data_collection_update(creation_id: int, name: str, row_id: str):
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    _creation, community_id = _resolve_accessible_creation(creation_id, username)
+    if community_id is None:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    if not _data_write_ok(username, creation_id):
+        return jsonify({"success": False, "error": "rate_limited"}), 429
+    data = request.get_json(silent=True) or {}
+    try:
+        item = runtime_svc.update_collection_item(
+            creation_id=creation_id, name=name, row_id=row_id, value=data.get("value"),
+            expected_version=_safe_int(data.get("version")),
+        )
+        return jsonify({"success": True, "item": item})
+    except ValueError as e:
+        status = 409 if str(e) == "version_conflict" else 404 if str(e) == "row_not_found" else 400
+        return jsonify({"success": False, "error": str(e)}), status
+    except Exception:
+        logger.exception("builder: collection update failed")
+        return jsonify({"success": False, "error": "data_error"}), 500
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/data/collection/<name>/<row_id>", methods=["DELETE"])
+def builder_data_collection_delete(creation_id: int, name: str, row_id: str):
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    _creation, community_id = _resolve_accessible_creation(creation_id, username)
+    if community_id is None:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    if not _data_write_ok(username, creation_id):
+        return jsonify({"success": False, "error": "rate_limited"}), 429
+    result = runtime_svc.delete_collection_item(creation_id=creation_id, name=name, row_id=row_id)
+    return jsonify({"success": True, **result})
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/data/forms/<name>/submit", methods=["POST"])
+def builder_data_form_submit(creation_id: int, name: str):
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    _creation, community_id = _resolve_accessible_creation(creation_id, username)
+    if community_id is None:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    if not _data_write_ok(username, creation_id):
+        return jsonify({"success": False, "error": "rate_limited"}), 429
+    data = request.get_json(silent=True) or {}
+    try:
+        result = runtime_svc.submit_form(
+            creation_id=creation_id, community_id=community_id, username=username,
+            name=name, value=data.get("value"),
+        )
+        return jsonify({"success": True, **result})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception:
+        logger.exception("builder: form submit failed")
+        return jsonify({"success": False, "error": "data_error"}), 500
+
+
 @builder_bp.route("/api/builder/<int:creation_id>/data/leaderboard", methods=["GET"])
 def builder_data_leaderboard(creation_id: int):
     username = session.get("username")
@@ -681,7 +927,9 @@ def builder_match_get(creation_id: int, match_id: int):
     if err:
         return err
     try:
-        return jsonify({"success": True, "match": match_svc.get_match(match_id, username)})
+        return jsonify({"success": True, "match": match_svc.get_match(
+            match_id, username, creation_id=creation_id, community_id=community_id,
+        )})
     except Exception as e:
         return _match_fail(e)
 
@@ -696,7 +944,8 @@ def builder_match_move(creation_id: int, match_id: int):
     data = request.get_json(silent=True) or {}
     try:
         res = match_svc.submit_move(match_id, username, move=data.get("move"), state=data.get("state"),
-                                    expected_version=int(data.get("version") or 0), result=data.get("result"))
+                                    expected_version=int(data.get("version") or 0), result=data.get("result"),
+                                    creation_id=creation_id, community_id=community_id)
     except Exception as e:
         return _match_fail(e)
     return jsonify({"success": True, **res})
@@ -712,7 +961,9 @@ def builder_match_poll(creation_id: int, match_id: int):
     except (TypeError, ValueError):
         since = 0
     try:
-        return jsonify({"success": True, **match_svc.poll_match(match_id, username, since)})
+        return jsonify({"success": True, **match_svc.poll_match(
+            match_id, username, since, creation_id=creation_id, community_id=community_id,
+        )})
     except Exception as e:
         return _match_fail(e)
 
@@ -723,7 +974,9 @@ def builder_match_accept(creation_id: int, match_id: int):
     if err:
         return err
     try:
-        return jsonify({"success": True, "match": match_svc.accept_match(match_id, username)})
+        return jsonify({"success": True, "match": match_svc.accept_match(
+            match_id, username, creation_id=creation_id, community_id=community_id,
+        )})
     except Exception as e:
         return _match_fail(e)
 
@@ -734,7 +987,22 @@ def builder_match_decline(creation_id: int, match_id: int):
     if err:
         return err
     try:
-        return jsonify({"success": True, "match": match_svc.decline_match(match_id, username)})
+        return jsonify({"success": True, "match": match_svc.decline_match(
+            match_id, username, creation_id=creation_id, community_id=community_id,
+        )})
+    except Exception as e:
+        return _match_fail(e)
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/match/<int:match_id>/cancel", methods=["POST"])
+def builder_match_cancel(creation_id: int, match_id: int):
+    username, community_id, err = _match_access(creation_id)
+    if err:
+        return err
+    try:
+        return jsonify({"success": True, "match": match_svc.cancel_match(
+            match_id, username, creation_id=creation_id, community_id=community_id,
+        )})
     except Exception as e:
         return _match_fail(e)
 
@@ -745,7 +1013,9 @@ def builder_match_resign(creation_id: int, match_id: int):
     if err:
         return err
     try:
-        return jsonify({"success": True, "match": match_svc.resign_match(match_id, username)})
+        return jsonify({"success": True, "match": match_svc.resign_match(
+            match_id, username, creation_id=creation_id, community_id=community_id,
+        )})
     except Exception as e:
         return _match_fail(e)
 

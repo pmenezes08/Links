@@ -1,0 +1,56 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "cpoint-public-builds",
+  "main": "src/index.js",
+  "compatibility_date": "2026-06-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "vars": {
+    "PUBLIC_API_BASE": "https://app.c-point.co"
+  },
+  "r2_buckets": [
+    {
+      "binding": "BUILDS_BUCKET",
+      // Must match the backend Cloud Run CLOUDFLARE_R2_BUCKET so the Worker can
+      // read public/builds/<slug>/manifest.json written by publish-web.
+      "bucket_name": "cpoints-uploads"
+    }
+  ],
+  "env": {
+    "staging": {
+      "name": "cpoint-public-builds-staging",
+      "vars": {
+        "PUBLIC_API_BASE": "https://cpoint-app-staging-hcvblrg55q-ew.a.run.app"
+      },
+      "r2_buckets": [
+        {
+          "binding": "BUILDS_BUCKET",
+          // Must match staging Cloud Run CLOUDFLARE_R2_BUCKET.
+          "bucket_name": "cpoints-uploads"
+        }
+      ]
+    },
+    "production": {
+      "name": "cpoint-public-builds",
+      "routes": [
+        {
+          "pattern": "builds.c-point.co",
+          "custom_domain": true
+        }
+      ],
+      "vars": {
+        "PUBLIC_API_BASE": "https://app.c-point.co"
+      },
+      "r2_buckets": [
+        {
+          "binding": "BUILDS_BUCKET",
+          // Must match production Cloud Run CLOUDFLARE_R2_BUCKET.
+          "bucket_name": "cpoints-uploads"
+        }
+      ]
+    }
+  }
+}

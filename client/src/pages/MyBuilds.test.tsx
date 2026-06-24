@@ -114,4 +114,46 @@ describe('MyBuilds', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
+
+  it('copies an existing public build link', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { clipboard: { writeText } })
+    vi.stubGlobal('fetch', mockFetchOnce({
+      success: true,
+      creations: [
+        {
+          id: 8,
+          title: 'Public RSVP',
+          kind: 'app',
+          status: 'published',
+          community_id: 3,
+          published_post_id: 9,
+          updated_at: null,
+          plays: 4,
+          public_status: 'published',
+          public_url: 'https://builds.c-point.co/public-rsvp-8',
+        },
+      ],
+    }))
+
+    const { getByText } = render(<MyBuilds />)
+    await waitFor(() => expect(getByText('Public RSVP')).toBeTruthy())
+    expect(getByText('Public web')).toBeTruthy()
+    fireEvent.click(getByText('Copy public link'))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('https://builds.c-point.co/public-rsvp-8'))
+  })
+
+  it('blocks games from public web publishing in the UI', async () => {
+    vi.stubGlobal('fetch', mockFetchOnce({
+      success: true,
+      creations: [
+        { id: 5, title: 'Chess', kind: 'game', status: 'draft', community_id: 2, published_post_id: null, updated_at: null, plays: 0 },
+      ],
+    }))
+
+    const { getByText, queryByText } = render(<MyBuilds />)
+    await waitFor(() => expect(getByText('Chess')).toBeTruthy())
+    expect(getByText('Games stay inside C-Point')).toBeTruthy()
+    expect(queryByText('Publish web')).toBeNull()
+  })
 })

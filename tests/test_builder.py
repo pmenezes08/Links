@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from backend.services.database import get_db_connection, get_sql_placeholder
-from backend.services import ai_usage, builder, builder_feeds
+from backend.services import ai_usage, builder, builder_feeds, creation_runtime, r2_storage
 from backend.services.entitlements_gate import gate_builder_or_reason
 
 pytestmark = pytest.mark.usefixtures("mysql_dsn")
@@ -57,11 +57,13 @@ def test_create_stores_a_draft_creation(monkeypatch):
     result = builder.create_creation(username="maker", community_id=cid, prompt="build a tetris game")
     assert result["id"]
     assert "<!doctype html>" in result["html"].lower()
+    assert result["kind"] == "game"
 
     row = builder.get_creation(result["id"])
     assert row is not None
     assert row["created_by"] == "maker"
     assert row["status"] == "draft"
+    assert row["kind"] == "game"
     assert int(row["community_id"]) == cid
 
 
@@ -111,6 +113,84 @@ def test_publish_rejects_non_owner(monkeypatch):
 
     with pytest.raises(PermissionError):
         builder.publish_creation(creation_id=created["id"], username="intruder")
+
+
+def test_publish_web_writes_public_artifact_and_manifest(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    uploads = {}
+
+    def fake_upload(raw, key, content_type=None, cache_control=None):
+        uploads[key] = {"raw": raw, "content_type": content_type, "cache_control": cache_control}
+        return True
+
+    monkeypatch.setattr(r2_storage, "upload_public_bytes_to_r2", fake_upload)
+    _make_user("maker")
+    cid = _make_community()
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a public website")
+
+    result = builder.publish_creation_to_web(creation_id=created["id"], username="maker")
+
+    assert result["public_status"] == "published"
+    assert result["public_url"].startswith(builder.PUBLIC_BUILDS_BASE_URL)
+    assert result["public_kind"] == "website"
+    assert builder.public_manifest_r2_key(result["public_slug"]) in uploads
+    html_key = next(k for k in uploads if k.endswith(".html"))
+    html = uploads[html_key]["raw"].decode("utf-8")
+    assert "Built with C-Point" in html
+    assert "isPublicBuild:true" in html
+    assert builder.public_creation_for_slug(result["public_slug"])["id"] == created["id"]
+
+
+def test_publish_web_rejects_games(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a game")
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"UPDATE creations SET kind = {ph} WHERE id = {ph}", ("game", created["id"]))
+        conn.commit()
+
+    with pytest.raises(ValueError, match="public_publish_not_supported_for_games"):
+        builder.publish_creation_to_web(creation_id=created["id"], username="maker")
+
+
+def test_unpublish_web_removes_manifest_and_public_artifact(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    uploads = {}
+    deleted = []
+    monkeypatch.setattr(r2_storage, "upload_public_bytes_to_r2", lambda raw, key, **_k: uploads.setdefault(key, raw) is raw)
+    monkeypatch.setattr(r2_storage, "delete_from_r2", lambda key: deleted.append(key) or True)
+    _make_user("maker")
+    cid = _make_community()
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a website")
+    result = builder.publish_creation_to_web(creation_id=created["id"], username="maker")
+
+    unpub = builder.unpublish_creation_from_web(creation_id=created["id"], username="maker")
+
+    assert unpub["public_status"] == "unpublished"
+    assert builder.public_manifest_r2_key(result["public_slug"]) in deleted
+    assert any(k.endswith(".html") for k in deleted)
+    assert builder.public_creation_for_slug(result["public_slug"]) is None
+
+
+def test_delete_creation_removes_public_artifacts(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    deleted = []
+    monkeypatch.setattr(r2_storage, "upload_public_bytes_to_r2", lambda raw, key, **_k: True)
+    monkeypatch.setattr(r2_storage, "delete_from_r2", lambda key: deleted.append(key) or True)
+    _make_user("maker")
+    cid = _make_community()
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a website")
+    result = builder.publish_creation_to_web(creation_id=created["id"], username="maker")
+
+    body, status = builder.delete_creation("maker", created["id"])
+
+    assert status == 200
+    assert body["success"] is True
+    assert builder.public_manifest_r2_key(result["public_slug"]) in deleted
+    assert any(k.endswith(".html") for k in deleted)
 
 
 def test_gate_allows_free_quota_then_blocks_at_cap():
@@ -256,7 +336,10 @@ def test_build_guide_loads_and_has_anchors():
     assert builder._load_build_guide(), "builder_guide.md did not load"
     sp = builder._SYSTEM_PROMPT
     assert sp is not builder._SYSTEM_PROMPT_FALLBACK, "codegen is using the inline fallback, not the guide"
-    for anchor in ("modern", "minimalist", "x.ai", "CPoint.match", "Websites", "Apps", "Games", "sandbox"):
+    for anchor in (
+        "modern", "minimalist", "x.ai", "CPoint.match", "Websites", "Apps", "Games", "sandbox",
+        "matchController", "controller.submitMove", "controller.cancel", "stale_version",
+    ):
         assert anchor.lower() in sp.lower(), f"build-guide anchor missing: {anchor}"
     caps = builder._CAPS_BLOCK
     assert caps and "CAPS:START" not in caps, "capabilities block not extracted cleanly"
@@ -947,6 +1030,77 @@ def test_route_oversized_save_returns_save_too_large(builder_client, monkeypatch
                                json={"key": "slot-1", "value": huge})
     assert resp.status_code == 400
     assert resp.get_json()["error"] == "save_too_large"
+
+
+# ── CPoint creation data runtime: shared state / collections / forms ─────────
+
+def test_route_shared_state_roundtrip_and_version_conflict(builder_client, monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+    _login(builder_client, "maker")
+
+    resp = builder_client.post(f"/api/builder/{crid}/data/shared",
+                               json={"key": "poll", "value": {"yes": 1}, "version": 0})
+    body = resp.get_json()
+    assert resp.status_code == 200 and body["value"] == {"yes": 1}
+    assert body["version"] == 1
+
+    loaded = builder_client.get(f"/api/builder/{crid}/data/shared?key=poll").get_json()
+    assert loaded["success"] is True and loaded["value"] == {"yes": 1}
+
+    conflict = builder_client.post(f"/api/builder/{crid}/data/shared",
+                                   json={"key": "poll", "value": {"yes": 2}, "version": 0})
+    assert conflict.status_code == 409
+    assert conflict.get_json()["error"] == "version_conflict"
+
+
+def test_route_collection_crud_and_form_submit(builder_client, monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+    _login(builder_client, "maker")
+
+    created = builder_client.post(f"/api/builder/{crid}/data/collection/tasks",
+                                  json={"value": {"title": "Ship runtime", "done": False}})
+    assert created.status_code == 200
+    item = created.get_json()["item"]
+    assert item["id"] and item["version"] == 1
+
+    listed = builder_client.get(f"/api/builder/{crid}/data/collection/tasks").get_json()
+    assert listed["success"] is True
+    assert listed["items"][0]["value"]["title"] == "Ship runtime"
+
+    updated = builder_client.patch(
+        f"/api/builder/{crid}/data/collection/tasks/{item['id']}",
+        json={"value": {"title": "Ship runtime", "done": True}, "version": 1},
+    )
+    assert updated.status_code == 200
+    assert updated.get_json()["item"]["value"]["done"] is True
+
+    submitted = builder_client.post(f"/api/builder/{crid}/data/forms/feedback/submit",
+                                    json={"value": {"message": "Looks good"}})
+    assert submitted.status_code == 200
+    assert submitted.get_json()["submitted"] is True
+
+    deleted = builder_client.delete(f"/api/builder/{crid}/data/collection/tasks/{item['id']}")
+    assert deleted.status_code == 200
+    assert deleted.get_json()["deleted"] is True
+
+
+def test_creation_runtime_service_rejects_stale_shared_version(monkeypatch):
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+    creation_runtime.update_shared_state(
+        creation_id=crid, community_id=cid, username="maker",
+        key="main", value={"count": 1}, expected_version=0,
+    )
+    with pytest.raises(ValueError, match="version_conflict"):
+        creation_runtime.update_shared_state(
+            creation_id=crid, community_id=cid, username="maker",
+            key="main", value={"count": 2}, expected_version=0,
+        )
 
 
 # ── CPoint persistence: delete builds ────────────────────────────────────────

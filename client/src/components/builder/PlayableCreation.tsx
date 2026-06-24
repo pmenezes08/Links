@@ -102,6 +102,29 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
         } else if (d.op === 'feed') {
           const q = new URLSearchParams({ connector: String(p.connector || ''), params: JSON.stringify(p.params || {}) })
           res = await fetch(`${base}/feed?${q.toString()}`, { credentials: 'include' })
+        } else if (d.op === 'shared.get') {
+          const q = new URLSearchParams({ key: String(p.key || 'main') })
+          res = await fetch(`${base}/shared?${q.toString()}`, { credentials: 'include' })
+        } else if (d.op === 'shared.update') {
+          res = await fetch(`${base}/shared`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: p.key, value: p.value, version: p.version }) })
+        } else if (d.op === 'collection.list') {
+          const name = encodeURIComponent(String(p.name || 'items'))
+          const q = new URLSearchParams({ limit: String(p.limit || 100) })
+          res = await fetch(`${base}/collection/${name}?${q.toString()}`, { credentials: 'include' })
+        } else if (d.op === 'collection.create') {
+          const name = encodeURIComponent(String(p.name || 'items'))
+          res = await fetch(`${base}/collection/${name}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: p.value }) })
+        } else if (d.op === 'collection.update') {
+          const name = encodeURIComponent(String(p.name || 'items'))
+          const id = encodeURIComponent(String(p.id || ''))
+          res = await fetch(`${base}/collection/${name}/${id}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: p.value, version: p.version }) })
+        } else if (d.op === 'collection.delete') {
+          const name = encodeURIComponent(String(p.name || 'items'))
+          const id = encodeURIComponent(String(p.id || ''))
+          res = await fetch(`${base}/collection/${name}/${id}`, { method: 'DELETE', credentials: 'include' })
+        } else if (d.op === 'forms.submit') {
+          const name = encodeURIComponent(String(p.name || 'default'))
+          res = await fetch(`${base}/forms/${name}/submit`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: p.value }) })
         } else if (typeof d.op === 'string' && d.op.indexOf('match.') === 0) {
           // Two-player match ops -> /api/builder/<id>/match/* (game owns the UI).
           const sub = d.op.slice(6)
@@ -113,7 +136,7 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
           else if (sub === 'get') res = await fetch(`${mbase}/${Number(p.id)}`, { credentials: 'include' })
           else if (sub === 'poll') res = await fetch(`${mbase}/${Number(p.id)}/poll?since=${encodeURIComponent(String(p.since || 0))}`, { credentials: 'include' })
           else if (sub === 'move') res = await jpost(`${mbase}/${Number(p.id)}/move`, { move: p.move, state: p.state, version: p.version, result: p.result })
-          else if (sub === 'accept' || sub === 'decline' || sub === 'resign') res = await jpost(`${mbase}/${Number(p.id)}/${sub}`, {})
+          else if (sub === 'accept' || sub === 'decline' || sub === 'cancel' || sub === 'resign') res = await jpost(`${mbase}/${Number(p.id)}/${sub}`, {})
           else { reply(e.source, rid, false, undefined, 'unknown_op'); return }
         } else {
           reply(e.source, rid, false, undefined, 'unknown_op'); return

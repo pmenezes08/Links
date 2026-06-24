@@ -19,7 +19,7 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from backend.services.database import get_db_connection, get_sql_placeholder, USE_MYSQL
 
@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 _MATCH_SALT = os.environ.get("SECRET_KEY", "cpoint-match-handle")
 _MAX_STATE_BYTES = 200_000
 _MAX_MOVE_BYTES = 20_000
+_TABLES_READY = False
 
 
 def _now() -> str:
@@ -35,9 +36,29 @@ def _now() -> str:
 
 
 def _cell(row: Any, idx: int) -> Any:
+    """Read the idx-th SELECTed column from tuple, sqlite3.Row, or DictCursor rows."""
     if row is None:
         return None
-    return row[idx]
+    try:
+        return row[idx]
+    except (KeyError, TypeError, IndexError):
+        try:
+            return list(row.values())[idx]
+        except Exception:
+            return None
+
+
+def _ensure_tables() -> None:
+    """Best-effort table readiness for direct match route calls after deploy."""
+    global _TABLES_READY
+    if _TABLES_READY:
+        return
+    try:
+        from backend.services import builder as builder_svc
+        builder_svc.ensure_tables()
+        _TABLES_READY = True
+    except Exception:
+        logger.warning("creation_match: ensure_tables failed", exc_info=True)
 
 
 def _handle(username: str) -> str:
@@ -110,11 +131,24 @@ _MATCH_COLS = ("id", "creation_id", "community_id", "seat1_username", "seat2_use
                "created_at", "updated_at", "last_move_at")
 
 
-def _fetch_match(match_id: int) -> Optional[Dict[str, Any]]:
+def _fetch_match(match_id: int, *, creation_id: Optional[int] = None,
+                 community_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+    _ensure_tables()
     ph = get_sql_placeholder()
+    where = [f"id = {ph}"]
+    args: List[Any] = [match_id]
+    if creation_id is not None:
+        where.append(f"creation_id = {ph}")
+        args.append(int(creation_id))
+    if community_id is not None:
+        where.append(f"community_id = {ph}")
+        args.append(int(community_id))
     with get_db_connection() as conn:
         c = conn.cursor()
-        c.execute(f"SELECT {', '.join(_MATCH_COLS)} FROM creation_matches WHERE id = {ph}", (match_id,))
+        c.execute(
+            f"SELECT {', '.join(_MATCH_COLS)} FROM creation_matches WHERE {' AND '.join(where)}",
+            tuple(args),
+        )
         row = c.fetchone()
     if not row:
         return None
@@ -166,6 +200,7 @@ def _view(match: Dict[str, Any], username: str, *, with_state: bool = True) -> D
 def create_match(*, creation_id: int, community_id: int, challenger: str,
                  opponent_handle: str) -> Dict[str, Any]:
     """Challenge a community member. Returns the viewer-relative match dict."""
+    _ensure_tables()
     opponent = _resolve_handle(community_id, opponent_handle)
     if not opponent:
         raise ValueError("opponent_not_found")
@@ -192,47 +227,82 @@ def create_match(*, creation_id: int, community_id: int, challenger: str,
 
 
 def _set_status(match_id: int, *, status: str, turn_seat: Optional[int] = None,
-                winner_seat: Optional[int] = None) -> None:
+                winner_seat: Optional[int] = None,
+                creation_id: Optional[int] = None,
+                community_id: Optional[int] = None) -> None:
     now = _now()
     ph = get_sql_placeholder()
+    where = [f"id = {ph}"]
+    args: List[Any] = [status, turn_seat, winner_seat, now, match_id]
+    if creation_id is not None:
+        where.append(f"creation_id = {ph}")
+        args.append(int(creation_id))
+    if community_id is not None:
+        where.append(f"community_id = {ph}")
+        args.append(int(community_id))
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute(
             f"""UPDATE creation_matches SET status = {ph}, turn_seat = {ph},
-                winner_seat = {ph}, updated_at = {ph} WHERE id = {ph}""",
-            (status, turn_seat, winner_seat, now, match_id),
+                winner_seat = {ph}, updated_at = {ph} WHERE {' AND '.join(where)}""",
+            tuple(args),
         )
         conn.commit()
 
 
-def accept_match(match_id: int, username: str) -> Dict[str, Any]:
-    match = _fetch_match(match_id)
+def accept_match(match_id: int, username: str, *, creation_id: Optional[int] = None,
+                 community_id: Optional[int] = None) -> Dict[str, Any]:
+    match = _fetch_match(match_id, creation_id=creation_id, community_id=community_id)
     if not match:
         raise ValueError("match_not_found")
     if _seat_of(match, username) != 2:
         raise PermissionError("not_invited")
     if match.get("status") != "pending":
         raise ValueError("not_pending")
-    _set_status(match_id, status="active", turn_seat=1, winner_seat=None)
+    _set_status(match_id, status="active", turn_seat=1, winner_seat=None,
+                creation_id=creation_id, community_id=community_id)
     _notify(match_id, recipient=str(match["seat1_username"]), event="match_move", actor=username,
             creation_id=int(match["creation_id"]), community_id=int(match["community_id"]))
-    return _view(_fetch_match(match_id) or {}, username)
+    return _view(_fetch_match(match_id, creation_id=creation_id, community_id=community_id) or {}, username)
 
 
-def decline_match(match_id: int, username: str) -> Dict[str, Any]:
-    match = _fetch_match(match_id)
+def decline_match(match_id: int, username: str, *, creation_id: Optional[int] = None,
+                  community_id: Optional[int] = None) -> Dict[str, Any]:
+    match = _fetch_match(match_id, creation_id=creation_id, community_id=community_id)
     if not match:
         raise ValueError("match_not_found")
     if _seat_of(match, username) != 2:
         raise PermissionError("not_invited")
     if match.get("status") != "pending":
         raise ValueError("not_pending")
-    _set_status(match_id, status="declined", turn_seat=None, winner_seat=None)
-    return _view(_fetch_match(match_id) or {}, username)
+    _set_status(match_id, status="declined", turn_seat=None, winner_seat=None,
+                creation_id=creation_id, community_id=community_id)
+    return _view(_fetch_match(match_id, creation_id=creation_id, community_id=community_id) or {}, username)
 
 
-def resign_match(match_id: int, username: str) -> Dict[str, Any]:
-    match = _fetch_match(match_id)
+def cancel_match(match_id: int, username: str, *, creation_id: Optional[int] = None,
+                 community_id: Optional[int] = None) -> Dict[str, Any]:
+    """Cancel a pending invite as the challenger (seat 1).
+
+    This is distinct from resigning an active game: a cancelled invite never
+    became a match, so generated lobbies can hide it cleanly instead of showing
+    a confusing forfeit/finished row.
+    """
+    match = _fetch_match(match_id, creation_id=creation_id, community_id=community_id)
+    if not match:
+        raise ValueError("match_not_found")
+    if _seat_of(match, username) != 1:
+        raise PermissionError("not_challenger")
+    if match.get("status") != "pending":
+        raise ValueError("not_pending")
+    _set_status(match_id, status="cancelled", turn_seat=None, winner_seat=None,
+                creation_id=creation_id, community_id=community_id)
+    return _view(_fetch_match(match_id, creation_id=creation_id, community_id=community_id) or {}, username)
+
+
+def resign_match(match_id: int, username: str, *, creation_id: Optional[int] = None,
+                 community_id: Optional[int] = None) -> Dict[str, Any]:
+    match = _fetch_match(match_id, creation_id=creation_id, community_id=community_id)
     if not match:
         raise ValueError("match_not_found")
     seat = _seat_of(match, username)
@@ -241,15 +311,17 @@ def resign_match(match_id: int, username: str) -> Dict[str, Any]:
     if match.get("status") not in ("active", "pending"):
         raise ValueError("not_active")
     other = 2 if seat == 1 else 1
-    _set_status(match_id, status="finished", turn_seat=None, winner_seat=other)
+    _set_status(match_id, status="finished", turn_seat=None, winner_seat=other,
+                creation_id=creation_id, community_id=community_id)
     _notify(match_id, recipient=str(match["seat1_username"] if seat == 2 else match["seat2_username"]),
             event="match_over", actor=username,
             creation_id=int(match["creation_id"]), community_id=int(match["community_id"]))
-    return _view(_fetch_match(match_id) or {}, username)
+    return _view(_fetch_match(match_id, creation_id=creation_id, community_id=community_id) or {}, username)
 
 
 def list_matches(creation_id: int, username: str) -> List[Dict[str, Any]]:
     """The user's matches for this creation (in-progress + finished), newest first."""
+    _ensure_tables()
     ph = get_sql_placeholder()
     with get_db_connection() as conn:
         c = conn.cursor()
@@ -264,8 +336,9 @@ def list_matches(creation_id: int, username: str) -> List[Dict[str, Any]]:
     return [_view(m, username, with_state=False) for m in matches]
 
 
-def get_match(match_id: int, username: str) -> Dict[str, Any]:
-    match = _fetch_match(match_id)
+def get_match(match_id: int, username: str, *, creation_id: Optional[int] = None,
+              community_id: Optional[int] = None) -> Dict[str, Any]:
+    match = _fetch_match(match_id, creation_id=creation_id, community_id=community_id)
     if not match:
         raise ValueError("match_not_found")
     if _seat_of(match, username) is None:
@@ -274,13 +347,15 @@ def get_match(match_id: int, username: str) -> Dict[str, Any]:
 
 
 def submit_move(match_id: int, username: str, *, move: Any, state: Any,
-                expected_version: int, result: Optional[str] = None) -> Dict[str, Any]:
+                expected_version: int, result: Optional[str] = None,
+                creation_id: Optional[int] = None,
+                community_id: Optional[int] = None) -> Dict[str, Any]:
     """Apply one move. ATOMIC turn + version enforcement: rejects if it isn't the
     caller's turn, the match isn't active, or the version is stale.
 
     ``result`` (from the mover's POV) ends the game: 'win' | 'lose' | 'draw'.
     """
-    match = _fetch_match(match_id)
+    match = _fetch_match(match_id, creation_id=creation_id, community_id=community_id)
     if not match:
         raise ValueError("match_not_found")
     seat = _seat_of(match, username)
@@ -346,10 +421,12 @@ def submit_move(match_id: int, username: str, *, move: Any, state: Any,
             "status": new_status, "winner": _winner_label(winner_seat, seat)}
 
 
-def poll_match(match_id: int, username: str, since_seq: int) -> Dict[str, Any]:
+def poll_match(match_id: int, username: str, since_seq: int, *,
+               creation_id: Optional[int] = None,
+               community_id: Optional[int] = None) -> Dict[str, Any]:
     """Lightweight delta for live play: moves after ``since_seq`` + current turn/
     version/status. The opponent's move arrives here within a poll cycle."""
-    match = _fetch_match(match_id)
+    match = _fetch_match(match_id, creation_id=creation_id, community_id=community_id)
     if not match:
         raise ValueError("match_not_found")
     seat = _seat_of(match, username)

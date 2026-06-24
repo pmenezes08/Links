@@ -8,7 +8,18 @@ function persisted<T extends string>(key: string, allowed: readonly T[], fallbac
   return fallback
 }
 
-export type Creation = { id: number; title: string; html: string; status: string }
+export type Creation = {
+  id: number
+  title: string
+  html: string
+  status: string
+  kind?: string | null
+  public_slug?: string | null
+  public_status?: string | null
+  public_url?: string | null
+  public_published_at?: string | null
+  public_kind?: string | null
+}
 export type BuilderTier = 'fast' | 'balanced' | 'best'
 export type BuilderMode = 'simple' | 'technical'
 export type BuilderAgentMode = 'ask' | 'agent'
@@ -24,7 +35,23 @@ export type BuilderJob = {
   error?: string | null
 }
 
-type ApiResult = { success?: boolean; error?: string; creation?: Creation; cap?: number | null; message?: string; post_id?: number; queued?: boolean; job?: BuilderJob }
+type PublicPublishResult = {
+  public_slug?: string | null
+  public_status?: string | null
+  public_url?: string | null
+  public_published_at?: string | null
+  public_kind?: string | null
+}
+type ApiResult = {
+  success?: boolean
+  error?: string
+  creation?: Creation
+  cap?: number | null
+  message?: string
+  post_id?: number
+  queued?: boolean
+  job?: BuilderJob
+} & PublicPublishResult
 type ChatResult = { success?: boolean; error?: string; reply?: string; ready?: boolean; brief?: string }
 
 /**
@@ -251,6 +278,63 @@ export function useBuilder(communityId: string) {
     }
   }, [creation])
 
+  const publishWeb = useCallback(async (): Promise<string | null> => {
+    if (!creation) return null
+    try {
+      const res = await fetch(`/api/builder/${creation.id}/publish-web`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      })
+      const data = (await res.json().catch(() => null)) as ApiResult | null
+      if (!res.ok || !data?.success || !data.public_url) {
+        setError(data?.error === 'public_publish_not_supported_for_games'
+          ? 'Public domains are for websites and apps. Games stay inside C-Point for saves, scores and multiplayer.'
+          : data?.error || 'Could not publish this build to the web.')
+        return null
+      }
+      setCreation((current) => current && current.id === creation.id
+        ? {
+          ...current,
+          public_slug: data.public_slug ?? current.public_slug,
+          public_status: data.public_status ?? 'published',
+          public_url: data.public_url ?? current.public_url,
+          public_published_at: data.public_published_at ?? current.public_published_at,
+          public_kind: data.public_kind ?? current.public_kind,
+        }
+        : current)
+      setRev((r) => r + 1)
+      return data.public_url
+    } catch {
+      setError('Network error. Please try again.')
+      return null
+    }
+  }, [creation])
+
+  const unpublishWeb = useCallback(async (): Promise<boolean> => {
+    if (!creation) return false
+    try {
+      const res = await fetch(`/api/builder/${creation.id}/publish-web`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      })
+      const data = (await res.json().catch(() => null)) as ApiResult | null
+      if (!res.ok || !data?.success) {
+        setError(data?.error || 'Could not unpublish this build.')
+        return false
+      }
+      setCreation((current) => current && current.id === creation.id
+        ? { ...current, public_status: 'unpublished' }
+        : current)
+      setRev((r) => r + 1)
+      return true
+    } catch {
+      setError('Network error. Please try again.')
+      return false
+    }
+  }, [creation])
+
   const loadCreation = useCallback(async (id: number): Promise<boolean> => {
     setError(null); setLimit(null); setProposal(null)
     try {
@@ -290,6 +374,6 @@ export function useBuilder(communityId: string) {
   return {
     creation, messages, loading, building, busy, activeJob, error, limit, rev,
     tier, setTier, mode, setMode, agentMode, setAgentMode, proposal,
-    chat, build, confirmBuild, retry, stop, publish, loadCreation, watchJob,
+    chat, build, confirmBuild, retry, stop, publish, publishWeb, unpublishWeb, loadCreation, watchJob,
   }
 }

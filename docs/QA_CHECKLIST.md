@@ -898,10 +898,18 @@ notifications, or creation playback. Maps to the `runner=manual` Tests row
 - [ ] The page lists your creations (title, draft/published, plays, updated time) with loading, empty, and error states.
 - [ ] **Play/Preview** opens the creation; **Continue building** reopens the Builder with the draft; **Open community** lands in the community feed.
 
+#### §17.H.1 — Public web publishing
+
+- [ ] Build a website or lightweight app, then click **Publish web** from Builder or `/builds`. Expected: a `builds.c-point.co/<slug>` public URL is returned and copied.
+- [ ] Open the public URL in a signed-out/private browser. Expected: the build loads without C-Point login, shows the short C-Point loading splash, and keeps a visible **Built with C-Point** badge linking to `https://c-point.co`.
+- [ ] Test a public build using `CPoint.data(...)`. Expected: vetted public data connectors work and display attribution; session-backed saves, scores, ratings, collections/forms, and multiplayer are unavailable.
+- [ ] Try to publish a game to web. Expected: the UI blocks it with copy explaining games stay inside C-Point for saves, scores, identity, and multiplayer.
+- [ ] Unpublish the public URL. Expected: the public URL returns the branded not-found page while the build remains available inside C-Point.
+
 #### §17.I — Delete builds
 
 - [ ] From `/builds`, delete a draft build. Expected: confirmation appears, the row disappears, direct `/community/<id>/creation/<creation_id>` returns not found.
-- [ ] Delete a published build. Expected: the build disappears from `/builds`, the linked community feed post disappears, and play/preview no longer loads.
+- [ ] Delete a published/public build. Expected: the build disappears from `/builds`, the linked community feed post disappears, the public URL stops resolving, and play/preview no longer loads.
 - [ ] Confirm saved data is gone: after delete, a new build with the same save slot cannot load the deleted build's `CPoint.save/load` data.
 - [ ] As a second user, attempt to delete another user's build (or call the endpoint directly). Expected: `404 not_found` / no deletion.
 

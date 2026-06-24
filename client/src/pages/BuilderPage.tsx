@@ -14,7 +14,17 @@ const SUGGESTIONS = [
 
 const STAGES = ["Steve's on it", 'Making it', 'Adding the fun bits', 'Almost there']
 
-type BuildSummary = { id: number; title: string; status: string; plays: number; updated_at: string | null }
+type BuildSummary = {
+  id: number
+  title: string
+  kind?: string | null
+  status: string
+  plays: number
+  updated_at: string | null
+  public_status?: string | null
+  public_url?: string | null
+  public_kind?: string | null
+}
 
 // Quality tiers shown as "how hard Steve tries" — never a model name.
 const TIERS: { key: BuilderTier; name: string; sub: string; accent: string; level: number }[] = [
@@ -80,6 +90,11 @@ function TypingRow() {
   )
 }
 
+function publicEligible(kind?: string | null, publicKind?: string | null): boolean {
+  const k = String(publicKind || kind || 'web').toLowerCase()
+  return ['web', 'website', 'site', 'landing', 'app', 'tool', 'application', 'quiz', 'dashboard', 'tracker'].includes(k)
+}
+
 // Minimal, injection-safe markdown for Steve's replies: builds React nodes
 // (never sets innerHTML), supporting **bold**, *italic*, `code`, bullet and
 // numbered lists, and paragraph breaks.
@@ -138,10 +153,12 @@ export default function BuilderPage() {
   const {
     creation, messages, loading, building, busy, activeJob, error, limit,
     tier, setTier, mode, setMode, agentMode, setAgentMode, proposal,
-    chat, build, confirmBuild, retry, stop, publish, loadCreation, watchJob,
+    chat, build, confirmBuild, retry, stop, publish, publishWeb, unpublishWeb, loadCreation, watchJob,
   } = useBuilder(cid)
   const [input, setInput] = useState('')
   const [publishing, setPublishing] = useState(false)
+  const [webPublishing, setWebPublishing] = useState(false)
+  const [webCopied, setWebCopied] = useState(false)
   const [publishedPostId, setPublishedPostId] = useState<number | null>(null)
   const [playingCreation, setPlayingCreation] = useState<Creation | null>(null)
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
@@ -196,6 +213,33 @@ export default function BuilderPage() {
     const postId = await publish()
     setPublishing(false)
     if (postId) setPublishedPostId(postId)
+  }
+
+  const copyPublicUrl = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url)
+      setWebCopied(true)
+      window.setTimeout(() => setWebCopied(false), 1800)
+    } catch {
+      window.prompt('Copy this public link', url)
+    }
+  }
+
+  const onPublishWeb = async () => {
+    if (!creation || webPublishing) return
+    setWebPublishing(true)
+    const url = await publishWeb()
+    setWebPublishing(false)
+    if (url) await copyPublicUrl(url)
+  }
+
+  const onUnpublishWeb = async () => {
+    if (!creation || webPublishing) return
+    const ok = window.confirm('Unpublish this public web link? The build will still stay inside C-Point.')
+    if (!ok) return
+    setWebPublishing(true)
+    await unpublishWeb()
+    setWebPublishing(false)
   }
 
   const goBack = () => {
@@ -291,7 +335,10 @@ export default function BuilderPage() {
                 {m.creation && (
                   <CreationCard creation={m.creation} isLatest={!!creation && m.creation.id === creation.id}
                     onOpen={() => setPlayingCreation(m.creation!)}
-                    publishing={publishing} publishedPostId={publishedPostId} onShare={onPublish} />
+                    publishing={publishing} publishedPostId={publishedPostId} onShare={onPublish}
+                    webPublishing={webPublishing} webCopied={webCopied}
+                    onPublishWeb={onPublishWeb} onCopyPublicUrl={copyPublicUrl}
+                    onUnpublishWeb={onUnpublishWeb} />
                 )}
               </div>
             </div>
@@ -474,17 +521,36 @@ export default function BuilderPage() {
   )
 }
 
-function CreationCard({ creation, isLatest, onOpen, publishing, publishedPostId, onShare }: {
+function CreationCard({
+  creation,
+  isLatest,
+  onOpen,
+  publishing,
+  publishedPostId,
+  onShare,
+  webPublishing,
+  webCopied,
+  onPublishWeb,
+  onCopyPublicUrl,
+  onUnpublishWeb,
+}: {
   creation: Creation
   isLatest: boolean
   onOpen: () => void
   publishing: boolean
   publishedPostId: number | null
   onShare: () => void
+  webPublishing: boolean
+  webCopied: boolean
+  onPublishWeb: () => void
+  onCopyPublicUrl: (url: string) => Promise<void>
+  onUnpublishWeb: () => void
 }) {
+  const isPublic = creation.public_status === 'published' && !!creation.public_url
+  const eligible = publicEligible(creation.kind, creation.public_kind)
   return (
     <button onClick={onOpen}
-      style={{ position: 'relative', display: 'block', width: '100%', maxWidth: 320, height: 168, marginTop: 10, borderRadius: 14, border: '1px solid rgba(255,255,255,0.10)', background: '#0b0b0b', overflow: 'hidden', cursor: 'pointer', opacity: isLatest ? 1 : 0.85 }}>
+      style={{ position: 'relative', display: 'block', width: '100%', maxWidth: 340, height: 196, marginTop: 10, borderRadius: 14, border: '1px solid rgba(255,255,255,0.10)', background: '#0b0b0b', overflow: 'hidden', cursor: 'pointer', opacity: isLatest ? 1 : 0.85 }}>
       <CreationPreview html={creation.html} />
       {/* dim so the title/affordances stay legible over the live preview */}
       <span style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.0) 35%, rgba(0,0,0,0.55) 100%)' }} />
@@ -493,13 +559,41 @@ function CreationCard({ creation, isLatest, onOpen, publishing, publishedPostId,
           <i className="ti ti-player-play" aria-hidden="true" />
         </span>
       </span>
-      <span style={{ position: 'absolute', left: 12, right: 12, bottom: 10, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8 }}>
+      <span style={{ position: 'absolute', left: 12, right: 12, bottom: 10, display: 'flex', flexDirection: 'column', gap: 7 }}>
         <span style={{ fontSize: 14, fontWeight: 500, color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.6)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{creation.title}</span>
         {isLatest && (
-          <span role="button" tabIndex={0}
-            onClick={(e) => { e.stopPropagation(); if (!publishedPostId) onShare() }}
-            style={{ flex: '0 0 auto', fontSize: 13, fontWeight: 500, color: '#00CEC8', textShadow: '0 1px 4px rgba(0,0,0,0.6)', padding: '2px 2px' }}>
-            {publishedPostId ? 'Shared ✓' : publishing ? 'Sharing…' : 'Share'}
+          <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <span role="button" tabIndex={0}
+              onClick={(e) => { e.stopPropagation(); if (!publishedPostId) onShare() }}
+              style={{ flex: '0 0 auto', fontSize: 12, fontWeight: 700, color: '#00CEC8', textShadow: '0 1px 4px rgba(0,0,0,0.6)', padding: '4px 7px', borderRadius: 999, background: 'rgba(0,0,0,0.42)' }}>
+              {publishedPostId ? 'Shared ✓' : publishing ? 'Sharing…' : 'Share to community'}
+            </span>
+            {eligible ? (
+              isPublic ? (
+                <>
+                  <span role="button" tabIndex={0}
+                    onClick={(e) => { e.stopPropagation(); void onCopyPublicUrl(creation.public_url!) }}
+                    style={{ flex: '0 0 auto', fontSize: 12, fontWeight: 700, color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.6)', padding: '4px 7px', borderRadius: 999, background: 'rgba(0,206,200,0.22)' }}>
+                    {webCopied ? 'Copied ✓' : 'Copy public link'}
+                  </span>
+                  <span role="button" tabIndex={0}
+                    onClick={(e) => { e.stopPropagation(); onUnpublishWeb() }}
+                    style={{ flex: '0 0 auto', fontSize: 12, fontWeight: 600, color: '#ffcf8a', textShadow: '0 1px 4px rgba(0,0,0,0.6)', padding: '4px 7px', borderRadius: 999, background: 'rgba(0,0,0,0.42)' }}>
+                    {webPublishing ? 'Working…' : 'Unpublish'}
+                  </span>
+                </>
+              ) : (
+                <span role="button" tabIndex={0}
+                  onClick={(e) => { e.stopPropagation(); onPublishWeb() }}
+                  style={{ flex: '0 0 auto', fontSize: 12, fontWeight: 700, color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.6)', padding: '4px 7px', borderRadius: 999, background: 'rgba(0,206,200,0.22)' }}>
+                  {webPublishing ? 'Publishing…' : 'Publish web'}
+                </span>
+              )
+            ) : (
+              <span style={{ flex: '0 0 auto', fontSize: 11, fontWeight: 600, color: '#b9b9b9', textShadow: '0 1px 4px rgba(0,0,0,0.6)', padding: '4px 7px', borderRadius: 999, background: 'rgba(0,0,0,0.42)' }}>
+                Games stay in C-Point
+              </span>
+            )}
           </span>
         )}
       </span>

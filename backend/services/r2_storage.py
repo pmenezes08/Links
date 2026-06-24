@@ -175,6 +175,42 @@ def upload_private_bytes_to_r2(
         return False
 
 
+def upload_public_bytes_to_r2(
+    file_data: bytes,
+    key: str,
+    content_type: Optional[str] = None,
+    *,
+    cache_control: str = "public, max-age=300",
+) -> bool:
+    """Upload bytes for Worker-served public artifacts/manifests.
+
+    Public build objects are not trusted to be fetched directly by browsers;
+    the Cloudflare Worker reads them through an R2 binding and applies the final
+    response headers. The object metadata is still cache-friendly for edge reads.
+    """
+    if not R2_ENABLED:
+        logger.debug("R2 not enabled, skipping public upload")
+        return False
+    client = get_s3_client()
+    if not client:
+        return False
+    try:
+        if not content_type:
+            content_type = get_content_type(key)
+        client.put_object(
+            Bucket=R2_BUCKET,
+            Key=key,
+            Body=file_data,
+            ContentType=content_type,
+            CacheControl=cache_control,
+        )
+        logger.info("Successfully uploaded public object to R2: %s", key)
+        return True
+    except Exception as e:
+        logger.error("Failed public upload to R2: %s", e)
+        return False
+
+
 def download_bytes_from_r2(key: str) -> Optional[bytes]:
     """Read full object body from R2. Returns None if missing or error."""
     if not R2_ENABLED or not key:

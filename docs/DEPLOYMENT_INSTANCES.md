@@ -21,6 +21,15 @@ Out-of-repo or legacy names (`evalio`, `links` as separate cost centres) are cal
 | **`cpoint-landing`** | `cloudbuild-landing.yaml` | Marketing / landing only. | Separate **`landing/`** app; no core product API. |
 | **`cpoint-render`** | `cloudbuild-render.yaml` → `cpoint-render:latest` (build context `services/render/`) | **`https://cpoint-render-739552904126.europe-west1.run.app`** (private) | **Headless-Chromium render worker** for the Steve Builder render/vision-judge harness. Playwright on the official image; `POST /render` → screenshot + diagnostics. `--no-allow-unauthenticated`, scale-to-zero (`min-instances=0`), `2Gi`/`cpu=2`/`concurrency=1`. Currently **staging only**. |
 
+## Cloudflare edge services
+
+| Service | Config | Typical URL | Role |
+|---------|--------|-------------|------|
+| **`cpoint-public-builds`** | `services/public-builds-worker/wrangler.jsonc` | Live custom domain **`https://builds.c-point.co/<slug>`** | Cloudflare Worker that serves public Steve Build website/app artifacts from the same R2 bucket as the backend (`cpoints-uploads`). It reads `public/builds/<slug>/manifest.json`, streams the manifest's artifact HTML, applies security headers, returns a branded 404 for unpublished/missing builds, and proxies public-safe data connector requests to the Flask public feed route without cookies. |
+| **`cpoint-public-builds-staging`** | `wrangler deploy --env staging` from `services/public-builds-worker/` | Not externally routed until a `workers.dev` subdomain or staging custom domain is configured | Staging Worker paired with `cpoint-app-staging` through `PUBLIC_API_BASE`. |
+
+Public build artifacts remain separate from private builder artifacts. Private build HTML uses `private/creations/...` and is loaded through authenticated Cloud Run APIs; public website/app copies use `public/builds/...` and are revocable through `/api/builder/<id>/publish-web`.
+
 ---
 
 ## How they differ (quick reference)

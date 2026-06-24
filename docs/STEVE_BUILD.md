@@ -33,6 +33,10 @@ Backend routes:
 - `POST /api/cron/builder/sweep` - Cloud Scheduler reaper for orphaned jobs.
 - `GET /api/builder/<id>` - load a creation for owner/playback.
 - `POST /api/builder/<id>/publish` - publish as a community post.
+- `GET /api/builder/<id>/publish-web` - owner-only public web publication status.
+- `POST /api/builder/<id>/publish-web` - owner-only, publish an eligible website/app to `builds.c-point.co`.
+- `DELETE /api/builder/<id>/publish-web` - owner-only, unpublish a public web link.
+- `GET /api/builder/public/<slug>/data/feed` - unauthenticated public-data connector for published public builds only.
 - `/api/builder/<id>/data/*` - host-brokered creation data APIs.
 
 Core service:
@@ -42,6 +46,7 @@ Core service:
 Storage:
 
 - `creations` stores owner, community, status, prompt history, chat history, and artifact metadata. New/updated artifact HTML is uploaded to private Cloudflare R2 via `html_r2_key`; `html_content` remains a MySQL fallback for legacy rows or R2-disabled environments.
+- Public web publication metadata lives on `creations`: `public_slug`, `public_status`, `public_html_r2_key`, `public_published_at`, `public_unpublished_at`, and `public_kind`. These fields describe the external website/app copy only; community feed publishing stays separate.
 - `builder_jobs` stores async build/iterate jobs so builds continue if the user leaves, locks the phone, or switches apps.
 - `creation_data` stores host-brokered scores, ratings, saves, and related creation data.
 
@@ -110,11 +115,51 @@ Supported capabilities:
 - `CPoint.load(key)` - load per-player saved state; resolves to `{value}` (`value` is `null` when nothing is saved).
 - `CPoint.images(query, opts)` - fetch real freely licensed web photos.
 - `CPoint.data(connector, params)` - fetch recent public data from vetted host-side connectors.
+- `CPoint.sharedState.get(key)` / `CPoint.sharedState.update(key, value, opts)` - one shared JSON document per creation/key for lightweight community app state.
+- `CPoint.collection(name)` - small structured row collections for task boards, RSVP lists, nominations, directories, feedback walls, and similar app surfaces.
+- `CPoint.forms.submit(name, data)` - append-only form submissions for websites and apps.
+- `CPoint.turnBasedGame(config)` - preferred high-level runtime for two-player turn-based games; generated code supplies rules/rendering while the platform owns lifecycle, live-feeling polling, and opponent move deltas.
+- `CPoint.matchController(opts)` - preferred helper for two-player turn-based games; owns lobby refresh, sent/received invites, cancel/decline/accept, polling, reconnect backoff, stale reloads, tab cleanup, and seat helpers.
+- `CPoint.match.*` - lower-level two-player match API (`list`, `opponents`, `create`, `get`, `poll`, `move`, `accept`, `decline`, `cancel`, `resign`) for advanced cases.
 - `CPoint.gameOver(opts)` - signal the native result overlay.
 - `CPoint.hasPersistence` - `true` whenever the bridge is injected, so a creation can feature-detect save support.
 - `CPoint.hasData` - `true` whenever brokered public-data connectors are available.
+- `CPoint.hasCreationData` - `true` when shared state, collections, and forms are available.
+- `CPoint.hasMultiplayer` / `CPoint.hasMatchController` / `CPoint.hasTurnBasedGame` - `true` when two-player turn-based multiplayer runtimes are available.
 
 Important: generated creations must not call arbitrary private services or invent backend APIs. The host bridge is the approved boundary.
+
+### Creation data runtime
+
+Steve Build exposes safe, brokered data primitives instead of arbitrary databases:
+
+- `sharedState` is for one compact shared JSON value per creation/key. Use it for polls, shared counters, prediction boards, and simple dashboards. Updates accept an optional `version` for optimistic conflict handling.
+- `collection(name)` is for small structured row sets. Use it for apps such as task boards, RSVPs, directories, nominations, and feedback walls. Rows are compact JSON values with `id`, `version`, timestamps, and creator metadata.
+- `forms.submit(name, data)` is append-only. Use it for websites and apps that need signups, feedback, surveys, votes, or nominations. Do not ask users for sensitive private data in generated forms.
+
+All writes are session-authenticated through the host, scoped to the creation's community, rate-limited, and size-limited. Generated creations must render loading/empty/error states and must never invent their own database, raw API route, or localStorage workaround.
+
+### Two-player multiplayer
+
+Two-player games use a host-brokered match system. The sandbox never sees raw usernames and never writes directly to the database; every call is routed through the signed-in user's session.
+
+Preferred path:
+
+- Generated turn-based games should use `CPoint.turnBasedGame(config)` first. The generated code supplies `initialState`, `canMove`, `applyMove`, `getResult`, `render`, and optionally `onOpponentMove`; the platform owns the lifecycle.
+- Generated games should use `CPoint.matchController(opts)` for normal turn-based games. The controller owns the common lifecycle: lobby refresh, accepting/declining received invites, cancelling sent invites, opening a match, polling sent pending invites until they become active, polling active matches only while waiting for the opponent's move, reloading authoritative state after poll changes, backing off reconnect UI until repeated failures, and cleaning up timers when the tab is hidden.
+- Game code supplies only the rules and rendering callbacks: `startingState(match)`, `applyMove(state, action, match)`, `getResult(nextState, match, action)`, `onLobby(matches)`, `onMatch(view)`, and `onReconnect(count)`.
+- `controller.view()` returns stable lifecycle and seat helpers: `phase`, `canMove`, `isPending`, `isWaitingForAccept`, `isInviteReceived`, `isActive`, `isFinished`, `yourSeat`, `isWhite`, `isBlack`, `yourTurn`, `status`, `winner`, `lastSeq`, and `opponent`. Generated games should render from `phase`/`canMove`, not from `yourTurn` alone; `yourTurn=false` can mean pending, finished, or opponent turn.
+- For live-feeling turn-based play, `turnBasedGame` defaults to faster polling while the local player is waiting. Poll deltas are exposed as `view.moves`, `view.lastMove`, and `onOpponentMove(move, state, view, delta)`. Board/card games should include animation metadata in submitted actions, such as `{from,to,piece}` or `{cardId,fromZone,toZone}`, so the opponent can animate the move when both players have the game open.
+
+Raw API:
+
+- `CPoint.match.create(handle)` creates a pending invite.
+- `CPoint.match.accept(id)` and `CPoint.match.decline(id)` are for the invited player.
+- `CPoint.match.cancel(id)` is for the challenger to cancel a pending invite before it is accepted.
+- `CPoint.match.resign(id)` forfeits an active or pending match as the current player.
+- `CPoint.match.move(id,{move,state,version,result})` writes a full compact state blob and enforces optimistic concurrency.
+
+Backend routes live under `/api/builder/<id>/match/*`; the route inventory is regenerated in `docs/BACKEND_ROUTES.md`.
 
 ### Public data connectors
 
@@ -152,6 +197,18 @@ Creation HTML is still returned through `GET /api/builder/<id>` as `creation.htm
 - Read path: `get_creation` resolves `html_r2_key` through `download_bytes_from_r2`, with a short Redis body cache keyed by creation ID and `updated_at`; if R2 is unavailable or the key is absent, it falls back to `html_content`.
 - Delete path: `delete_creation` deletes the private R2 object, `creation_data`, related `builder_jobs`, and the published post/dependents.
 - Backfill: `scripts/backfill_builder_artifacts_to_r2.py` migrates legacy inline rows in batches and is idempotent.
+
+### Public web publishing
+
+Public web publishing is V1-scoped to websites and lightweight apps. Games remain inside C-Point because identity, saves, scores, leaderboards, and multiplayer are community/session-bound.
+
+- Owner flow: `POST /api/builder/<id>/publish-web` validates ownership and kind, generates a stable slug, injects the public-safe bridge plus C-Point branding, uploads a public artifact copy to R2, and writes a slug manifest for the Cloudflare Worker.
+- Public URL: `https://builds.c-point.co/<slug>` (staging Worker uses its own environment until DNS is wired).
+- R2 keys: artifact copies use `public/builds/<slug>/<version>.html`; manifests use `public/builds/<slug>/manifest.json`.
+- Worker: `services/public-builds-worker/` serves the manifest-resolved artifact from an R2 binding, applies strict security headers, and returns a branded 404 when unpublished or missing.
+- Public bridge: `window.CPoint.isPublicBuild = true`; public builds can use vetted `CPoint.data` connectors, but private session features are disabled (`save/load`, scores, ratings, shared collections/forms, and multiplayer).
+- Branding: the platform injects a fast C-Point loading splash and a persistent "Built with C-Point" badge linking to `https://c-point.co`.
+- Unpublish/delete: `DELETE /api/builder/<id>/publish-web` removes the manifest and artifact copy; deleting a build also deletes any public manifest/artifact.
 
 ### Persistence contract (save slots)
 

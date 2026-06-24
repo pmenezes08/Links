@@ -12,6 +12,9 @@ type Creation = {
   published_post_id: number | null
   updated_at: string | null
   plays: number
+  public_status?: string | null
+  public_url?: string | null
+  public_kind?: string | null
 }
 
 function formatUpdated(value: string | null): string {
@@ -30,12 +33,19 @@ function formatUpdated(value: string | null): string {
   return date.toLocaleDateString()
 }
 
+function publicEligible(kind?: string | null, publicKind?: string | null): boolean {
+  const k = String(publicKind || kind || 'web').toLowerCase()
+  return ['web', 'website', 'site', 'landing', 'app', 'tool', 'application', 'quiz', 'dashboard', 'tracker'].includes(k)
+}
+
 export default function MyBuilds() {
   const navigate = useNavigate()
   const { setTitle } = useHeader()
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [creations, setCreations] = useState<Creation[]>([])
   const [deletingIds, setDeletingIds] = useState<Set<number>>(() => new Set())
+  const [publishingIds, setPublishingIds] = useState<Set<number>>(() => new Set())
+  const [copiedId, setCopiedId] = useState<number | null>(null)
 
   useEffect(() => {
     setTitle('My Builds')
@@ -69,7 +79,7 @@ export default function MyBuilds() {
     if (deletingIds.has(creation.id)) return
     const title = creation.title?.trim() || 'Untitled build'
     const ok = window.confirm(
-      `Delete "${title}"? This removes the build, all saves, scores, ratings, and the community post if published. This cannot be undone.`,
+      `Delete "${title}"? This removes the build, its public web link, all saves, scores, ratings, and the community post if published. This cannot be undone.`,
     )
     if (!ok) return
     setDeletingIds(prev => new Set(prev).add(creation.id))
@@ -98,6 +108,81 @@ export default function MyBuilds() {
       })
     }
   }, [deletingIds])
+
+  const copyUrl = useCallback(async (creation: Creation) => {
+    if (!creation.public_url) return
+    try {
+      await navigator.clipboard.writeText(creation.public_url)
+      setCopiedId(creation.id)
+      window.setTimeout(() => setCopiedId(null), 1800)
+    } catch {
+      window.prompt('Copy this public link', creation.public_url)
+    }
+  }, [])
+
+  const publishWeb = useCallback(async (creation: Creation) => {
+    if (publishingIds.has(creation.id)) return
+    setPublishingIds(prev => new Set(prev).add(creation.id))
+    try {
+      const r = await fetch(`/api/builder/${creation.id}/publish-web`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok || !j?.success || !j.public_url) {
+        window.alert(j?.error === 'public_publish_not_supported_for_games'
+          ? 'Public domains are for websites and apps. Games stay inside C-Point.'
+          : 'Could not publish this build to the web.')
+        return
+      }
+      setCreations(prev => prev.map(item => item.id === creation.id
+        ? {
+          ...item,
+          public_status: j.public_status || 'published',
+          public_url: j.public_url,
+          public_kind: j.public_kind || item.public_kind,
+        }
+        : item))
+      await copyUrl({ ...creation, public_url: j.public_url })
+    } catch {
+      window.alert('Could not publish this build. Please check your connection and try again.')
+    } finally {
+      setPublishingIds(prev => {
+        const next = new Set(prev)
+        next.delete(creation.id)
+        return next
+      })
+    }
+  }, [copyUrl, publishingIds])
+
+  const unpublishWeb = useCallback(async (creation: Creation) => {
+    if (publishingIds.has(creation.id)) return
+    const ok = window.confirm('Unpublish this public web link? The build will still stay inside C-Point.')
+    if (!ok) return
+    setPublishingIds(prev => new Set(prev).add(creation.id))
+    try {
+      const r = await fetch(`/api/builder/${creation.id}/publish-web`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok || !j?.success) {
+        window.alert('Could not unpublish this build. Please try again.')
+        return
+      }
+      setCreations(prev => prev.map(item => item.id === creation.id ? { ...item, public_status: 'unpublished' } : item))
+    } catch {
+      window.alert('Could not unpublish this build. Please check your connection and try again.')
+    } finally {
+      setPublishingIds(prev => {
+        const next = new Set(prev)
+        next.delete(creation.id)
+        return next
+      })
+    }
+  }, [publishingIds])
 
   return (
     <div className="app-content min-h-screen chat-thread-bg text-c-text-primary">
@@ -173,6 +258,11 @@ export default function MyBuilds() {
                         <i className="fa-solid fa-play text-[9px]" aria-hidden="true" />
                         {c.plays}
                       </span>
+                      {c.public_status === 'published' && c.public_url && (
+                        <span className="rounded-full bg-cpoint-turquoise/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-cpoint-turquoise">
+                          Public web
+                        </span>
+                      )}
                       {formatUpdated(c.updated_at) && (
                         <span className="flex items-center gap-1">
                           <i className="fa-regular fa-clock text-[9px]" aria-hidden="true" />
@@ -219,6 +309,40 @@ export default function MyBuilds() {
                     >
                       Open community
                     </button>
+                  )}
+                  {publicEligible(c.kind, c.public_kind) ? (
+                    c.public_status === 'published' && c.public_url ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => { void copyUrl(c) }}
+                          className="rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1.5 text-xs font-semibold text-cpoint-turquoise transition hover:bg-cpoint-turquoise/15"
+                        >
+                          {copiedId === c.id ? 'Copied' : 'Copy public link'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { void unpublishWeb(c) }}
+                          disabled={publishingIds.has(c.id)}
+                          className="rounded-xl border border-c-border bg-transparent px-3 py-1.5 text-xs font-medium text-c-text-secondary transition hover:text-c-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {publishingIds.has(c.id) ? 'Working...' : 'Unpublish web'}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => { void publishWeb(c) }}
+                        disabled={publishingIds.has(c.id)}
+                        className="rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1.5 text-xs font-semibold text-cpoint-turquoise transition hover:bg-cpoint-turquoise/15 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {publishingIds.has(c.id) ? 'Publishing...' : 'Publish web'}
+                      </button>
+                    )
+                  ) : (
+                    <span className="rounded-xl border border-c-border bg-c-hover-bg px-3 py-1.5 text-xs font-medium text-c-text-tertiary">
+                      Games stay inside C-Point
+                    </span>
                   )}
                 </div>
               </li>

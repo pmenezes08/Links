@@ -49,6 +49,23 @@ MODEL_LABEL = _MODEL_FAST  # default label; the actual model used is logged per 
 def resolve_model(tier: Optional[str]) -> str:
     return BUILDER_TIERS.get((tier or _DEFAULT_TIER).strip().lower(), _MODEL_MID)
 MAX_HTML_BYTES = 400_000  # reject pathologically large artifacts
+PUBLIC_BUILDS_BASE_URL = os.getenv("PUBLIC_BUILDS_BASE_URL", "https://builds.c-point.co").rstrip("/")
+PUBLIC_BUILDS_API_BASE = os.getenv("PUBLIC_BUILDS_API_BASE", "").rstrip("/")
+_PUBLIC_BUILD_KINDS = {"web", "website", "app"}
+_GAME_BUILD_KINDS = {"game", "games"}
+_GAME_KIND_HINTS = {
+    "game", "chess", "checkers", "connect-4", "connect four", "tic-tac-toe",
+    "tictactoe", "snake", "pong", "breakout", "runner", "arcade", "platformer",
+    "battleship", "dominoes", "cards", "card game", "word game",
+}
+_APP_KIND_HINTS = {
+    "app", "tool", "tracker", "dashboard", "calculator", "planner", "rsvp",
+    "directory", "quiz", "generator", "form", "poll", "wishlist", "task",
+}
+_WEBSITE_KIND_HINTS = {
+    "website", "site", "landing page", "portfolio", "homepage", "marketing page",
+    "menu", "brochure", "guide", "page",
+}
 # Output ceiling. Kept well above what a rich single-file artifact needs so the
 # 400KB byte limit (not the token budget) is the real ceiling — a low ceiling
 # silently truncates ambitious builds mid-document (and truncation often does
@@ -225,7 +242,9 @@ _CAPS_BLOCK = _extract_caps(_SYSTEM_PROMPT) or _CAPS_FALLBACK
 _CREATION_COLS = [
     "id", "community_id", "created_by", "title", "kind", "html_content",
     "prompt_history", "parent_creation_id", "status", "published_post_id",
-    "created_at", "updated_at", "html_r2_key",
+    "created_at", "updated_at", "html_r2_key", "public_slug",
+    "public_status", "public_html_r2_key", "public_published_at",
+    "public_unpublished_at", "public_kind",
 ]
 
 _JOB_COLS = [
@@ -315,6 +334,28 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
             cursor.execute("ALTER TABLE creations ADD COLUMN chat_history " + ("MEDIUMTEXT" if USE_MYSQL else "TEXT"))
         except Exception:
             pass
+        # Public web publishing metadata. Existing community publishing remains
+        # separate: these fields describe the externally shareable build copy.
+        for column, ddl in (
+            ("public_slug", "VARCHAR(96)" if USE_MYSQL else "TEXT"),
+            ("public_status", "VARCHAR(16)" if USE_MYSQL else "TEXT"),
+            ("public_html_r2_key", "VARCHAR(512)" if USE_MYSQL else "TEXT"),
+            ("public_published_at", "DATETIME" if USE_MYSQL else "TEXT"),
+            ("public_unpublished_at", "DATETIME" if USE_MYSQL else "TEXT"),
+            ("public_kind", "VARCHAR(16)" if USE_MYSQL else "TEXT"),
+        ):
+            try:
+                cursor.execute(f"ALTER TABLE creations ADD COLUMN {column} {ddl}")
+            except Exception:
+                pass
+        for stmt in (
+            "CREATE INDEX idx_creations_public_slug ON creations (public_slug)",
+            "CREATE INDEX idx_creations_public_status ON creations (public_status)",
+        ):
+            try:
+                cursor.execute(stmt if USE_MYSQL else stmt.replace("CREATE INDEX ", "CREATE INDEX IF NOT EXISTS "))
+            except Exception:
+                pass
         # Community-scoped interaction data (scores, ratings). One row per user
         # per (creation, namespace, key) — UNIQUE makes "one score/rating per
         # user" a DB invariant (upsert). The artifact never writes here directly;
@@ -674,6 +715,173 @@ def delete_artifact_html(html_r2_key: Optional[str], *, creation_id: Optional[in
         logger.debug("builder: R2 artifact delete skipped for key %s", html_r2_key, exc_info=True)
 
 
+def _slugify_public_title(title: Any, creation_id: int) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", str(title or "build").lower()).strip("-")
+    base = re.sub(r"-{2,}", "-", base)[:64].strip("-") or "build"
+    return f"{base}-{int(creation_id)}"
+
+
+def public_build_url(slug: str) -> str:
+    return f"{PUBLIC_BUILDS_BASE_URL}/{str(slug).strip('/')}"
+
+
+def public_artifact_r2_key(slug: str, version: Optional[str] = None) -> str:
+    stamp = re.sub(r"[^0-9A-Za-z]+", "-", version or _now()).strip("-") or uuid.uuid4().hex
+    return f"public/builds/{slug}/{stamp}.html"
+
+
+def public_manifest_r2_key(slug: str) -> str:
+    return f"public/builds/{slug}/manifest.json"
+
+
+def _public_kind(kind: Any) -> str:
+    k = str(kind or "web").strip().lower()
+    if k in {"web", "website", "site", "landing"}:
+        return "website"
+    if k in {"app", "tool", "application", "quiz", "dashboard", "tracker"}:
+        return "app"
+    if k in _GAME_BUILD_KINDS:
+        return "game"
+    return k or "website"
+
+
+def public_publish_eligible(kind: Any) -> bool:
+    return _public_kind(kind) in {"website", "app"}
+
+
+def infer_creation_kind(prompt: Any, title: Any = None) -> str:
+    text = f"{prompt or ''} {title or ''}".lower()
+    if any(hint in text for hint in _GAME_KIND_HINTS):
+        return "game"
+    if any(hint in text for hint in _APP_KIND_HINTS):
+        return "app"
+    if any(hint in text for hint in _WEBSITE_KIND_HINTS):
+        return "website"
+    return "website"
+
+
+def public_bridge_and_branding_script(*, slug: str, title: str) -> str:
+    safe_slug = json.dumps(str(slug))
+    safe_title = json.dumps(str(title or "C-Point build"))
+    api_base = json.dumps(PUBLIC_BUILDS_API_BASE)
+    return f"""<script>
+(function(){{
+  var slug={safe_slug}, title={safe_title}, apiBase={api_base};
+  var root=document.documentElement;
+  root.setAttribute('data-cpoint-public-build','true');
+  window.CPoint=Object.assign({{}}, window.CPoint||{{}}, {{
+    isPublicBuild:true,
+    publicSlug:slug,
+    publicTitle:title,
+    hasPersistence:false,
+    hasCreationData:false,
+    hasMultiplayer:false,
+    hasMatchController:false,
+    hasTurnBasedGame:false,
+    hasData:true,
+    data:function(connector, params){{
+      var qs=new URLSearchParams();
+      qs.set('connector', connector||'');
+      qs.set('params', JSON.stringify(params||{{}}));
+      qs.set('slug', slug);
+      var endpoint=apiBase
+        ? apiBase + '/api/builder/public/' + encodeURIComponent(slug) + '/data/feed?' + qs.toString()
+        : '/api/data/feed?' + qs.toString();
+      return fetch(endpoint, {{
+        credentials:'omit',
+        headers:{{'Accept':'application/json'}}
+      }}).then(function(r){{return r.json().then(function(j){{if(!r.ok||!j.success) throw new Error((j&&j.error)||'data_error'); return j;}});}});
+    }},
+    save:function(){{return Promise.reject(new Error('public_build_no_private_persistence'));}},
+    load:function(){{return Promise.resolve({{value:null, publicBuild:true}});}},
+    submitScore:function(){{return Promise.reject(new Error('public_build_no_scores'));}},
+    getLeaderboard:function(){{return Promise.resolve({{scores:[], publicBuild:true}});}},
+    match:null
+  }});
+  function mountBrand(){{
+    if(document.getElementById('cpoint-public-brand')) return;
+    var splash=document.createElement('div');
+    splash.id='cpoint-public-splash';
+    splash.innerHTML='<div class="cp-logo">C</div><div class="cp-copy">Built with C-Point</div>';
+    var badge=document.createElement('a');
+    badge.id='cpoint-public-brand';
+    badge.href='https://c-point.co';
+    badge.target='_blank';
+    badge.rel='noopener noreferrer';
+    badge.setAttribute('aria-label','Built with C-Point');
+    badge.innerHTML='<span class="cp-dot">C</span><span>Built with C-Point</span>';
+    document.body.appendChild(splash);
+    document.body.appendChild(badge);
+    window.setTimeout(function(){{ splash.className='cp-hide'; }}, 900);
+    window.setTimeout(function(){{ if(splash&&splash.parentNode) splash.parentNode.removeChild(splash); }}, 1600);
+  }}
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',mountBrand,{{once:true}});
+  else mountBrand();
+}})();
+</script>"""
+
+
+def public_branding_style() -> str:
+    return """<style>
+#cpoint-public-splash{position:fixed;inset:0;z-index:2147483646;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#000;color:#f6ffff;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;transition:opacity .45s ease,visibility .45s ease}
+#cpoint-public-splash.cp-hide{opacity:0;visibility:hidden}
+#cpoint-public-splash .cp-logo{width:64px;height:64px;border-radius:22px;display:flex;align-items:center;justify-content:center;background:#00cec8;color:#00302e;font-weight:800;font-size:31px;box-shadow:0 20px 60px rgba(0,206,200,.25)}
+#cpoint-public-splash .cp-copy{font-size:14px;letter-spacing:.02em;color:rgba(246,255,255,.82)}
+#cpoint-public-brand{position:fixed;right:max(12px,env(safe-area-inset-right));bottom:max(12px,env(safe-area-inset-bottom));z-index:2147483645;display:inline-flex;align-items:center;gap:7px;padding:8px 10px;border-radius:999px;background:rgba(0,0,0,.68);color:#efffff;text-decoration:none;font:600 12px/1 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.28);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.14)}
+#cpoint-public-brand .cp-dot{width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#00cec8;color:#00302e;font-size:11px;font-weight:800}
+@media(max-width:520px){#cpoint-public-brand{left:12px;right:auto;bottom:max(10px,env(safe-area-inset-bottom));font-size:11px;padding:7px 9px}}
+</style>"""
+
+
+def prepare_public_creation_html(html: str, *, slug: str, title: str) -> str:
+    """Inject public-only CPoint bridge plus mandatory C-Point branding."""
+    injection = public_branding_style() + public_bridge_and_branding_script(slug=slug, title=title)
+    if re.search(r"<head[^>]*>", html or "", re.I):
+        return re.sub(r"<head[^>]*>", lambda m: m.group(0) + injection, html, count=1, flags=re.I)
+    if re.search(r"<html[^>]*>", html or "", re.I):
+        return re.sub(r"<html[^>]*>", lambda m: m.group(0) + "<head>" + injection + "</head>", html, count=1, flags=re.I)
+    return "<!doctype html><html><head>" + injection + "</head><body>" + (html or "") + "</body></html>"
+
+
+def _public_manifest(*, creation_id: int, slug: str, title: str, artifact_key: str,
+                     kind: str, published_at: str) -> Dict[str, Any]:
+    return {
+        "schema": 1,
+        "status": "published",
+        "creationId": int(creation_id),
+        "slug": slug,
+        "title": title,
+        "kind": kind,
+        "artifactKey": artifact_key,
+        "publishedAt": published_at,
+    }
+
+
+def _upload_public_json(key: str, payload: Dict[str, Any]) -> bool:
+    try:
+        from backend.services.r2_storage import upload_public_bytes_to_r2
+        raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        return upload_public_bytes_to_r2(
+            raw, key, content_type="application/json; charset=utf-8",
+            cache_control="public, max-age=30",
+        )
+    except Exception:
+        logger.warning("builder: public manifest upload failed for key %s", key, exc_info=True)
+        return False
+
+
+def _upload_public_html(key: str, html: str) -> bool:
+    try:
+        from backend.services.r2_storage import upload_public_bytes_to_r2
+        return upload_public_bytes_to_r2(
+            html.encode("utf-8"), key, content_type="text/html; charset=utf-8",
+            cache_control="public, max-age=300",
+        )
+    except Exception:
+        logger.warning("builder: public artifact upload failed for key %s", key, exc_info=True)
+        return False
+
+
 def _job_row_to_dict(row: Any) -> Dict[str, Any]:
     if hasattr(row, "keys"):
         return {k: row[k] for k in row.keys()}
@@ -742,6 +950,10 @@ _CONVERSE_BASE = (
 _CONVERSE_AGENT = (
     "You are in AGENT mode: you can build. When you have enough to make a great first version, PROPOSE a concrete plan "
     "in plain language and ASK the user to confirm before you build — do not start building without a yes.\n"
+    "IMPORTANT for existing creations: when the user explicitly asks you to fix, update, apply, implement, do it, "
+    "fix all listed issues, or make the changes, DO NOT ask which direction to explore and DO NOT keep explaining. "
+    "Return ready=true with a concise build brief covering exactly those requested fixes. Ask a question only if the "
+    "request is impossible, contradictory, or missing information that would make the change unsafe.\n"
 )
 _CONVERSE_ASK = (
     "You are in ASK mode: you can ONLY discuss, advise, brainstorm, and explain — you CANNOT build or change anything "
@@ -1190,6 +1402,7 @@ def create_creation(*, username: str, community_id: int, prompt: str,
         prompt, temperature=0.8, model=resolve_model(tier),
         verify=verify, username=username, community_id=community_id)
     resolved_title = (title or _extract_title(html, prompt))[:200]
+    creation_kind = infer_creation_kind(prompt, resolved_title)
     history = _append_history(None, prompt)
     now = _now()
     ph = get_sql_placeholder()
@@ -1202,7 +1415,7 @@ def create_creation(*, username: str, community_id: int, prompt: str,
                  prompt_history, status, created_at, updated_at)
             VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
             """,
-            (community_id, username, resolved_title, "web", html,
+            (community_id, username, resolved_title, creation_kind, html,
              history, "draft", now, now),
         )
         creation_id = c.lastrowid
@@ -1219,7 +1432,7 @@ def create_creation(*, username: str, community_id: int, prompt: str,
                 conn.commit()
         except Exception:
             logger.warning("builder: failed to store R2 artifact key for creation %s", creation_id, exc_info=True)
-    return {"id": creation_id, "title": resolved_title, "html": html, "status": "draft", "model": model_used}
+    return {"id": creation_id, "title": resolved_title, "html": html, "status": "draft", "kind": creation_kind, "model": model_used}
 
 
 def get_creation(creation_id: int) -> Optional[Dict[str, Any]]:
@@ -1230,7 +1443,9 @@ def get_creation(creation_id: int) -> Optional[Dict[str, Any]]:
             f"""
             SELECT id, community_id, created_by, title, kind, html_content,
                    prompt_history, parent_creation_id, status, published_post_id,
-                   created_at, updated_at, html_r2_key
+                   created_at, updated_at, html_r2_key, public_slug,
+                   public_status, public_html_r2_key, public_published_at,
+                   public_unpublished_at, public_kind
             FROM creations WHERE id = {ph}
             """,
             (creation_id,),
@@ -1244,6 +1459,8 @@ def get_creation(creation_id: int) -> Optional[Dict[str, Any]]:
     )
     if html is not None:
         out["html_content"] = html
+    if out.get("public_slug"):
+        out["public_url"] = public_build_url(str(out["public_slug"]))
     return out
 
 
@@ -1272,7 +1489,7 @@ def iterate_creation(*, creation_id: int, username: str, message: str, tier: str
         conn.commit()
     if old_r2_key and old_r2_key != stored_r2_key:
         delete_artifact_html(old_r2_key)
-    return {"id": creation_id, "title": row.get("title"), "html": html, "status": row.get("status"), "model": model_used}
+    return {"id": creation_id, "title": row.get("title"), "html": html, "status": row.get("status"), "kind": row.get("kind"), "model": model_used}
 
 
 # --- Async build jobs ---------------------------------------------------------
@@ -1717,6 +1934,136 @@ def publish_creation(*, creation_id: int, username: str,
     return {"post_id": post_id, "already_published": False}
 
 
+def publish_creation_to_web(*, creation_id: int, username: str) -> Dict[str, Any]:
+    """Publish a website/app creation to the public builds domain."""
+    row = get_creation(creation_id)
+    if not row or row.get("created_by") != username:
+        raise PermissionError("creation not found")
+
+    kind = _public_kind(row.get("public_kind") or row.get("kind"))
+    if kind == "game" or not public_publish_eligible(kind):
+        raise ValueError("public_publish_not_supported_for_games")
+
+    html = row.get("html_content") or ""
+    if not html.strip():
+        raise ValueError("artifact_missing")
+
+    now = _now()
+    slug = str(row.get("public_slug") or _slugify_public_title(row.get("title"), creation_id))
+    artifact_key = public_artifact_r2_key(slug, version=now)
+    public_html = prepare_public_creation_html(html, slug=slug, title=str(row.get("title") or "C-Point build"))
+    if not _upload_public_html(artifact_key, public_html):
+        raise RuntimeError("public_artifact_upload_failed")
+
+    manifest = _public_manifest(
+        creation_id=creation_id, slug=slug, title=str(row.get("title") or "Untitled build"),
+        artifact_key=artifact_key, kind=kind, published_at=now,
+    )
+    if not _upload_public_json(public_manifest_r2_key(slug), manifest):
+        try:
+            from backend.services.r2_storage import delete_from_r2
+            delete_from_r2(artifact_key)
+        except Exception:
+            pass
+        raise RuntimeError("public_manifest_upload_failed")
+
+    old_public_key = row.get("public_html_r2_key")
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""
+            UPDATE creations
+            SET public_slug = {ph}, public_status = {ph}, public_html_r2_key = {ph},
+                public_published_at = {ph}, public_unpublished_at = NULL,
+                public_kind = {ph}, updated_at = {ph}
+            WHERE id = {ph} AND created_by = {ph}
+            """,
+            (slug, "published", artifact_key, now, kind, now, creation_id, username),
+        )
+        conn.commit()
+
+    if old_public_key and old_public_key != artifact_key:
+        try:
+            from backend.services.r2_storage import delete_from_r2
+            delete_from_r2(str(old_public_key))
+        except Exception:
+            logger.debug("builder: old public artifact cleanup skipped for %s", creation_id, exc_info=True)
+
+    return {
+        "public_slug": slug,
+        "public_url": public_build_url(slug),
+        "public_status": "published",
+        "public_kind": kind,
+        "public_published_at": now,
+    }
+
+
+def unpublish_creation_from_web(*, creation_id: int, username: str) -> Dict[str, Any]:
+    row = get_creation(creation_id)
+    if not row or row.get("created_by") != username:
+        raise PermissionError("creation not found")
+
+    slug = row.get("public_slug")
+    public_key = row.get("public_html_r2_key")
+    now = _now()
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""
+            UPDATE creations
+            SET public_status = {ph}, public_unpublished_at = {ph}, updated_at = {ph}
+            WHERE id = {ph} AND created_by = {ph}
+            """,
+            ("unpublished", now, now, creation_id, username),
+        )
+        conn.commit()
+
+    try:
+        from backend.services.r2_storage import delete_from_r2
+        if slug:
+            delete_from_r2(public_manifest_r2_key(str(slug)))
+        if public_key:
+            delete_from_r2(str(public_key))
+    except Exception:
+        logger.debug("builder: public unpublish R2 cleanup skipped for %s", creation_id, exc_info=True)
+
+    return {
+        "public_slug": slug,
+        "public_url": public_build_url(str(slug)) if slug else None,
+        "public_status": "unpublished",
+        "public_unpublished_at": now,
+    }
+
+
+def public_creation_for_slug(slug: str) -> Optional[Dict[str, Any]]:
+    cleaned = re.sub(r"[^a-z0-9-]+", "", str(slug or "").lower())[:96]
+    if not cleaned:
+        return None
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""
+            SELECT id, community_id, created_by, title, kind, html_content,
+                   prompt_history, parent_creation_id, status, published_post_id,
+                   created_at, updated_at, html_r2_key, public_slug,
+                   public_status, public_html_r2_key, public_published_at,
+                   public_unpublished_at, public_kind
+            FROM creations
+            WHERE public_slug = {ph} AND public_status = 'published'
+            """,
+            (cleaned,),
+        )
+        row = c.fetchone()
+    if not row:
+        return None
+    out = _row_to_dict(row)
+    out["public_url"] = public_build_url(cleaned)
+    return out
+
+
 def _try_delete_post_dependents(c, ph: str, post_id: int) -> None:
     """Best-effort cleanup for rows that point at a published creation post.
 
@@ -1750,7 +2097,9 @@ def delete_creation(username: str, creation_id: int) -> Tuple[Dict[str, Any], in
         with get_db_connection() as conn:
             c = conn.cursor()
             c.execute(
-                f"SELECT id, created_by, published_post_id, html_r2_key, updated_at, community_id FROM creations WHERE id = {ph}",
+                f"""SELECT id, created_by, published_post_id, html_r2_key, updated_at,
+                           community_id, public_slug, public_html_r2_key
+                    FROM creations WHERE id = {ph}""",
                 (creation_id,),
             )
             row = c.fetchone()
@@ -1761,6 +2110,8 @@ def delete_creation(username: str, creation_id: int) -> Tuple[Dict[str, Any], in
             html_r2_key = _cell(row, 3)
             updated_at = _cell(row, 4)
             community_id = _cell(row, 5)
+            public_slug = _cell(row, 6)
+            public_html_r2_key = _cell(row, 7)
 
             # Delete EVERY post that references this creation (not just the one
             # recorded on the row), plus each post's dependents — otherwise a
@@ -1774,11 +2125,24 @@ def delete_creation(username: str, creation_id: int) -> Tuple[Dict[str, Any], in
                 c.execute(f"DELETE FROM posts WHERE id = {ph}", (pid,))
 
             c.execute(f"DELETE FROM creation_data WHERE creation_id = {ph}", (creation_id,))
+            try:
+                c.execute(f"DELETE FROM creation_runtime_data WHERE creation_id = {ph}", (creation_id,))
+            except Exception:
+                # Older deployments may not have created the runtime table yet.
+                pass
             c.execute(f"DELETE FROM builder_jobs WHERE creation_id = {ph}", (creation_id,))
             c.execute(f"DELETE FROM creations WHERE id = {ph}", (creation_id,))
             conn.commit()
 
         delete_artifact_html(html_r2_key, creation_id=creation_id, updated_at=str(updated_at or ""))
+        try:
+            from backend.services.r2_storage import delete_from_r2
+            if public_slug:
+                delete_from_r2(public_manifest_r2_key(str(public_slug)))
+            if public_html_r2_key:
+                delete_from_r2(str(public_html_r2_key))
+        except Exception:
+            logger.debug("builder: public artifact delete skipped for creation %s", creation_id, exc_info=True)
 
         try:
             from redis_cache import cache
@@ -2120,7 +2484,9 @@ def list_creations(username: str, *, limit: int = 50) -> List[Dict[str, Any]]:
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute(
-            f"""SELECT id, title, kind, status, community_id, published_post_id, updated_at, play_count
+            f"""SELECT id, title, kind, status, community_id, published_post_id,
+                       updated_at, play_count, public_slug, public_status,
+                       public_published_at, public_kind
                 FROM creations WHERE created_by = {ph}
                 ORDER BY updated_at DESC LIMIT {ph}""",
             (username, limit),
@@ -2131,6 +2497,11 @@ def list_creations(username: str, *, limit: int = 50) -> List[Dict[str, Any]]:
         "community_id": _cell(r, 4), "published_post_id": _cell(r, 5),
         "updated_at": str(_cell(r, 6)) if _cell(r, 6) is not None else None,
         "plays": int(_cell(r, 7) or 0),
+        "public_slug": _cell(r, 8),
+        "public_status": _cell(r, 9),
+        "public_url": public_build_url(str(_cell(r, 8))) if _cell(r, 8) else None,
+        "public_published_at": str(_cell(r, 10)) if _cell(r, 10) is not None else None,
+        "public_kind": _cell(r, 11),
     } for r in rows]
 
 
