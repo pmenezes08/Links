@@ -34,9 +34,8 @@ describe('ExploreCreations', () => {
         {
           id: 12,
           title: 'Lisbon City Guide',
-          kind: 'website',
-          public_kind: 'website',
-          public_url: 'https://builds.c-point.co/lisbon-city-guide',
+          kind: 'game',
+          play_url: '/creation/12',
           label: 'Made with Steve',
         },
       ],
@@ -50,6 +49,9 @@ describe('ExploreCreations', () => {
     expect(queryByText('Community')).toBeNull()
     expect(container.innerHTML).not.toContain('created_by')
     expect(container.innerHTML).not.toContain('community_id')
+
+    fireEvent.click(getByText('Open creation'))
+    expect(navigate).toHaveBeenCalledWith('/creation/12')
   })
 
   it('routes viewers to the personal builder CTA', async () => {

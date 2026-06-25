@@ -7,7 +7,8 @@ type ExploreCreation = {
   title: string
   kind?: string | null
   public_kind?: string | null
-  public_url: string
+  play_url?: string | null
+  public_url?: string | null
   plays?: number | null
   label?: string | null
 }
@@ -112,16 +113,15 @@ export default function ExploreCreations() {
                 </div>
                 <h2 className="line-clamp-2 text-[15px] font-semibold text-c-text-primary">{item.title || 'Untitled creation'}</h2>
                 <p className="mt-2 flex-1 text-sm leading-relaxed text-c-text-tertiary">
-                  Open this public creation in a separate web view. Creator and community details are not shown.
+                  Open this creation inside C-Point. Creator and community details are not shown.
                 </p>
-                <a
-                  href={item.public_url}
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  type="button"
+                  onClick={() => navigate(item.play_url || `/creation/${item.id}`)}
                   className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-cpoint-turquoise px-3 py-2 text-sm font-semibold text-black transition hover:brightness-110"
                 >
-                  Open creation <i className="fa-solid fa-arrow-up-right-from-square text-xs" aria-hidden="true" />
-                </a>
+                  Open creation <i className="fa-solid fa-arrow-right text-xs" aria-hidden="true" />
+                </button>
               </li>
             ))}
           </ul>

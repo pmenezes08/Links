@@ -994,6 +994,7 @@ function AppRoutes(){
                 <Route path="/workout_tracking" element={<WorkoutTracking />} />
                 <Route path="/steve/profile-builder/:section" element={<ScopedProfileBuilder />} />
                 <Route path="/builder" element={<BuilderPage />} />
+                <Route path="/creation/:creation_id" element={<CreationPlay />} />
                 <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
                 <Route path="/community/:community_id/calendar_react" element={<CommunityCalendar />} />
                 <Route path="/community/:community_id/tasks_react" element={<CommunityTasks />} />

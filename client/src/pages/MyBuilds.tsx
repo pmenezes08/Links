@@ -189,7 +189,7 @@ export default function MyBuilds() {
   const updateGallery = useCallback(async (creation: Creation, action: 'request' | 'unlist') => {
     if (galleryIds.has(creation.id)) return
     if (action === 'request') {
-      const ok = window.confirm('Allow this creation to appear in C-Point’s public gallery. Your name, profile, and community will not be shown.')
+      const ok = window.confirm('Allow this creation to appear in Explore Creations inside C-Point. Your name, profile, and community will not be shown.')
       if (!ok) return
     }
     setGalleryIds(prev => new Set(prev).add(creation.id))
@@ -202,9 +202,7 @@ export default function MyBuilds() {
       })
       const j = await r.json().catch(() => null)
       if (!r.ok || !j?.success) {
-        window.alert(j?.error === 'public_publish_required'
-          ? 'Publish this build to the web before listing it in Explore Creations.'
-          : 'Could not update Explore listing. Please try again.')
+        window.alert('Could not update Explore listing. Please try again.')
         return
       }
       setCreations(prev => prev.map(item => item.id === creation.id ? { ...item, gallery_status: j.gallery_status } : item))
@@ -323,24 +321,20 @@ export default function MyBuilds() {
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {c.community_id != null && (
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/community/${c.community_id}/creation/${c.id}`)}
-                      className="rounded-xl bg-cpoint-turquoise px-3 py-1.5 text-xs font-semibold text-black transition hover:brightness-110"
-                    >
-                      {c.status === 'published' ? 'Play' : 'Preview'}
-                    </button>
-                  )}
-                  {c.community_id != null && (
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/community/${c.community_id}/builder?creation_id=${c.id}`)}
-                      className="rounded-xl border border-c-border bg-c-hover-bg px-3 py-1.5 text-xs font-semibold text-c-text-primary transition hover:border-cpoint-turquoise/40"
-                    >
-                      Continue building
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => navigate(c.community_id != null ? `/community/${c.community_id}/creation/${c.id}` : `/creation/${c.id}`)}
+                    className="rounded-xl bg-cpoint-turquoise px-3 py-1.5 text-xs font-semibold text-black transition hover:brightness-110"
+                  >
+                    {c.status === 'published' ? 'Play' : 'Preview'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate(c.community_id != null ? `/community/${c.community_id}/builder?creation_id=${c.id}` : `/builder?creation_id=${c.id}`)}
+                    className="rounded-xl border border-c-border bg-c-hover-bg px-3 py-1.5 text-xs font-semibold text-c-text-primary transition hover:border-cpoint-turquoise/40"
+                  >
+                    Continue building
+                  </button>
                   {c.community_id != null && (
                     <button
                       type="button"
@@ -348,6 +342,25 @@ export default function MyBuilds() {
                       className="rounded-xl border border-c-border bg-transparent px-3 py-1.5 text-xs font-medium text-c-text-secondary transition hover:text-c-text-primary"
                     >
                       Open community
+                    </button>
+                  )}
+                  {c.gallery_status === 'pending' || c.gallery_status === 'approved' ? (
+                    <button
+                      type="button"
+                      onClick={() => { void updateGallery(c, 'unlist') }}
+                      disabled={galleryIds.has(c.id)}
+                      className="rounded-xl border border-c-border bg-transparent px-3 py-1.5 text-xs font-medium text-c-text-secondary transition hover:text-c-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {galleryIds.has(c.id) ? 'Working...' : 'Remove from Explore'}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => { void updateGallery(c, 'request') }}
+                      disabled={galleryIds.has(c.id)}
+                      className="rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1.5 text-xs font-semibold text-cpoint-turquoise transition hover:bg-cpoint-turquoise/15 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {galleryIds.has(c.id) ? 'Working...' : 'List in Explore Creations'}
                     </button>
                   )}
                   {publicEligible(c.kind, c.public_kind) ? (
@@ -368,25 +381,6 @@ export default function MyBuilds() {
                         >
                           {publishingIds.has(c.id) ? 'Working...' : 'Unpublish web'}
                         </button>
-                        {c.gallery_status === 'pending' || c.gallery_status === 'approved' ? (
-                          <button
-                            type="button"
-                            onClick={() => { void updateGallery(c, 'unlist') }}
-                            disabled={galleryIds.has(c.id)}
-                            className="rounded-xl border border-c-border bg-transparent px-3 py-1.5 text-xs font-medium text-c-text-secondary transition hover:text-c-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {galleryIds.has(c.id) ? 'Working...' : 'Remove from Explore'}
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => { void updateGallery(c, 'request') }}
-                            disabled={galleryIds.has(c.id)}
-                            className="rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1.5 text-xs font-semibold text-cpoint-turquoise transition hover:bg-cpoint-turquoise/15 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {galleryIds.has(c.id) ? 'Working...' : 'List in Explore Creations'}
-                          </button>
-                        )}
                       </>
                     ) : (
                       <button

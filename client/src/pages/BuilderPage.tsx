@@ -253,7 +253,7 @@ export default function BuilderPage() {
   const onGallery = async (action: 'request' | 'unlist') => {
     if (!creation || galleryWorking) return
     if (action === 'request') {
-      const ok = window.confirm('Allow this creation to appear in C-Point’s public gallery. Your name, profile, and community will not be shown.')
+      const ok = window.confirm('Allow this creation to appear in Explore Creations inside C-Point. Your name, profile, and community will not be shown.')
       if (!ok) return
     }
     setGalleryWorking(true)
@@ -266,9 +266,7 @@ export default function BuilderPage() {
       })
       const data = await res.json().catch(() => null)
       if (!res.ok || !data?.success) {
-        window.alert(data?.error === 'public_publish_required'
-          ? 'Publish this build to the web before listing it in Explore Creations.'
-          : 'Could not update Explore listing. Please try again.')
+        window.alert('Could not update Explore listing. Please try again.')
         return
       }
       await loadCreation(creation.id)
@@ -625,19 +623,6 @@ function CreationCard({
                     style={{ flex: '0 0 auto', fontSize: 12, fontWeight: 600, color: '#ffcf8a', textShadow: '0 1px 4px rgba(0,0,0,0.6)', padding: '4px 7px', borderRadius: 999, background: 'rgba(0,0,0,0.42)' }}>
                     {webPublishing ? 'Working…' : 'Unpublish'}
                   </span>
-                  {creation.gallery_status === 'pending' || creation.gallery_status === 'approved' ? (
-                    <span role="button" tabIndex={0}
-                      onClick={(e) => { e.stopPropagation(); onGallery('unlist') }}
-                      style={{ flex: '0 0 auto', fontSize: 12, fontWeight: 600, color: '#d8d8d8', textShadow: '0 1px 4px rgba(0,0,0,0.6)', padding: '4px 7px', borderRadius: 999, background: 'rgba(0,0,0,0.42)' }}>
-                      {galleryWorking ? 'Working…' : 'Remove from Explore'}
-                    </span>
-                  ) : (
-                    <span role="button" tabIndex={0}
-                      onClick={(e) => { e.stopPropagation(); onGallery('request') }}
-                      style={{ flex: '0 0 auto', fontSize: 12, fontWeight: 700, color: '#00CEC8', textShadow: '0 1px 4px rgba(0,0,0,0.6)', padding: '4px 7px', borderRadius: 999, background: 'rgba(0,0,0,0.42)' }}>
-                      {galleryWorking ? 'Working…' : 'List in Explore'}
-                    </span>
-                  )}
                 </>
               ) : (
                 <span role="button" tabIndex={0}
@@ -649,6 +634,19 @@ function CreationCard({
             ) : (
               <span style={{ flex: '0 0 auto', fontSize: 11, fontWeight: 600, color: '#b9b9b9', textShadow: '0 1px 4px rgba(0,0,0,0.6)', padding: '4px 7px', borderRadius: 999, background: 'rgba(0,0,0,0.42)' }}>
                 Games stay in C-Point
+              </span>
+            )}
+            {creation.gallery_status === 'pending' || creation.gallery_status === 'approved' ? (
+              <span role="button" tabIndex={0}
+                onClick={(e) => { e.stopPropagation(); onGallery('unlist') }}
+                style={{ flex: '0 0 auto', fontSize: 12, fontWeight: 600, color: '#d8d8d8', textShadow: '0 1px 4px rgba(0,0,0,0.6)', padding: '4px 7px', borderRadius: 999, background: 'rgba(0,0,0,0.42)' }}>
+                {galleryWorking ? 'Working…' : 'Remove from Explore'}
+              </span>
+            ) : (
+              <span role="button" tabIndex={0}
+                onClick={(e) => { e.stopPropagation(); onGallery('request') }}
+                style={{ flex: '0 0 auto', fontSize: 12, fontWeight: 700, color: '#00CEC8', textShadow: '0 1px 4px rgba(0,0,0,0.6)', padding: '4px 7px', borderRadius: 999, background: 'rgba(0,0,0,0.42)' }}>
+                {galleryWorking ? 'Working…' : 'List in Explore'}
               </span>
             )}
           </span>

@@ -11,7 +11,7 @@ describe('SteveCreateCard', () => {
     const { getByText } = render(<SteveCreateCard onCreate={onCreate} onExplore={onExplore} />)
 
     expect(getByText('Bring an idea to life')).toBeTruthy()
-    expect(getByText('Describe what you want. Steve makes it real: apps, websites, games, and tools you can share.')).toBeTruthy()
+    expect(getByText('Describe what you want. Steve makes it real: apps, websites, games, and tools you can share with your communities.')).toBeTruthy()
 
     fireEvent.click(getByText('Create with Steve'))
     fireEvent.click(getByText('Explore Creations'))

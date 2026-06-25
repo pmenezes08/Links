@@ -1008,6 +1008,40 @@ export default function PremiumDashboard() {
     }
     return communities[0]?.name || communityFallback
   })()
+  const onboardingCompletionCard = showOnboardingCompletionCard ? (
+    <div className="mb-4 rounded-2xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 p-4 shadow-c-card">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="text-base font-semibold text-c-text-primary">{onboardingCardTitle}</div>
+          {/* No countdown, no per-section status pills: deadlines are
+              manufactured urgency and pills are progress framing —
+              both banned by the ask register. Title + one line + CTA. */}
+          <p className="mt-1 text-sm leading-relaxed text-c-text-secondary">
+            {onboardingCardBody}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            // When exactly one section is missing, open the scoped
+            // 2-minute builder for that section — the full chat
+            // (name/photo/section picker) is only right for a
+            // completely fresh profile.
+            if (personalSectionComplete && !professionalSectionComplete) {
+              navigate('/steve/profile-builder/professional')
+            } else if (professionalSectionComplete && !personalSectionComplete) {
+              navigate('/steve/profile-builder/personal')
+            } else {
+              openOnboardingResume()
+            }
+          }}
+          className="shrink-0 rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-sm font-semibold text-black transition hover:brightness-110"
+        >
+          {t(onboardingCardAskPersonal ? 'feed.steve_ask_personal_cta' : 'feed.steve_ask_professional_cta')}
+        </button>
+      </div>
+    </div>
+  ) : null
   // Show skeleton shell while initial data loads (matches final layout to prevent CLS)
   if (initialLoading) {
     return (
@@ -1080,40 +1114,7 @@ export default function PremiumDashboard() {
         className={`min-h-screen pb-[var(--app-dashboard-content-pad-bottom)] ${isWeb ? 'lg:ml-64' : 'md:ml-52'}`}
       >
         <div className="app-content max-w-5xl mx-auto px-3 py-6">
-          {showOnboardingCompletionCard && (
-            <div className="mb-4 rounded-2xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 p-4 shadow-c-card">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="text-base font-semibold text-c-text-primary">{onboardingCardTitle}</div>
-                  {/* No countdown, no per-section status pills: deadlines are
-                      manufactured urgency and pills are progress framing —
-                      both banned by the ask register. Title + one line + CTA. */}
-                  <p className="mt-1 text-sm leading-relaxed text-c-text-secondary">
-                    {onboardingCardBody}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    // When exactly one section is missing, open the scoped
-                    // 2-minute builder for that section — the full chat
-                    // (name/photo/section picker) is only right for a
-                    // completely fresh profile.
-                    if (personalSectionComplete && !professionalSectionComplete) {
-                      navigate('/steve/profile-builder/professional')
-                    } else if (professionalSectionComplete && !personalSectionComplete) {
-                      navigate('/steve/profile-builder/personal')
-                    } else {
-                      openOnboardingResume()
-                    }
-                  }}
-                  className="shrink-0 rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-sm font-semibold text-black transition hover:brightness-110"
-                >
-                  {t(onboardingCardAskPersonal ? 'feed.steve_ask_personal_cta' : 'feed.steve_ask_professional_cta')}
-                </button>
-              </div>
-            </div>
-          )}
+          {hasAnyCommunity && onboardingCompletionCard}
           {hasCoarsePointer && (
           <div
             className="sticky top-0 z-20 mb-3 flex justify-center pointer-events-none transition-transform duration-150"
@@ -1148,10 +1149,6 @@ export default function PremiumDashboard() {
             </span>
           </div>
           )}
-            <SteveCreateCard
-              onCreate={() => navigate('/builder')}
-              onExplore={() => navigate('/explore-creations')}
-            />
             {!communitiesLoaded ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <SkeletonCommunityCard />
@@ -1159,13 +1156,24 @@ export default function PremiumDashboard() {
                 <SkeletonCommunityCard />
               </div>
             ) : communities.length === 0 ? (
-              <DashboardEmptyState
-                onCreate={() => { setNewCommType('General'); setShowCreateModal(true) }}
-                onJoin={() => setShowJoinModal(true)}
-                onAbout={() => setShowAboutCPointModal(true)}
-              />
+              <>
+                <DashboardEmptyState
+                  onCreate={() => { setNewCommType('General'); setShowCreateModal(true) }}
+                  onJoin={() => setShowJoinModal(true)}
+                  onAbout={() => setShowAboutCPointModal(true)}
+                />
+                <SteveCreateCard
+                  onCreate={() => navigate('/builder')}
+                  onExplore={() => navigate('/explore-creations')}
+                />
+                {onboardingCompletionCard}
+              </>
             ) : (
             <>
+              <SteveCreateCard
+                onCreate={() => navigate('/builder')}
+                onExplore={() => navigate('/explore-creations')}
+              />
               {searchOpen && (
                 <div className="mb-4">
                   <div className="relative w-full max-w-xl">

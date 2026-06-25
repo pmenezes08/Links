@@ -2164,14 +2164,12 @@ def update_gallery_status(*, creation_id: int, username: str, action: str,
     if action_key == "request":
         if not actor_is_owner:
             raise PermissionError("creation not found")
-        if row.get("public_status") != "published":
-            raise ValueError("public_publish_required")
-        status = "pending"
+        status = "approved"
         sql = f"""UPDATE creations SET gallery_status = {ph}, gallery_requested_at = {ph},
-                  gallery_reviewed_at = NULL, gallery_reviewed_by = NULL,
+                  gallery_reviewed_at = {ph}, gallery_reviewed_by = {ph},
                   gallery_rejection_reason = NULL, updated_at = {ph}
                   WHERE id = {ph} AND created_by = {ph}"""
-        params = (status, now, now, creation_id, username)
+        params = (status, now, now, username, now, creation_id, username)
     elif action_key == "unlist":
         if not actor_is_owner:
             raise PermissionError("creation not found")
@@ -2181,8 +2179,6 @@ def update_gallery_status(*, creation_id: int, username: str, action: str,
         params = (status, now, creation_id, username)
     elif action_key in ("approve", "reject", "delist"):
         status = "approved" if action_key == "approve" else ("rejected" if action_key == "reject" else "delisted")
-        if status == "approved" and row.get("public_status") != "published":
-            raise ValueError("public_publish_required")
         sql = f"""UPDATE creations SET gallery_status = {ph}, gallery_reviewed_at = {ph},
                   gallery_reviewed_by = {ph}, gallery_rejection_reason = {ph}, updated_at = {ph}
                   WHERE id = {ph}"""
@@ -2211,7 +2207,7 @@ def list_explore_creations(*, limit: int = 30) -> List[Dict[str, Any]]:
         c.execute(
             f"""SELECT id, title, kind, public_slug, public_kind, public_published_at, play_count
                 FROM creations
-                WHERE gallery_status = 'approved' AND public_status = 'published' AND public_slug IS NOT NULL
+                WHERE gallery_status = 'approved'
                 ORDER BY COALESCE(gallery_reviewed_at, public_published_at, updated_at) DESC
                 LIMIT {ph}""",
             (limit,),
@@ -2221,7 +2217,8 @@ def list_explore_creations(*, limit: int = 30) -> List[Dict[str, Any]]:
         "id": _cell(r, 0),
         "title": _cell(r, 1) or "Untitled",
         "kind": _cell(r, 2),
-        "public_url": public_build_url(str(_cell(r, 3))),
+        "play_url": f"/creation/{_cell(r, 0)}",
+        "public_url": public_build_url(str(_cell(r, 3))) if _cell(r, 3) else None,
         "public_kind": _cell(r, 4),
         "public_published_at": str(_cell(r, 5)) if _cell(r, 5) is not None else None,
         "plays": int(_cell(r, 6) or 0),

@@ -55,15 +55,12 @@ def _can_access_community(username: str, community_id: int) -> bool:
         return False
 
 
-def _json_creation(row):
-    return {
+def _json_creation(row, *, include_private: bool = True):
+    payload = {
         "id": row.get("id"),
         "title": row.get("title"),
         "html": row.get("html_content") or row.get("html"),
         "status": row.get("status"),
-        "community_id": row.get("community_id"),
-        "created_by": row.get("created_by"),
-        "published_post_id": row.get("published_post_id"),
         "kind": row.get("kind"),
         "public_slug": row.get("public_slug"),
         "public_status": row.get("public_status"),
@@ -75,6 +72,11 @@ def _json_creation(row):
         "gallery_reviewed_at": str(row.get("gallery_reviewed_at")) if row.get("gallery_reviewed_at") else None,
         "gallery_rejection_reason": row.get("gallery_rejection_reason"),
     }
+    if include_private:
+        payload["created_by"] = row.get("created_by")
+        payload["community_id"] = row.get("community_id")
+        payload["published_post_id"] = row.get("published_post_id")
+    return payload
 
 
 def _limit_response(ent, reason):
@@ -448,19 +450,23 @@ def builder_get(creation_id: int):
     if not creation:
         return jsonify({"success": False, "error": "not_found"}), 404
 
-    # Owner always allowed; otherwise must be able to see the community's content.
+    include_private = True
+    # Owner always allowed; otherwise must be able to see the community's content
+    # or open an owner-approved Explore listing inside the platform.
     if creation.get("created_by") != username:
         requested_community_id = _safe_int(request.args.get("community_id"))
         community_id = requested_community_id if requested_community_id is not None else _safe_int(creation.get("community_id"))
-        if community_id is None or not _can_access_community(username, community_id):
+        if requested_community_id is None and creation.get("gallery_status") == "approved":
+            include_private = False
+        elif community_id is None or not _can_access_community(username, community_id):
             return jsonify({"success": False, "error": "not_found"}), 404
-        if requested_community_id is not None and not builder_svc.get_creation_share(
+        elif requested_community_id is not None and not builder_svc.get_creation_share(
             creation_id=creation_id, community_id=requested_community_id,
         ):
             return jsonify({"success": False, "error": "not_found"}), 404
 
-    return jsonify({"success": True, "creation": _json_creation(creation),
-                    "chat_history": builder_svc.get_chat_history(creation_id)})
+    return jsonify({"success": True, "creation": _json_creation(creation, include_private=include_private),
+                    "chat_history": builder_svc.get_chat_history(creation_id) if include_private else []})
 
 
 @builder_bp.route("/api/builder/<int:creation_id>", methods=["DELETE"])
@@ -519,6 +525,8 @@ def _resolve_accessible_creation(creation_id: int, username: str):
         # with no community yet (stamp 0 so the `community_id is None` route gate
         # never wrongly 404s the owner).
         return creation, (community_id if community_id is not None else 0)
+    if requested_community_id is None and creation.get("gallery_status") == "approved":
+        return creation, 0
     if community_id is not None and _can_access_community(username, community_id):
         return creation, community_id
     return None, None

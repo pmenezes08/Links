@@ -36,8 +36,8 @@ Backend routes:
 - `GET /api/builder/<id>/publish-web` - owner-only public web publication status.
 - `POST /api/builder/<id>/publish-web` - owner-only, publish an eligible website/app to `builds.c-point.co`.
 - `DELETE /api/builder/<id>/publish-web` - owner-only, unpublish a public web link.
-- `GET /api/builder/explore` - anonymous approved public gallery listings.
-- `POST /api/builder/<id>/gallery` - owner request/unlist for Explore Creations.
+- `GET /api/builder/explore` - anonymous approved in-platform Explore listings.
+- `POST /api/builder/<id>/gallery` - owner opt-in/unlist for Explore Creations.
 - `POST /api/admin/builder/<id>/gallery` - app-admin approve/reject/delist review endpoint.
 - `GET /api/builder/public/<slug>/data/feed` - unauthenticated public-data connector for published public builds only.
 - `/api/builder/<id>/data/*` - host-brokered creation data APIs.
@@ -217,12 +217,12 @@ Public web publishing is V1-scoped to websites and lightweight apps. Games remai
 
 ### Explore Creations
 
-Explore Creations is an anonymous, opt-in gallery for public website/app creations:
+Explore Creations is an anonymous, opt-in gallery for creations inside C-Point:
 
-- Public URL and gallery listing are separate. `public_status='published'` means the owner has a shareable URL; `gallery_status='approved'` means C-Point may show it in Explore.
-- Owners request or remove listing with `POST /api/builder/<id>/gallery`. App admins approve/reject/delist with `POST /api/admin/builder/<id>/gallery`.
-- `GET /api/builder/explore` returns only privacy-safe fields: title, kind, public URL, play count, and generic "Made with Steve" label. It never returns creator username, avatar, profile path, community id/name, or post id.
-- Unpublishing a public web build suppresses it from Explore even if it was previously approved.
+- Public URL and gallery listing are separate. `public_status='published'` means the owner has an external shareable URL; `gallery_status='approved'` means the owner opted into Explore and signed-in C-Point members may open it at `/creation/<id>`.
+- Owners opt in or remove listing with `POST /api/builder/<id>/gallery`. App admins can still approve/reject/delist with `POST /api/admin/builder/<id>/gallery`.
+- `GET /api/builder/explore` returns only privacy-safe fields: title, kind, in-platform play URL, optional public URL, play count, and generic "Made with Steve" label. It never returns creator username, avatar, profile path, community id/name, or post id.
+- Public-web publishing is optional and limited to eligible websites/apps; games and other session-bound creations can still appear in Explore through the in-platform play route.
 
 ### Persistence contract (save slots)
 

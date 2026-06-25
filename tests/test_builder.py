@@ -287,26 +287,21 @@ def test_leaderboards_are_scoped_by_community(monkeypatch):
     assert [int(e["value"]) for e in second_board["entries"]] == [900]
 
 
-def test_gallery_explore_lists_only_approved_published_anonymous(monkeypatch):
+def test_gallery_explore_lists_owner_approved_creations_anonymous(monkeypatch):
     monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: "<!doctype html><html><body>site</body></html>")
-    monkeypatch.setattr(builder, "_upload_public_html", lambda *_a, **_k: True)
-    monkeypatch.setattr(builder, "_upload_public_json", lambda *_a, **_k: True)
     _make_user("maker")
     cid = _make_community()
     created = builder.create_creation(username="maker", community_id=cid, prompt="a public website")
 
-    builder.publish_creation_to_web(creation_id=created["id"], username="maker")
     assert builder.list_explore_creations() == []
 
-    pending = builder.update_gallery_status(creation_id=created["id"], username="maker", action="request")
-    assert pending["gallery_status"] == "pending"
-    assert builder.list_explore_creations() == []
-
-    builder.update_gallery_status(creation_id=created["id"], username="admin", action="approve", reviewer="admin")
+    approved = builder.update_gallery_status(creation_id=created["id"], username="maker", action="request")
+    assert approved["gallery_status"] == "approved"
     listed = builder.list_explore_creations()
     assert len(listed) == 1
     assert listed[0]["title"]
-    assert listed[0]["public_url"]
+    assert listed[0]["play_url"] == f"/creation/{created['id']}"
+    assert listed[0]["public_url"] is None
     assert "created_by" not in listed[0]
     assert "community_id" not in listed[0]
     assert "post_id" not in listed[0]
