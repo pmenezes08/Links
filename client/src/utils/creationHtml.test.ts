@@ -27,6 +27,7 @@ describe('prepareCreationHtml', () => {
   it('injects the CPoint public data bridge when dataBridge is on', () => {
     const out = prepareCreationHtml(HTML, { dataBridge: true })
     expect(out).toContain('data:function')
+    expect(out).toContain('refresh:!!(opts&&opts.refresh)')
     expect(out).toContain("call('feed'")
     expect(out).toContain('hasData=true')
     expect(out).toContain('sharedState:{')

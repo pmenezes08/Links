@@ -657,8 +657,8 @@ def builder_data_images(creation_id: int):
     username = session.get("username")
     if not username:
         return jsonify({"success": False, "error": "auth_required"}), 401
-    _creation, community_id = _resolve_accessible_creation(creation_id, username)
-    if community_id is None:
+    creation, community_id = _resolve_accessible_creation(creation_id, username)
+    if creation is None:
         return jsonify({"success": False, "error": "not_found"}), 404
     q = (request.args.get("q") or "").strip()
     if not q:
@@ -691,11 +691,12 @@ def builder_data_feed(creation_id: int):
     username = session.get("username")
     if not username:
         return jsonify({"success": False, "error": "auth_required"}), 401
-    _creation, community_id = _resolve_accessible_creation(creation_id, username)
-    if community_id is None:
+    creation, community_id = _resolve_accessible_creation(creation_id, username)
+    if creation is None:
         return jsonify({"success": False, "error": "not_found"}), 404
 
     connector = (request.args.get("connector") or "").strip().lower()
+    refresh = str(request.args.get("refresh") or "").strip().lower() in {"1", "true", "yes"}
     raw_params = request.args.get("params") or "{}"
     try:
         params = json.loads(raw_params) if raw_params else {}
@@ -707,7 +708,7 @@ def builder_data_feed(creation_id: int):
     if not _data_read_ok(username, creation_id, connector):
         return jsonify({"success": False, "error": "rate_limited", "data": None}), 429
 
-    result = builder_feeds.fetch_feed(connector, params)
+    result = builder_feeds.fetch_feed(connector, params, refresh=refresh)
     status = 200
     if not result.get("success") and result.get("error") in {"unknown_connector", "invalid_params"}:
         status = 400
@@ -724,6 +725,24 @@ def _public_json(payload, status: int = 200):
     return resp
 
 
+@builder_bp.route("/api/builder/public/<slug>/data/images", methods=["GET", "OPTIONS"])
+def builder_public_data_images(slug: str):
+    """Unauthenticated public image search for published web builds only."""
+    if request.method == "OPTIONS":
+        return _public_json({"success": True})
+    creation = builder_svc.public_creation_for_slug(slug)
+    if not creation:
+        return _public_json({"success": False, "error": "not_found", "images": []}, 404)
+    q = (request.args.get("q") or "").strip()
+    if not q:
+        return _public_json({"success": True, "images": []})
+    limit = min(_safe_int(request.args.get("limit")) or 8, 20)
+    if not _data_read_ok(f"public:{creation.get('public_slug')}", int(creation["id"]), "images"):
+        return _public_json({"success": False, "error": "rate_limited", "images": []}, 429)
+    images = builder_svc.search_images(q, limit=limit)
+    return _public_json({"success": True, "images": images})
+
+
 @builder_bp.route("/api/builder/public/<slug>/data/feed", methods=["GET", "OPTIONS"])
 def builder_public_data_feed(slug: str):
     """Unauthenticated public-data connector for published web builds only."""
@@ -734,6 +753,7 @@ def builder_public_data_feed(slug: str):
         return _public_json({"success": False, "error": "not_found", "data": None}, 404)
 
     connector = (request.args.get("connector") or "").strip().lower()
+    refresh = str(request.args.get("refresh") or "").strip().lower() in {"1", "true", "yes"}
     raw_params = request.args.get("params") or "{}"
     try:
         params = json.loads(raw_params) if raw_params else {}
@@ -745,7 +765,7 @@ def builder_public_data_feed(slug: str):
     if not _data_read_ok(f"public:{creation.get('public_slug')}", int(creation["id"]), connector):
         return _public_json({"success": False, "error": "rate_limited", "data": None}, 429)
 
-    result = builder_feeds.fetch_feed(connector, params)
+    result = builder_feeds.fetch_feed(connector, params, refresh=refresh)
     status = 200
     if not result.get("success") and result.get("error") in {"unknown_connector", "invalid_params"}:
         status = 400

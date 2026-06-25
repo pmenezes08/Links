@@ -40,6 +40,7 @@ Backend routes:
 - `POST /api/builder/<id>/gallery` - owner opt-in/unlist for Explore Creations.
 - `POST /api/admin/builder/<id>/gallery` - app-admin approve/reject/delist review endpoint.
 - `GET /api/builder/public/<slug>/data/feed` - unauthenticated public-data connector for published public builds only.
+- `GET /api/builder/public/<slug>/data/images` - unauthenticated public image search for published public builds only.
 - `/api/builder/<id>/data/*` - host-brokered creation data APIs.
 
 Core service:
@@ -118,7 +119,7 @@ Supported capabilities:
 - `CPoint.save(key, value)` - save per-player progress/state/preferences (`value` is any JSON).
 - `CPoint.load(key)` - load per-player saved state; resolves to `{value}` (`value` is `null` when nothing is saved).
 - `CPoint.images(query, opts)` - fetch real freely licensed web photos.
-- `CPoint.data(connector, params)` - fetch recent public data from vetted host-side connectors.
+- `CPoint.data(connector, params, opts)` - fetch recent public data from vetted host-side connectors; `opts.refresh=true` bypasses the fresh cache while still respecting route throttles, provider budgets, and circuit breakers.
 - `CPoint.sharedState.get(key)` / `CPoint.sharedState.update(key, value, opts)` - one shared JSON document per creation/key for lightweight community app state.
 - `CPoint.collection(name)` - small structured row collections for task boards, RSVP lists, nominations, directories, feedback walls, and similar app surfaces.
 - `CPoint.forms.submit(name, data)` - append-only form submissions for websites and apps.
@@ -168,7 +169,7 @@ Backend routes live under `/api/builder/<id>/match/*`; the route inventory is re
 
 ### Public data connectors
 
-`CPoint.data(connector, params)` calls `GET /api/builder/<id>/data/feed`. The sandbox passes a connector ID and typed params; the backend constructs every upstream URL server-side. Raw URLs are never accepted.
+`CPoint.data(connector, params, opts)` calls `GET /api/builder/<id>/data/feed`. The sandbox passes a connector ID and typed params; the backend constructs every upstream URL server-side. Raw URLs are never accepted. For user-facing "Refresh data" buttons, generated apps may pass `{refresh:true}` as the third argument; this skips the fresh cache but still uses route throttles, provider budget windows, and circuit breakers.
 
 Supported connectors:
 
@@ -188,7 +189,7 @@ Supported connectors:
 
 Connector rules:
 
-- Data is **recent**, not millisecond-live. Sports is for fixtures/results ("yesterday's scores", "tomorrow's games"), not second-by-second scoreboards.
+- Data is **recent**, not millisecond-live. Sports is for fixtures/results ("yesterday's scores", "tomorrow's games"), not second-by-second scoreboards. A refresh button can request a fresh provider read with `{refresh:true}` when the user explicitly asks.
 - Every response includes `attribution`; generated creations must display it near the data.
 - Connectors are cached globally because the data is public. `cpfeed:cache:*` holds fresh data, `cpfeed:stale:*` holds last-good data for stale-while-revalidate fallbacks, `cpfeed:budget:*` tracks per-connector budget windows, and `cpfeed:cb:*` tracks circuit-breaker cooldowns.
 - Random connectors return a batch (`data.items`) so the artifact can pick one client-side; this prevents one upstream call per player.
@@ -211,7 +212,7 @@ Public web publishing is V1-scoped to websites and lightweight apps. Games remai
 - Public URL: `https://builds.c-point.co/<slug>` (staging Worker uses its own environment until DNS is wired).
 - R2 keys: artifact copies use `public/builds/<slug>/<version>.html`; manifests use `public/builds/<slug>/manifest.json`.
 - Worker: `services/public-builds-worker/` serves the manifest-resolved artifact from an R2 binding, applies strict security headers, and returns a branded 404 when unpublished or missing.
-- Public bridge: `window.CPoint.isPublicBuild = true`; public builds can use vetted `CPoint.data` connectors, but private session features are disabled (`save/load`, scores, ratings, shared collections/forms, and multiplayer).
+- Public bridge: `window.CPoint.isPublicBuild = true`; public builds can use vetted `CPoint.data` connectors and `CPoint.images` through public-safe broker routes, but private session features are disabled (`save/load`, scores, ratings, shared collections/forms, and multiplayer).
 - Branding: the platform injects a fast C-Point loading splash and a persistent "Built with C-Point" badge linking to `https://www.c-point.co`.
 - Unpublish/delete: `DELETE /api/builder/<id>/publish-web` removes the manifest and artifact copy; deleting a build also deletes any public manifest/artifact.
 

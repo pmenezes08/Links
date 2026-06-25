@@ -132,7 +132,33 @@ async function proxyPublicData(request, env, slug) {
   }
   const url = new URL(request.url)
   const target = new URL(`/api/builder/public/${encodeURIComponent(slug)}/data/feed`, env.PUBLIC_API_BASE)
-  for (const key of ['connector', 'params']) {
+  for (const key of ['connector', 'params', 'refresh']) {
+    const value = url.searchParams.get(key)
+    if (value != null) target.searchParams.set(key, value)
+  }
+  const upstream = await fetch(target.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    redirect: 'manual',
+  })
+  const text = await upstream.text()
+  return new Response(text, jsonHeaders(upstream.status))
+}
+
+async function proxyPublicImages(request, env, slug) {
+  if (request.method === 'OPTIONS') {
+    return new Response(JSON.stringify({ success: true }), jsonHeaders(200))
+  }
+  if (!slug) {
+    return new Response(JSON.stringify({ success: false, error: 'not_found', images: [] }), jsonHeaders(404))
+  }
+  const manifest = await readManifest(env, slug)
+  if (!manifest) {
+    return new Response(JSON.stringify({ success: false, error: 'not_found', images: [] }), jsonHeaders(404))
+  }
+  const url = new URL(request.url)
+  const target = new URL(`/api/builder/public/${encodeURIComponent(slug)}/data/images`, env.PUBLIC_API_BASE)
+  for (const key of ['q', 'limit']) {
     const value = url.searchParams.get(key)
     if (value != null) target.searchParams.set(key, value)
   }
@@ -153,6 +179,10 @@ export async function handleRequest(request, env) {
 
   if (url.pathname === '/api/data/feed') {
     return proxyPublicData(request, env, url.searchParams.get('slug'))
+  }
+
+  if (url.pathname === '/api/data/images') {
+    return proxyPublicImages(request, env, url.searchParams.get('slug'))
   }
 
   if (request.method !== 'GET' && request.method !== 'HEAD') {

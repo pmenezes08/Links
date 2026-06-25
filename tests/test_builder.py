@@ -174,6 +174,29 @@ def test_publish_web_writes_public_artifact_and_manifest(monkeypatch):
     assert builder.public_creation_for_slug(result["public_slug"])["id"] == created["id"]
 
 
+def test_public_images_route_uses_published_slug(builder_client, monkeypatch):
+    import backend.blueprints.builder as builder_bp_mod
+
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    monkeypatch.setattr(r2_storage, "upload_public_bytes_to_r2", lambda *_a, **_k: True)
+    _make_user("maker")
+    cid = _make_community()
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a public website")
+    published = builder.publish_creation_to_web(creation_id=created["id"], username="maker")
+    monkeypatch.setattr(builder_bp_mod, "_data_read_ok", lambda *_a, **_k: True)
+    monkeypatch.setattr(builder_bp_mod.builder_svc, "search_images", lambda q, *, limit=8: [
+        {"url": f"https://img.example/{q}.jpg", "title": "Lisbon"},
+    ])
+
+    resp = builder_client.get(f"/api/builder/public/{published['public_slug']}/data/images?q=lisbon&limit=4")
+    body = resp.get_json()
+
+    assert resp.status_code == 200
+    assert body["success"] is True
+    assert body["images"][0]["url"] == "https://img.example/lisbon.jpg"
+    assert resp.headers["Access-Control-Allow-Origin"] == "*"
+
+
 def test_publish_web_rejects_games(monkeypatch):
     monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
     _make_user("maker")
@@ -1351,8 +1374,8 @@ def test_feed_route_owner_success(builder_client, monkeypatch):
     cid = _make_community()
     crid = _make_creation("maker", cid, monkeypatch)
     monkeypatch.setattr(builder_bp_mod, "_data_read_ok", lambda *_a, **_k: True)
-    monkeypatch.setattr(builder_bp_mod.builder_feeds, "fetch_feed", lambda connector, params: {
-        "success": True, "connector": connector, "data": params, "attribution": "Test",
+    monkeypatch.setattr(builder_bp_mod.builder_feeds, "fetch_feed", lambda connector, params, *, refresh=False: {
+        "success": True, "connector": connector, "data": {**params, "refresh": refresh}, "attribution": "Test",
     })
     _login(builder_client, "maker")
 
@@ -1362,6 +1385,33 @@ def test_feed_route_owner_success(builder_client, monkeypatch):
     assert body["success"] is True
     assert body["connector"] == "weather"
     assert body["data"]["place"] == "Lisbon"
+    assert body["data"]["refresh"] is False
+
+
+def test_feed_route_personal_creation_supports_refresh(builder_client, monkeypatch):
+    _make_user("maker")
+    crid = _make_creation("maker", None, monkeypatch)
+    monkeypatch.setattr(builder_bp_mod, "_data_read_ok", lambda *_a, **_k: True)
+    seen = {}
+
+    def fake_fetch(connector, params, *, refresh=False):
+        seen["connector"] = connector
+        seen["params"] = params
+        seen["refresh"] = refresh
+        return {"success": True, "connector": connector, "data": params, "attribution": "Test", "refreshed": refresh}
+
+    monkeypatch.setattr(builder_bp_mod.builder_feeds, "fetch_feed", fake_fetch)
+    _login(builder_client, "maker")
+
+    resp = builder_client.get(
+        f"/api/builder/{crid}/data/feed?connector=sports&refresh=1&params=%7B%22day%22%3A%222026-06-21%22%7D"
+    )
+    body = resp.get_json()
+
+    assert resp.status_code == 200
+    assert body["success"] is True
+    assert body["refreshed"] is True
+    assert seen == {"connector": "sports", "params": {"day": "2026-06-21"}, "refresh": True}
 
 
 def test_feed_route_read_rate_limited(builder_client, monkeypatch):

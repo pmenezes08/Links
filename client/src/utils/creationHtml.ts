@@ -98,7 +98,7 @@ function dataBridgeScript(startMatchId?: number | null): string {
     // Use 'url' directly as an <img> src. Fetch at runtime; don't hard-code URLs.
     images:function(query,opts){return call('images',{q:query,limit:(opts&&opts.limit)||8});},
     // Recent public data via vetted host-side connectors -> {data, attribution}.
-    data:function(connector,params){return call('feed',{connector:connector,params:params||{}});},
+    data:function(connector,params,opts){return call('feed',{connector:connector,params:params||{},refresh:!!(opts&&opts.refresh)});},
     // Shared community-scoped state for lightweight apps (polls, trackers, boards).
     sharedState:{
       get:function(key){return call('shared.get',{key:key||'main'});},

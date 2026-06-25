@@ -530,7 +530,7 @@ def connector_ttl(connector: str) -> int:
     return spec.ttl if spec else 0
 
 
-def fetch_feed(connector: str, params: Optional[Params] = None) -> FeedResult:
+def fetch_feed(connector: str, params: Optional[Params] = None, *, refresh: bool = False) -> FeedResult:
     cid = (connector or "").strip().lower()
     if not _CONNECTOR_RE.match(cid) or cid not in CONNECTORS:
         return {"success": False, "error": "unknown_connector", "data": None}
@@ -541,7 +541,7 @@ def fetch_feed(connector: str, params: Optional[Params] = None) -> FeedResult:
     stale_key = _stale_key(cid, stable)
 
     hit = _cache_get(fresh_key)
-    if isinstance(hit, dict):
+    if isinstance(hit, dict) and not refresh:
         return {**hit, "cached": True, "stale": False}
 
     stale = _cache_get(stale_key)

@@ -59,6 +59,35 @@ def test_weather_normalizes_and_caches(monkeypatch):
     assert len(calls) == 2
 
 
+def test_refresh_bypasses_fresh_cache(monkeypatch):
+    fake_cache = FakeFeedCache()
+    monkeypatch.setattr(builder_feeds, "_cache", lambda: fake_cache)
+    calls = []
+
+    def fake_fetch(params):
+        calls.append(params)
+        return {"value": len(calls)}
+
+    monkeypatch.setitem(builder_feeds.CONNECTORS, "testrefresh", builder_feeds.Connector(
+        ttl=300,
+        stale_ttl=600,
+        budget_limit=10,
+        attribution="Test",
+        fetch=fake_fetch,
+    ))
+
+    first = builder_feeds.fetch_feed("testrefresh", {"q": "worldcup"})
+    cached = builder_feeds.fetch_feed("testrefresh", {"q": "worldcup"})
+    refreshed = builder_feeds.fetch_feed("testrefresh", {"q": "worldcup"}, refresh=True)
+
+    assert first["data"]["value"] == 1
+    assert cached["cached"] is True
+    assert cached["data"]["value"] == 1
+    assert refreshed["cached"] is False
+    assert refreshed["data"]["value"] == 2
+    assert len(calls) == 2
+
+
 def test_budget_serves_stale(monkeypatch):
     fake_cache = FakeFeedCache()
     stale = {"success": True, "connector": "sports", "data": {"events": []}, "attribution": "Data by TheSportsDB"}

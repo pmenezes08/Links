@@ -17,6 +17,9 @@ def test_public_html_injects_bridge_branding_and_slug():
     assert "Built with C-Point" in out
     assert "isPublicBuild:true" in out
     assert "public_build_no_private_persistence" in out
+    assert "images:function(query, opts)" in out
+    assert "/data/images?" in out
+    assert "opts.refresh" in out
     assert "demo-1" in out
     assert "https://www.c-point.co" in out
     assert "https://c-point.co" not in out

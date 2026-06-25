@@ -113,6 +113,7 @@ export default function PlayableCreation({ html, title, onClose, creationId, com
           res = await fetch(withContext(`${base}/images?${q.toString()}`), { credentials: 'include' })
         } else if (d.op === 'feed') {
           const q = new URLSearchParams({ connector: String(p.connector || ''), params: JSON.stringify(p.params || {}) })
+          if (p.refresh) q.set('refresh', '1')
           res = await fetch(withContext(`${base}/feed?${q.toString()}`), { credentials: 'include' })
         } else if (d.op === 'shared.get') {
           const q = new URLSearchParams({ key: String(p.key || 'main') })

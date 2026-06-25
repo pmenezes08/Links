@@ -838,11 +838,25 @@ def public_bridge_and_branding_script(*, slug: str, title: str) -> str:
     hasMatchController:false,
     hasTurnBasedGame:false,
     hasData:true,
-    data:function(connector, params){{
+    images:function(query, opts){{
+      var qs=new URLSearchParams();
+      qs.set('q', query||'');
+      qs.set('slug', slug);
+      qs.set('limit', String((opts&&opts.limit)||8));
+      var endpoint=apiBase
+        ? apiBase + '/api/builder/public/' + encodeURIComponent(slug) + '/data/images?' + qs.toString()
+        : '/api/data/images?' + qs.toString();
+      return fetch(endpoint, {{
+        credentials:'omit',
+        headers:{{'Accept':'application/json'}}
+      }}).then(function(r){{return r.json().then(function(j){{if(!r.ok||!j.success) throw new Error((j&&j.error)||'images_error'); return j;}});}});
+    }},
+    data:function(connector, params, opts){{
       var qs=new URLSearchParams();
       qs.set('connector', connector||'');
       qs.set('params', JSON.stringify(params||{{}}));
       qs.set('slug', slug);
+      if(opts&&opts.refresh) qs.set('refresh','1');
       var endpoint=apiBase
         ? apiBase + '/api/builder/public/' + encodeURIComponent(slug) + '/data/feed?' + qs.toString()
         : '/api/data/feed?' + qs.toString();
