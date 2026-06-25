@@ -1,4 +1,5 @@
 const MANIFEST_PREFIX = 'public/builds'
+const CPOINT_LOGO_URL = 'https://app.c-point.co/static/cpoint-logo.png'
 
 export function normalizeSlug(pathname) {
   const first = String(pathname || '/').split('/').filter(Boolean)[0] || ''
@@ -46,19 +47,30 @@ function jsonHeaders(status = 200) {
 }
 
 function notFound() {
-  const body = '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Build not found</title></head><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#000;color:#f4ffff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"><main style="text-align:center;padding:24px"><div style="width:52px;height:52px;border-radius:18px;background:#00cec8;color:#00302e;display:grid;place-items:center;font-weight:800;font-size:26px;margin:0 auto 16px">C</div><h1 style="font-size:20px;margin:0 0 8px">This build is not available</h1><p style="color:#9fb1b0;margin:0">It may have been unpublished by its creator.</p><a href="https://www.c-point.co" style="display:inline-block;margin-top:18px;color:#00cec8;text-decoration:none;font-weight:700">Visit C-Point</a></main></body></html>'
+  const body = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Build not found</title></head><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#000;color:#f4ffff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"><main style="text-align:center;padding:24px"><img src="${CPOINT_LOGO_URL}" alt="C-Point" style="width:52px;height:52px;border-radius:18px;object-fit:contain;margin:0 auto 16px;display:block;background:#061817"><h1 style="font-size:20px;margin:0 0 8px">This build is not available</h1><p style="color:#9fb1b0;margin:0">It may have been unpublished by its creator.</p><a href="https://www.c-point.co" style="display:inline-block;margin-top:18px;color:#00cec8;text-decoration:none;font-weight:700">Visit C-Point</a></main></body></html>`
   return new Response(body, { status: 404, headers: htmlHeaders('no-store') })
 }
 
 function normalizePublicBranding(html) {
   const override = `<style id="cpoint-public-brand-override">
 #cpoint-public-brand{right:max(8px,env(safe-area-inset-right))!important;top:50%!important;bottom:auto!important;left:auto!important;transform:translateY(-50%)!important;opacity:.88!important}
+#cpoint-public-splash .cp-logo{background:#061817!important;overflow:hidden!important}
+#cpoint-public-splash .cp-logo img,#cpoint-public-brand .cp-dot img{width:100%!important;height:100%!important;object-fit:contain!important;display:block!important}
+#cpoint-public-brand .cp-dot{background:#061817!important;overflow:hidden!important}
 @media(max-width:520px){#cpoint-public-brand{right:max(6px,env(safe-area-inset-right))!important;top:50%!important;bottom:auto!important;left:auto!important;transform:translateY(-50%)!important;font-size:11px!important;padding:7px 9px!important}}
 </style><script>
 (function(){
+  var logoUrl='${CPOINT_LOGO_URL}';
+  function fixCPointLogo(){
+    var splashLogo=document.querySelector('#cpoint-public-splash .cp-logo');
+    if(splashLogo && !splashLogo.querySelector('img')) splashLogo.innerHTML='<img src="'+logoUrl+'" alt="C-Point" />';
+    var dot=document.querySelector('#cpoint-public-brand .cp-dot');
+    if(dot && !dot.querySelector('img')) dot.innerHTML='<img src="'+logoUrl+'" alt="" />';
+  }
   function fixCPointBrand(){
     var badge=document.getElementById('cpoint-public-brand');
     if(!badge) return;
+    fixCPointLogo();
     badge.href='https://www.c-point.co';
     badge.target='_blank';
     badge.rel='noopener noreferrer';
@@ -77,7 +89,12 @@ function normalizePublicBranding(html) {
   else fixCPointBrand();
 })();
 </script>`
-  const body = String(html || '').replaceAll('https://c-point.co', 'https://www.c-point.co')
+  const logoImg = `<img src="${CPOINT_LOGO_URL}" alt="C-Point" />`
+  const dotImg = `<img src="${CPOINT_LOGO_URL}" alt="" />`
+  const body = String(html || '')
+    .replaceAll('https://c-point.co', 'https://www.c-point.co')
+    .replace(/<div class="cp-logo">\s*C\s*<\/div>/g, `<div class="cp-logo">${logoImg}</div>`)
+    .replace(/<span class="cp-dot">\s*C\s*<\/span>/g, `<span class="cp-dot">${dotImg}</span>`)
   if (body.includes('cpoint-public-brand-override')) return body
   if (/<\/head>/i.test(body)) return body.replace(/<\/head>/i, `${override}</head>`)
   return `${override}${body}`

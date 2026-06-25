@@ -130,6 +130,9 @@ def test_independent_creation_can_be_shared_to_multiple_communities(monkeypatch)
     assert a["post_id"] != b["post_id"]
     assert builder.get_creation_share(creation_id=created["id"], community_id=first)["post_id"] == a["post_id"]
     assert builder.get_creation_share(creation_id=created["id"], community_id=second)["post_id"] == b["post_id"]
+    mine = builder.list_creations("maker")
+    listed = next(item for item in mine if int(item["id"]) == int(created["id"]))
+    assert sorted(int(cid) for cid in listed["shared_community_ids"]) == sorted([first, second])
 
 
 
@@ -297,6 +300,7 @@ def test_gallery_explore_lists_owner_approved_creations_anonymous(monkeypatch):
 
     approved = builder.update_gallery_status(creation_id=created["id"], username="maker", action="request")
     assert approved["gallery_status"] == "approved"
+    monkeypatch.setattr(builder, "ensure_tables", lambda *a, **k: pytest.fail("hot path schema setup should not run"))
     listed = builder.list_explore_creations()
     assert len(listed) == 1
     assert listed[0]["title"]

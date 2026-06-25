@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import { clearCreationCache } from '../components/builder/CreationPreview'
+import CreationActionsSheet from '../components/builder/CreationActionsSheet'
 
 type Creation = {
   id: number
@@ -16,6 +17,7 @@ type Creation = {
   public_url?: string | null
   public_kind?: string | null
   gallery_status?: string | null
+  shared_community_ids?: number[]
 }
 
 const OPTIMISTIC_EXPLORE_KEY = 'cpoint:explore:optimistic_creations'
@@ -94,6 +96,8 @@ export default function MyBuilds() {
   const [publishingIds, setPublishingIds] = useState<Set<number>>(() => new Set())
   const [galleryIds, setGalleryIds] = useState<Set<number>>(() => new Set())
   const [copiedId, setCopiedId] = useState<number | null>(null)
+  const [actionCreationId, setActionCreationId] = useState<number | null>(null)
+  const activeCreation = actionCreationId == null ? null : creations.find(item => item.id === actionCreationId) || null
 
   useEffect(() => {
     setTitle('My Builds')
@@ -145,6 +149,7 @@ export default function MyBuilds() {
         return
       }
       setCreations(prev => prev.filter(item => item.id !== creation.id))
+      setActionCreationId(current => current === creation.id ? null : current)
       clearCreationCache(creation.id) // drop the on-device poster cache so it can't replay
     } catch {
       window.alert('Could not delete this build. Please check your connection and try again.')
@@ -265,6 +270,25 @@ export default function MyBuilds() {
     }
   }, [galleryIds])
 
+  const updateSharedCommunity = useCallback((
+    creationId: number,
+    communityId: number,
+    response: { post_id?: number; community_id?: number; already_published?: boolean },
+  ) => {
+    setCreations(prev => prev.map(item => {
+      if (item.id !== creationId) return item
+      const sharedIds = new Set((item.shared_community_ids || []).map(Number))
+      sharedIds.add(Number(communityId))
+      return {
+        ...item,
+        community_id: item.community_id ?? Number(communityId),
+        published_post_id: item.published_post_id ?? (response.post_id ?? null),
+        status: 'published',
+        shared_community_ids: Array.from(sharedIds).sort((a, b) => a - b),
+      }
+    }))
+  }, [])
+
   return (
     <div className="app-content min-h-screen chat-thread-bg text-c-text-primary">
       <div className="mx-auto max-w-3xl px-4 py-6 pb-[var(--app-dashboard-content-pad-bottom)]">
@@ -357,99 +381,54 @@ export default function MyBuilds() {
                       )}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => { void deleteBuild(c) }}
-                    disabled={deletingIds.has(c.id)}
-                    aria-label={`Delete ${c.title?.trim() || 'build'}`}
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-c-border bg-c-hover-bg text-c-text-tertiary transition hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <i className={`fa-solid ${deletingIds.has(c.id) ? 'fa-spinner fa-spin' : 'fa-trash-can'} text-xs`} aria-hidden="true" />
-                  </button>
                 </div>
 
-                <div className="mt-3 flex flex-wrap gap-2">
+                <div className="mt-3 grid grid-cols-[1fr_1fr_auto] gap-2">
                   <button
                     type="button"
                     onClick={() => navigate(c.community_id != null ? `/community/${c.community_id}/creation/${c.id}` : `/creation/${c.id}`)}
-                    className="rounded-xl bg-cpoint-turquoise px-3 py-1.5 text-xs font-semibold text-black transition hover:brightness-110"
+                    className="rounded-xl bg-cpoint-turquoise px-3 py-2 text-xs font-semibold text-black transition hover:brightness-110"
                   >
                     {c.status === 'published' ? 'Play' : 'Preview'}
                   </button>
                   <button
                     type="button"
                     onClick={() => navigate(c.community_id != null ? `/community/${c.community_id}/builder?creation_id=${c.id}` : `/builder?creation_id=${c.id}`)}
-                    className="rounded-xl border border-c-border bg-c-hover-bg px-3 py-1.5 text-xs font-semibold text-c-text-primary transition hover:border-cpoint-turquoise/40"
+                    className="rounded-xl border border-c-border bg-c-hover-bg px-3 py-2 text-xs font-semibold text-c-text-primary transition hover:border-cpoint-turquoise/40"
                   >
                     Continue building
                   </button>
-                  {c.community_id != null && (
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/community_feed_react/${c.community_id}`)}
-                      className="rounded-xl border border-c-border bg-transparent px-3 py-1.5 text-xs font-medium text-c-text-secondary transition hover:text-c-text-primary"
-                    >
-                      Open community
-                    </button>
-                  )}
-                  {c.gallery_status === 'pending' || c.gallery_status === 'approved' ? (
-                    <button
-                      type="button"
-                      onClick={() => { void updateGallery(c, 'unlist') }}
-                      disabled={galleryIds.has(c.id)}
-                      className="rounded-xl border border-c-border bg-transparent px-3 py-1.5 text-xs font-medium text-c-text-secondary transition hover:text-c-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {galleryIds.has(c.id) ? 'Working...' : 'Remove from Explore'}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => { void updateGallery(c, 'request') }}
-                      disabled={galleryIds.has(c.id)}
-                      className="rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1.5 text-xs font-semibold text-cpoint-turquoise transition hover:bg-cpoint-turquoise/15 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {galleryIds.has(c.id) ? 'Working...' : 'List in Explore Creations'}
-                    </button>
-                  )}
-                  {publicEligible(c.kind, c.public_kind) ? (
-                    c.public_status === 'published' && c.public_url ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => { void copyUrl(c) }}
-                          className="rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1.5 text-xs font-semibold text-cpoint-turquoise transition hover:bg-cpoint-turquoise/15"
-                        >
-                          {copiedId === c.id ? 'Copied' : 'Copy public link'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { void unpublishWeb(c) }}
-                          disabled={publishingIds.has(c.id)}
-                          className="rounded-xl border border-c-border bg-transparent px-3 py-1.5 text-xs font-medium text-c-text-secondary transition hover:text-c-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {publishingIds.has(c.id) ? 'Working...' : 'Unpublish web'}
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => { void publishWeb(c) }}
-                        disabled={publishingIds.has(c.id)}
-                        className="rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1.5 text-xs font-semibold text-cpoint-turquoise transition hover:bg-cpoint-turquoise/15 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {publishingIds.has(c.id) ? 'Publishing...' : 'Publish web'}
-                      </button>
-                    )
-                  ) : (
-                    <span className="rounded-xl border border-c-border bg-c-hover-bg px-3 py-1.5 text-xs font-medium text-c-text-tertiary">
-                      Games stay inside C-Point
-                    </span>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setActionCreationId(c.id)}
+                    aria-label={`Open options for ${c.title?.trim() || 'build'}`}
+                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-c-border bg-c-hover-bg text-c-text-tertiary transition hover:border-cpoint-turquoise/40 hover:text-c-text-primary"
+                  >
+                    <i className="fa-solid fa-ellipsis" aria-hidden="true" />
+                  </button>
                 </div>
               </li>
             ))}
           </ul>
         )}
+        <CreationActionsSheet
+          creation={activeCreation}
+          copied={activeCreation ? copiedId === activeCreation.id : false}
+          deleting={activeCreation ? deletingIds.has(activeCreation.id) : false}
+          galleryWorking={activeCreation ? galleryIds.has(activeCreation.id) : false}
+          publishing={activeCreation ? publishingIds.has(activeCreation.id) : false}
+          publicEligible={activeCreation ? publicEligible(activeCreation.kind, activeCreation.public_kind) : false}
+          onClose={() => setActionCreationId(null)}
+          onCopyPublicUrl={copyUrl}
+          onDelete={deleteBuild}
+          onGallery={updateGallery}
+          onOpenCommunity={(creation) => {
+            if (creation.community_id != null) navigate(`/community_feed_react/${creation.community_id}`)
+          }}
+          onPublishWeb={publishWeb}
+          onShared={updateSharedCommunity}
+          onUnpublishWeb={unpublishWeb}
+        />
       </div>
     </div>
   )

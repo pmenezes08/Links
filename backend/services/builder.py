@@ -51,6 +51,7 @@ def resolve_model(tier: Optional[str]) -> str:
 MAX_HTML_BYTES = 400_000  # reject pathologically large artifacts
 PUBLIC_BUILDS_BASE_URL = os.getenv("PUBLIC_BUILDS_BASE_URL", "https://builds.c-point.co").rstrip("/")
 PUBLIC_BUILDS_API_BASE = os.getenv("PUBLIC_BUILDS_API_BASE", "").rstrip("/")
+PUBLIC_BRAND_LOGO_URL = os.getenv("PUBLIC_BRAND_LOGO_URL", "https://app.c-point.co/static/cpoint-logo.png").strip()
 _PUBLIC_BUILD_KINDS = {"web", "website", "app"}
 _GAME_BUILD_KINDS = {"game", "games"}
 _GAME_KIND_HINTS = {
@@ -367,6 +368,7 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
         for stmt in (
             "CREATE INDEX idx_creations_public_slug ON creations (public_slug)",
             "CREATE INDEX idx_creations_public_status ON creations (public_status)",
+            "CREATE INDEX idx_creations_gallery_status ON creations (gallery_status, gallery_reviewed_at, updated_at)",
         ):
             try:
                 cursor.execute(stmt if USE_MYSQL else stmt.replace("CREATE INDEX ", "CREATE INDEX IF NOT EXISTS "))
@@ -820,9 +822,10 @@ def public_bridge_and_branding_script(*, slug: str, title: str) -> str:
     safe_slug = json.dumps(str(slug))
     safe_title = json.dumps(str(title or "C-Point build"))
     api_base = json.dumps(PUBLIC_BUILDS_API_BASE)
+    logo_url = json.dumps(PUBLIC_BRAND_LOGO_URL)
     return f"""<script>
 (function(){{
-  var slug={safe_slug}, title={safe_title}, apiBase={api_base};
+  var slug={safe_slug}, title={safe_title}, apiBase={api_base}, logoUrl={logo_url};
   var root=document.documentElement;
   root.setAttribute('data-cpoint-public-build','true');
   window.CPoint=Object.assign({{}}, window.CPoint||{{}}, {{
@@ -858,14 +861,14 @@ def public_bridge_and_branding_script(*, slug: str, title: str) -> str:
     if(document.getElementById('cpoint-public-brand')) return;
     var splash=document.createElement('div');
     splash.id='cpoint-public-splash';
-    splash.innerHTML='<div class="cp-logo">C</div><div class="cp-copy">Built with C-Point</div>';
+    splash.innerHTML='<div class="cp-logo"><img src="'+logoUrl+'" alt="C-Point" /></div><div class="cp-copy">Built with C-Point</div>';
     var badge=document.createElement('a');
     badge.id='cpoint-public-brand';
     badge.href='https://www.c-point.co';
     badge.target='_blank';
     badge.rel='noopener noreferrer';
     badge.setAttribute('aria-label','Built with C-Point');
-    badge.innerHTML='<span class="cp-dot">C</span><span>Built with C-Point</span>';
+    badge.innerHTML='<span class="cp-dot"><img src="'+logoUrl+'" alt="" /></span><span>Built with C-Point</span>';
     badge.addEventListener('click',function(e){{
       e.preventDefault();
       e.stopPropagation();
@@ -889,10 +892,12 @@ def public_branding_style() -> str:
     return """<style>
 #cpoint-public-splash{position:fixed;inset:0;z-index:2147483646;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#000;color:#f6ffff;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;transition:opacity .45s ease,visibility .45s ease}
 #cpoint-public-splash.cp-hide{opacity:0;visibility:hidden}
-#cpoint-public-splash .cp-logo{width:64px;height:64px;border-radius:22px;display:flex;align-items:center;justify-content:center;background:#00cec8;color:#00302e;font-weight:800;font-size:31px;box-shadow:0 20px 60px rgba(0,206,200,.25)}
+#cpoint-public-splash .cp-logo{width:64px;height:64px;border-radius:22px;display:flex;align-items:center;justify-content:center;background:#061817;box-shadow:0 20px 60px rgba(0,206,200,.25);overflow:hidden}
+#cpoint-public-splash .cp-logo img{width:100%;height:100%;object-fit:contain;display:block}
 #cpoint-public-splash .cp-copy{font-size:14px;letter-spacing:.02em;color:rgba(246,255,255,.82)}
 #cpoint-public-brand{position:fixed;right:max(8px,env(safe-area-inset-right));top:50%;transform:translateY(-50%);z-index:2147483645;display:inline-flex;align-items:center;gap:7px;padding:8px 10px;border-radius:999px;background:rgba(0,0,0,.68);color:#efffff;text-decoration:none;font:600 12px/1 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.28);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.14)}
-#cpoint-public-brand .cp-dot{width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#00cec8;color:#00302e;font-size:11px;font-weight:800}
+#cpoint-public-brand .cp-dot{width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;overflow:hidden;background:#061817}
+#cpoint-public-brand .cp-dot img{width:100%;height:100%;object-fit:contain;display:block}
 @media(max-width:520px){#cpoint-public-brand{right:max(6px,env(safe-area-inset-right));top:50%;bottom:auto;transform:translateY(-50%);font-size:11px;padding:7px 9px;opacity:.86}}
 </style>"""
 
@@ -2199,7 +2204,6 @@ def update_gallery_status(*, creation_id: int, username: str, action: str,
 
 
 def list_explore_creations(*, limit: int = 30) -> List[Dict[str, Any]]:
-    ensure_tables()
     ph = get_sql_placeholder()
     limit = max(1, min(int(limit or 30), 60))
     with get_db_connection() as conn:
@@ -2725,6 +2729,21 @@ def list_creations(username: str, *, limit: int = 50) -> List[Dict[str, Any]]:
             (username, limit),
         )
         rows = c.fetchall() or []
+        creation_ids = [int(_cell(r, 0)) for r in rows if _cell(r, 0) is not None]
+        shares_by_creation: Dict[int, List[int]] = {cid: [] for cid in creation_ids}
+        if creation_ids:
+            placeholders = ",".join([ph] * len(creation_ids))
+            c.execute(
+                f"""SELECT creation_id, community_id
+                    FROM creation_shares
+                    WHERE creation_id IN ({placeholders})""",
+                tuple(creation_ids),
+            )
+            for share_row in c.fetchall() or []:
+                crid = int(_cell(share_row, 0) or 0)
+                cid = int(_cell(share_row, 1) or 0)
+                if crid and cid:
+                    shares_by_creation.setdefault(crid, []).append(cid)
     return [{
         "id": _cell(r, 0), "title": _cell(r, 1), "kind": _cell(r, 2), "status": _cell(r, 3),
         "community_id": _cell(r, 4), "published_post_id": _cell(r, 5),
@@ -2739,6 +2758,7 @@ def list_creations(username: str, *, limit: int = 50) -> List[Dict[str, Any]]:
         "gallery_requested_at": str(_cell(r, 13)) if _cell(r, 13) is not None else None,
         "gallery_reviewed_at": str(_cell(r, 14)) if _cell(r, 14) is not None else None,
         "gallery_rejection_reason": _cell(r, 15),
+        "shared_community_ids": sorted(set(shares_by_creation.get(int(_cell(r, 0) or 0), []))),
     } for r in rows]
 
 
