@@ -216,6 +216,10 @@ describe('MyBuilds', () => {
     expect(queryByText('Delete build')).toBeNull()
     fireEvent.click(getByLabelText('Open options for Tiny Tool'))
     await waitFor(() => expect(getByText('Build options')).toBeTruthy())
+    const explore = getByText('Explore Creations')
+    const share = getByText('Share to community')
+    expect(explore.compareDocumentPosition(share) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('shares through the root-to-sub-community picker and marks shared targets', async () => {
@@ -261,9 +265,12 @@ describe('MyBuilds', () => {
       } as Response)
     vi.stubGlobal('fetch', fetchMock)
 
-    const { getByText, getByLabelText } = render(<MyBuilds />)
+    const { getByText, getByLabelText, queryByText } = render(<MyBuilds />)
     await waitFor(() => expect(getByText('Member Quiz')).toBeTruthy())
     fireEvent.click(getByLabelText('Open options for Member Quiz'))
+    await waitFor(() => expect(getByText('Share to community')).toBeTruthy())
+    expect(queryByText('Root Club')).toBeNull()
+    fireEvent.click(getByText('Share to community'))
     await waitFor(() => expect(getByText('Root Club')).toBeTruthy())
     fireEvent.click(getByText('Root Club'))
 

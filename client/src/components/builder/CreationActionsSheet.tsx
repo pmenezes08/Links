@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import CommunitySharePicker from './CommunitySharePicker'
 
 export type SheetCreation = {
@@ -53,6 +54,7 @@ export default function CreationActionsSheet({
   onShared,
   onUnpublishWeb,
 }: Props) {
+  const [shareOpen, setShareOpen] = useState(false)
   if (!creation) return null
   const isListed = creation.gallery_status === 'pending' || creation.gallery_status === 'approved'
   const isPublic = creation.public_status === 'published' && !!creation.public_url
@@ -87,12 +89,6 @@ export default function CreationActionsSheet({
         </div>
 
         <div className="space-y-3">
-          <CommunitySharePicker
-            creationId={creation.id}
-            sharedCommunityIds={sharedIds}
-            onShared={(communityId, response) => onShared(creation.id, communityId, response)}
-          />
-
           <section className="rounded-2xl border border-c-border bg-c-hover-bg p-3">
             <div className="mb-2 text-sm font-semibold text-c-text-primary">Explore Creations</div>
             <button
@@ -104,6 +100,32 @@ export default function CreationActionsSheet({
               {galleryWorking ? 'Working...' : isListed ? 'Remove from Explore' : 'List in Explore Creations'}
             </button>
             <p className="mt-2 text-xs text-c-text-tertiary">Explore listings are anonymous: your name, profile, and community are not shown.</p>
+          </section>
+
+          <section className="rounded-2xl border border-c-border bg-c-hover-bg p-3">
+            <button
+              type="button"
+              onClick={() => setShareOpen(open => !open)}
+              aria-expanded={shareOpen}
+              className="flex w-full items-center justify-between gap-3 rounded-xl border border-c-border bg-c-bg-elevated px-3 py-2 text-left transition hover:border-cpoint-turquoise/35"
+            >
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-c-text-primary">Share to community</span>
+                <span className="text-xs text-c-text-tertiary">
+                  {sharedIds.length ? `${sharedIds.length} shared already` : 'Choose a root, then a sub-community'}
+                </span>
+              </span>
+              <i className={`fa-solid fa-chevron-${shareOpen ? 'up' : 'down'} text-xs text-c-text-tertiary`} aria-hidden="true" />
+            </button>
+            {shareOpen && (
+              <div className="mt-3">
+                <CommunitySharePicker
+                  creationId={creation.id}
+                  sharedCommunityIds={sharedIds}
+                  onShared={(communityId, response) => onShared(creation.id, communityId, response)}
+                />
+              </div>
+            )}
           </section>
 
           <section className="rounded-2xl border border-c-border bg-c-hover-bg p-3">

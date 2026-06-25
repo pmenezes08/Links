@@ -152,7 +152,7 @@ export default function CommunitySharePicker({ creationId, sharedCommunityIds, o
       />
 
       {query.trim() ? (
-        <div className="space-y-2">
+        <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
           {results.length === 0 && <div className="px-2 py-3 text-sm text-c-text-tertiary">No communities found.</div>}
           {results.map(({ node, label }) => (
             <div key={node.id} className="flex items-center justify-between gap-3 rounded-xl border border-c-border bg-c-bg-elevated px-3 py-2">
@@ -162,7 +162,7 @@ export default function CommunitySharePicker({ creationId, sharedCommunityIds, o
           ))}
         </div>
       ) : selectedRoot ? (
-        <div className="space-y-2">
+        <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
           <button
             type="button"
             onClick={() => setSelectedRoot(null)}
@@ -186,7 +186,7 @@ export default function CommunitySharePicker({ creationId, sharedCommunityIds, o
           )}
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
           {roots.length === 0 && <div className="px-2 py-3 text-sm text-c-text-tertiary">You do not have communities to share to yet.</div>}
           {roots.map(root => (
             <button
