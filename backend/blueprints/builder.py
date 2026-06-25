@@ -21,6 +21,7 @@ from backend.services import creation_match as match_svc
 from backend.services.cron_auth import cron_authed
 from backend.services.entitlements_gate import gate_builder_or_reason
 from backend.services.community_access import can_view_community_content
+from backend.services.community import is_app_admin
 from backend.services.database import get_db_connection, get_sql_placeholder
 
 builder_bp = Blueprint("builder", __name__)
@@ -52,6 +53,28 @@ def _can_access_community(username: str, community_id: int) -> bool:
     except Exception:
         logger.exception("builder: community access check failed")
         return False
+
+
+def _json_creation(row):
+    return {
+        "id": row.get("id"),
+        "title": row.get("title"),
+        "html": row.get("html_content") or row.get("html"),
+        "status": row.get("status"),
+        "community_id": row.get("community_id"),
+        "created_by": row.get("created_by"),
+        "published_post_id": row.get("published_post_id"),
+        "kind": row.get("kind"),
+        "public_slug": row.get("public_slug"),
+        "public_status": row.get("public_status"),
+        "public_url": row.get("public_url"),
+        "public_published_at": str(row.get("public_published_at")) if row.get("public_published_at") else None,
+        "public_kind": row.get("public_kind"),
+        "gallery_status": row.get("gallery_status") or "not_listed",
+        "gallery_requested_at": str(row.get("gallery_requested_at")) if row.get("gallery_requested_at") else None,
+        "gallery_reviewed_at": str(row.get("gallery_reviewed_at")) if row.get("gallery_reviewed_at") else None,
+        "gallery_rejection_reason": row.get("gallery_rejection_reason"),
+    }
 
 
 def _limit_response(ent, reason):
@@ -94,13 +117,13 @@ def builder_create():
     data = request.get_json(silent=True) or {}
     community_id = _safe_int(data.get("community_id"))
     prompt = (data.get("prompt") or "").strip()
-    if community_id is None or not prompt:
-        return jsonify({"success": False, "error": "community_id and prompt are required"}), 400
+    if not prompt:
+        return jsonify({"success": False, "error": "prompt is required"}), 400
     if len(prompt) > _MAX_BUILD_REQUEST_CHARS:
         return jsonify({"success": False, "error": "prompt too long"}), 400
     tier = _safe_tier(data.get("tier"))
 
-    if not _can_access_community(username, community_id):
+    if community_id is not None and not _can_access_community(username, community_id):
         return jsonify({"success": False, "error": "not_found"}), 404
 
     allowed, reason, ent = gate_builder_or_reason(username, community_id=community_id)
@@ -233,19 +256,7 @@ def builder_job_get(job_id: int):
         row = builder_svc.get_creation(result_id)
         if row and row.get("created_by") == username:
             creation = {
-                "id": row.get("id"),
-                "title": row.get("title"),
-                "html": row.get("html_content"),
-                "status": row.get("status"),
-                "community_id": row.get("community_id"),
-                "created_by": row.get("created_by"),
-                "published_post_id": row.get("published_post_id"),
-                "kind": row.get("kind"),
-                "public_slug": row.get("public_slug"),
-                "public_status": row.get("public_status"),
-                "public_url": row.get("public_url"),
-                "public_published_at": str(row.get("public_published_at")) if row.get("public_published_at") else None,
-                "public_kind": row.get("public_kind"),
+                **_json_creation(row)
             }
     return jsonify({"success": True, "job": _job_payload(job), "creation": creation})
 
@@ -280,14 +291,20 @@ def builder_publish(creation_id: int):
 
     data = request.get_json(silent=True) or {}
     caption = (data.get("caption") or "").strip() or None
+    community_id = _safe_int(data.get("community_id"))
 
     existing = builder_svc.get_creation(creation_id)
     if not existing or existing.get("created_by") != username:
         return jsonify({"success": False, "error": "not_found"}), 404
+    target_community_id = community_id if community_id is not None else _safe_int(existing.get("community_id"))
+    if target_community_id is None:
+        return jsonify({"success": False, "error": "community_required"}), 400
+    if not _can_access_community(username, target_community_id):
+        return jsonify({"success": False, "error": "not_found"}), 404
 
     try:
         result = builder_svc.publish_creation(
-            creation_id=creation_id, username=username, caption=caption,
+            creation_id=creation_id, username=username, community_id=target_community_id, caption=caption,
         )
     except PermissionError:
         return jsonify({"success": False, "error": "not_found"}), 404
@@ -297,11 +314,17 @@ def builder_publish(creation_id: int):
 
     try:
         from redis_cache import invalidate_community_cache
-        invalidate_community_cache(existing.get("community_id"))
+        invalidate_community_cache(target_community_id)
     except Exception:
         logger.warning("builder: feed cache invalidation failed", exc_info=True)
 
     return jsonify({"success": True, **result})
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/share", methods=["POST"])
+def builder_share_to_community(creation_id: int):
+    """Share one owned creation into a community the user belongs to."""
+    return builder_publish(creation_id)
 
 
 @builder_bp.route("/api/builder/<int:creation_id>/publish-web", methods=["GET"])
@@ -356,6 +379,55 @@ def builder_unpublish_web(creation_id: int):
     return jsonify({"success": True, **result})
 
 
+@builder_bp.route("/api/builder/explore", methods=["GET"])
+def builder_explore():
+    limit = _safe_int(request.args.get("limit")) or 30
+    return jsonify({"success": True, "creations": builder_svc.list_explore_creations(limit=limit)})
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/gallery", methods=["POST"])
+def builder_gallery_update(creation_id: int):
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    data = request.get_json(silent=True) or {}
+    action = str(data.get("action") or "request")
+    try:
+        result = builder_svc.update_gallery_status(creation_id=creation_id, username=username, action=action)
+    except PermissionError:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except Exception:
+        logger.exception("builder: gallery update failed")
+        return jsonify({"success": False, "error": "gallery_update_failed"}), 500
+    return jsonify({"success": True, **result})
+
+
+@builder_bp.route("/api/admin/builder/<int:creation_id>/gallery", methods=["POST"])
+def builder_admin_gallery_update(creation_id: int):
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    if not is_app_admin(username):
+        return jsonify({"success": False, "error": "forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    action = str(data.get("action") or "")
+    reason = (data.get("reason") or "").strip() or None
+    try:
+        result = builder_svc.update_gallery_status(
+            creation_id=creation_id, username=username, action=action, reviewer=username, reason=reason,
+        )
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except PermissionError:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    except Exception:
+        logger.exception("builder: admin gallery update failed")
+        return jsonify({"success": False, "error": "gallery_update_failed"}), 500
+    return jsonify({"success": True, **result})
+
+
 @builder_bp.route("/api/builder/mine", methods=["GET"])
 def builder_mine():
     """The signed-in user's own creations so they can resume unfinished work."""
@@ -378,25 +450,17 @@ def builder_get(creation_id: int):
 
     # Owner always allowed; otherwise must be able to see the community's content.
     if creation.get("created_by") != username:
-        community_id = _safe_int(creation.get("community_id"))
+        requested_community_id = _safe_int(request.args.get("community_id"))
+        community_id = requested_community_id if requested_community_id is not None else _safe_int(creation.get("community_id"))
         if community_id is None or not _can_access_community(username, community_id):
             return jsonify({"success": False, "error": "not_found"}), 404
+        if requested_community_id is not None and not builder_svc.get_creation_share(
+            creation_id=creation_id, community_id=requested_community_id,
+        ):
+            return jsonify({"success": False, "error": "not_found"}), 404
 
-    return jsonify({"success": True, "creation": {
-        "id": creation.get("id"),
-        "title": creation.get("title"),
-        "html": creation.get("html_content"),
-        "status": creation.get("status"),
-        "community_id": creation.get("community_id"),
-        "created_by": creation.get("created_by"),
-        "published_post_id": creation.get("published_post_id"),
-        "kind": creation.get("kind"),
-        "public_slug": creation.get("public_slug"),
-        "public_status": creation.get("public_status"),
-        "public_url": creation.get("public_url"),
-        "public_published_at": str(creation.get("public_published_at")) if creation.get("public_published_at") else None,
-        "public_kind": creation.get("public_kind"),
-    }, "chat_history": builder_svc.get_chat_history(creation_id)})
+    return jsonify({"success": True, "creation": _json_creation(creation),
+                    "chat_history": builder_svc.get_chat_history(creation_id)})
 
 
 @builder_bp.route("/api/builder/<int:creation_id>", methods=["DELETE"])
@@ -437,6 +501,17 @@ def _resolve_accessible_creation(creation_id: int, username: str):
     """Return (creation, community_id) if the user may interact with it, else (None, None)."""
     creation = builder_svc.get_creation(creation_id)
     if not creation:
+        return None, None
+    requested_community_id = _safe_int(request.args.get("community_id"))
+    if requested_community_id is None and request.method != "GET":
+        payload = request.get_json(silent=True) or {}
+        requested_community_id = _safe_int(payload.get("community_id"))
+    if requested_community_id is not None:
+        if requested_community_id == 0 and creation.get("created_by") == username:
+            return creation, 0
+        if (builder_svc.get_creation_share(creation_id=creation_id, community_id=requested_community_id)
+                and _can_access_community(username, requested_community_id)):
+            return creation, requested_community_id
         return None, None
     community_id = _safe_int(creation.get("community_id"))
     if creation.get("created_by") == username:
@@ -563,7 +638,9 @@ def builder_data_load(creation_id: int):
     _creation, community_id = _resolve_accessible_creation(creation_id, username)
     if community_id is None:
         return jsonify({"success": False, "error": "not_found"}), 404
-    return jsonify({"success": True, **builder_svc.load_record(creation_id, username=username, key=request.args.get("key") or "save")})
+    return jsonify({"success": True, **builder_svc.load_record(
+        creation_id, community_id=community_id, username=username, key=request.args.get("key") or "save",
+    )})
 
 
 @builder_bp.route("/api/builder/<int:creation_id>/data/images", methods=["GET"])
@@ -677,7 +754,9 @@ def builder_data_shared_get(creation_id: int):
         return jsonify({"success": False, "error": "not_found"}), 404
     if not _data_read_ok(username, creation_id, "shared"):
         return jsonify({"success": False, "error": "rate_limited"}), 429
-    state = runtime_svc.get_shared_state(creation_id=creation_id, key=request.args.get("key") or "main")
+    state = runtime_svc.get_shared_state(
+        creation_id=creation_id, community_id=community_id, key=request.args.get("key") or "main",
+    )
     return jsonify({"success": True, **state})
 
 
@@ -718,7 +797,7 @@ def builder_data_collection_list(creation_id: int, name: str):
     if not _data_read_ok(username, creation_id, "collection"):
         return jsonify({"success": False, "error": "rate_limited"}), 429
     result = runtime_svc.list_collection(
-        creation_id=creation_id, name=name, limit=_safe_int(request.args.get("limit")) or 100,
+        creation_id=creation_id, community_id=community_id, name=name, limit=_safe_int(request.args.get("limit")) or 100,
     )
     return jsonify({"success": True, **result})
 
@@ -760,7 +839,7 @@ def builder_data_collection_update(creation_id: int, name: str, row_id: str):
     data = request.get_json(silent=True) or {}
     try:
         item = runtime_svc.update_collection_item(
-            creation_id=creation_id, name=name, row_id=row_id, value=data.get("value"),
+            creation_id=creation_id, community_id=community_id, name=name, row_id=row_id, value=data.get("value"),
             expected_version=_safe_int(data.get("version")),
         )
         return jsonify({"success": True, "item": item})
@@ -782,7 +861,7 @@ def builder_data_collection_delete(creation_id: int, name: str, row_id: str):
         return jsonify({"success": False, "error": "not_found"}), 404
     if not _data_write_ok(username, creation_id):
         return jsonify({"success": False, "error": "rate_limited"}), 429
-    result = runtime_svc.delete_collection_item(creation_id=creation_id, name=name, row_id=row_id)
+    result = runtime_svc.delete_collection_item(creation_id=creation_id, community_id=community_id, name=name, row_id=row_id)
     return jsonify({"success": True, **result})
 
 
@@ -820,7 +899,9 @@ def builder_data_leaderboard(creation_id: int):
         return jsonify({"success": False, "error": "not_found"}), 404
     key = request.args.get("key") or "highscore"
     limit = _safe_int(request.args.get("limit")) or 10
-    return jsonify({"success": True, **builder_svc.get_leaderboard(creation_id, key=key, limit=limit, username=username)})
+    return jsonify({"success": True, **builder_svc.get_leaderboard(
+        creation_id, community_id=community_id, key=key, limit=limit, username=username,
+    )})
 
 
 @builder_bp.route("/api/builder/<int:creation_id>/data/results", methods=["GET"])
@@ -831,7 +912,7 @@ def builder_data_results(creation_id: int):
     _creation, community_id = _resolve_accessible_creation(creation_id, username)
     if community_id is None:
         return jsonify({"success": False, "error": "not_found"}), 404
-    return jsonify({"success": True, **builder_svc.get_results(creation_id, username=username)})
+    return jsonify({"success": True, **builder_svc.get_results(creation_id, community_id=community_id, username=username)})
 
 
 @builder_bp.route("/api/builder/<int:creation_id>/data/summary", methods=["GET"])
@@ -845,14 +926,14 @@ def builder_data_summary(creation_id: int):
         return jsonify({"success": False, "error": "not_found"}), 404
     try:
         from redis_cache import cache
-        ckey = f"cpdata:summary:{creation_id}"
+        ckey = f"cpdata:summary:{creation_id}:{community_id}"
         cached = cache.get(ckey)
         if cached is not None:
             return jsonify({"success": True, **cached})
     except Exception:
         cache = None
         ckey = None
-    summary = builder_svc.get_summary(creation_id)
+    summary = builder_svc.get_summary(creation_id, community_id=community_id)
     try:
         if cache is not None and ckey:
             cache.set(ckey, summary, ttl=15)
@@ -1031,7 +1112,7 @@ def builder_record_play(creation_id: int):
     result = builder_svc.record_play(creation_id)
     try:
         from redis_cache import cache
-        cache.delete(f"cpdata:summary:{creation_id}")
+        cache.delete(f"cpdata:summary:{creation_id}:{community_id}")
     except Exception:
         pass
     return jsonify({"success": True, **result})

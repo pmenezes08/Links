@@ -40,6 +40,7 @@ import CommunityTasks from './pages/CommunityTasks'
 import CommunityPolls from './pages/CommunityPolls'
 import BuilderPage from './pages/BuilderPage'
 import MyBuilds from './pages/MyBuilds'
+import ExploreCreations from './pages/ExploreCreations'
 import CreationPlay from './pages/CreationPlay'
 import CommunityResources from './pages/CommunityResources'
 import UsefulLinks from './pages/UsefulLinks'
@@ -891,6 +892,7 @@ function AppRoutes(){
     currentPathName.startsWith('/group_reply/') ||
     currentPathName.startsWith('/community_feed_react/') ||
     currentPathName.startsWith('/group_feed_react/') ||
+    currentPathName === '/builder' ||
     (currentPathName.startsWith('/community/') && (currentPathName.includes('/builder') || currentPathName.includes('/creation/'))) ||
     currentPathName.startsWith('/community/') && currentPathName.includes('/feed')
   const showHeader = authLoaded && !hideHeader && !headerHiddenOverride
@@ -957,6 +959,7 @@ function AppRoutes(){
                   <Route path="/feed" element={<HomeTimeline mode="dashboard_feed" />} />
                   <Route path="/about_cpoint" element={<AboutCPoint />} />
                   <Route path="/builds" element={<MyBuilds />} />
+                  <Route path="/explore-creations" element={<ExploreCreations />} />
                 </Route>
                 <Route path="/crossfit" element={<CrossfitExact />} />
                 <Route path="/crossfit_react" element={<CrossfitExact />} />
@@ -990,6 +993,7 @@ function AppRoutes(){
                 <Route path="/home" element={<HomeTimeline />} />
                 <Route path="/workout_tracking" element={<WorkoutTracking />} />
                 <Route path="/steve/profile-builder/:section" element={<ScopedProfileBuilder />} />
+                <Route path="/builder" element={<BuilderPage />} />
                 <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
                 <Route path="/community/:community_id/calendar_react" element={<CommunityCalendar />} />
                 <Route path="/community/:community_id/tasks_react" element={<CommunityTasks />} />

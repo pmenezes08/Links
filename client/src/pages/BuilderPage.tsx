@@ -158,6 +158,7 @@ export default function BuilderPage() {
   const [input, setInput] = useState('')
   const [publishing, setPublishing] = useState(false)
   const [webPublishing, setWebPublishing] = useState(false)
+  const [galleryWorking, setGalleryWorking] = useState(false)
   const [webCopied, setWebCopied] = useState(false)
   const [publishedPostId, setPublishedPostId] = useState<number | null>(null)
   const [playingCreation, setPlayingCreation] = useState<Creation | null>(null)
@@ -209,8 +210,15 @@ export default function BuilderPage() {
 
   const onPublish = async () => {
     if (!creation || publishing) return
+    let targetCommunityId: number | undefined
+    if (!cid) {
+      const raw = window.prompt('Enter the community ID where you want to share this creation. You must be a member of that community.')
+      const parsed = Number(raw || 0)
+      if (!Number.isFinite(parsed) || parsed <= 0) return
+      targetCommunityId = parsed
+    }
     setPublishing(true)
-    const postId = await publish()
+    const postId = await publish(undefined, targetCommunityId)
     setPublishing(false)
     if (postId) setPublishedPostId(postId)
   }
@@ -240,6 +248,35 @@ export default function BuilderPage() {
     setWebPublishing(true)
     await unpublishWeb()
     setWebPublishing(false)
+  }
+
+  const onGallery = async (action: 'request' | 'unlist') => {
+    if (!creation || galleryWorking) return
+    if (action === 'request') {
+      const ok = window.confirm('Allow this creation to appear in C-Point’s public gallery. Your name, profile, and community will not be shown.')
+      if (!ok) return
+    }
+    setGalleryWorking(true)
+    try {
+      const res = await fetch(`/api/builder/${creation.id}/gallery`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.success) {
+        window.alert(data?.error === 'public_publish_required'
+          ? 'Publish this build to the web before listing it in Explore Creations.'
+          : 'Could not update Explore listing. Please try again.')
+        return
+      }
+      await loadCreation(creation.id)
+    } catch {
+      window.alert('Could not update Explore listing. Please check your connection and try again.')
+    } finally {
+      setGalleryWorking(false)
+    }
   }
 
   const goBack = () => {
@@ -338,7 +375,9 @@ export default function BuilderPage() {
                     publishing={publishing} publishedPostId={publishedPostId} onShare={onPublish}
                     webPublishing={webPublishing} webCopied={webCopied}
                     onPublishWeb={onPublishWeb} onCopyPublicUrl={copyPublicUrl}
-                    onUnpublishWeb={onUnpublishWeb} />
+                    onUnpublishWeb={onUnpublishWeb}
+                    galleryWorking={galleryWorking}
+                    onGallery={onGallery} />
                 )}
               </div>
             </div>
@@ -512,6 +551,7 @@ export default function BuilderPage() {
         <PlayableCreation
           html={playingCreation.html} title={playingCreation.title}
           onClose={() => setPlayingCreation(null)} creationId={playingCreation.id}
+          communityId={cid || playingCreation.community_id}
           onRuntimeError={(m) => setRuntimeError(m)}
           onShare={playingCreation.id === creation?.id ? onPublish : undefined}
           shared={!!publishedPostId}
@@ -533,6 +573,8 @@ function CreationCard({
   onPublishWeb,
   onCopyPublicUrl,
   onUnpublishWeb,
+  galleryWorking,
+  onGallery,
 }: {
   creation: Creation
   isLatest: boolean
@@ -545,6 +587,8 @@ function CreationCard({
   onPublishWeb: () => void
   onCopyPublicUrl: (url: string) => Promise<void>
   onUnpublishWeb: () => void
+  galleryWorking: boolean
+  onGallery: (action: 'request' | 'unlist') => void
 }) {
   const isPublic = creation.public_status === 'published' && !!creation.public_url
   const eligible = publicEligible(creation.kind, creation.public_kind)
@@ -581,6 +625,19 @@ function CreationCard({
                     style={{ flex: '0 0 auto', fontSize: 12, fontWeight: 600, color: '#ffcf8a', textShadow: '0 1px 4px rgba(0,0,0,0.6)', padding: '4px 7px', borderRadius: 999, background: 'rgba(0,0,0,0.42)' }}>
                     {webPublishing ? 'Working…' : 'Unpublish'}
                   </span>
+                  {creation.gallery_status === 'pending' || creation.gallery_status === 'approved' ? (
+                    <span role="button" tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); onGallery('unlist') }}
+                      style={{ flex: '0 0 auto', fontSize: 12, fontWeight: 600, color: '#d8d8d8', textShadow: '0 1px 4px rgba(0,0,0,0.6)', padding: '4px 7px', borderRadius: 999, background: 'rgba(0,0,0,0.42)' }}>
+                      {galleryWorking ? 'Working…' : 'Remove from Explore'}
+                    </span>
+                  ) : (
+                    <span role="button" tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); onGallery('request') }}
+                      style={{ flex: '0 0 auto', fontSize: 12, fontWeight: 700, color: '#00CEC8', textShadow: '0 1px 4px rgba(0,0,0,0.6)', padding: '4px 7px', borderRadius: 999, background: 'rgba(0,0,0,0.42)' }}>
+                      {galleryWorking ? 'Working…' : 'List in Explore'}
+                    </span>
+                  )}
                 </>
               ) : (
                 <span role="button" tabIndex={0}

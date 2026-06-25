@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { prepareCreationHtml } from '../../utils/creationHtml'
 
 /**
@@ -14,13 +14,14 @@ type Props = {
   title?: string
   onClose: () => void
   creationId?: number
+  communityId?: number | string | null
   onRuntimeError?: (msg: string) => void
   onShare?: () => void
   shared?: boolean
   startMatchId?: number | null
 }
 
-export default function PlayableCreation({ html, title, onClose, creationId, onRuntimeError, startMatchId }: Props) {
+export default function PlayableCreation({ html, title, onClose, creationId, communityId, onRuntimeError, startMatchId }: Props) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const [fit, setFit] = useState(1)
   const [bgColor, setBgColor] = useState('#000')
@@ -35,6 +36,17 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
     () => prepareCreationHtml(html, { dataBridge: creationId != null, errorReporter: true, startMatchId }),
     [html, creationId, startMatchId],
   )
+  const contextPayload = useMemo(() => {
+    const n = Number(communityId || 0)
+    return n > 0 ? { community_id: n } : {}
+  }, [communityId])
+  const contextQuery = useMemo(() => {
+    const n = Number(communityId || 0)
+    return n > 0 ? `community_id=${encodeURIComponent(String(n))}` : ''
+  }, [communityId])
+  const withContext = useCallback((url: string) => (
+    contextQuery ? `${url}${url.includes('?') ? '&' : '?'}${contextQuery}` : url
+  ), [contextQuery])
 
   const fitRef = useRef(1)
   useEffect(() => { setFit(1); fitRef.current = 1; setBgColor('#000') }, [html])
@@ -42,13 +54,13 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
   // Count one play when the surface opens (best-effort).
   useEffect(() => {
     if (creationId == null) return
-    fetch(`/api/builder/${creationId}/play`, { method: 'POST', credentials: 'include' }).catch(() => { /* noop */ })
-  }, [creationId])
+    fetch(withContext(`/api/builder/${creationId}/play`), { method: 'POST', credentials: 'include' }).catch(() => { /* noop */ })
+  }, [creationId, withContext])
 
   // Persist the final score when the artifact signals a run ended. The game owns
   // its OWN end screen + leaderboard (built from the CPoint API), so the host shows
   // no result UI of its own — just a small confirmation toast that the score saved.
-  const handleGameOver = async (score: unknown, key: unknown) => {
+  const handleGameOver = useCallback(async (score: unknown, key: unknown) => {
     if (creationId == null) return
     const k = (typeof key === 'string' && key) ? key : 'highscore'
     const numScore = typeof score === 'number' && isFinite(score) ? score : null
@@ -56,11 +68,11 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
     try {
       const r = await fetch(`/api/builder/${creationId}/data/score`, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: numScore, key: k }),
+        body: JSON.stringify({ value: numScore, key: k, ...contextPayload }),
       })
       if (r.ok) showNotice('✓ Score saved')
     } catch { /* best-effort */ }
-  }
+  }, [creationId, contextPayload])
 
   // Broker CPoint SDK calls + handle runtime errors and the gameOver signal from
   // the sandboxed artifact. Only messages from THIS artifact's window are
@@ -84,57 +96,57 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
       try {
         let res: Response
         if (d.op === 'submitScore') {
-          res = await fetch(`${base}/score`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: p.value, key: p.key, name: p.name }) })
+          res = await fetch(`${base}/score`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: p.value, key: p.key, name: p.name, ...contextPayload }) })
         } else if (d.op === 'rate') {
-          res = await fetch(`${base}/rate`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: p.value, name: p.name }) })
+          res = await fetch(`${base}/rate`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: p.value, name: p.name, ...contextPayload }) })
         } else if (d.op === 'getLeaderboard') {
           const q = new URLSearchParams({ key: String(p.key || 'highscore'), limit: String(p.limit || 10) })
-          res = await fetch(`${base}/leaderboard?${q.toString()}`, { credentials: 'include' })
+          res = await fetch(withContext(`${base}/leaderboard?${q.toString()}`), { credentials: 'include' })
         } else if (d.op === 'getResults') {
-          res = await fetch(`${base}/results`, { credentials: 'include' })
+          res = await fetch(withContext(`${base}/results`), { credentials: 'include' })
         } else if (d.op === 'save') {
-          res = await fetch(`${base}/save`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: p.key, value: p.value }) })
+          res = await fetch(`${base}/save`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: p.key, value: p.value, ...contextPayload }) })
         } else if (d.op === 'load') {
-          res = await fetch(`${base}/load?key=${encodeURIComponent(String(p.key || 'save'))}`, { credentials: 'include' })
+          res = await fetch(withContext(`${base}/load?key=${encodeURIComponent(String(p.key || 'save'))}`), { credentials: 'include' })
         } else if (d.op === 'images') {
           const q = new URLSearchParams({ q: String(p.q || ''), limit: String(p.limit || 8) })
-          res = await fetch(`${base}/images?${q.toString()}`, { credentials: 'include' })
+          res = await fetch(withContext(`${base}/images?${q.toString()}`), { credentials: 'include' })
         } else if (d.op === 'feed') {
           const q = new URLSearchParams({ connector: String(p.connector || ''), params: JSON.stringify(p.params || {}) })
-          res = await fetch(`${base}/feed?${q.toString()}`, { credentials: 'include' })
+          res = await fetch(withContext(`${base}/feed?${q.toString()}`), { credentials: 'include' })
         } else if (d.op === 'shared.get') {
           const q = new URLSearchParams({ key: String(p.key || 'main') })
-          res = await fetch(`${base}/shared?${q.toString()}`, { credentials: 'include' })
+          res = await fetch(withContext(`${base}/shared?${q.toString()}`), { credentials: 'include' })
         } else if (d.op === 'shared.update') {
-          res = await fetch(`${base}/shared`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: p.key, value: p.value, version: p.version }) })
+          res = await fetch(`${base}/shared`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: p.key, value: p.value, version: p.version, ...contextPayload }) })
         } else if (d.op === 'collection.list') {
           const name = encodeURIComponent(String(p.name || 'items'))
           const q = new URLSearchParams({ limit: String(p.limit || 100) })
-          res = await fetch(`${base}/collection/${name}?${q.toString()}`, { credentials: 'include' })
+          res = await fetch(withContext(`${base}/collection/${name}?${q.toString()}`), { credentials: 'include' })
         } else if (d.op === 'collection.create') {
           const name = encodeURIComponent(String(p.name || 'items'))
-          res = await fetch(`${base}/collection/${name}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: p.value }) })
+          res = await fetch(`${base}/collection/${name}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: p.value, ...contextPayload }) })
         } else if (d.op === 'collection.update') {
           const name = encodeURIComponent(String(p.name || 'items'))
           const id = encodeURIComponent(String(p.id || ''))
-          res = await fetch(`${base}/collection/${name}/${id}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: p.value, version: p.version }) })
+          res = await fetch(`${base}/collection/${name}/${id}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: p.value, version: p.version, ...contextPayload }) })
         } else if (d.op === 'collection.delete') {
           const name = encodeURIComponent(String(p.name || 'items'))
           const id = encodeURIComponent(String(p.id || ''))
-          res = await fetch(`${base}/collection/${name}/${id}`, { method: 'DELETE', credentials: 'include' })
+          res = await fetch(`${base}/collection/${name}/${id}`, { method: 'DELETE', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contextPayload) })
         } else if (d.op === 'forms.submit') {
           const name = encodeURIComponent(String(p.name || 'default'))
-          res = await fetch(`${base}/forms/${name}/submit`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: p.value }) })
+          res = await fetch(`${base}/forms/${name}/submit`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: p.value, ...contextPayload }) })
         } else if (typeof d.op === 'string' && d.op.indexOf('match.') === 0) {
           // Two-player match ops -> /api/builder/<id>/match/* (game owns the UI).
           const sub = d.op.slice(6)
           const mbase = `/api/builder/${creationId}/match`
-          const jpost = (url: string, body: unknown) => fetch(url, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-          if (sub === 'opponents') res = await fetch(`${mbase}/opponents`, { credentials: 'include' })
-          else if (sub === 'list') res = await fetch(`${mbase}/list`, { credentials: 'include' })
+          const jpost = (url: string, body: Record<string, unknown>) => fetch(url, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...contextPayload }) })
+          if (sub === 'opponents') res = await fetch(withContext(`${mbase}/opponents`), { credentials: 'include' })
+          else if (sub === 'list') res = await fetch(withContext(`${mbase}/list`), { credentials: 'include' })
           else if (sub === 'create') res = await jpost(`${mbase}/create`, { opponent: p.opponent })
-          else if (sub === 'get') res = await fetch(`${mbase}/${Number(p.id)}`, { credentials: 'include' })
-          else if (sub === 'poll') res = await fetch(`${mbase}/${Number(p.id)}/poll?since=${encodeURIComponent(String(p.since || 0))}`, { credentials: 'include' })
+          else if (sub === 'get') res = await fetch(withContext(`${mbase}/${Number(p.id)}`), { credentials: 'include' })
+          else if (sub === 'poll') res = await fetch(withContext(`${mbase}/${Number(p.id)}/poll?since=${encodeURIComponent(String(p.since || 0))}`), { credentials: 'include' })
           else if (sub === 'move') res = await jpost(`${mbase}/${Number(p.id)}/move`, { move: p.move, state: p.state, version: p.version, result: p.result })
           else if (sub === 'accept' || sub === 'decline' || sub === 'cancel' || sub === 'resign') res = await jpost(`${mbase}/${Number(p.id)}/${sub}`, {})
           else { reply(e.source, rid, false, undefined, 'unknown_op'); return }
@@ -163,7 +175,7 @@ export default function PlayableCreation({ html, title, onClose, creationId, onR
     }
     window.addEventListener('message', onMsg)
     return () => window.removeEventListener('message', onMsg)
-  }, [creationId])
+  }, [creationId, contextPayload, handleGameOver, onRuntimeError, withContext])
 
   // The artifact posts its measured content size; scale down to fit the WIDTH
   // only (tall content scrolls — never scale a long page to fit its height).

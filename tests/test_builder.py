@@ -67,6 +67,19 @@ def test_create_stores_a_draft_creation(monkeypatch):
     assert int(row["community_id"]) == cid
 
 
+def test_create_allows_independent_creation(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+
+    result = builder.create_creation(username="maker", community_id=None, prompt="a personal website")
+    row = builder.get_creation(result["id"])
+
+    assert result["community_id"] is None
+    assert row is not None
+    assert row["community_id"] is None
+    assert row["created_by"] == "maker"
+
+
 def test_iterate_replaces_html(monkeypatch):
     monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
     _make_user("maker")
@@ -102,6 +115,23 @@ def test_publish_creates_post_linked_to_creation(monkeypatch):
     again = builder.publish_creation(creation_id=created["id"], username="maker")
     assert again["post_id"] == pub["post_id"]
     assert again["already_published"] is True
+
+
+def test_independent_creation_can_be_shared_to_multiple_communities(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    first = _make_community("First")
+    second = _make_community("Second")
+    created = builder.create_creation(username="maker", community_id=None, prompt="a reusable app")
+
+    a = builder.publish_creation(creation_id=created["id"], username="maker", community_id=first)
+    b = builder.publish_creation(creation_id=created["id"], username="maker", community_id=second)
+
+    assert a["post_id"] != b["post_id"]
+    assert builder.get_creation_share(creation_id=created["id"], community_id=first)["post_id"] == a["post_id"]
+    assert builder.get_creation_share(creation_id=created["id"], community_id=second)["post_id"] == b["post_id"]
+
+
 
 
 def test_publish_rejects_non_owner(monkeypatch):
@@ -239,6 +269,47 @@ def test_submit_score_keeps_best_and_ranks(monkeypatch):
     assert board["entries"][0]["rank"] == 1
     assert board["mine"] is not None and int(board["mine"]["value"]) == 100 and board["mine"]["rank"] == 2
     assert r["rank"] == 1 and int(r["best"]) == 200
+
+
+def test_leaderboards_are_scoped_by_community(monkeypatch):
+    _make_user("maker"); _make_user("p2")
+    first = _make_community("First")
+    second = _make_community("Second")
+    crid = _make_creation(first, monkeypatch=monkeypatch)
+
+    builder.submit_score(creation_id=crid, community_id=first, username="maker", value=100)
+    builder.submit_score(creation_id=crid, community_id=second, username="p2", value=900)
+
+    first_board = builder.get_leaderboard(crid, community_id=first, username="maker")
+    second_board = builder.get_leaderboard(crid, community_id=second, username="p2")
+
+    assert [int(e["value"]) for e in first_board["entries"]] == [100]
+    assert [int(e["value"]) for e in second_board["entries"]] == [900]
+
+
+def test_gallery_explore_lists_only_approved_published_anonymous(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: "<!doctype html><html><body>site</body></html>")
+    monkeypatch.setattr(builder, "_upload_public_html", lambda *_a, **_k: True)
+    monkeypatch.setattr(builder, "_upload_public_json", lambda *_a, **_k: True)
+    _make_user("maker")
+    cid = _make_community()
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a public website")
+
+    builder.publish_creation_to_web(creation_id=created["id"], username="maker")
+    assert builder.list_explore_creations() == []
+
+    pending = builder.update_gallery_status(creation_id=created["id"], username="maker", action="request")
+    assert pending["gallery_status"] == "pending"
+    assert builder.list_explore_creations() == []
+
+    builder.update_gallery_status(creation_id=created["id"], username="admin", action="approve", reviewer="admin")
+    listed = builder.list_explore_creations()
+    assert len(listed) == 1
+    assert listed[0]["title"]
+    assert listed[0]["public_url"]
+    assert "created_by" not in listed[0]
+    assert "community_id" not in listed[0]
+    assert "post_id" not in listed[0]
 
 
 def test_submit_score_repeats_are_atomic_and_keep_max(monkeypatch):

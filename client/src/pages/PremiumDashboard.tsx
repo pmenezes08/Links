@@ -7,6 +7,7 @@ import { useUserProfile } from '../contexts/UserProfileContext'
 import { normalizeHandleInput } from '../components/community/HandleSettings'
 import SpotlightAsk from '../components/dashboard/SpotlightAsk'
 import DashboardEmptyState from '../components/dashboard/DashboardEmptyState'
+import SteveCreateCard from '../components/dashboard/SteveCreateCard'
 import JoinByHandlePanel from '../components/community/JoinByHandlePanel'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
@@ -1147,6 +1148,10 @@ export default function PremiumDashboard() {
             </span>
           </div>
           )}
+            <SteveCreateCard
+              onCreate={() => navigate('/builder')}
+              onExplore={() => navigate('/explore-creations')}
+            />
             {!communitiesLoaded ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <SkeletonCommunityCard />

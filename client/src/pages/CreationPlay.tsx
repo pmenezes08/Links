@@ -18,7 +18,8 @@ export default function CreationPlay() {
     async function load() {
       if (!creation_id) return
       try {
-        const res = await fetch(`/api/builder/${creation_id}`, {
+        const q = community_id ? `?community_id=${encodeURIComponent(community_id)}` : ''
+        const res = await fetch(`/api/builder/${creation_id}${q}`, {
           credentials: 'include',
           headers: { Accept: 'application/json' },
         })
@@ -32,7 +33,7 @@ export default function CreationPlay() {
     }
     load()
     return () => { mounted = false }
-  }, [creation_id])
+  }, [creation_id, community_id])
 
   const goBack = () => {
     if (community_id) navigate(`/community_feed_react/${community_id}`)
@@ -40,7 +41,7 @@ export default function CreationPlay() {
   }
 
   if (creation) {
-    return <PlayableCreation html={creation.html} title={creation.title} onClose={goBack} creationId={creation.id} startMatchId={startMatchId} />
+    return <PlayableCreation html={creation.html} title={creation.title} onClose={goBack} creationId={creation.id} communityId={community_id} startMatchId={startMatchId} />
   }
 
   return (

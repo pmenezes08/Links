@@ -244,7 +244,9 @@ _CREATION_COLS = [
     "prompt_history", "parent_creation_id", "status", "published_post_id",
     "created_at", "updated_at", "html_r2_key", "public_slug",
     "public_status", "public_html_r2_key", "public_published_at",
-    "public_unpublished_at", "public_kind",
+    "public_unpublished_at", "public_kind", "gallery_status",
+    "gallery_requested_at", "gallery_reviewed_at", "gallery_reviewed_by",
+    "gallery_rejection_reason",
 ]
 
 _JOB_COLS = [
@@ -268,7 +270,7 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
                 """
                 CREATE TABLE IF NOT EXISTS creations (
                     id INT AUTO_INCREMENT PRIMARY KEY,
-                    community_id INT NOT NULL,
+                    community_id INT NULL,
                     created_by VARCHAR(191) NOT NULL,
                     title VARCHAR(200) NOT NULL DEFAULT 'Untitled',
                     kind VARCHAR(32) NOT NULL DEFAULT 'web',
@@ -290,7 +292,7 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
                 """
                 CREATE TABLE IF NOT EXISTS creations (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    community_id INTEGER NOT NULL,
+                    community_id INTEGER,
                     created_by TEXT NOT NULL,
                     title TEXT NOT NULL DEFAULT 'Untitled',
                     kind TEXT NOT NULL DEFAULT 'web',
@@ -334,6 +336,15 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
             cursor.execute("ALTER TABLE creations ADD COLUMN chat_history " + ("MEDIUMTEXT" if USE_MYSQL else "TEXT"))
         except Exception:
             pass
+        if USE_MYSQL:
+            for stmt in (
+                "ALTER TABLE creations MODIFY community_id INT NULL",
+                "ALTER TABLE builder_jobs MODIFY community_id INT NULL",
+            ):
+                try:
+                    cursor.execute(stmt)
+                except Exception:
+                    pass
         # Public web publishing metadata. Existing community publishing remains
         # separate: these fields describe the externally shareable build copy.
         for column, ddl in (
@@ -343,6 +354,11 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
             ("public_published_at", "DATETIME" if USE_MYSQL else "TEXT"),
             ("public_unpublished_at", "DATETIME" if USE_MYSQL else "TEXT"),
             ("public_kind", "VARCHAR(16)" if USE_MYSQL else "TEXT"),
+            ("gallery_status", "VARCHAR(16) NOT NULL DEFAULT 'not_listed'" if USE_MYSQL else "TEXT DEFAULT 'not_listed'"),
+            ("gallery_requested_at", "DATETIME" if USE_MYSQL else "TEXT"),
+            ("gallery_reviewed_at", "DATETIME" if USE_MYSQL else "TEXT"),
+            ("gallery_reviewed_by", "VARCHAR(191)" if USE_MYSQL else "TEXT"),
+            ("gallery_rejection_reason", "VARCHAR(255)" if USE_MYSQL else "TEXT"),
         ):
             try:
                 cursor.execute(f"ALTER TABLE creations ADD COLUMN {column} {ddl}")
@@ -375,8 +391,8 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
                     data_value MEDIUMTEXT,
                     created_at DATETIME NOT NULL,
                     updated_at DATETIME NOT NULL,
-                    UNIQUE KEY uq_creation_data (creation_id, namespace, data_key, username),
-                    INDEX idx_creation_data_board (creation_id, namespace, num_value),
+                    UNIQUE KEY uq_creation_data (creation_id, community_id, namespace, data_key, username),
+                    INDEX idx_creation_data_board (creation_id, community_id, namespace, num_value),
                     INDEX idx_creation_data_community (community_id, namespace)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
                 """
@@ -396,13 +412,23 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
                     data_value TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
-                    UNIQUE (creation_id, namespace, data_key, username)
+                    UNIQUE (creation_id, community_id, namespace, data_key, username)
                 )
                 """
             )
             for stmt in (
-                "CREATE INDEX IF NOT EXISTS idx_creation_data_board ON creation_data (creation_id, namespace, num_value)",
+                "CREATE INDEX IF NOT EXISTS idx_creation_data_board ON creation_data (creation_id, community_id, namespace, num_value)",
                 "CREATE INDEX IF NOT EXISTS idx_creation_data_community ON creation_data (community_id, namespace)",
+            ):
+                try:
+                    cursor.execute(stmt)
+                except Exception:
+                    pass
+        if USE_MYSQL:
+            for stmt in (
+                "ALTER TABLE creation_data DROP INDEX uq_creation_data",
+                "ALTER TABLE creation_data ADD UNIQUE KEY uq_creation_data (creation_id, community_id, namespace, data_key, username)",
+                "CREATE INDEX idx_creation_data_board_scoped ON creation_data (creation_id, community_id, namespace, num_value)",
             ):
                 try:
                     cursor.execute(stmt)
@@ -506,7 +532,7 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
                 CREATE TABLE IF NOT EXISTS builder_jobs (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     username VARCHAR(191) NOT NULL,
-                    community_id INT NOT NULL,
+                    community_id INT NULL,
                     creation_id INT NULL,
                     kind VARCHAR(16) NOT NULL,
                     prompt MEDIUMTEXT NOT NULL,
@@ -529,13 +555,28 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS creation_shares (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    creation_id INT NOT NULL,
+                    community_id INT NOT NULL,
+                    post_id INT NOT NULL,
+                    shared_by VARCHAR(191) NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    UNIQUE KEY uq_creation_share (creation_id, community_id),
+                    INDEX idx_creation_shares_community (community_id, created_at),
+                    INDEX idx_creation_shares_creation (creation_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+                """
+            )
         else:
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS builder_jobs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     username TEXT NOT NULL,
-                    community_id INTEGER NOT NULL,
+                    community_id INTEGER,
                     creation_id INTEGER NULL,
                     kind TEXT NOT NULL,
                     prompt TEXT NOT NULL,
@@ -555,10 +596,25 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
                 )
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS creation_shares (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    creation_id INTEGER NOT NULL,
+                    community_id INTEGER NOT NULL,
+                    post_id INTEGER NOT NULL,
+                    shared_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE (creation_id, community_id)
+                )
+                """
+            )
             for stmt in (
                 "CREATE INDEX IF NOT EXISTS idx_builder_jobs_user_status ON builder_jobs (username, status, created_at)",
                 "CREATE INDEX IF NOT EXISTS idx_builder_jobs_status ON builder_jobs (status, created_at)",
                 "CREATE INDEX IF NOT EXISTS idx_builder_jobs_creation ON builder_jobs (creation_id)",
+                "CREATE INDEX IF NOT EXISTS idx_creation_shares_community ON creation_shares (community_id, created_at)",
+                "CREATE INDEX IF NOT EXISTS idx_creation_shares_creation ON creation_shares (creation_id)",
             ):
                 try:
                     cursor.execute(stmt)
@@ -1402,7 +1458,7 @@ def _generate_with_fallback(prompt: str, *, prior_html: Optional[str] = None,
         raise
 
 
-def create_creation(*, username: str, community_id: int, prompt: str,
+def create_creation(*, username: str, community_id: Optional[int], prompt: str,
                     title: Optional[str] = None, tier: str = "fast",
                     verify: bool = False) -> Dict[str, Any]:
     """Generate a first artifact from ``prompt`` and persist it as a draft."""
@@ -1440,7 +1496,8 @@ def create_creation(*, username: str, community_id: int, prompt: str,
                 conn.commit()
         except Exception:
             logger.warning("builder: failed to store R2 artifact key for creation %s", creation_id, exc_info=True)
-    return {"id": creation_id, "title": resolved_title, "html": html, "status": "draft", "kind": creation_kind, "model": model_used}
+    return {"id": creation_id, "title": resolved_title, "html": html, "status": "draft",
+            "kind": creation_kind, "community_id": community_id, "model": model_used}
 
 
 def get_creation(creation_id: int) -> Optional[Dict[str, Any]]:
@@ -1453,7 +1510,9 @@ def get_creation(creation_id: int) -> Optional[Dict[str, Any]]:
                    prompt_history, parent_creation_id, status, published_post_id,
                    created_at, updated_at, html_r2_key, public_slug,
                    public_status, public_html_r2_key, public_published_at,
-                   public_unpublished_at, public_kind
+                   public_unpublished_at, public_kind, gallery_status,
+                   gallery_requested_at, gallery_reviewed_at, gallery_reviewed_by,
+                   gallery_rejection_reason
             FROM creations WHERE id = {ph}
             """,
             (creation_id,),
@@ -1508,7 +1567,7 @@ _ACTIVE_JOB_STATUSES = ("queued", "running")
 _LEASE_SECONDS = 600
 
 
-def create_build_job(*, username: str, community_id: int, prompt: str, tier: str,
+def create_build_job(*, username: str, community_id: Optional[int], prompt: str, tier: str,
                      kind: str = "create", creation_id: Optional[int] = None) -> Dict[str, Any]:
     """Persist a build request so generation can continue after the client leaves.
 
@@ -1660,7 +1719,7 @@ def _is_transient_error(exc: Exception) -> bool:
     return any(marker in msg for marker in _TRANSIENT_MARKERS)
 
 
-def _notify_build_complete(username: str, *, community_id: int, creation_id: int,
+def _notify_build_complete(username: str, *, community_id: Optional[int], creation_id: int,
                            title: str, failed: bool = False) -> None:
     """Send in-app + push notification when an async build finishes."""
     try:
@@ -1670,10 +1729,8 @@ def _notify_build_complete(username: str, *, community_id: int, creation_id: int
         event = "builder_failed" if failed else "builder_complete"
         locale = notification_copy.recipient_locale(username)
         safe_title = (title or "your build")[:120]
-        link = (
-            f"/community/{community_id}/builder?creation_id={creation_id}"
-            if creation_id else f"/community/{community_id}/builder"
-        )
+        link_base = f"/community/{community_id}/builder" if community_id else "/builder"
+        link = f"{link_base}?creation_id={creation_id}" if creation_id else link_base
         params = {"title": safe_title}
         create_notification(
             user_id=username,
@@ -1719,7 +1776,7 @@ def run_build_job(job_id: int) -> Dict[str, Any]:
 
     job_id_int = int(job["id"])
     username = str(job["username"])
-    community_id = int(job["community_id"])
+    community_id = int(job["community_id"]) if job.get("community_id") is not None else None
     kind = str(job.get("kind") or "create")
     prompt = str(job.get("prompt") or "")
     tier = str(job.get("tier") or _DEFAULT_TIER)
@@ -1890,7 +1947,8 @@ def sweep_build_jobs(*, now: Optional[str] = None) -> Dict[str, int]:
     for row in rows:
         jid = int(_field(row, 0, "id"))
         username = str(_field(row, 1, "username"))
-        community_id = int(_field(row, 2, "community_id") or 0)
+        raw_community_id = _field(row, 2, "community_id")
+        community_id = int(raw_community_id) if raw_community_id is not None else None
         creation_id = _field(row, 3, "creation_id")
         attempts = int(_field(row, 4, "attempts") or 0)
         max_attempts = int(_field(row, 5, "max_attempts") or 3)
@@ -1915,14 +1973,18 @@ def sweep_build_jobs(*, now: Optional[str] = None) -> Dict[str, int]:
     return {"requeued": requeued, "failed": failed}
 
 
-def publish_creation(*, creation_id: int, username: str,
+def publish_creation(*, creation_id: int, username: str, community_id: Optional[int] = None,
                     caption: Optional[str] = None) -> Dict[str, Any]:
     """Create a community post that references the creation (publish = post)."""
     row = get_creation(creation_id)
     if not row or row.get("created_by") != username:
         raise PermissionError("creation not found")
-    if row.get("published_post_id"):
-        return {"post_id": row["published_post_id"], "already_published": True}
+    target_community_id = int(community_id or row.get("community_id") or 0)
+    if target_community_id <= 0:
+        raise ValueError("community_required")
+    existing_share = get_creation_share(creation_id=creation_id, community_id=target_community_id)
+    if existing_share:
+        return {"post_id": existing_share["post_id"], "already_published": True, "community_id": target_community_id}
     content = (caption or row.get("title") or "Check out what I built").strip()
     now = _now()
     ph = get_sql_placeholder()
@@ -1931,15 +1993,53 @@ def publish_creation(*, creation_id: int, username: str,
         c.execute(
             f"INSERT INTO posts (username, content, timestamp, community_id, creation_id) "
             f"VALUES ({ph}, {ph}, {ph}, {ph}, {ph})",
-            (username, content, now, row["community_id"], creation_id),
+            (username, content, now, target_community_id, creation_id),
         )
         post_id = c.lastrowid
         c.execute(
-            f"UPDATE creations SET status = 'published', published_post_id = {ph}, updated_at = {ph} WHERE id = {ph}",
-            (post_id, now, creation_id),
+            f"""INSERT INTO creation_shares
+                (creation_id, community_id, post_id, shared_by, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph})""",
+            (creation_id, target_community_id, post_id, username, now),
+        )
+        update_cols = f"status = 'published', updated_at = {ph}"
+        params: List[Any] = [now]
+        if not row.get("published_post_id"):
+            update_cols += f", published_post_id = {ph}"
+            params.append(post_id)
+        if row.get("community_id") is None:
+            update_cols += f", community_id = {ph}"
+            params.append(target_community_id)
+        params.append(creation_id)
+        c.execute(
+            f"UPDATE creations SET {update_cols} WHERE id = {ph}",
+            tuple(params),
         )
         conn.commit()
-    return {"post_id": post_id, "already_published": False}
+    return {"post_id": post_id, "already_published": False, "community_id": target_community_id}
+
+
+def get_creation_share(*, creation_id: int, community_id: int) -> Optional[Dict[str, Any]]:
+    ensure_tables()
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""SELECT id, creation_id, community_id, post_id, shared_by, created_at
+                FROM creation_shares WHERE creation_id = {ph} AND community_id = {ph}""",
+            (creation_id, community_id),
+        )
+        row = c.fetchone()
+    if not row:
+        return None
+    return {
+        "id": _cell(row, 0),
+        "creation_id": _cell(row, 1),
+        "community_id": _cell(row, 2),
+        "post_id": _cell(row, 3),
+        "shared_by": _cell(row, 4),
+        "created_at": str(_cell(row, 5)) if _cell(row, 5) is not None else None,
+    }
 
 
 def publish_creation_to_web(*, creation_id: int, username: str) -> Dict[str, Any]:
@@ -2021,7 +2121,9 @@ def unpublish_creation_from_web(*, creation_id: int, username: str) -> Dict[str,
         c.execute(
             f"""
             UPDATE creations
-            SET public_status = {ph}, public_unpublished_at = {ph}, updated_at = {ph}
+            SET public_status = {ph}, public_unpublished_at = {ph},
+                gallery_status = CASE WHEN gallery_status = 'approved' THEN 'delisted' ELSE gallery_status END,
+                updated_at = {ph}
             WHERE id = {ph} AND created_by = {ph}
             """,
             ("unpublished", now, now, creation_id, username),
@@ -2045,6 +2147,88 @@ def unpublish_creation_from_web(*, creation_id: int, username: str) -> Dict[str,
     }
 
 
+_GALLERY_STATUSES = {"not_listed", "pending", "approved", "rejected", "delisted"}
+
+
+def update_gallery_status(*, creation_id: int, username: str, action: str,
+                          reviewer: Optional[str] = None,
+                          reason: Optional[str] = None) -> Dict[str, Any]:
+    """Owner request/unlist and app-admin review state for Explore Creations."""
+    row = get_creation(creation_id)
+    if not row:
+        raise PermissionError("creation not found")
+    actor_is_owner = row.get("created_by") == username
+    now = _now()
+    action_key = (action or "").strip().lower()
+    ph = get_sql_placeholder()
+    if action_key == "request":
+        if not actor_is_owner:
+            raise PermissionError("creation not found")
+        if row.get("public_status") != "published":
+            raise ValueError("public_publish_required")
+        status = "pending"
+        sql = f"""UPDATE creations SET gallery_status = {ph}, gallery_requested_at = {ph},
+                  gallery_reviewed_at = NULL, gallery_reviewed_by = NULL,
+                  gallery_rejection_reason = NULL, updated_at = {ph}
+                  WHERE id = {ph} AND created_by = {ph}"""
+        params = (status, now, now, creation_id, username)
+    elif action_key == "unlist":
+        if not actor_is_owner:
+            raise PermissionError("creation not found")
+        status = "not_listed"
+        sql = f"""UPDATE creations SET gallery_status = {ph}, updated_at = {ph}
+                  WHERE id = {ph} AND created_by = {ph}"""
+        params = (status, now, creation_id, username)
+    elif action_key in ("approve", "reject", "delist"):
+        status = "approved" if action_key == "approve" else ("rejected" if action_key == "reject" else "delisted")
+        if status == "approved" and row.get("public_status") != "published":
+            raise ValueError("public_publish_required")
+        sql = f"""UPDATE creations SET gallery_status = {ph}, gallery_reviewed_at = {ph},
+                  gallery_reviewed_by = {ph}, gallery_rejection_reason = {ph}, updated_at = {ph}
+                  WHERE id = {ph}"""
+        params = (status, now, reviewer or username, (reason or "")[:255] if status == "rejected" else None, now, creation_id)
+    else:
+        raise ValueError("invalid_gallery_action")
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(sql, params)
+        conn.commit()
+    updated = get_creation(creation_id) or {}
+    return {
+        "gallery_status": updated.get("gallery_status") or status,
+        "gallery_requested_at": str(updated.get("gallery_requested_at")) if updated.get("gallery_requested_at") else None,
+        "gallery_reviewed_at": str(updated.get("gallery_reviewed_at")) if updated.get("gallery_reviewed_at") else None,
+        "gallery_rejection_reason": updated.get("gallery_rejection_reason"),
+    }
+
+
+def list_explore_creations(*, limit: int = 30) -> List[Dict[str, Any]]:
+    ensure_tables()
+    ph = get_sql_placeholder()
+    limit = max(1, min(int(limit or 30), 60))
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""SELECT id, title, kind, public_slug, public_kind, public_published_at, play_count
+                FROM creations
+                WHERE gallery_status = 'approved' AND public_status = 'published' AND public_slug IS NOT NULL
+                ORDER BY COALESCE(gallery_reviewed_at, public_published_at, updated_at) DESC
+                LIMIT {ph}""",
+            (limit,),
+        )
+        rows = c.fetchall() or []
+    return [{
+        "id": _cell(r, 0),
+        "title": _cell(r, 1) or "Untitled",
+        "kind": _cell(r, 2),
+        "public_url": public_build_url(str(_cell(r, 3))),
+        "public_kind": _cell(r, 4),
+        "public_published_at": str(_cell(r, 5)) if _cell(r, 5) is not None else None,
+        "plays": int(_cell(r, 6) or 0),
+        "label": "Made with Steve",
+    } for r in rows]
+
+
 def public_creation_for_slug(slug: str) -> Optional[Dict[str, Any]]:
     cleaned = re.sub(r"[^a-z0-9-]+", "", str(slug or "").lower())[:96]
     if not cleaned:
@@ -2058,7 +2242,9 @@ def public_creation_for_slug(slug: str) -> Optional[Dict[str, Any]]:
                    prompt_history, parent_creation_id, status, published_post_id,
                    created_at, updated_at, html_r2_key, public_slug,
                    public_status, public_html_r2_key, public_published_at,
-                   public_unpublished_at, public_kind
+                   public_unpublished_at, public_kind, gallery_status,
+                   gallery_requested_at, gallery_reviewed_at, gallery_reviewed_by,
+                   gallery_rejection_reason
             FROM creations
             WHERE public_slug = {ph} AND public_status = 'published'
             """,
@@ -2128,10 +2314,15 @@ def delete_creation(username: str, creation_id: int) -> Tuple[Dict[str, Any], in
             post_ids = {int(_cell(r, 0)) for r in (c.fetchall() or [])}
             if published_post_id is not None:
                 post_ids.add(int(published_post_id))
+            c.execute(f"SELECT post_id FROM creation_shares WHERE creation_id = {ph}", (creation_id,))
+            for r in (c.fetchall() or []):
+                if _cell(r, 0) is not None:
+                    post_ids.add(int(_cell(r, 0)))
             for pid in post_ids:
                 _try_delete_post_dependents(c, ph, pid)
                 c.execute(f"DELETE FROM posts WHERE id = {ph}", (pid,))
 
+            c.execute(f"DELETE FROM creation_shares WHERE creation_id = {ph}", (creation_id,))
             c.execute(f"DELETE FROM creation_data WHERE creation_id = {ph}", (creation_id,))
             try:
                 c.execute(f"DELETE FROM creation_runtime_data WHERE creation_id = {ph}", (creation_id,))
@@ -2270,7 +2461,7 @@ def _upsert_value(*, creation_id: int, community_id: int, namespace: str, key: s
                     (creation_id, community_id, namespace, data_key, username, display_name,
                      num_value, created_at, updated_at)
                     VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-                    ON CONFLICT (creation_id, namespace, data_key, username) DO UPDATE SET {set_value},
+                    ON CONFLICT (creation_id, community_id, namespace, data_key, username) DO UPDATE SET {set_value},
                         display_name = excluded.display_name, updated_at = excluded.updated_at""",
                 vals,
             )
@@ -2295,14 +2486,16 @@ def save_record(*, creation_id: int, community_id: int, username: str, key: str,
         # Best-effort per-user slot cap: only gate when this would be a NEW key.
         c.execute(
             f"""SELECT 1 FROM creation_data
-                WHERE creation_id = {ph} AND namespace = 'save' AND data_key = {ph} AND username = {ph}""",
-            (creation_id, k, username),
+                WHERE creation_id = {ph} AND community_id = {ph}
+                  AND namespace = 'save' AND data_key = {ph} AND username = {ph}""",
+            (creation_id, community_id, k, username),
         )
         if c.fetchone() is None:
             c.execute(
                 f"""SELECT COUNT(*) FROM creation_data
-                    WHERE creation_id = {ph} AND namespace = 'save' AND username = {ph}""",
-                (creation_id, username),
+                    WHERE creation_id = {ph} AND community_id = {ph}
+                      AND namespace = 'save' AND username = {ph}""",
+                (creation_id, community_id, username),
             )
             if int(_cell(c.fetchone(), 0) or 0) >= _SAVE_MAX_KEYS:
                 raise ValueError("too_many_saves")
@@ -2321,7 +2514,7 @@ def save_record(*, creation_id: int, community_id: int, username: str, key: str,
                 f"""INSERT INTO creation_data
                     (creation_id, community_id, namespace, data_key, username, data_value, created_at, updated_at)
                     VALUES ({ph}, {ph}, 'save', {ph}, {ph}, {ph}, {ph}, {ph})
-                    ON CONFLICT (creation_id, namespace, data_key, username) DO UPDATE SET
+                    ON CONFLICT (creation_id, community_id, namespace, data_key, username) DO UPDATE SET
                         data_value = excluded.data_value, updated_at = excluded.updated_at""",
                 save_vals,
             )
@@ -2329,16 +2522,25 @@ def save_record(*, creation_id: int, community_id: int, username: str, key: str,
     return {"success": True}
 
 
-def load_record(creation_id: int, *, username: str, key: str = "save") -> Dict[str, Any]:
+def load_record(creation_id: int, *, community_id: Optional[int] = None, username: str, key: str = "save") -> Dict[str, Any]:
     k = _safe_save_key(key)
     ph = get_sql_placeholder()
     with get_db_connection() as conn:
         c = conn.cursor()
-        c.execute(
-            f"""SELECT data_value FROM creation_data
-                WHERE creation_id = {ph} AND namespace = 'save' AND data_key = {ph} AND username = {ph}""",
-            (creation_id, k, username),
-        )
+        if community_id is None:
+            c.execute(
+                f"""SELECT data_value FROM creation_data
+                    WHERE creation_id = {ph} AND namespace = 'save' AND data_key = {ph} AND username = {ph}
+                    ORDER BY updated_at DESC LIMIT 1""",
+                (creation_id, k, username),
+            )
+        else:
+            c.execute(
+                f"""SELECT data_value FROM creation_data
+                    WHERE creation_id = {ph} AND community_id = {ph}
+                      AND namespace = 'save' AND data_key = {ph} AND username = {ph}""",
+                (creation_id, community_id, k, username),
+            )
         row = c.fetchone()
     raw = _cell(row, 0) if row else None
     value: Any = None
@@ -2391,19 +2593,28 @@ def search_images(query: str, *, limit: int = 8) -> List[Dict[str, Any]]:
     return out
 
 
-def get_leaderboard(creation_id: int, *, key: str = "highscore", limit: int = 10,
+def get_leaderboard(creation_id: int, *, community_id: Optional[int] = None, key: str = "highscore", limit: int = 10,
                     username: Optional[str] = None) -> Dict[str, Any]:
     key = _safe_key(key)
     limit = max(1, min(int(limit or 10), _LEADERBOARD_MAX))
     ph = get_sql_placeholder()
     with get_db_connection() as conn:
         c = conn.cursor()
-        c.execute(
-            f"""SELECT display_name, num_value, username FROM creation_data
-                WHERE creation_id = {ph} AND namespace = 'score' AND data_key = {ph}
-                ORDER BY num_value DESC LIMIT {ph}""",
-            (creation_id, key, limit),
-        )
+        if community_id is None:
+            c.execute(
+                f"""SELECT display_name, num_value, username FROM creation_data
+                    WHERE creation_id = {ph} AND namespace = 'score' AND data_key = {ph}
+                    ORDER BY num_value DESC LIMIT {ph}""",
+                (creation_id, key, limit),
+            )
+        else:
+            c.execute(
+                f"""SELECT display_name, num_value, username FROM creation_data
+                    WHERE creation_id = {ph} AND community_id = {ph}
+                      AND namespace = 'score' AND data_key = {ph}
+                    ORDER BY num_value DESC LIMIT {ph}""",
+                (creation_id, community_id, key, limit),
+            )
         rows = c.fetchall() or []
     entries = [{"name": _cell(r, 0) or "Player", "value": _cell(r, 1), "rank": i + 1}
                for i, r in enumerate(rows)]
@@ -2416,23 +2627,39 @@ def get_leaderboard(creation_id: int, *, key: str = "highscore", limit: int = 10
     return {"entries": entries, "mine": mine}
 
 
-def get_results(creation_id: int, *, username: Optional[str] = None) -> Dict[str, Any]:
+def get_results(creation_id: int, *, community_id: Optional[int] = None, username: Optional[str] = None) -> Dict[str, Any]:
     ph = get_sql_placeholder()
     with get_db_connection() as conn:
         c = conn.cursor()
-        c.execute(
-            f"""SELECT AVG(num_value), COUNT(*) FROM creation_data
-                WHERE creation_id = {ph} AND namespace = 'rating'""",
-            (creation_id,),
-        )
+        if community_id is None:
+            c.execute(
+                f"""SELECT AVG(num_value), COUNT(*) FROM creation_data
+                    WHERE creation_id = {ph} AND namespace = 'rating'""",
+                (creation_id,),
+            )
+        else:
+            c.execute(
+                f"""SELECT AVG(num_value), COUNT(*) FROM creation_data
+                    WHERE creation_id = {ph} AND community_id = {ph} AND namespace = 'rating'""",
+                (creation_id, community_id),
+            )
         agg = c.fetchone()
         mine = None
         if username:
-            c.execute(
-                f"""SELECT num_value FROM creation_data
-                    WHERE creation_id = {ph} AND namespace = 'rating' AND username = {ph}""",
-                (creation_id, username),
-            )
+            if community_id is None:
+                c.execute(
+                    f"""SELECT num_value FROM creation_data
+                        WHERE creation_id = {ph} AND namespace = 'rating' AND username = {ph}
+                        ORDER BY updated_at DESC LIMIT 1""",
+                    (creation_id, username),
+                )
+            else:
+                c.execute(
+                    f"""SELECT num_value FROM creation_data
+                        WHERE creation_id = {ph} AND community_id = {ph}
+                          AND namespace = 'rating' AND username = {ph}""",
+                    (creation_id, community_id, username),
+                )
             row = c.fetchone()
             mine = _cell(row, 0) if row else None
     avg = _cell(agg, 0)
@@ -2449,7 +2676,7 @@ def submit_score(*, creation_id: int, community_id: int, username: str, value: A
     _upsert_value(creation_id=creation_id, community_id=community_id, namespace="score",
                   key=_safe_key(key), username=username,
                   value=v, display_name=_clean_display_name(display_name, username), keep_max=True)
-    board = get_leaderboard(creation_id, key=key, username=username)
+    board = get_leaderboard(creation_id, community_id=community_id, key=key, username=username)
     return {"success": True, "best": (board["mine"] or {}).get("value", v),
             "rank": (board["mine"] or {}).get("rank"), "entries": board["entries"]}
 
@@ -2464,7 +2691,7 @@ def rate_creation(*, creation_id: int, community_id: int, username: str, value: 
     _upsert_value(creation_id=creation_id, community_id=community_id, namespace="rating",
                   key="", username=username, value=float(iv),
                   display_name=_clean_display_name(display_name, username), keep_max=False)
-    res = get_results(creation_id, username=username)
+    res = get_results(creation_id, community_id=community_id, username=username)
     return {"success": True, **res}
 
 
@@ -2494,7 +2721,8 @@ def list_creations(username: str, *, limit: int = 50) -> List[Dict[str, Any]]:
         c.execute(
             f"""SELECT id, title, kind, status, community_id, published_post_id,
                        updated_at, play_count, public_slug, public_status,
-                       public_published_at, public_kind
+                       public_published_at, public_kind, gallery_status,
+                       gallery_requested_at, gallery_reviewed_at, gallery_rejection_reason
                 FROM creations WHERE created_by = {ph}
                 ORDER BY updated_at DESC LIMIT {ph}""",
             (username, limit),
@@ -2510,6 +2738,10 @@ def list_creations(username: str, *, limit: int = 50) -> List[Dict[str, Any]]:
         "public_url": public_build_url(str(_cell(r, 8))) if _cell(r, 8) else None,
         "public_published_at": str(_cell(r, 10)) if _cell(r, 10) is not None else None,
         "public_kind": _cell(r, 11),
+        "gallery_status": _cell(r, 12) or "not_listed",
+        "gallery_requested_at": str(_cell(r, 13)) if _cell(r, 13) is not None else None,
+        "gallery_reviewed_at": str(_cell(r, 14)) if _cell(r, 14) is not None else None,
+        "gallery_rejection_reason": _cell(r, 15),
     } for r in rows]
 
 
@@ -2560,24 +2792,39 @@ def save_chat_history(*, creation_id: int, username: str, messages: List[Dict[st
         return (c.rowcount or 0) > 0
 
 
-def get_summary(creation_id: int) -> Dict[str, Any]:
+def get_summary(creation_id: int, *, community_id: Optional[int] = None) -> Dict[str, Any]:
     """Aggregate stats for the feed card strip: plays, top score, rating."""
     ph = get_sql_placeholder()
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute(f"SELECT play_count FROM creations WHERE id = {ph}", (creation_id,))
         prow = c.fetchone()
-        c.execute(
-            f"""SELECT MAX(num_value) FROM creation_data
-                WHERE creation_id = {ph} AND namespace = 'score' AND data_key = 'highscore'""",
-            (creation_id,),
-        )
+        if community_id is None:
+            c.execute(
+                f"""SELECT MAX(num_value) FROM creation_data
+                    WHERE creation_id = {ph} AND namespace = 'score' AND data_key = 'highscore'""",
+                (creation_id,),
+            )
+        else:
+            c.execute(
+                f"""SELECT MAX(num_value) FROM creation_data
+                    WHERE creation_id = {ph} AND community_id = {ph}
+                      AND namespace = 'score' AND data_key = 'highscore'""",
+                (creation_id, community_id),
+            )
         top = c.fetchone()
-        c.execute(
-            f"""SELECT AVG(num_value), COUNT(*) FROM creation_data
-                WHERE creation_id = {ph} AND namespace = 'rating'""",
-            (creation_id,),
-        )
+        if community_id is None:
+            c.execute(
+                f"""SELECT AVG(num_value), COUNT(*) FROM creation_data
+                    WHERE creation_id = {ph} AND namespace = 'rating'""",
+                (creation_id,),
+            )
+        else:
+            c.execute(
+                f"""SELECT AVG(num_value), COUNT(*) FROM creation_data
+                    WHERE creation_id = {ph} AND community_id = {ph} AND namespace = 'rating'""",
+                (creation_id, community_id),
+            )
         ragg = c.fetchone()
     avg = _cell(ragg, 0)
     return {

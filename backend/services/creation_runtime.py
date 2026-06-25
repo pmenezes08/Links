@@ -92,8 +92,10 @@ def ensure_tables() -> None:
         )
         if USE_MYSQL:
             for stmt in (
-                "CREATE UNIQUE INDEX uq_runtime_item ON creation_runtime_data (creation_id, kind, name, row_id)",
-                "CREATE INDEX idx_runtime_list ON creation_runtime_data (creation_id, kind, name, updated_at)",
+                "DROP INDEX uq_runtime_item ON creation_runtime_data",
+                "DROP INDEX idx_runtime_list ON creation_runtime_data",
+                "CREATE UNIQUE INDEX uq_runtime_item_scoped ON creation_runtime_data (creation_id, community_id, kind, name, row_id)",
+                "CREATE INDEX idx_runtime_list_scoped ON creation_runtime_data (creation_id, community_id, kind, name, updated_at)",
             ):
                 try:
                     c.execute(stmt)
@@ -101,14 +103,14 @@ def ensure_tables() -> None:
                     pass
         else:
             for stmt in (
-                "CREATE UNIQUE INDEX IF NOT EXISTS uq_runtime_item ON creation_runtime_data (creation_id, kind, name, row_id)",
-                "CREATE INDEX IF NOT EXISTS idx_runtime_list ON creation_runtime_data (creation_id, kind, name, updated_at)",
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_runtime_item_scoped ON creation_runtime_data (creation_id, community_id, kind, name, row_id)",
+                "CREATE INDEX IF NOT EXISTS idx_runtime_list_scoped ON creation_runtime_data (creation_id, community_id, kind, name, updated_at)",
             ):
                 c.execute(stmt)
         conn.commit()
 
 
-def get_shared_state(*, creation_id: int, key: Any) -> Dict[str, Any]:
+def get_shared_state(*, creation_id: int, community_id: int = 0, key: Any) -> Dict[str, Any]:
     ensure_tables()
     name = normalize_key(key)
     ph = get_sql_placeholder()
@@ -117,8 +119,9 @@ def get_shared_state(*, creation_id: int, key: Any) -> Dict[str, Any]:
         c = conn.cursor()
         c.execute(
             f"""SELECT value_json, version, updated_at FROM creation_runtime_data
-                WHERE creation_id = {ph} AND kind = 'shared' AND name = {ph} AND row_id = ''""",
-            (creation_id, name),
+                WHERE creation_id = {ph} AND community_id = {ph}
+                  AND kind = 'shared' AND name = {ph} AND row_id = ''""",
+            (creation_id, community_id, name),
         )
         row = c.fetchone()
     if not row:
@@ -139,7 +142,7 @@ def update_shared_state(*, creation_id: int, community_id: int, username: str,
     value_json = _json_dumps(value, _MAX_SHARED_BYTES)
     now = _now()
     ph = get_sql_placeholder()
-    current = get_shared_state(creation_id=creation_id, key=name)
+    current = get_shared_state(creation_id=creation_id, community_id=community_id, key=name)
     current_version = int(current.get("version") or 0)
     if expected_version is not None and int(expected_version) != current_version:
         raise ValueError("version_conflict")
@@ -156,14 +159,15 @@ def update_shared_state(*, creation_id: int, community_id: int, username: str,
         else:
             c.execute(
                 f"""UPDATE creation_runtime_data SET value_json = {ph}, version = {ph}, updated_at = {ph}
-                    WHERE creation_id = {ph} AND kind = 'shared' AND name = {ph} AND row_id = ''""",
-                (value_json, next_version, now, creation_id, name),
+                    WHERE creation_id = {ph} AND kind = 'shared' AND name = {ph}
+                      AND row_id = '' AND community_id = {ph}""",
+                (value_json, next_version, now, creation_id, name, community_id),
             )
         conn.commit()
-    return get_shared_state(creation_id=creation_id, key=name)
+    return get_shared_state(creation_id=creation_id, community_id=community_id, key=name)
 
 
-def list_collection(*, creation_id: int, name: Any, limit: int = 100) -> Dict[str, Any]:
+def list_collection(*, creation_id: int, community_id: int = 0, name: Any, limit: int = 100) -> Dict[str, Any]:
     ensure_tables()
     collection = normalize_name(name)
     limit = max(1, min(int(limit or 100), _MAX_COLLECTION_ROWS))
@@ -174,9 +178,10 @@ def list_collection(*, creation_id: int, name: Any, limit: int = 100) -> Dict[st
         c.execute(
             f"""SELECT row_id, owner_username, value_json, version, created_at, updated_at
                 FROM creation_runtime_data
-                WHERE creation_id = {ph} AND kind = 'collection' AND name = {ph}
+                WHERE creation_id = {ph} AND community_id = {ph}
+                  AND kind = 'collection' AND name = {ph}
                 ORDER BY updated_at DESC LIMIT {limit}""",
-            (creation_id, collection),
+            (creation_id, community_id, collection),
         )
         rows = c.fetchall() or []
     items = []
@@ -193,13 +198,14 @@ def list_collection(*, creation_id: int, name: Any, limit: int = 100) -> Dict[st
     return {"name": collection, "items": items}
 
 
-def _count_items(creation_id: int, kind: str, name: str) -> int:
+def _count_items(creation_id: int, community_id: int, kind: str, name: str) -> int:
     ph = get_sql_placeholder()
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute(
-            f"SELECT COUNT(*) FROM creation_runtime_data WHERE creation_id = {ph} AND kind = {ph} AND name = {ph}",
-            (creation_id, kind, name),
+            f"""SELECT COUNT(*) FROM creation_runtime_data
+                WHERE creation_id = {ph} AND community_id = {ph} AND kind = {ph} AND name = {ph}""",
+            (creation_id, community_id, kind, name),
         )
         row = c.fetchone()
     if hasattr(row, "keys"):
@@ -211,7 +217,7 @@ def create_collection_item(*, creation_id: int, community_id: int, username: str
                            name: Any, value: Any) -> Dict[str, Any]:
     ensure_tables()
     collection = normalize_name(name)
-    if _count_items(creation_id, "collection", collection) >= _MAX_COLLECTION_ROWS:
+    if _count_items(creation_id, community_id, "collection", collection) >= _MAX_COLLECTION_ROWS:
         raise ValueError("too_many_rows")
     value_json = _json_dumps(value, _MAX_ROW_BYTES)
     row_id = uuid.uuid4().hex[:16]
@@ -229,7 +235,7 @@ def create_collection_item(*, creation_id: int, community_id: int, username: str
     return {"id": row_id, "value": value, "version": 1, "created_by": username, "created_at": now, "updated_at": now}
 
 
-def update_collection_item(*, creation_id: int, name: Any, row_id: str, value: Any,
+def update_collection_item(*, creation_id: int, community_id: int = 0, name: Any, row_id: str, value: Any,
                            expected_version: Optional[int] = None) -> Dict[str, Any]:
     ensure_tables()
     collection = normalize_name(name)
@@ -237,8 +243,8 @@ def update_collection_item(*, creation_id: int, name: Any, row_id: str, value: A
     value_json = _json_dumps(value, _MAX_ROW_BYTES)
     ph = get_sql_placeholder()
     now = _now()
-    where = f"creation_id = {ph} AND kind = 'collection' AND name = {ph} AND row_id = {ph}"
-    args: List[Any] = [value_json, now, creation_id, collection, rid]
+    where = f"creation_id = {ph} AND community_id = {ph} AND kind = 'collection' AND name = {ph} AND row_id = {ph}"
+    args: List[Any] = [value_json, now, creation_id, community_id, collection, rid]
     if expected_version is not None:
         where += f" AND version = {ph}"
         args.append(int(expected_version))
@@ -253,14 +259,14 @@ def update_collection_item(*, creation_id: int, name: Any, row_id: str, value: A
             conn.rollback()
             raise ValueError("version_conflict" if expected_version is not None else "row_not_found")
         conn.commit()
-    item = next((x for x in list_collection(creation_id=creation_id, name=collection, limit=_MAX_COLLECTION_ROWS)["items"]
+    item = next((x for x in list_collection(creation_id=creation_id, community_id=community_id, name=collection, limit=_MAX_COLLECTION_ROWS)["items"]
                  if x["id"] == rid), None)
     if not item:
         raise ValueError("row_not_found")
     return item
 
 
-def delete_collection_item(*, creation_id: int, name: Any, row_id: str) -> Dict[str, Any]:
+def delete_collection_item(*, creation_id: int, community_id: int = 0, name: Any, row_id: str) -> Dict[str, Any]:
     ensure_tables()
     collection = normalize_name(name)
     rid = normalize_key(row_id)
@@ -269,8 +275,9 @@ def delete_collection_item(*, creation_id: int, name: Any, row_id: str) -> Dict[
         c = conn.cursor()
         c.execute(
             f"""DELETE FROM creation_runtime_data
-                WHERE creation_id = {ph} AND kind = 'collection' AND name = {ph} AND row_id = {ph}""",
-            (creation_id, collection, rid),
+                WHERE creation_id = {ph} AND community_id = {ph}
+                  AND kind = 'collection' AND name = {ph} AND row_id = {ph}""",
+            (creation_id, community_id, collection, rid),
         )
         deleted = c.rowcount
         conn.commit()
@@ -281,7 +288,7 @@ def submit_form(*, creation_id: int, community_id: int, username: str,
                 name: Any, value: Any) -> Dict[str, Any]:
     ensure_tables()
     form = normalize_name(name)
-    if _count_items(creation_id, "form", form) >= _MAX_FORM_SUBMISSIONS:
+    if _count_items(creation_id, community_id, "form", form) >= _MAX_FORM_SUBMISSIONS:
         raise ValueError("too_many_submissions")
     value_json = _json_dumps(value, _MAX_FORM_BYTES)
     row_id = uuid.uuid4().hex[:16]

@@ -15,6 +15,7 @@ type Creation = {
   public_status?: string | null
   public_url?: string | null
   public_kind?: string | null
+  gallery_status?: string | null
 }
 
 function formatUpdated(value: string | null): string {
@@ -45,6 +46,7 @@ export default function MyBuilds() {
   const [creations, setCreations] = useState<Creation[]>([])
   const [deletingIds, setDeletingIds] = useState<Set<number>>(() => new Set())
   const [publishingIds, setPublishingIds] = useState<Set<number>>(() => new Set())
+  const [galleryIds, setGalleryIds] = useState<Set<number>>(() => new Set())
   const [copiedId, setCopiedId] = useState<number | null>(null)
 
   useEffect(() => {
@@ -184,6 +186,39 @@ export default function MyBuilds() {
     }
   }, [publishingIds])
 
+  const updateGallery = useCallback(async (creation: Creation, action: 'request' | 'unlist') => {
+    if (galleryIds.has(creation.id)) return
+    if (action === 'request') {
+      const ok = window.confirm('Allow this creation to appear in C-Point’s public gallery. Your name, profile, and community will not be shown.')
+      if (!ok) return
+    }
+    setGalleryIds(prev => new Set(prev).add(creation.id))
+    try {
+      const r = await fetch(`/api/builder/${creation.id}/gallery`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok || !j?.success) {
+        window.alert(j?.error === 'public_publish_required'
+          ? 'Publish this build to the web before listing it in Explore Creations.'
+          : 'Could not update Explore listing. Please try again.')
+        return
+      }
+      setCreations(prev => prev.map(item => item.id === creation.id ? { ...item, gallery_status: j.gallery_status } : item))
+    } catch {
+      window.alert('Could not update Explore listing. Please check your connection and try again.')
+    } finally {
+      setGalleryIds(prev => {
+        const next = new Set(prev)
+        next.delete(creation.id)
+        return next
+      })
+    }
+  }, [galleryIds])
+
   return (
     <div className="app-content min-h-screen chat-thread-bg text-c-text-primary">
       <div className="mx-auto max-w-3xl px-4 py-6 pb-[var(--app-dashboard-content-pad-bottom)]">
@@ -263,6 +298,11 @@ export default function MyBuilds() {
                           Public web
                         </span>
                       )}
+                      {c.gallery_status && c.gallery_status !== 'not_listed' && (
+                        <span className="rounded-full bg-c-hover-bg px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-c-text-secondary">
+                          Explore: {c.gallery_status.replace('_', ' ')}
+                        </span>
+                      )}
                       {formatUpdated(c.updated_at) && (
                         <span className="flex items-center gap-1">
                           <i className="fa-regular fa-clock text-[9px]" aria-hidden="true" />
@@ -328,6 +368,25 @@ export default function MyBuilds() {
                         >
                           {publishingIds.has(c.id) ? 'Working...' : 'Unpublish web'}
                         </button>
+                        {c.gallery_status === 'pending' || c.gallery_status === 'approved' ? (
+                          <button
+                            type="button"
+                            onClick={() => { void updateGallery(c, 'unlist') }}
+                            disabled={galleryIds.has(c.id)}
+                            className="rounded-xl border border-c-border bg-transparent px-3 py-1.5 text-xs font-medium text-c-text-secondary transition hover:text-c-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {galleryIds.has(c.id) ? 'Working...' : 'Remove from Explore'}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => { void updateGallery(c, 'request') }}
+                            disabled={galleryIds.has(c.id)}
+                            className="rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1.5 text-xs font-semibold text-cpoint-turquoise transition hover:bg-cpoint-turquoise/15 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {galleryIds.has(c.id) ? 'Working...' : 'List in Explore Creations'}
+                          </button>
+                        )}
                       </>
                     ) : (
                       <button

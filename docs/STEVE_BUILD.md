@@ -1,8 +1,8 @@
 # Steve Build
 
-Steve Build is C-Point's community-native creation surface: a member chats with Steve, Steve proposes a small playable or useful front-end creation, and the result can be tested, iterated, and shared inside a community.
+Steve Build is C-Point's creation surface: a member chats with Steve, Steve proposes a small playable or useful front-end creation, and the result can be tested, iterated, shared to communities, or published as an eligible public website/app.
 
-This is a major product direction for C-Point. The goal is not to copy a generic app builder. The goal is to make creation social: members build things for their own communities, with community data, feedback, play, sharing, and identity around the work.
+This is a major product direction for C-Point. The goal is not to copy a generic app builder. The goal is to make creation social: members can start with a personal creation, then share it into one or more communities with community-specific data, feedback, play, and privacy.
 
 ## Product Intent
 
@@ -32,10 +32,13 @@ Backend routes:
 - `POST /api/internal/builder/jobs/<id>/run` - protected Cloud Tasks worker entry point (shared-secret auth via `cron_auth.cron_authed`, accepting `X-Cron-Secret` or `X-Builder-Job-Secret`).
 - `POST /api/cron/builder/sweep` - Cloud Scheduler reaper for orphaned jobs.
 - `GET /api/builder/<id>` - load a creation for owner/playback.
-- `POST /api/builder/<id>/publish` - publish as a community post.
+- `POST /api/builder/<id>/publish` / `POST /api/builder/<id>/share` - share an owned creation into a community post; the target community can be supplied for personal creations and membership is enforced by the route.
 - `GET /api/builder/<id>/publish-web` - owner-only public web publication status.
 - `POST /api/builder/<id>/publish-web` - owner-only, publish an eligible website/app to `builds.c-point.co`.
 - `DELETE /api/builder/<id>/publish-web` - owner-only, unpublish a public web link.
+- `GET /api/builder/explore` - anonymous approved public gallery listings.
+- `POST /api/builder/<id>/gallery` - owner request/unlist for Explore Creations.
+- `POST /api/admin/builder/<id>/gallery` - app-admin approve/reject/delist review endpoint.
 - `GET /api/builder/public/<slug>/data/feed` - unauthenticated public-data connector for published public builds only.
 - `/api/builder/<id>/data/*` - host-brokered creation data APIs.
 
@@ -45,10 +48,11 @@ Core service:
 
 Storage:
 
-- `creations` stores owner, community, status, prompt history, chat history, and artifact metadata. New/updated artifact HTML is uploaded to private Cloudflare R2 via `html_r2_key`; `html_content` remains a MySQL fallback for legacy rows or R2-disabled environments.
+- `creations` stores owner, optional home community, status, prompt history, chat history, artifact metadata, public-web metadata, and Explore gallery lifecycle fields. New/updated artifact HTML is uploaded to private Cloudflare R2 via `html_r2_key`; `html_content` remains a MySQL fallback for legacy rows or R2-disabled environments.
+- `creation_shares` maps one creation to one or more community posts (`creation_id`, `community_id`, `post_id`, `shared_by`). New Steve creations can be personal (`community_id=NULL`) and later shared to any community the owner belongs to.
 - Public web publication metadata lives on `creations`: `public_slug`, `public_status`, `public_html_r2_key`, `public_published_at`, `public_unpublished_at`, and `public_kind`. These fields describe the external website/app copy only; community feed publishing stays separate.
 - `builder_jobs` stores async build/iterate jobs so builds continue if the user leaves, locks the phone, or switches apps.
-- `creation_data` stores host-brokered scores, ratings, saves, and related creation data.
+- `creation_data` stores host-brokered scores, ratings, saves, and related creation data scoped by active community context.
 
 ## Async Build Model
 
@@ -137,11 +141,11 @@ Steve Build exposes safe, brokered data primitives instead of arbitrary database
 - `collection(name)` is for small structured row sets. Use it for apps such as task boards, RSVPs, directories, nominations, and feedback walls. Rows are compact JSON values with `id`, `version`, timestamps, and creator metadata.
 - `forms.submit(name, data)` is append-only. Use it for websites and apps that need signups, feedback, surveys, votes, or nominations. Do not ask users for sensitive private data in generated forms.
 
-All writes are session-authenticated through the host, scoped to the creation's community, rate-limited, and size-limited. Generated creations must render loading/empty/error states and must never invent their own database, raw API route, or localStorage workaround.
+All writes are session-authenticated through the host, scoped to the active context (`personal` or `community:<id>`), rate-limited, and size-limited. If the same creation is shared to multiple communities, scores, ratings, saves, shared state, collections, forms, leaderboards, and multiplayer matches stay isolated per community. Generated creations must render loading/empty/error states and must never invent their own database, raw API route, or localStorage workaround.
 
 ### Two-player multiplayer
 
-Two-player games use a host-brokered match system. The sandbox never sees raw usernames and never writes directly to the database; every call is routed through the signed-in user's session.
+Two-player games use a host-brokered match system. The sandbox never sees raw usernames and never writes directly to the database; every call is routed through the signed-in user's session and active community share context.
 
 Preferred path:
 
@@ -153,7 +157,8 @@ Preferred path:
 
 Raw API:
 
-- `CPoint.match.create(handle)` creates a pending invite.
+- `CPoint.match.opponents()` returns only eligible members in the active community share context, as opaque handles.
+- `CPoint.match.create(handle)` creates a pending invite by resolving that opaque handle only within the active community.
 - `CPoint.match.accept(id)` and `CPoint.match.decline(id)` are for the invited player.
 - `CPoint.match.cancel(id)` is for the challenger to cancel a pending invite before it is accepted.
 - `CPoint.match.resign(id)` forfeits an active or pending match as the current player.
@@ -207,8 +212,17 @@ Public web publishing is V1-scoped to websites and lightweight apps. Games remai
 - R2 keys: artifact copies use `public/builds/<slug>/<version>.html`; manifests use `public/builds/<slug>/manifest.json`.
 - Worker: `services/public-builds-worker/` serves the manifest-resolved artifact from an R2 binding, applies strict security headers, and returns a branded 404 when unpublished or missing.
 - Public bridge: `window.CPoint.isPublicBuild = true`; public builds can use vetted `CPoint.data` connectors, but private session features are disabled (`save/load`, scores, ratings, shared collections/forms, and multiplayer).
-- Branding: the platform injects a fast C-Point loading splash and a persistent "Built with C-Point" badge linking to `https://c-point.co`.
+- Branding: the platform injects a fast C-Point loading splash and a persistent "Built with C-Point" badge linking to `https://www.c-point.co`.
 - Unpublish/delete: `DELETE /api/builder/<id>/publish-web` removes the manifest and artifact copy; deleting a build also deletes any public manifest/artifact.
+
+### Explore Creations
+
+Explore Creations is an anonymous, opt-in gallery for public website/app creations:
+
+- Public URL and gallery listing are separate. `public_status='published'` means the owner has a shareable URL; `gallery_status='approved'` means C-Point may show it in Explore.
+- Owners request or remove listing with `POST /api/builder/<id>/gallery`. App admins approve/reject/delist with `POST /api/admin/builder/<id>/gallery`.
+- `GET /api/builder/explore` returns only privacy-safe fields: title, kind, public URL, play count, and generic "Made with Steve" label. It never returns creator username, avatar, profile path, community id/name, or post id.
+- Unpublishing a public web build suppresses it from Explore even if it was previously approved.
 
 ### Persistence contract (save slots)
 

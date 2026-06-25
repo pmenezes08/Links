@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 function persisted<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
   try {
@@ -13,12 +13,17 @@ export type Creation = {
   title: string
   html: string
   status: string
+  community_id?: number | null
   kind?: string | null
   public_slug?: string | null
   public_status?: string | null
   public_url?: string | null
   public_published_at?: string | null
   public_kind?: string | null
+  gallery_status?: string | null
+  gallery_requested_at?: string | null
+  gallery_reviewed_at?: string | null
+  gallery_rejection_reason?: string | null
 }
 export type BuilderTier = 'fast' | 'balanced' | 'best'
 export type BuilderMode = 'simple' | 'technical'
@@ -86,6 +91,7 @@ export function useBuilder(communityId: string) {
   const abortRef = useRef<AbortController | null>(null)
   const lastBriefRef = useRef<string>('')
   const activeJobKey = `cp_builder_active_job:${communityId}`
+  const communityPayload = useMemo(() => (communityId ? { community_id: Number(communityId) } : {}), [communityId])
   const busy = loading || building
 
   // Talk with Steve (reason / ideate / discuss / propose). The default action.
@@ -100,7 +106,7 @@ export function useBuilder(communityId: string) {
       const history = messages.map((m) => ({ role: m.role, text: m.text }))
       const res = await fetch('/api/builder/chat', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history, mode, agent_mode: agentMode, tier, creation_id: creation?.id, community_id: Number(communityId) }),
+        body: JSON.stringify({ message: text, history, mode, agent_mode: agentMode, tier, creation_id: creation?.id, ...communityPayload }),
         signal: ctrl.signal,
       })
       const data = (await res.json().catch(() => null)) as ChatResult | null
@@ -115,7 +121,7 @@ export function useBuilder(communityId: string) {
     } finally {
       setLoading(false); abortRef.current = null
     }
-  }, [loading, building, messages, mode, agentMode, tier, creation, communityId])
+  }, [loading, building, messages, mode, agentMode, tier, creation, communityPayload])
 
   const clearActiveJob = useCallback(() => {
     setActiveJob(null)
@@ -158,7 +164,6 @@ export function useBuilder(communityId: string) {
   }, [activeJob, pollJob])
 
   useEffect(() => {
-    if (!communityId) return
     try {
       const raw = localStorage.getItem(activeJobKey)
       const jobId = raw ? Number(raw) : 0
@@ -170,7 +175,7 @@ export function useBuilder(communityId: string) {
         }])
       }
     } catch { /* ignore */ }
-  }, [activeJobKey, communityId])
+  }, [activeJobKey])
 
   // Persist the conversation per creation (debounced) so the user can return to
   // it. Runs whenever the thread changes and a creation exists; lean payload
@@ -198,7 +203,7 @@ export function useBuilder(communityId: string) {
     const isIteration = !!creation
     try {
       const url = creation ? `/api/builder/${creation.id}/iterate` : '/api/builder/create'
-      const body = creation ? { message: text, tier } : { community_id: Number(communityId), prompt: text, tier }
+      const body = creation ? { message: text, tier } : { ...communityPayload, prompt: text, tier }
       const res = await fetch(url, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body), signal: ctrl.signal,
@@ -233,7 +238,7 @@ export function useBuilder(communityId: string) {
     } finally {
       setBuilding(false); abortRef.current = null
     }
-  }, [loading, building, creation, tier, communityId, activeJobKey])
+  }, [loading, building, creation, tier, communityPayload, activeJobKey])
 
   // User confirmed Steve's proposal — build it.
   const confirmBuild = useCallback(() => {
@@ -259,12 +264,15 @@ export function useBuilder(communityId: string) {
     setLoading(false); setBuilding(false)
   }, [activeJob])
 
-  const publish = useCallback(async (caption?: string): Promise<number | null> => {
+  const publish = useCallback(async (caption?: string, targetCommunityId?: number): Promise<number | null> => {
     if (!creation) return null
     try {
       const res = await fetch(`/api/builder/${creation.id}/publish`, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ caption: caption || creation.title }),
+        body: JSON.stringify({
+          caption: caption || creation.title,
+          ...(targetCommunityId ? { community_id: targetCommunityId } : communityPayload),
+        }),
       })
       const data = (await res.json().catch(() => null)) as ApiResult | null
       if (!res.ok || !data?.success || typeof data.post_id !== 'number') {
@@ -276,7 +284,7 @@ export function useBuilder(communityId: string) {
       setError('Network error. Please try again.')
       return null
     }
-  }, [creation])
+  }, [creation, communityPayload])
 
   const publishWeb = useCallback(async (): Promise<string | null> => {
     if (!creation) return null
@@ -338,7 +346,8 @@ export function useBuilder(communityId: string) {
   const loadCreation = useCallback(async (id: number): Promise<boolean> => {
     setError(null); setLimit(null); setProposal(null)
     try {
-      const res = await fetch(`/api/builder/${id}`, { credentials: 'include' })
+      const q = communityId ? `?community_id=${encodeURIComponent(communityId)}` : ''
+      const res = await fetch(`/api/builder/${id}${q}`, { credentials: 'include' })
       const data = (await res.json().catch(() => null)) as (ApiResult & { chat_history?: { role: string; text: string; creation_id?: number }[] | null }) | null
       if (res.ok && data?.success && data.creation) {
         const c = data.creation
@@ -361,7 +370,7 @@ export function useBuilder(communityId: string) {
     } catch { /* fall through */ }
     setError('Could not open that build.')
     return false
-  }, [])
+  }, [communityId])
 
   const watchJob = useCallback((jobId: number) => {
     if (!jobId) return
