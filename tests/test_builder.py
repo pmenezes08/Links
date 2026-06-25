@@ -1414,6 +1414,73 @@ def test_feed_route_personal_creation_supports_refresh(builder_client, monkeypat
     assert seen == {"connector": "sports", "params": {"day": "2026-06-21"}, "refresh": True}
 
 
+def test_capsule_route_owner_executes_stored_recipe_with_refresh(builder_client, monkeypatch):
+    html = """<!doctype html><html><body>
+    <script type="application/json" id="cpoint-capsule-recipes">
+      [{"name":"worldcup-fixtures","engine":"feed","connector":"sports","params":{"day":"2026-06-21","sport":"Soccer"},"public":true}]
+    </script>
+    </body></html>"""
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: html)
+    _make_user("maker")
+    created = builder.create_creation(username="maker", community_id=None, prompt="a personal world cup app")
+    crid = int(created["id"])
+    monkeypatch.setattr(builder_bp_mod, "_data_read_ok", lambda *_a, **_k: True)
+    seen = {}
+
+    def fake_fetch(connector, params, *, refresh=False):
+        seen["connector"] = connector
+        seen["params"] = params
+        seen["refresh"] = refresh
+        return {"success": True, "connector": connector, "data": {"events": []}, "attribution": "Test sports"}
+
+    monkeypatch.setattr(builder_bp_mod.builder_capsules.builder_feeds, "fetch_feed", fake_fetch)
+    _login(builder_client, "maker")
+
+    resp = builder_client.get(f"/api/builder/{crid}/capsules/worldcup-fixtures?refresh=1")
+    body = resp.get_json()
+
+    assert resp.status_code == 200
+    assert body["success"] is True
+    assert body["capsule"] == "worldcup-fixtures"
+    assert body["refreshApplied"] is True
+    assert body["source"] == "sports"
+    assert "lastUpdated" in body
+    assert seen == {"connector": "sports", "params": {"day": "2026-06-21", "sport": "Soccer"}, "refresh": True}
+
+
+def test_public_capsule_route_requires_public_recipe_and_strips_refresh(builder_client, monkeypatch):
+    html = """<!doctype html><html><body>
+    <script type="application/json" id="cpoint-capsule-recipes">
+      [
+        {"name":"public-scores","engine":"feed","connector":"sports","params":{"day":"2026-06-21"},"public":true},
+        {"name":"private-scores","engine":"feed","connector":"sports","params":{"day":"2026-06-22"},"public":false}
+      ]
+    </script>
+    </body></html>"""
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: html)
+    monkeypatch.setattr(r2_storage, "upload_public_bytes_to_r2", lambda *_a, **_k: True)
+    monkeypatch.setattr(builder_bp_mod, "_public_data_read_ok", lambda *_a, **_k: True)
+    _make_user("maker")
+    cid = _make_community()
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a public world cup app")
+    published = builder.publish_creation_to_web(creation_id=created["id"], username="maker")
+    seen = {}
+
+    def fake_fetch(connector, params, *, refresh=False):
+        seen["refresh"] = refresh
+        return {"success": True, "connector": connector, "data": params, "attribution": "Test sports"}
+
+    monkeypatch.setattr(builder_bp_mod.builder_capsules.builder_feeds, "fetch_feed", fake_fetch)
+
+    public_resp = builder_client.get(f"/api/builder/public/{published['public_slug']}/capsules/public-scores?refresh=1")
+    private_resp = builder_client.get(f"/api/builder/public/{published['public_slug']}/capsules/private-scores")
+
+    assert public_resp.status_code == 200
+    assert public_resp.get_json()["refreshApplied"] is False
+    assert seen["refresh"] is False
+    assert private_resp.status_code == 404
+
+
 def test_feed_route_read_rate_limited(builder_client, monkeypatch):
     _make_user("maker")
     cid = _make_community()

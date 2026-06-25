@@ -24,7 +24,7 @@ function htmlHeaders(cacheControl = 'public, max-age=300') {
       "style-src 'self' 'unsafe-inline' https:",
       "img-src 'self' https: data: blob:",
       "font-src 'self' https: data:",
-      "connect-src 'self' https:",
+      "connect-src 'self' https://app.c-point.co https://cpoint-app-739552904126.europe-west1.run.app https://cpoint-app-staging-739552904126.europe-west1.run.app",
       "frame-ancestors 'none'",
       "base-uri 'none'",
       "form-action 'none'",
@@ -132,7 +132,7 @@ async function proxyPublicData(request, env, slug) {
   }
   const url = new URL(request.url)
   const target = new URL(`/api/builder/public/${encodeURIComponent(slug)}/data/feed`, env.PUBLIC_API_BASE)
-  for (const key of ['connector', 'params', 'refresh']) {
+  for (const key of ['connector', 'params']) {
     const value = url.searchParams.get(key)
     if (value != null) target.searchParams.set(key, value)
   }
@@ -171,6 +171,30 @@ async function proxyPublicImages(request, env, slug) {
   return new Response(text, jsonHeaders(upstream.status))
 }
 
+async function proxyPublicCapsule(request, env, slug, name) {
+  if (request.method === 'OPTIONS') {
+    return new Response(JSON.stringify({ success: true }), jsonHeaders(200))
+  }
+  if (!slug || !name) {
+    return new Response(JSON.stringify({ success: false, error: 'not_found', data: null }), jsonHeaders(404))
+  }
+  const manifest = await readManifest(env, slug)
+  if (!manifest) {
+    return new Response(JSON.stringify({ success: false, error: 'not_found', data: null }), jsonHeaders(404))
+  }
+  const target = new URL(
+    `/api/builder/public/${encodeURIComponent(slug)}/capsules/${encodeURIComponent(name)}`,
+    env.PUBLIC_API_BASE,
+  )
+  const upstream = await fetch(target.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    redirect: 'manual',
+  })
+  const text = await upstream.text()
+  return new Response(text, jsonHeaders(upstream.status))
+}
+
 export async function handleRequest(request, env) {
   const url = new URL(request.url)
   if (url.pathname === '/healthz') {
@@ -183,6 +207,11 @@ export async function handleRequest(request, env) {
 
   if (url.pathname === '/api/data/images') {
     return proxyPublicImages(request, env, url.searchParams.get('slug'))
+  }
+
+  const capsuleMatch = url.pathname.match(/^\/api\/capsules\/([a-zA-Z0-9_-]+)$/)
+  if (capsuleMatch) {
+    return proxyPublicCapsule(request, env, url.searchParams.get('slug'), capsuleMatch[1])
   }
 
   if (request.method !== 'GET' && request.method !== 'HEAD') {

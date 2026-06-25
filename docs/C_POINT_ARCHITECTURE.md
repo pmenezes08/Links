@@ -119,6 +119,7 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 | `platform_activity_digest.py` | Digest builder for `platform_activity` blueprint. |
 | `admin_metrics.py` | Admin dashboard metrics computation. |
 | `builder.py` | Steve Build creation service: artifact generation, async build jobs, private R2 artifacts, public website/app publishing metadata/manifests, community-scoped creation data, completion notifications, runtime/host-control policy. See [`STEVE_BUILD.md`](STEVE_BUILD.md). |
+| `builder_capsules.py` | Steve Build capsule recipe runtime: extracts Steve-authored JSON sidecars, validates the strict `capsule_recipe.v1` schema, rejects raw URLs/unknown engines/oversized limits, and executes named recipes through approved `feed` and `images` engines. |
 | `builder_feeds.py` | Steve Build public-data connector registry (`CPoint.data`): vetted keyless/free public sources, global caching, budgets, stale-while-revalidate, and circuit-breaker fallbacks for sandboxed creations. |
 | `creation_runtime.py` | Steve Build brokered data runtime: safe shared JSON state, small structured collections, and append-only form submissions for generated websites/apps/games. Enforces normalized names, size limits, row caps, and optimistic versions behind host-authenticated builder routes. |
 | `creation_match.py` | Steve Build two-player turn-based match service: seats, pending/active lifecycle, turn enforcement, optimistic versioning, move log, invite/cancel/decline/resign, and notification fan-out. |

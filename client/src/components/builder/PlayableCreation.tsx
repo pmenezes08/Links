@@ -80,6 +80,7 @@ export default function PlayableCreation({ html, title, onClose, creationId, com
   // is the real guard).
   useEffect(() => {
     if (creationId == null) return
+    const creationBase = `/api/builder/${creationId}`
     const base = `/api/builder/${creationId}/data`
     const reply = (src: MessageEventSource | null, rid: string, ok: boolean, result?: unknown, error?: string) => {
       try { (src as Window | null)?.postMessage({ __cpdata_res: true, rid, ok, result, error }, '*') } catch { /* noop */ }
@@ -115,6 +116,12 @@ export default function PlayableCreation({ html, title, onClose, creationId, com
           const q = new URLSearchParams({ connector: String(p.connector || ''), params: JSON.stringify(p.params || {}) })
           if (p.refresh) q.set('refresh', '1')
           res = await fetch(withContext(`${base}/feed?${q.toString()}`), { credentials: 'include' })
+        } else if (d.op === 'capsule.get') {
+          const capsuleName = encodeURIComponent(String(p.name || ''))
+          const q = new URLSearchParams()
+          if (p.refresh) q.set('refresh', '1')
+          const suffix = q.toString() ? `?${q.toString()}` : ''
+          res = await fetch(withContext(`${creationBase}/capsules/${capsuleName}${suffix}`), { credentials: 'include' })
         } else if (d.op === 'shared.get') {
           const q = new URLSearchParams({ key: String(p.key || 'main') })
           res = await fetch(withContext(`${base}/shared?${q.toString()}`), { credentials: 'include' })

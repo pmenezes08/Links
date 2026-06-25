@@ -15,6 +15,7 @@ from flask import Blueprint, jsonify, request, session
 
 from backend.services import ai_usage
 from backend.services import builder as builder_svc
+from backend.services import builder_capsules
 from backend.services import builder_feeds
 from backend.services import creation_runtime as runtime_svc
 from backend.services import creation_match as match_svc
@@ -76,6 +77,10 @@ def _json_creation(row, *, include_private: bool = True):
         payload["created_by"] = row.get("created_by")
         payload["community_id"] = row.get("community_id")
         payload["published_post_id"] = row.get("published_post_id")
+        payload["capsule_recipes"] = row.get("capsule_recipes") or builder_capsules.loads_recipes(row.get("capsule_recipes_json"))
+    elif row.get("capsule_recipes") or row.get("capsule_recipes_json"):
+        recipes = row.get("capsule_recipes") or builder_capsules.loads_recipes(row.get("capsule_recipes_json"))
+        payload["capsule_recipes"] = [r for r in recipes if r.get("public")]
     return payload
 
 
@@ -564,6 +569,32 @@ def _data_read_ok(username: str, creation_id: int, connector: str = "") -> bool:
     return True
 
 
+def _client_ip() -> str:
+    raw = request.headers.get("CF-Connecting-IP") or request.headers.get("X-Forwarded-For") or request.remote_addr or "unknown"
+    return str(raw).split(",")[0].strip()[:64] or "unknown"
+
+
+def _public_data_read_ok(slug: str, creation_id: int, connector: str = "") -> bool:
+    """Best-effort public throttle: per slug/connector plus per IP burst cap."""
+    if not _data_read_ok(f"public:{slug}", creation_id, connector):
+        return False
+    try:
+        from redis_cache import cache
+        safe_slug = (slug or "public")[:96]
+        safe_connector = (connector or "feed")[:32]
+        key = f"cpfeed:pubip:{_client_ip()}:{safe_slug}:{safe_connector}"
+        if hasattr(cache, "incr"):
+            count = cache.incr(key, ttl=60)
+        else:
+            count = int(cache.get(key) or 0) + 1
+            cache.set(key, count, ttl=60)
+        if count is not None and int(count) >= 60:  # ~60 anonymous reads / 60s / IP / build / connector
+            return False
+    except Exception:
+        pass
+    return True
+
+
 @builder_bp.route("/api/builder/<int:creation_id>/data/score", methods=["POST"])
 def builder_data_score(creation_id: int):
     username = session.get("username")
@@ -715,6 +746,29 @@ def builder_data_feed(creation_id: int):
     return jsonify(result), status
 
 
+@builder_bp.route("/api/builder/<int:creation_id>/capsules/<name>", methods=["GET"])
+def builder_capsule_get(creation_id: int, name: str):
+    """Execute a stored capsule recipe for an authenticated in-app creation."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    creation, _community_id = _resolve_accessible_creation(creation_id, username)
+    if creation is None:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    recipe = builder_capsules.find_recipe(creation.get("capsule_recipes") or [], name)
+    if not recipe:
+        return jsonify({"success": False, "error": "capsule_not_found", "data": None}), 404
+    connector_key = str(recipe.get("connector") or recipe.get("engine") or "capsule")
+    if not _data_read_ok(username, creation_id, connector_key):
+        return jsonify({"success": False, "error": "rate_limited", "data": None}), 429
+    refresh = str(request.args.get("refresh") or "").strip().lower() in {"1", "true", "yes"}
+    result = builder_capsules.execute_recipe(recipe, refresh=refresh)
+    status = 200
+    if not result.get("success") and result.get("error") in {"unknown_connector", "invalid_params", "unknown_capsule_engine"}:
+        status = 400
+    return jsonify(result), status
+
+
 def _public_json(payload, status: int = 200):
     resp = jsonify(payload)
     resp.status_code = status
@@ -737,7 +791,7 @@ def builder_public_data_images(slug: str):
     if not q:
         return _public_json({"success": True, "images": []})
     limit = min(_safe_int(request.args.get("limit")) or 8, 20)
-    if not _data_read_ok(f"public:{creation.get('public_slug')}", int(creation["id"]), "images"):
+    if not _public_data_read_ok(str(creation.get("public_slug") or slug), int(creation["id"]), "images"):
         return _public_json({"success": False, "error": "rate_limited", "images": []}, 429)
     images = builder_svc.search_images(q, limit=limit)
     return _public_json({"success": True, "images": images})
@@ -753,7 +807,10 @@ def builder_public_data_feed(slug: str):
         return _public_json({"success": False, "error": "not_found", "data": None}, 404)
 
     connector = (request.args.get("connector") or "").strip().lower()
-    refresh = str(request.args.get("refresh") or "").strip().lower() in {"1", "true", "yes"}
+    # Public refresh is disabled in v1; public reads must respect route throttles,
+    # connector budgets, and stale fallback instead of letting anonymous users
+    # force fresh upstream calls.
+    refresh = False
     raw_params = request.args.get("params") or "{}"
     try:
         params = json.loads(raw_params) if raw_params else {}
@@ -762,12 +819,33 @@ def builder_public_data_feed(slug: str):
     if not isinstance(params, dict):
         return _public_json({"success": False, "error": "invalid_params"}, 400)
 
-    if not _data_read_ok(f"public:{creation.get('public_slug')}", int(creation["id"]), connector):
+    if not _public_data_read_ok(str(creation.get("public_slug") or slug), int(creation["id"]), connector):
         return _public_json({"success": False, "error": "rate_limited", "data": None}, 429)
 
     result = builder_feeds.fetch_feed(connector, params, refresh=refresh)
     status = 200
     if not result.get("success") and result.get("error") in {"unknown_connector", "invalid_params"}:
+        status = 400
+    return _public_json(result, status)
+
+
+@builder_bp.route("/api/builder/public/<slug>/capsules/<name>", methods=["GET", "OPTIONS"])
+def builder_public_capsule_get(slug: str, name: str):
+    """Execute a public-safe stored capsule recipe for a published web build."""
+    if request.method == "OPTIONS":
+        return _public_json({"success": True})
+    creation = builder_svc.public_creation_for_slug(slug)
+    if not creation:
+        return _public_json({"success": False, "error": "not_found", "data": None}, 404)
+    recipe = builder_capsules.find_recipe(creation.get("capsule_recipes") or [], name)
+    if not recipe or not recipe.get("public"):
+        return _public_json({"success": False, "error": "not_found", "data": None}, 404)
+    connector_key = str(recipe.get("connector") or recipe.get("engine") or "capsule")
+    if not _public_data_read_ok(str(creation.get("public_slug") or slug), int(creation["id"]), connector_key):
+        return _public_json({"success": False, "error": "rate_limited", "data": None}, 429)
+    result = builder_capsules.execute_recipe(recipe, refresh=False)
+    status = 200
+    if not result.get("success") and result.get("error") in {"unknown_connector", "invalid_params", "unknown_capsule_engine"}:
         status = 400
     return _public_json(result, status)
 

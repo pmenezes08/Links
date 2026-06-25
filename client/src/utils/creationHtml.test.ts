@@ -37,6 +37,13 @@ describe('prepareCreationHtml', () => {
     expect(out).toContain('hasCreationData=true')
   })
 
+  it('injects the CPoint capsule bridge when dataBridge is on', () => {
+    const out = prepareCreationHtml(HTML, { dataBridge: true })
+    expect(out).toContain('capsule:function')
+    expect(out).toContain("call('capsule.get',{name:name,refresh:false})")
+    expect(out).toContain("call('capsule.get',{name:name,refresh:true})")
+  })
+
   it('injects multiplayer bridge early with documented match return shapes', () => {
     const bootHtml = '<!doctype html><html><head></head><body><script>window.bootSawCPoint=!!window.CPoint</script></body></html>'
     const out = prepareCreationHtml(bootHtml, { dataBridge: true, startMatchId: 42 })

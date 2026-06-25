@@ -41,6 +41,8 @@ Backend routes:
 - `POST /api/admin/builder/<id>/gallery` - app-admin approve/reject/delist review endpoint.
 - `GET /api/builder/public/<slug>/data/feed` - unauthenticated public-data connector for published public builds only.
 - `GET /api/builder/public/<slug>/data/images` - unauthenticated public image search for published public builds only.
+- `GET /api/builder/<id>/capsules/<name>` - signed-in execution of a stored, validated capsule recipe for a creation.
+- `GET /api/builder/public/<slug>/capsules/<name>` - unauthenticated execution of a public-safe capsule recipe for a published public build.
 - `/api/builder/<id>/data/*` - host-brokered creation data APIs.
 
 Core service:
@@ -49,7 +51,7 @@ Core service:
 
 Storage:
 
-- `creations` stores owner, optional home community, status, prompt history, chat history, artifact metadata, public-web metadata, and Explore gallery lifecycle fields. New/updated artifact HTML is uploaded to private Cloudflare R2 via `html_r2_key`; `html_content` remains a MySQL fallback for legacy rows or R2-disabled environments.
+- `creations` stores owner, optional home community, status, prompt history, chat history, validated capsule recipe JSON (`capsule_recipes_json`), artifact metadata, public-web metadata, and Explore gallery lifecycle fields. New/updated artifact HTML is uploaded to private Cloudflare R2 via `html_r2_key`; `html_content` remains a MySQL fallback for legacy rows or R2-disabled environments.
 - `creation_shares` maps one creation to one or more community posts (`creation_id`, `community_id`, `post_id`, `shared_by`). New Steve creations can be personal (`community_id=NULL`) and later shared to any community the owner belongs to.
 - Public web publication metadata lives on `creations`: `public_slug`, `public_status`, `public_html_r2_key`, `public_published_at`, `public_unpublished_at`, and `public_kind`. These fields describe the external website/app copy only; community feed publishing stays separate.
 - `builder_jobs` stores async build/iterate jobs so builds continue if the user leaves, locks the phone, or switches apps.
@@ -120,6 +122,7 @@ Supported capabilities:
 - `CPoint.load(key)` - load per-player saved state; resolves to `{value}` (`value` is `null` when nothing is saved).
 - `CPoint.images(query, opts)` - fetch real freely licensed web photos.
 - `CPoint.data(connector, params, opts)` - fetch recent public data from vetted host-side connectors; `opts.refresh=true` bypasses the fresh cache while still respecting route throttles, provider budgets, and circuit breakers.
+- `CPoint.capsule(name).get()` / `.refresh()` - read a named, backend-validated data recipe stored with the creation. Capsules execute through approved engines only (`feed` via `builder_feeds`, `images` via brokered image search) and return provenance fields such as `attribution`, `source`, and `lastUpdated`.
 - `CPoint.sharedState.get(key)` / `CPoint.sharedState.update(key, value, opts)` - one shared JSON document per creation/key for lightweight community app state.
 - `CPoint.collection(name)` - small structured row collections for task boards, RSVP lists, nominations, directories, feedback walls, and similar app surfaces.
 - `CPoint.forms.submit(name, data)` - append-only form submissions for websites and apps.
@@ -129,6 +132,7 @@ Supported capabilities:
 - `CPoint.gameOver(opts)` - signal the native result overlay.
 - `CPoint.hasPersistence` - `true` whenever the bridge is injected, so a creation can feature-detect save support.
 - `CPoint.hasData` - `true` whenever brokered public-data connectors are available.
+- `CPoint.hasCapsules` - `true` whenever named capsule recipes are available through the bridge.
 - `CPoint.hasCreationData` - `true` when shared state, collections, and forms are available.
 - `CPoint.hasMultiplayer` / `CPoint.hasMatchController` / `CPoint.hasTurnBasedGame` - `true` when two-player turn-based multiplayer runtimes are available.
 
@@ -171,6 +175,8 @@ Backend routes live under `/api/builder/<id>/match/*`; the route inventory is re
 
 `CPoint.data(connector, params, opts)` calls `GET /api/builder/<id>/data/feed`. The sandbox passes a connector ID and typed params; the backend constructs every upstream URL server-side. Raw URLs are never accepted. For user-facing "Refresh data" buttons, generated apps may pass `{refresh:true}` as the third argument; this skips the fresh cache but still uses route throttles, provider budget windows, and circuit breakers.
 
+Capsules are the safer higher-level path for repeatable data needs. Steve may embed a `<script type="application/json" id="cpoint-capsule-recipes">[...]</script>` sidecar in the generated HTML. `backend/services/builder_capsules.py` extracts, validates, caps limits, rejects raw URLs/unknown engines/unknown params, and stores only the normalized recipes. `CPoint.capsule(name).get()` executes the stored recipe; `.refresh()` is allowed for signed-in in-app reads when the recipe allows manual refresh. Public builds can execute only recipes marked `public:true`, and public refresh is stripped in V1.
+
 Supported connectors:
 
 | Connector | Typical params | Source | Cache |
@@ -212,7 +218,7 @@ Public web publishing is V1-scoped to websites and lightweight apps. Games remai
 - Public URL: `https://builds.c-point.co/<slug>` (staging Worker uses its own environment until DNS is wired).
 - R2 keys: artifact copies use `public/builds/<slug>/<version>.html`; manifests use `public/builds/<slug>/manifest.json`.
 - Worker: `services/public-builds-worker/` serves the manifest-resolved artifact from an R2 binding, applies strict security headers, and returns a branded 404 when unpublished or missing.
-- Public bridge: `window.CPoint.isPublicBuild = true`; public builds can use vetted `CPoint.data` connectors and `CPoint.images` through public-safe broker routes, but private session features are disabled (`save/load`, scores, ratings, shared collections/forms, and multiplayer).
+- Public bridge: `window.CPoint.isPublicBuild = true`; public builds can use vetted `CPoint.data` connectors, `CPoint.images`, and public-safe `CPoint.capsule` recipes through public-safe broker routes, but private session features are disabled (`save/load`, scores, ratings, shared collections/forms, and multiplayer). Public connector and capsule routes are throttled by build/connector and by anonymous client IP; public refresh is disabled in V1.
 - Branding: the platform injects a fast C-Point loading splash and a persistent "Built with C-Point" badge linking to `https://www.c-point.co`.
 - Unpublish/delete: `DELETE /api/builder/<id>/publish-web` removes the manifest and artifact copy; deleting a build also deletes any public manifest/artifact.
 

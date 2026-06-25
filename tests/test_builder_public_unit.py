@@ -20,6 +20,9 @@ def test_public_html_injects_bridge_branding_and_slug():
     assert "images:function(query, opts)" in out
     assert "/data/images?" in out
     assert "opts.refresh" in out
+    assert "hasCapsules:true" in out
+    assert "capsule:function(name)" in out
+    assert "/api/capsules/" in out
     assert "demo-1" in out
     assert "https://www.c-point.co" in out
     assert "https://c-point.co" not in out

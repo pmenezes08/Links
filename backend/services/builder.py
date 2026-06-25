@@ -27,6 +27,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from backend.services.database import get_db_connection, get_sql_placeholder, USE_MYSQL
 from backend.services.content_generation import llm
+from backend.services import builder_capsules
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +192,13 @@ _SYSTEM_PROMPT_FALLBACK = (
     "or tomorrow's games, not live minute-by-minute scoreboards. Always render useful fallback content first, update when data "
     "arrives, wrap in try/catch, and display the returned `attribution` string visibly near the data. Random connectors return "
     "a batch in `data.items`; pick one client-side so many players can share one cached fetch. "
+    "CAPSULE RECIPES: for named repeatable data needs, include a JSON sidecar "
+    "`<script type=\"application/json\" id=\"cpoint-capsule-recipes\">[...]</script>` with objects like "
+    "`{\"schema_version\":1,\"name\":\"worldcup-fixtures\",\"engine\":\"feed\",\"connector\":\"sports\","
+    "\"params\":{\"day\":\"2026-06-21\",\"sport\":\"Soccer\"},\"public\":true,"
+    "\"refresh_policy\":{\"allow_manual\":true,\"min_interval_seconds\":300},\"attribution_required\":true}`. "
+    "Then call `CPoint.capsule('worldcup-fixtures').get()` and only on a user-triggered refresh button call "
+    "`.refresh()`. Capsules may use only vetted feed connectors or `engine:\"images\"` with a search query; never raw URLs. "
     "TWO-PLAYER TURN-BASED MULTIPLAYER (chess, checkers, connect-4, tic-tac-toe, battleship, dominoes, card games): when "
     "the user wants two people to play EACH OTHER, feature-detect `if (window.CPoint?.hasMultiplayer)` and use the "
     "`CPoint.match.*` Promises. YOU build ALL the UI and game rules; the server only stores the shared game state, enforces "
@@ -231,7 +239,8 @@ def _extract_caps(text: str) -> str:
 _CAPS_FALLBACK = (
     "Your creations run as ONE offline, sandboxed front-end file; identity is the user's C-Point session (no login of "
     "their own). They CAN: show real web photos; pull recent public data (weather, country, Wikipedia, recipes, "
-    "cocktails, jokes, facts, advice, tech news, sports fixtures/results); bake in REAL facts you research from the web "
+    "cocktails, jokes, facts, advice, tech news, sports fixtures/results); declare named capsule recipes for repeatable "
+    "public data needs and read them with CPoint.capsule; bake in REAL facts you research from the web "
     "AT BUILD TIME (so never say you 'can't fetch from the web'); save per-player state; track community scores, "
     "leaderboards and ratings; and host invite-a-friend TWO-PLAYER turn-based multiplayer (live + async, persisted, with "
     "notifications). They CANNOT: have their own accounts/login, call arbitrary external APIs at runtime, take payments, "
@@ -247,7 +256,7 @@ _CREATION_COLS = [
     "public_status", "public_html_r2_key", "public_published_at",
     "public_unpublished_at", "public_kind", "gallery_status",
     "gallery_requested_at", "gallery_reviewed_at", "gallery_reviewed_by",
-    "gallery_rejection_reason",
+    "gallery_rejection_reason", "capsule_recipes_json",
 ]
 
 _JOB_COLS = [
@@ -360,6 +369,7 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
             ("gallery_reviewed_at", "DATETIME" if USE_MYSQL else "TEXT"),
             ("gallery_reviewed_by", "VARCHAR(191)" if USE_MYSQL else "TEXT"),
             ("gallery_rejection_reason", "VARCHAR(255)" if USE_MYSQL else "TEXT"),
+            ("capsule_recipes_json", "MEDIUMTEXT" if USE_MYSQL else "TEXT"),
         ):
             try:
                 cursor.execute(f"ALTER TABLE creations ADD COLUMN {column} {ddl}")
@@ -690,6 +700,14 @@ def _row_to_dict(row: Any) -> Dict[str, Any]:
     return {col: row[i] for i, col in enumerate(_CREATION_COLS)}
 
 
+def _capsule_recipes_json_from_html(html: str) -> str:
+    try:
+        return builder_capsules.dumps_recipes(builder_capsules.extract_recipes_from_html(html or ""))
+    except Exception as exc:
+        logger.info("builder: ignored invalid capsule recipe sidecar: %s", exc)
+        return "[]"
+
+
 def artifact_r2_key(creation_id: int, updated_at: Optional[str] = None) -> str:
     stamp = re.sub(r"[^0-9A-Za-z]+", "-", updated_at or _now()).strip("-") or uuid.uuid4().hex
     return f"private/creations/{int(creation_id)}/{stamp}.html"
@@ -838,6 +856,7 @@ def public_bridge_and_branding_script(*, slug: str, title: str) -> str:
     hasMatchController:false,
     hasTurnBasedGame:false,
     hasData:true,
+    hasCapsules:true,
     images:function(query, opts){{
       var qs=new URLSearchParams();
       qs.set('q', query||'');
@@ -864,6 +883,21 @@ def public_bridge_and_branding_script(*, slug: str, title: str) -> str:
         credentials:'omit',
         headers:{{'Accept':'application/json'}}
       }}).then(function(r){{return r.json().then(function(j){{if(!r.ok||!j.success) throw new Error((j&&j.error)||'data_error'); return j;}});}});
+    }},
+    capsule:function(name){{
+      function read(refresh){{
+        var qs=new URLSearchParams();
+        qs.set('slug', slug);
+        if(refresh) qs.set('refresh','1');
+        var endpoint=apiBase
+          ? apiBase + '/api/builder/public/' + encodeURIComponent(slug) + '/capsules/' + encodeURIComponent(name||'') + '?' + qs.toString()
+          : '/api/capsules/' + encodeURIComponent(name||'') + '?' + qs.toString();
+        return fetch(endpoint, {{
+          credentials:'omit',
+          headers:{{'Accept':'application/json'}}
+        }}).then(function(r){{return r.json().then(function(j){{if(!r.ok||!j.success) throw new Error((j&&j.error)||'capsule_error'); return j;}});}});
+      }}
+      return {{get:function(){{return read(false);}},refresh:function(){{return read(true);}}}};
     }},
     save:function(){{return Promise.reject(new Error('public_build_no_private_persistence'));}},
     load:function(){{return Promise.resolve({{value:null, publicBuild:true}});}},
@@ -1487,6 +1521,7 @@ def create_creation(*, username: str, community_id: Optional[int], prompt: str,
     resolved_title = (title or _extract_title(html, prompt))[:200]
     creation_kind = infer_creation_kind(prompt, resolved_title)
     history = _append_history(None, prompt)
+    capsule_recipes_json = _capsule_recipes_json_from_html(html)
     now = _now()
     ph = get_sql_placeholder()
     with get_db_connection() as conn:
@@ -1495,11 +1530,11 @@ def create_creation(*, username: str, community_id: Optional[int], prompt: str,
             f"""
             INSERT INTO creations
                 (community_id, created_by, title, kind, html_content,
-                 prompt_history, status, created_at, updated_at)
-            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                 prompt_history, status, created_at, updated_at, capsule_recipes_json)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
             """,
             (community_id, username, resolved_title, creation_kind, html,
-             history, "draft", now, now),
+             history, "draft", now, now, capsule_recipes_json),
         )
         creation_id = c.lastrowid
         conn.commit()
@@ -1516,7 +1551,8 @@ def create_creation(*, username: str, community_id: Optional[int], prompt: str,
         except Exception:
             logger.warning("builder: failed to store R2 artifact key for creation %s", creation_id, exc_info=True)
     return {"id": creation_id, "title": resolved_title, "html": html, "status": "draft",
-            "kind": creation_kind, "community_id": community_id, "model": model_used}
+            "kind": creation_kind, "community_id": community_id, "model": model_used,
+            "capsule_recipes": builder_capsules.loads_recipes(capsule_recipes_json)}
 
 
 def get_creation(creation_id: int) -> Optional[Dict[str, Any]]:
@@ -1531,7 +1567,7 @@ def get_creation(creation_id: int) -> Optional[Dict[str, Any]]:
                    public_status, public_html_r2_key, public_published_at,
                    public_unpublished_at, public_kind, gallery_status,
                    gallery_requested_at, gallery_reviewed_at, gallery_reviewed_by,
-                   gallery_rejection_reason
+                   gallery_rejection_reason, capsule_recipes_json
             FROM creations WHERE id = {ph}
             """,
             (creation_id,),
@@ -1547,6 +1583,7 @@ def get_creation(creation_id: int) -> Optional[Dict[str, Any]]:
         out["html_content"] = html
     if out.get("public_slug"):
         out["public_url"] = public_build_url(str(out["public_slug"]))
+    out["capsule_recipes"] = builder_capsules.loads_recipes(out.get("capsule_recipes_json"))
     return out
 
 
@@ -1566,16 +1603,22 @@ def iterate_creation(*, creation_id: int, username: str, message: str, tier: str
     html_r2_key = store_artifact_html(int(creation_id), html, updated_at=now)
     stored_html = "" if html_r2_key else html
     stored_r2_key = html_r2_key if html_r2_key else None
+    capsule_recipes_json = _capsule_recipes_json_from_html(html)
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute(
-            f"UPDATE creations SET html_content = {ph}, html_r2_key = {ph}, prompt_history = {ph}, updated_at = {ph} WHERE id = {ph}",
-            (stored_html, stored_r2_key, history, now, creation_id),
+            f"""UPDATE creations
+                SET html_content = {ph}, html_r2_key = {ph}, prompt_history = {ph},
+                    updated_at = {ph}, capsule_recipes_json = {ph}
+                WHERE id = {ph}""",
+            (stored_html, stored_r2_key, history, now, capsule_recipes_json, creation_id),
         )
         conn.commit()
     if old_r2_key and old_r2_key != stored_r2_key:
         delete_artifact_html(old_r2_key)
-    return {"id": creation_id, "title": row.get("title"), "html": html, "status": row.get("status"), "kind": row.get("kind"), "model": model_used}
+    return {"id": creation_id, "title": row.get("title"), "html": html, "status": row.get("status"),
+            "kind": row.get("kind"), "model": model_used,
+            "capsule_recipes": builder_capsules.loads_recipes(capsule_recipes_json)}
 
 
 # --- Async build jobs ---------------------------------------------------------
@@ -2259,7 +2302,7 @@ def public_creation_for_slug(slug: str) -> Optional[Dict[str, Any]]:
                    public_status, public_html_r2_key, public_published_at,
                    public_unpublished_at, public_kind, gallery_status,
                    gallery_requested_at, gallery_reviewed_at, gallery_reviewed_by,
-                   gallery_rejection_reason
+                   gallery_rejection_reason, capsule_recipes_json
             FROM creations
             WHERE public_slug = {ph} AND public_status = 'published'
             """,
@@ -2270,6 +2313,7 @@ def public_creation_for_slug(slug: str) -> Optional[Dict[str, Any]]:
         return None
     out = _row_to_dict(row)
     out["public_url"] = public_build_url(cleaned)
+    out["capsule_recipes"] = builder_capsules.loads_recipes(out.get("capsule_recipes_json"))
     return out
 
 

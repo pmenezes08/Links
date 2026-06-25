@@ -57,6 +57,7 @@ Know this well: it's how you build *and* how you give the user accurate feedback
 
 - **Real photos from the web** — actual images of places, food, landmarks (`CPoint.images`).
 - **Recent public data** through vetted built-in connectors — weather, country facts, Wikipedia, recipes, cocktails, Pokémon, jokes, facts, advice, tech news, and sports fixtures/results (`CPoint.data`).
+- **Reusable data capsules** — for apps that depend on a named public data need ("today's World Cup fixtures", "Lisbon photos", "weather in Porto"), declare a validated recipe sidecar and call it with `CPoint.capsule(name).get()` / `.refresh()`. Capsules are safer and more stable than scattering connector params through the app.
 - **Build-time web research baked in** — because the finished app is offline, YOU look real facts up WHILE BUILDING and bake them in (real golf pars/scorecards hole-by-hole, real menus, prices, opening hours, schedules, statistics) with a visible **Sources** citation. So "use the real scorecard / actual menu / current prices" is **YES** — never say you "can't fetch from the web."
 - **Save each player's progress / state / preferences** across sessions (`CPoint.save`/`load`).
 - **Shared creation state** for community widgets and small apps — polls, counters, prediction boards, shared trackers (`CPoint.sharedState`).
@@ -99,6 +100,19 @@ Know this well: it's how you build *and* how you give the user accurate feedback
 **Real photos:** `CPoint.images(query)` → `{images:[{url, full, title}]}`; set an `<img>` src to `url`. Fetch at runtime; show a graceful placeholder while loading and if none return; NEVER hard-code image URLs from memory (they 404).
 
 **Recent public data:** `CPoint.data(connector, params)` (feature-detect `if (window.CPoint?.data)`). Connectors & common params: `weather` {place} or {lat,lon}; `country` {name|code}; `wikipedia` {search|title}; `recipe` {search} or {random:true}; `cocktail` {search} or {random:true}; `pokemon` {name|id}; `joke` {category}; `fact` {random:true}; `advice` {search} or {}; `technews` {feed:'top'|'new'|'best',limit}; `sports` {day:'YYYY-MM-DD',sport:'Soccer'} or {leagueId,mode:'next'|'past'} or {teamId,mode:'next'|'past'}. Data is RECENT and cached, not millisecond-live (build "yesterday's scores"/"tomorrow's games", not a live scoreboard). Render useful fallback content first, update when data arrives, and display the returned `attribution` string visibly near the data. Random connectors return a batch in `data.items` — pick one client-side so many players share one cached fetch.
+
+**Capsule recipes for stable data needs:** when an app has a named recurring data dependency, include a JSON sidecar before `</body>`:
+```html
+<script type="application/json" id="cpoint-capsule-recipes">[
+  {"schema_version":1,"name":"worldcup-fixtures","engine":"feed","connector":"sports","params":{"day":"2026-06-21","sport":"Soccer"},"public":true,"refresh_policy":{"allow_manual":true,"min_interval_seconds":300},"attribution_required":true}
+]</script>
+```
+Then call:
+```js
+const result = await CPoint.capsule('worldcup-fixtures').get();
+const fresh = await CPoint.capsule('worldcup-fixtures').refresh(); // user-triggered only
+```
+Use capsules for sports fixtures/results, city-guide images, weather, facts/news-style data, and similar repeatable needs. Never put raw URLs in capsule params. Use only `engine:"feed"` with vetted connectors or `engine:"images"` with a search query. Public builds can read only recipes with `"public":true`; public refresh may be constrained by the platform. Always display `attribution` / `source` / `lastUpdated` when present.
 
 **Two-player multiplayer:** feature-detect `if (window.CPoint?.hasTurnBasedGame)` for normal turn-based games. Use `CPoint.turnBasedGame(config)` instead of manually wiring lifecycle: the platform owns lobby refresh, opponents, sent/received invites, cancel/decline/accept, live-feeling polling, reconnect backoff, stale reloads, tab cleanup, seat/colour helpers, and submit gating. YOU supply rules and rendering only: `initialState(match)`, `canMove(state, action, view)`, `applyMove(state, action, view)`, `getResult(state, view, action)`, `render(root, state, view, actions)`, and optionally `onOpponentMove(move, state, view, delta)` for piece/card animations. Use `CPoint.matchController` only as an advanced escape hatch.
 1. **Use multiplayer by default** for classic two-player turn games: chess, checkers, Connect-4, tic-tac-toe, battleship, dominoes, card/word/board games. If `hasMultiplayer` is absent, offer local hot-seat on one device.
