@@ -26,6 +26,52 @@ type BuildSummary = {
   public_kind?: string | null
 }
 
+const OPTIMISTIC_EXPLORE_KEY = 'cpoint:explore:optimistic_creations'
+
+function storedExploreId(item: unknown): number {
+  if (!item || typeof item !== 'object') return 0
+  return Number((item as { id?: unknown }).id || 0)
+}
+
+function rememberExploreCreation(creation: Creation) {
+  try {
+    const raw = window.sessionStorage.getItem(OPTIMISTIC_EXPLORE_KEY)
+    const existing = raw ? JSON.parse(raw) : []
+    const list = Array.isArray(existing) ? existing : [existing]
+    const next = [
+      {
+        id: creation.id,
+        title: creation.title?.trim() || 'Untitled creation',
+        kind: creation.kind,
+        public_kind: creation.public_kind,
+        play_url: `/creation/${creation.id}`,
+        public_url: creation.public_url || null,
+        plays: 0,
+        label: 'Made with Steve',
+      },
+      ...list.filter((item: unknown) => storedExploreId(item) !== creation.id),
+    ].slice(0, 20)
+    window.sessionStorage.setItem(OPTIMISTIC_EXPLORE_KEY, JSON.stringify(next))
+  } catch {
+    // Best-effort instant UI handoff only; the server remains the source of truth.
+  }
+}
+
+function forgetExploreCreation(creationId: number) {
+  try {
+    const raw = window.sessionStorage.getItem(OPTIMISTIC_EXPLORE_KEY)
+    if (!raw) return
+    const existing = JSON.parse(raw)
+    const list = Array.isArray(existing) ? existing : [existing]
+    window.sessionStorage.setItem(
+      OPTIMISTIC_EXPLORE_KEY,
+      JSON.stringify(list.filter((item: unknown) => storedExploreId(item) !== creationId)),
+    )
+  } catch {
+    // Best-effort instant UI handoff only.
+  }
+}
+
 // Quality tiers shown as "how hard Steve tries" — never a model name.
 const TIERS: { key: BuilderTier; name: string; sub: string; accent: string; level: number }[] = [
   { key: 'fast', name: 'Quick', sub: 'Fast drafts — great for trying an idea.', accent: '#7F77DD', level: 1 },
@@ -269,6 +315,8 @@ export default function BuilderPage() {
         window.alert('Could not update Explore listing. Please try again.')
         return
       }
+      if (action === 'request') rememberExploreCreation(creation)
+      else forgetExploreCreation(creation.id)
       await loadCreation(creation.id)
     } catch {
       window.alert('Could not update Explore listing. Please check your connection and try again.')

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 
 type ExploreCreation = {
@@ -13,6 +13,52 @@ type ExploreCreation = {
   label?: string | null
 }
 
+type ExploreLocationState = {
+  optimisticCreation?: ExploreCreation | null
+}
+
+const OPTIMISTIC_EXPLORE_KEY = 'cpoint:explore:optimistic_creations'
+
+function safeOptimisticCreation(value: unknown): ExploreCreation | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as Partial<ExploreCreation>
+  const id = Number(raw.id)
+  if (!Number.isFinite(id) || id <= 0) return null
+  return {
+    id,
+    title: String(raw.title || 'Untitled creation'),
+    kind: raw.kind || null,
+    public_kind: raw.public_kind || null,
+    play_url: raw.play_url || `/creation/${id}`,
+    public_url: raw.public_url || null,
+    plays: Number(raw.plays || 0),
+    label: raw.label || 'Made with Steve',
+  }
+}
+
+function readStoredOptimisticCreations(): ExploreCreation[] {
+  try {
+    const raw = window.sessionStorage.getItem(OPTIMISTIC_EXPLORE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    const values = Array.isArray(parsed) ? parsed : [parsed]
+    return values.map(safeOptimisticCreation).filter((item): item is ExploreCreation => Boolean(item))
+  } catch {
+    return []
+  }
+}
+
+function mergeCreations(primary: ExploreCreation[], secondary: ExploreCreation[]): ExploreCreation[] {
+  const seen = new Set<number>()
+  const merged: ExploreCreation[] = []
+  for (const item of [...primary, ...secondary]) {
+    if (seen.has(item.id)) continue
+    seen.add(item.id)
+    merged.push(item)
+  }
+  return merged
+}
+
 function kindLabel(item: ExploreCreation): string {
   const raw = String(item.public_kind || item.kind || 'creation').toLowerCase()
   if (raw === 'web' || raw === 'website') return 'Website'
@@ -22,9 +68,23 @@ function kindLabel(item: ExploreCreation): string {
 
 export default function ExploreCreations() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { setTitle } = useHeader()
-  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
-  const [items, setItems] = useState<ExploreCreation[]>([])
+  const optimisticCreations = useMemo(() => (
+    mergeCreations(
+      [safeOptimisticCreation((location.state as ExploreLocationState | null)?.optimisticCreation)]
+        .filter((item): item is ExploreCreation => Boolean(item)),
+      readStoredOptimisticCreations(),
+    )
+  ), [location.state])
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>(optimisticCreations.length > 0 ? 'ready' : 'loading')
+  const [items, setItems] = useState<ExploreCreation[]>(() => optimisticCreations)
+
+  useEffect(() => {
+    if (optimisticCreations.length === 0) return
+    setItems(prev => mergeCreations(optimisticCreations, prev))
+    setState('ready')
+  }, [optimisticCreations])
 
   useEffect(() => {
     setTitle('Explore Creations')
@@ -32,21 +92,23 @@ export default function ExploreCreations() {
   }, [setTitle])
 
   const load = useCallback(async () => {
-    setState('loading')
+    setState(prev => (prev === 'ready' ? 'ready' : 'loading'))
     try {
-      const res = await fetch('/api/builder/explore', {
+      const res = await fetch(`/api/builder/explore?limit=60&_=${Date.now()}`, {
+        cache: 'no-store',
         credentials: 'include',
         headers: { Accept: 'application/json' },
       })
       const data = await res.json().catch(() => null)
       if (!res.ok || !data?.success) {
-        setState('error')
+        setState(prev => (prev === 'ready' ? 'ready' : 'error'))
         return
       }
-      setItems(Array.isArray(data.creations) ? data.creations : [])
+      const fetched = Array.isArray(data.creations) ? data.creations : []
+      setItems(prev => mergeCreations(prev, fetched))
       setState('ready')
     } catch {
-      setState('error')
+      setState(prev => (prev === 'ready' ? 'ready' : 'error'))
     }
   }, [])
 
