@@ -153,6 +153,7 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 | `community.py` | Core community model, roles, trees, invalidation. |
 | `community_lifecycle.py` | Grace/expiry and lifecycle crons support. |
 | `community_group_feed.py` | Group feed aggregation. |
+| `poll_hydration.py` | Shared community/group poll payload hydration for feed and post detail, including closed poll discussion threads. |
 | `community_invites.py` | Invite business logic: pending-row creation, 7-day expiry, recipient checks, read-only preview, explicit acceptance before membership, and post-accept routing into Steve's pinned Introduce Yourself thread. |
 | `community_invite_emails.py` | Email sending for invites. |
 | `community_stories.py` | Stories. |

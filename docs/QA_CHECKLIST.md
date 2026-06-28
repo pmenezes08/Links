@@ -55,6 +55,13 @@ Run after any deploy touching onboarding, invite acceptance, community feed part
 - [ ] First-time invitee signs up or logs in from an invite, accepts the invite, and lands on the community feed without being forced into full Steve onboarding.
 - [ ] With that same account missing first name, last name, or profile photo, open the community feed and verify posts are readable.
 - [ ] Attempt to post, reply, react, vote in a poll, send a DM/group message, or send a community invite. Expected: the focused basic profile sheet opens and the backend response is `412` with `error_code = "basic_profile_required"`.
+
+### Poll Threads
+
+- [ ] Create a community poll and open the community feed. Expected: the poll card can vote inline and shows a `Discuss` affordance; tapping an option does not navigate, tapping `Discuss` opens `/post/<post_id>`.
+- [ ] On the poll post detail page, add and delete a comment with the existing reply composer. Expected: comments appear in the same thread as normal posts and remain visible after refresh.
+- [ ] Vote from the poll post detail page. Expected: tallies reconcile with server truth and reopening the feed/detail page does not show stale counts.
+- [ ] Close the poll, then open it from `CommunityPolls` archive. Expected: voting is read-only, results remain visible, and discussion is still available.
 - [ ] Complete first name, last name, and profile photo in the sheet. Retry the blocked action and confirm it succeeds without opening Steve onboarding.
 - [ ] Call one blocked write endpoint directly with an incomplete-profile session. Expected: same `basic_profile_required` payload; frontend-only hiding is not the enforcement.
 - [ ] As a complete-profile user, repeat post/reply/react/message/invite flows. Expected: no basic-profile interruption.

@@ -41,14 +41,14 @@ def test_community_cache_key_is_viewer_scoped_and_lowercased():
     assert a == b
     assert a != c
     assert "viewer:alice" in a
-    assert "v1:community:42" in a
+    assert "v2:community:42" in a
 
 
 def test_group_cache_key_distinguishes_from_community():
     g = post_detail_group_cache_key(7, "alice")
     c = post_detail_community_cache_key(7, "alice")
     assert g != c
-    assert "v1:group:7" in g
+    assert "v2:group:7" in g
 
 
 def test_cached_community_read_hits_cache_on_repeat():

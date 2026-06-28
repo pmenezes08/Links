@@ -75,7 +75,7 @@ IMAGE_CACHE_TTL = int(os.environ.get('CACHE_TTL_IMAGES', '7200'))    # 2 hours
 # blob is short-lived; explicit invalidation runs at mutation sites.
 CACHE_TTL_POST_DETAIL = int(os.environ.get('CACHE_TTL_POST_DETAIL', '180'))
 CACHE_TTL_POST_DETAIL_METRICS = int(os.environ.get('CACHE_TTL_POST_DETAIL_METRICS', '30'))
-POST_DETAIL_CACHE_VERSION = os.environ.get('POST_DETAIL_CACHE_VERSION', 'v1')
+POST_DETAIL_CACHE_VERSION = os.environ.get('POST_DETAIL_CACHE_VERSION', 'v2')
 
 # Memory management
 MAX_CACHE_ENTRIES = int(os.environ.get('CACHE_MAX_ENTRIES', '10000'))

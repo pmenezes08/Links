@@ -16384,6 +16384,12 @@ def create_poll():
                     logger.error(traceback.format_exc())
             
             conn.commit()
+            try:
+                from backend.services.post_detail_cache import invalidate_post_detail
+
+                invalidate_post_detail(post_id, scope="community")
+            except Exception as cache_err:
+                logger.warning(f"Failed to invalidate post detail after poll create: {cache_err}")
             
             # Notify all community members about the new poll (after commit)
             if member_usernames:
@@ -16500,6 +16506,12 @@ def close_poll():
             # Close the poll
             c.execute("UPDATE polls SET is_active = 0 WHERE id = ?", (poll_id,))
             conn.commit()
+            try:
+                from backend.services.post_detail_cache import invalidate_post_detail
+
+                invalidate_post_detail(poll_data['post_id'], scope="community")
+            except Exception as cache_err:
+                logger.warning(f"Failed to invalidate post detail after poll close: {cache_err}")
             
             # Send "poll closed" notifications to all community members
             try:
@@ -16677,6 +16689,12 @@ def edit_poll():
                     c.execute("DELETE FROM poll_options WHERE id = ?", (option_id,))
             
             conn.commit()
+            try:
+                from backend.services.post_detail_cache import invalidate_post_detail
+
+                invalidate_post_detail(poll_data['post_id'], scope="community")
+            except Exception as cache_err:
+                logger.warning(f"Failed to invalidate post detail after poll edit: {cache_err}")
             return jsonify(_api_errors.success_payload('feed.poll_updated'))
             
     except Exception as e:
@@ -16791,6 +16809,12 @@ def vote_poll():
                 c.execute("UPDATE poll_options SET votes = (SELECT COUNT(*) FROM poll_votes WHERE option_id = ?) WHERE id = ?", (existing_vote['option_id'], existing_vote['option_id']))
             
             conn.commit()
+            try:
+                from backend.services.poll_hydration import invalidate_community_poll_post_detail
+
+                invalidate_community_poll_post_detail(c, poll_id)
+            except Exception as cache_err:
+                logger.warning(f"Failed to invalidate post detail after poll vote: {cache_err}")
 
             # Invalidate the feed cache immediately so poll counts do not
             # appear to revert when the feed refetches after an optimistic vote.
@@ -17169,6 +17193,12 @@ def delete_poll():
             # Polls should be independent - deleting a poll removes everything
             c.execute("DELETE FROM posts WHERE id=?", (pr['post_id'],))
             conn.commit()
+            try:
+                from backend.services.post_detail_cache import invalidate_post_detail
+
+                invalidate_post_detail(pr['post_id'], scope="community")
+            except Exception as cache_err:
+                logger.warning(f"Failed to invalidate post detail after poll delete: {cache_err}")
             logger.info(f"Deleted poll {poll_id} and associated post {pr['post_id']}")
             return jsonify({'success': True})
     except Exception as e:
@@ -17220,6 +17250,12 @@ def remove_poll_option():
             c.execute("DELETE FROM poll_options WHERE id = ?", (option_id,))
             
             conn.commit()
+            try:
+                from backend.services.poll_hydration import invalidate_community_poll_post_detail
+
+                invalidate_community_poll_post_detail(c, poll_data['poll_id'])
+            except Exception as cache_err:
+                logger.warning(f"Failed to invalidate post detail after poll option removal: {cache_err}")
             
             return jsonify(_api_errors.success_payload('feed.poll_option_removed'))
             

@@ -17,6 +17,7 @@ import json
 import logging
 from typing import Any, Dict, Tuple
 
+from backend.services.poll_hydration import attach_group_polls_to_posts, attach_polls_to_posts
 from backend.services.profile_pictures import fetch_profile_picture_map
 
 logger = logging.getLogger(__name__)
@@ -254,6 +255,15 @@ def read_community_post_detail(post_id: int, username: str) -> Tuple[Dict[str, A
                     post["is_community_starred"] = c.fetchone() is not None
                 except Exception:
                     pass
+
+            attach_polls_to_posts(
+                c,
+                get_sql_placeholder(),
+                username,
+                [post],
+                include_inactive=True,
+                include_expired=True,
+            )
 
             return {"success": True, "post": post}, 200
     except Exception as e:
@@ -507,6 +517,17 @@ def _hydrate_fs_post_with_mysql(
                 fs_post["profile_picture"] = pp["profile_picture"] if pp and "profile_picture" in pp.keys() else None
             except Exception:
                 pass
+            try:
+                attach_polls_to_posts(
+                    hc,
+                    get_sql_placeholder(),
+                    username,
+                    [fs_post],
+                    include_inactive=True,
+                    include_expired=True,
+                )
+            except Exception as poll_err:
+                logger.warning("MySQL poll hydration of Firestore post failed: %s", poll_err)
     except Exception as hydrate_err:
         logger.warning("MySQL hydration of Firestore post failed (serving Firestore as-is): %s", hydrate_err)
 
@@ -724,6 +745,20 @@ def read_group_post_detail(post_id: int, username: str) -> Tuple[Dict[str, Any],
             post["allow_nsfw_imagine"] = allow_nsfw_imagine
             post["reply_count"] = len(all_replies)
             post["view_count"] = count_group_post_views_excluding_admin(c, ph, int(pid))
+            try:
+                from backend.services.group_polls_data import ensure_group_poll_tables
+
+                ensure_group_poll_tables(c)
+                attach_group_polls_to_posts(
+                    c,
+                    ph,
+                    username,
+                    [post],
+                    include_inactive=True,
+                    include_expired=True,
+                )
+            except Exception as poll_err:
+                logger.warning("Group post poll hydration failed for %s: %s", pid, poll_err)
 
             return (
                 {

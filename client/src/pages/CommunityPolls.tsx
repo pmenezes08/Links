@@ -6,7 +6,7 @@ import Avatar from '../components/Avatar'
 import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 
 type PollOption = { id: number; option_text: string; votes: number; voters?: { username: string; profile_picture?: string; voted_at: string }[] }
-type ActivePoll = { id:number; question:string; options: PollOption[]; single_vote?: boolean; total_votes?: number; user_vote?: number|null; is_active: number; expires_at?: string; created_by?: string }
+type ActivePoll = { id:number; post_id?: number; question:string; options: PollOption[]; single_vote?: boolean; total_votes?: number; user_vote?: number|null; is_active: number; expires_at?: string; created_by?: string }
 
 export default function CommunityPolls(){
   const { t } = useTranslation()
@@ -49,6 +49,7 @@ export default function CommunityPolls(){
       if (j?.success){
         const allPolls = (j.polls || []).map((p:any) => ({ 
           id:p.id, 
+          post_id:p.post_id,
           question:p.question, 
           options:p.options||[], 
           single_vote:p.single_vote, 
@@ -341,6 +342,16 @@ export default function CommunityPolls(){
                   <div className="px-3 py-2 flex items-center gap-2 border-b border-c-border">
                     <div className="font-medium flex-1">{p.question}</div>
                     <span className="text-xs text-c-text-tertiary">🔒 {t('communities.polls_closed')}</span>
+                    {p.post_id ? (
+                      <button
+                        title={t('feed.join_discussion')}
+                        className="px-2 py-1 rounded-md border border-c-border text-c-text-secondary hover:border-cpoint-turquoise hover:text-cpoint-turquoise text-sm"
+                        onClick={() => navigate(`/post/${p.post_id}`, { state: { communityId: community_id } })}
+                      >
+                        <i className="fa-regular fa-comment mr-1" />
+                        {t('feed.discuss')}
+                      </button>
+                    ) : null}
                     <button title={t('communities.polls_voters')} className="px-2 py-1 rounded-md border border-cpoint-turquoise text-cpoint-turquoise hover:bg-cpoint-turquoise/10 text-sm" onClick={()=> loadVoters(p.id)}>
                       <i className="fa-solid fa-users mr-1" />
                       {t('communities.polls_voters')}
@@ -375,6 +386,16 @@ export default function CommunityPolls(){
                 <div key={p.id} className="rounded-2xl border border-c-border bg-white/[0.035] overflow-hidden">
                   <div className="px-3 py-2 flex items-center gap-2 border-b border-c-border">
                     <div className="font-medium flex-1">{p.question}</div>
+                    {p.post_id ? (
+                      <button
+                        title={t('feed.join_discussion')}
+                        className="px-2 py-1 rounded-md border border-c-border text-c-text-secondary hover:border-cpoint-turquoise hover:text-cpoint-turquoise text-sm"
+                        onClick={() => navigate(`/post/${p.post_id}`, { state: { communityId: community_id } })}
+                      >
+                        <i className="fa-regular fa-comment mr-1" />
+                        {t('feed.discuss')}
+                      </button>
+                    ) : null}
                     <button title={t('communities.polls_voters')} className="px-2 py-1 rounded-md border border-cpoint-turquoise text-cpoint-turquoise hover:bg-cpoint-turquoise/10 text-sm" onClick={()=> loadVoters(p.id)}>
                       <i className="fa-solid fa-users mr-1" />
                       {t('communities.polls_voters')}

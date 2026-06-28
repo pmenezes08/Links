@@ -29,6 +29,39 @@ def _insert_post(community_id: int, username: str, content: str) -> int:
         return post_id
 
 
+def _insert_poll(post_id: int, username: str, *, active: bool = True) -> int:
+    ph = get_sql_placeholder()
+    ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""
+            INSERT INTO polls (post_id, question, created_by, created_at, single_vote, is_active)
+            VALUES ({ph}, {ph}, {ph}, {ph}, 1, {ph})
+            """,
+            (post_id, "Which option?", username, ts, 1 if active else 0),
+        )
+        poll_id = int(c.lastrowid)
+        c.execute(
+            f"INSERT INTO poll_options (poll_id, option_text, votes) VALUES ({ph}, {ph}, 0)",
+            (poll_id, "Option A"),
+        )
+        option_a = int(c.lastrowid)
+        c.execute(
+            f"INSERT INTO poll_options (poll_id, option_text, votes) VALUES ({ph}, {ph}, 0)",
+            (poll_id, "Option B"),
+        )
+        c.execute(
+            f"INSERT INTO poll_votes (poll_id, option_id, username, voted_at) VALUES ({ph}, {ph}, {ph}, {ph})",
+            (poll_id, option_a, username, ts),
+        )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+        return poll_id
+
+
 def _join_community(username: str, community_id: int, role: str = "member") -> None:
     """Attach an existing user to a community (membership = read access)."""
     ph = get_sql_placeholder()
@@ -96,6 +129,32 @@ def test_read_community_post_detail_mysql_returns_post_and_viewer_flags(mysql_ds
     assert "is_community_starred" in post
     assert "is_community_admin" in post
     assert "replies" in post and isinstance(post["replies"], list)
+
+
+def test_read_community_post_detail_hydrates_closed_poll(mysql_dsn):
+    from backend.services.post_detail_read import read_community_post_detail
+
+    make_user("poll_detail_author", subscription="premium")
+    make_user("poll_detail_viewer", subscription="premium")
+    community_id = make_community(
+        "post-detail-poll",
+        tier="free",
+        creator_username="poll_detail_author",
+    )
+    post_id = _insert_post(community_id, "poll_detail_author", "poll thread")
+    poll_id = _insert_poll(post_id, "poll_detail_author", active=False)
+    _join_community("poll_detail_viewer", community_id)
+
+    with patch("backend.services.firestore_reads.USE_FIRESTORE_READS", False):
+        body, status = read_community_post_detail(post_id, "poll_detail_viewer")
+
+    assert status == 200
+    poll = body["post"]["poll"]
+    assert poll["id"] == poll_id
+    assert poll["is_active"] == 0
+    assert poll["question"] == "Which option?"
+    assert poll["total_votes"] == 1
+    assert [opt["text"] for opt in poll["options"]] == ["Option A", "Option B"]
 
 
 def test_read_community_post_detail_non_member_returns_404(mysql_dsn):
