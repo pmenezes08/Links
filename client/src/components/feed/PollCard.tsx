@@ -80,7 +80,7 @@ export default function PollCard({
           ) : null}
           {!compact && closed ? (
             <span className="ml-2 rounded-full border border-c-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-c-text-tertiary">
-              {t('communities.polls_closed')}
+              {t('feed.poll_final_result_closed')}
             </span>
           ) : null}
         </div>

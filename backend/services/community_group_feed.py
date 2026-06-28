@@ -136,5 +136,12 @@ def build_group_feed_post_dicts(
                 "poll": None,
             }
         posts.append(post_obj)
-    attach_polls_to_posts(c, ph, username, posts)
+    attach_polls_to_posts(
+        c,
+        ph,
+        username,
+        posts,
+        include_inactive=True,
+        include_expired=True,
+    )
     return posts

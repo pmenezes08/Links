@@ -16388,8 +16388,10 @@ def create_poll():
                 from backend.services.post_detail_cache import invalidate_post_detail
 
                 invalidate_post_detail(post_id, scope="community")
+                if community_id:
+                    invalidate_community_cache(community_id)
             except Exception as cache_err:
-                logger.warning(f"Failed to invalidate post detail after poll create: {cache_err}")
+                logger.warning(f"Failed to invalidate feed caches after poll create: {cache_err}")
             
             # Notify all community members about the new poll (after commit)
             if member_usernames:
@@ -16510,8 +16512,17 @@ def close_poll():
                 from backend.services.post_detail_cache import invalidate_post_detail
 
                 invalidate_post_detail(poll_data['post_id'], scope="community")
+                c.execute("SELECT community_id FROM posts WHERE id = ?", (poll_data['post_id'],))
+                cache_post_row = c.fetchone()
+                cache_community_id = (
+                    cache_post_row['community_id'] if cache_post_row and hasattr(cache_post_row, 'keys')
+                    else cache_post_row[0] if cache_post_row
+                    else None
+                )
+                if cache_community_id:
+                    invalidate_community_cache(cache_community_id)
             except Exception as cache_err:
-                logger.warning(f"Failed to invalidate post detail after poll close: {cache_err}")
+                logger.warning(f"Failed to invalidate feed caches after poll close: {cache_err}")
             
             # Send "poll closed" notifications to all community members
             try:
@@ -17197,8 +17208,10 @@ def delete_poll():
                 from backend.services.post_detail_cache import invalidate_post_detail
 
                 invalidate_post_detail(pr['post_id'], scope="community")
+                if community_id:
+                    invalidate_community_cache(community_id)
             except Exception as cache_err:
-                logger.warning(f"Failed to invalidate post detail after poll delete: {cache_err}")
+                logger.warning(f"Failed to invalidate feed caches after poll delete: {cache_err}")
             logger.info(f"Deleted poll {poll_id} and associated post {pr['post_id']}")
             return jsonify({'success': True})
     except Exception as e:
