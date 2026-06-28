@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import { handleBasicProfileRequired } from '../utils/basicProfileGate'
+import { clearDeviceCache } from '../utils/deviceCache'
 
 type PollOption = { id: number; option_text: string; votes: number; voters?: { username: string; profile_picture?: string; voted_at: string }[] }
 type ActivePoll = { id:number; post_id?: number; question:string; options: PollOption[]; single_vote?: boolean; total_votes?: number; user_vote?: number|null; is_active: number; expires_at?: string; created_by?: string }
@@ -30,6 +31,12 @@ export default function CommunityPolls(){
   const [viewingVoters, setViewingVoters] = useState<number|null>(null)
   const [votersData, setVotersData] = useState<any>(null)
   const [loadingVoters, setLoadingVoters] = useState(false)
+
+  function clearPollFeedCaches(postId?: number | null){
+    if (community_id) clearDeviceCache(`community-feed:${community_id}`)
+    clearDeviceCache('home-timeline')
+    if (postId) clearDeviceCache(`post-${postId}`)
+  }
 
   useEffect(() => {
     setTitle(editingPollId ? t('communities.polls_edit_title') : t('communities.polls_title'))
@@ -106,6 +113,8 @@ export default function CommunityPolls(){
       const r = await fetch('/edit_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
       const j = await r.json().catch(()=>null)
       if (j?.success){
+        const editedPoll = polls.find(p => p.id === editingPollId) || archivedPolls.find(p => p.id === editingPollId)
+        clearPollFeedCaches(editedPoll?.post_id)
         setSuccessMsg(t('communities.polls_updated'))
         setQuestion('')
         setOptions(['',''])
@@ -138,6 +147,7 @@ export default function CommunityPolls(){
       const j = await r.json().catch(()=>null)
       if (handleBasicProfileRequired(j)) return
       if (j?.success){
+        clearPollFeedCaches(j.post_id)
         setSuccessMsg(t('communities.polls_created'))
         setQuestion('')
         setOptions(['',''])
@@ -207,7 +217,30 @@ export default function CommunityPolls(){
   async function closePoll(pollId:number){
     const r = await fetch('/close_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: new URLSearchParams({ poll_id: String(pollId) }) })
     const j = await r.json().catch(()=>null)
-    if (j?.success) load()
+    if (j?.success) {
+      const poll = polls.find(p => p.id === pollId) || archivedPolls.find(p => p.id === pollId)
+      clearPollFeedCaches(poll?.post_id)
+      load()
+    }
+  }
+
+  async function deletePoll(pollId:number){
+    const poll = polls.find(p => p.id === pollId) || archivedPolls.find(p => p.id === pollId)
+    const ok = confirm(t('feed.delete_poll_confirm'))
+    if (!ok) return
+    const r = await fetch('/delete_poll', {
+      method:'POST',
+      credentials:'include',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ poll_id: pollId })
+    })
+    const j = await r.json().catch(()=>null)
+    if (j?.success) {
+      clearPollFeedCaches(poll?.post_id)
+      load()
+    } else {
+      alert(j?.error || 'Failed to delete poll')
+    }
   }
 
   async function loadVoters(pollId:number){
@@ -293,14 +326,14 @@ export default function CommunityPolls(){
         )}
 
         {activeTab === 'create' ? (
-          <form ref={formRef} className="rounded-2xl border border-c-border p-3 bg-white/[0.035] space-y-3" onSubmit={(e)=> { e.preventDefault(); createPoll() }}>
-            <div className="text-sm font-medium">{editingPollId ? t('communities.polls_edit_form_title') : t('communities.polls_create_form_title')}</div>
+          <form ref={formRef} className="rounded-2xl border border-c-border p-3 bg-c-bg-elevated text-c-text-primary space-y-3" onSubmit={(e)=> { e.preventDefault(); createPoll() }}>
+            <div className="text-sm font-medium text-c-text-primary">{editingPollId ? t('communities.polls_edit_form_title') : t('communities.polls_create_form_title')}</div>
             <label className="text-xs text-c-text-tertiary">{t('communities.polls_question_label')}
-              <input value={question} onChange={e=> setQuestion(e.target.value)} className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" placeholder={t('communities.poll_question_placeholder')} />
+              <input value={question} onChange={e=> setQuestion(e.target.value)} className="mt-1 w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] text-c-text-primary placeholder:text-c-text-tertiary focus:border-cpoint-turquoise outline-none" placeholder={t('communities.poll_question_placeholder')} />
             </label>
             <div className="space-y-2">
               {options.map((opt, idx) => (
-                <input key={idx} value={opt} onChange={e=> setOptions(prev => prev.map((o,i)=> i===idx? e.target.value : o))} className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" placeholder={t('communities.poll_option_placeholder', { number: idx + 1 })} />
+                <input key={idx} value={opt} onChange={e=> setOptions(prev => prev.map((o,i)=> i===idx? e.target.value : o))} className="w-full rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-[16px] text-c-text-primary placeholder:text-c-text-tertiary focus:border-cpoint-turquoise outline-none" placeholder={t('communities.poll_option_placeholder', { number: idx + 1 })} />
               ))}
               <div className="flex gap-2">
                 <button type="button" className="px-2 py-1 rounded-md border border-c-border text-xs hover:bg-c-hover-bg" onClick={()=> setOptions(prev => [...prev, ''])}>{t('communities.add_option')}</button>
@@ -309,14 +342,14 @@ export default function CommunityPolls(){
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
               <div>
-                <button type="button" className={`px-2 py-1 rounded-md border text-sm whitespace-nowrap hover:bg:white/5 ${singleVote ? 'border-teal-500 text-teal-300 bg-teal-700/15' : 'border-c-border'}`} onClick={()=> setSingleVote(v=>!v)}>
+                <button type="button" className={`px-2 py-1 rounded-md border text-sm whitespace-nowrap hover:bg-c-hover-bg ${singleVote ? 'border-cpoint-turquoise text-cpoint-turquoise bg-cpoint-turquoise/10' : 'border-c-border text-c-text-secondary'}`} onClick={()=> setSingleVote(v=>!v)}>
                   {t('communities.polls_single_vote')}
                 </button>
               </div>
               <div className="flex flex-col min-w-0">
                 <label className="text-sm text-c-text-tertiary">{t('communities.polls_expiry_label')}</label>
                 <div className="mt-1 flex items-center gap-2 min-w-0">
-                  <input type="datetime-local" value={expiresAt} onChange={e=> setExpiresAt(e.target.value)} className="flex-1 min-w-0 rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm focus:border-teal-400/70 outline-none" />
+                  <input type="datetime-local" value={expiresAt} onChange={e=> setExpiresAt(e.target.value)} className="flex-1 min-w-0 rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-sm text-c-text-primary focus:border-cpoint-turquoise outline-none" />
                   {expiresAt ? (
                     <button type="button" className="px-2 py-1 rounded-md border border-c-border text-xs text-c-text-tertiary hover:bg-c-hover-bg" onClick={()=> setExpiresAt('')}>{t('communities.polls_clear_expiry')}</button>
                   ) : null}
@@ -355,6 +388,9 @@ export default function CommunityPolls(){
                     <button title={t('communities.polls_voters')} className="px-2 py-1 rounded-md border border-cpoint-turquoise text-cpoint-turquoise hover:bg-cpoint-turquoise/10 text-sm" onClick={()=> loadVoters(p.id)}>
                       <i className="fa-solid fa-users mr-1" />
                       {t('communities.polls_voters')}
+                    </button>
+                    <button title={t('feed.delete_poll')} className="px-2 py-1 rounded-md border border-red-500/60 text-red-500 hover:bg-red-500/10 text-sm" onClick={()=> deletePoll(p.id)}>
+                      <i className="fa-regular fa-trash-can" />
                     </button>
                   </div>
                   <div className="px-3 py-2 space-y-2">
@@ -400,7 +436,10 @@ export default function CommunityPolls(){
                       <i className="fa-solid fa-users mr-1" />
                       {t('communities.polls_voters')}
                     </button>
-                    <button title={t('communities.polls_close_poll')} className="px-2 py-1 rounded-md border border-red-400 text-red-300 hover:bg-red-500/10" onClick={()=> closePoll(p.id)}>
+                    <button title={t('communities.polls_close_poll')} className="px-2 py-1 rounded-md border border-c-border text-c-text-secondary hover:border-cpoint-turquoise hover:text-cpoint-turquoise" onClick={()=> closePoll(p.id)}>
+                      <i className="fa-solid fa-lock" />
+                    </button>
+                    <button title={t('feed.delete_poll')} className="px-2 py-1 rounded-md border border-red-500/60 text-red-500 hover:bg-red-500/10" onClick={()=> deletePoll(p.id)}>
                       <i className="fa-regular fa-trash-can" />
                     </button>
                   </div>

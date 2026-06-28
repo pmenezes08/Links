@@ -1078,6 +1078,7 @@
     "vote_count_one": "{{count}} Stimme",
     "vote_count_other": "{{count}} Stimmen",
     "view_all_polls": "Alle Umfragen anzeigen",
+    "poll_final_result_closed": "Endergebnis / geschlossen",
     "discuss": "Diskutieren",
     "discuss_count_one": "{{count}} Kommentar",
     "discuss_count_other": "{{count}} Kommentare",
