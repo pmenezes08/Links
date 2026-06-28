@@ -237,6 +237,21 @@
       "body": "{author} invited you to {community}",
       "message": "{author} invited you to join {community}"
     },
+    "match_invite": {
+      "title": "New game challenge",
+      "body": "{name} challenged you to a game",
+      "message": "{name} challenged you to a game"
+    },
+    "match_move": {
+      "title": "Your move",
+      "body": "{name} played — it's your turn",
+      "message": "It's your turn against {name}"
+    },
+    "match_over": {
+      "title": "Game over",
+      "body": "Your game with {name} has ended",
+      "message": "Your game with {name} has ended"
+    },
     "event_reminder": {
       "title": "Upcoming event",
       "body": "{event_name} starts soon",
@@ -251,6 +266,16 @@
       "title": "Welcome in",
       "body": "You're in — {community} accepted your request.",
       "message": "You're in — {community} accepted your request."
+    },
+    "builder_complete": {
+      "title": "Steve finished your build",
+      "body": "{title} is ready to test.",
+      "message": "Steve finished {title}. Test it now."
+    },
+    "builder_failed": {
+      "title": "Steve could not finish this build",
+      "body": "Tap to retry when you're ready.",
+      "message": "Steve could not finish your build. Tap to retry."
     },
     "profile_section_professional": {
       "title": "A question from Steve",

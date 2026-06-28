@@ -14,6 +14,8 @@ from openai import OpenAI
 logger = logging.getLogger(__name__)
 
 XAI_API_KEY = os.getenv("XAI_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 GROK_MODEL_FAST = os.getenv("STEVE_CONTENT_MODEL", "grok-4.20-non-reasoning")
 
 # Tech, culture, analysis, fashion, music — US/Europe-oriented; bare + www for filter_links netloc match.
@@ -98,6 +100,17 @@ def _require_client() -> OpenAI:
     if not XAI_API_KEY:
         raise RuntimeError("XAI_API_KEY is not configured")
     return OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+
+
+def _is_openai_model(model: str) -> bool:
+    """OpenAI models (gpt-*, o-series) route to OpenAI; everything else to xAI."""
+    m = (model or "").lower()
+    return m.startswith("gpt") or m.startswith("o1") or m.startswith("o3") or m.startswith("o4")
+
+
+def _is_anthropic_model(model: str) -> bool:
+    """Anthropic Claude models (claude-*) route to the Anthropic SDK."""
+    return (model or "").lower().startswith("claude")
 
 
 def _strip_markdown_json_fence(raw_text: str) -> str:
@@ -311,6 +324,172 @@ def generate_web_search_json(
             raw[:240].replace("\n", "\\n"),
         )
         return {}
+
+
+_RESEARCH_MODEL = os.getenv("STEVE_BUILDER_RESEARCH_MODEL", "gpt-4o")
+
+
+def web_search_json(system_prompt: str, user_prompt: str, *, max_output_tokens: int = 1800) -> Dict[str, Any]:
+    """Run a REAL web search via OpenAI's hosted web_search tool and return parsed
+    JSON. NOTE: ``generate_web_search_json`` above targets the xAI endpoint, which
+    does NOT support the OpenAI hosted web_search tool — use THIS for genuine web
+    grounding. Best-effort: returns {} if the key/tool/model is unavailable."""
+    if not OPENAI_API_KEY:
+        raise RuntimeError("OPENAI_API_KEY is not configured")
+    oai = OpenAI(api_key=OPENAI_API_KEY)
+    base = dict(
+        model=_RESEARCH_MODEL,
+        input=[
+            {"role": "system", "content": system_prompt + "\nRespond with valid JSON only."},
+            {"role": "user", "content": user_prompt},
+        ],
+        max_output_tokens=max_output_tokens,
+    )
+    raw = ""
+    for tool_type in ("web_search", "web_search_preview"):  # tool name varies by SDK/model
+        try:
+            response = oai.responses.create(tools=[{"type": tool_type}], **base)
+            raw = (response.output_text or "").strip() if hasattr(response, "output_text") else ""
+            if raw:
+                break
+        except Exception as exc:
+            logger.warning("web_search_json: tool '%s' failed: %s", tool_type, exc)
+            continue
+    if not raw:
+        return {}
+    try:
+        return _extract_json(raw)
+    except ValueError:
+        logger.warning("web_search_json: unparseable JSON (prefix=%r)", raw[:200])
+        return {}
+
+
+def web_search_text(system_prompt: str, user_prompt: str, *, max_output_tokens: int = 2400) -> str:
+    """Run a web search and return the RAW text answer. Uses the xAI responses
+    API + hosted web_search tool — the path proven (in prod logs) to return real,
+    current data. We deliberately do NOT ask for / parse JSON: the search model
+    reliably returns prose with citations, and JSON parsing was silently dropping
+    every result. Best-effort; raises on hard failure so the caller can fall back."""
+    client = _require_client()
+    response = client.responses.create(
+        model=GROK_MODEL_FAST,
+        input=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        tools=[{"type": "web_search"}],
+        max_output_tokens=max_output_tokens,
+    )
+    return (response.output_text or "").strip() if hasattr(response, "output_text") else ""
+
+
+def vision_json(
+    system_prompt: str,
+    user_prompt: str,
+    image_b64_png: str,
+    *,
+    model: str = "claude-opus-4-8",
+    max_tokens: int = 1200,
+    timeout: float = 90,
+) -> Dict[str, Any]:
+    """Vision completion: send a PNG screenshot (base64) + a prompt to a
+    vision-capable Claude model and parse a JSON object from the reply. Used by
+    the Steve Builder vision-judge to grade a rendered artifact. Anthropic-only
+    (Opus/Sonnet are vision-capable); raises if the key is unset or no JSON is
+    found, so the caller can degrade gracefully."""
+    if not ANTHROPIC_API_KEY:
+        raise RuntimeError("ANTHROPIC_API_KEY is not configured")
+    import anthropic
+    aclient = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    msg = aclient.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        system=system_prompt,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "image", "source": {"type": "base64",
+                                             "media_type": "image/png",
+                                             "data": image_b64_png}},
+                {"type": "text", "text": user_prompt},
+            ],
+        }],
+        timeout=timeout,
+    )
+    text = next((b.text for b in msg.content if getattr(b, "type", None) == "text"), "")
+    return _extract_json(text)
+
+
+def generate_text(
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    max_tokens: int = 4000,
+    temperature: float = 0.6,
+    caps: Optional[Dict[str, Any]] = None,
+    model: Optional[str] = None,
+    timeout: Optional[float] = None,
+) -> str:
+    """Plain-text completion from Grok (no JSON coercion).
+
+    Used by the Steve Builder to generate a self-contained HTML artifact.
+    Callers that need a large artifact pass ``caps=None`` so the small
+    chat per-turn token ceilings don't truncate the output; cost is governed
+    by the builder's own monthly cap, not per-turn tokens. ``model`` lets a
+    caller pick a stronger (e.g. reasoning) model than the fast default.
+    ``timeout`` (seconds) caps the upstream call — callers on a wall-clock
+    budget (e.g. the builder render/repair pass) pass a tight value so a slow
+    generation can't blow the request/lease budget.
+    """
+    effective_max = _apply_output_cap(max_tokens, caps)
+    mdl = model or GROK_MODEL_FAST
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    if _is_anthropic_model(mdl):
+        # Anthropic Claude (Opus/Sonnet/Haiku) via the official SDK. Opus/Sonnet
+        # reject `temperature` (400), so we omit it; `max_tokens` is the output
+        # cap, and an explicit timeout suppresses the SDK's large-output guard.
+        if not ANTHROPIC_API_KEY:
+            raise RuntimeError("ANTHROPIC_API_KEY is not configured")
+        import anthropic
+        aclient = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        msg = aclient.messages.create(
+            model=mdl,
+            max_tokens=effective_max,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+            timeout=timeout if timeout is not None else 600,
+        )
+        return next((b.text for b in msg.content if getattr(b, "type", None) == "text"), "")
+    if _is_openai_model(mdl):
+        # OpenAI GPT-5.x runs through the Responses API with max_output_tokens
+        # (mirrors the onboarding services); these models reject chat-style
+        # max_tokens and a non-default temperature, so we omit temperature.
+        if not OPENAI_API_KEY:
+            raise RuntimeError("OPENAI_API_KEY is not configured")
+        oai = OpenAI(api_key=OPENAI_API_KEY)
+        response = oai.responses.create(
+            model=mdl,
+            input=messages,
+            max_output_tokens=effective_max,
+            timeout=timeout,
+        )
+        if hasattr(response, "output_text") and response.output_text:
+            return response.output_text
+        return ""
+    client = _require_client()
+    completion = client.chat.completions.create(
+        model=mdl,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=effective_max,
+        timeout=timeout,
+    )
+    if not completion.choices:
+        return ""
+    return completion.choices[0].message.content or ""
 
 
 def trim_messages(messages: List[Dict[str, Any]], caps: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:

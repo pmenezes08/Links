@@ -38,6 +38,8 @@ import {
   type DetectedLink,
 } from '../utils/linkUtils.tsx'
 import EditableAISummary from '../components/EditableAISummary'
+import CreationPreview from '../components/builder/CreationPreview'
+import CreationStatsStrip from '../components/builder/CreationStatsStrip'
 import GifPicker from '../components/GifPicker'
 import FeedBottomNav from '../components/FeedBottomNav'
 import AskSteveEntry from '../components/feed/AskSteveEntry'
@@ -70,7 +72,7 @@ import { applyOptimisticPollVote, reconcilePollResults, usePollVote, type Poll }
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null, audio_path?: string|null, parent_reply_id?: number | null, reply_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
-type Post = { id: number; username: string; content: string; link_urls?: string[] | string | null; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean, view_count?: number, has_viewed?: boolean, media_paths?: MediaItem[] | string | null, is_system_post?: boolean | number | null, welcome_card_key?: string | null }
+type Post = { id: number; username: string; content: string; link_urls?: string[] | string | null; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean, view_count?: number, has_viewed?: boolean, media_paths?: MediaItem[] | string | null, is_system_post?: boolean | number | null, welcome_card_key?: string | null, creation_id?: number | null }
 type ReactionGroup = { reaction_type: string; users: Array<{ username: string; profile_picture?: string | null }> }
 type PostViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
 type TextOverlay = {
@@ -3958,6 +3960,9 @@ export default function CommunityFeed() {
             }`}
             style={{ marginBottom: 'var(--app-feed-bottom-nav-height)' }}
           >
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg flex items-center justify-end gap-2" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/builder`) }}>
+              <span style={{ color: '#00CEC8' }}>Build with Steve</span>
+            </button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/key_posts`) }}>
               {t('feed.key_posts')}
             </button>
@@ -5115,6 +5120,27 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
               className="w-full max-h-[420px] rounded border border-c-border bg-c-bg-app"
               playsInline
             />
+          </div>
+        ) : null}
+        {post.creation_id ? (
+          <div className="px-3">
+            <button
+              onClick={(e) => { e.stopPropagation(); navigate(`/community/${communityId}/creation/${post.creation_id}`) }}
+              className="relative w-full overflow-hidden rounded-xl border border-c-border bg-c-bg-app"
+              style={{ height: 180 }}
+            >
+              <CreationPreview creationId={post.creation_id} />
+              <span className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0) 35%, rgba(0,0,0,0.6) 100%)' }} />
+              <span className="absolute inset-0 flex items-center justify-center">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full text-black" style={{ background: 'rgba(0,206,200,0.92)', boxShadow: '0 4px 18px rgba(0,0,0,0.45)' }}>
+                  <i className="fa-solid fa-play" />
+                </span>
+              </span>
+              <span className="absolute left-3 right-3 bottom-2.5 flex flex-col items-start gap-1.5">
+                <CreationStatsStrip creationId={post.creation_id} />
+                <span className="text-xs text-white" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}>{post.username} made this with Steve</span>
+              </span>
+            </button>
           </div>
         ) : null}
         {post.audio_path ? (

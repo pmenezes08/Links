@@ -11,6 +11,7 @@ redis==5.0.1  # Redis caching for performance
 PyMySQL==1.1.0  # MySQL database connector
 Pillow>=10.4.0  # Image optimization and compression
 openai>=1.0.0  # OpenAI API for audio transcription, xAI/Grok, and embeddings
+anthropic>=0.40.0  # Anthropic Claude API (Steve Builder "best quality" codegen tier)
 numpy>=1.24.0  # Vector operations for embedding search
 faiss-cpu>=1.7.4  # FAISS vector similarity search (optional, falls back to numpy)
 pyyaml
@@ -21,6 +22,7 @@ itsdangerous>=2.0.0
 markupsafe>=2.1.0
 pypdf>=3.0.0
 google-auth
+google-cloud-tasks>=2.16.0
 PyJWT>=2.8.0  # App Store Server API JWT + Apple ASSN2 JWS verification
 trafilatura>=1.6.0
 python-dateutil>=2.8.2

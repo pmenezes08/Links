@@ -140,6 +140,21 @@ class MemoryCache:
                 self._cleanup_expired()
             
             return True
+
+    def incr(self, key, ttl=DEFAULT_CACHE_TTL):
+        """Atomically increment an integer-ish key and keep a TTL on the window."""
+        if not self.enabled:
+            return None
+
+        with self.lock:
+            self._cleanup_expired()
+            try:
+                current = int(self.cache.get(key) or 0) + 1
+            except (TypeError, ValueError):
+                current = 1
+            self.cache[key] = current
+            self.expiry[key] = time.time() + ttl
+            return current
     
     def delete(self, key):
         """Delete key from cache"""
@@ -292,6 +307,21 @@ class RedisCache:
         except Exception as e:
             logger.warning(f"Redis set error for key {key}: {e}")
             return False
+
+    def incr(self, key, ttl=DEFAULT_CACHE_TTL):
+        """Atomically increment a Redis integer key and ensure it expires."""
+        if not self._ensure_connected():
+            return None
+
+        try:
+            pipe = self.redis_client.pipeline()
+            pipe.incr(key)
+            pipe.expire(key, ttl)
+            value, _ = pipe.execute()
+            return int(value)
+        except Exception as e:
+            logger.warning(f"Redis incr error for key {key}: {e}")
+            return None
     
     def delete(self, key):
         """Delete key from cache"""

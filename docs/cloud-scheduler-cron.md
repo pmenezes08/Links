@@ -259,7 +259,29 @@ gcloud scheduler jobs create http kb-weekly-synthesis \
   --http-method=POST \
   --headers="X-Cron-Secret=$SECRET" \
   --attempt-deadline=900s
+
+# Steve Builder reaper — reclaims async build jobs orphaned by a crashed
+# worker / recycled Cloud Run instance. Requeues + re-dispatches jobs whose
+# 10-min lease expired (if attempts remain), and terminally fails those past
+# max_attempts (one block row + one notification). Idempotent — safe to run
+# often. Every ~5 min keeps a stuck "building..." state short.
+#   curl -X POST "$BASE/api/cron/builder/sweep" -H "X-Cron-Secret: $SECRET"
+gcloud scheduler jobs create http builder-sweep \
+  --location=europe-west1 \
+  --schedule="*/5 * * * *" \
+  --time-zone=UTC \
+  --uri="$BASE/api/cron/builder/sweep" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=120s
 ```
+
+Note: the builder worker callback `/api/internal/builder/jobs/<id>/run` is
+invoked by **Cloud Tasks** (not Scheduler) and accepts either `X-Cron-Secret`
+(`CRON_SHARED_SECRET`) or a dedicated `X-Builder-Job-Secret` (`BUILDER_JOB_SECRET`).
+See `docs/DEPLOYMENT_INSTANCES.md` for the Cloud Tasks queue env (`BUILDER_TASKS_QUEUE`,
+`BUILDER_TASKS_LOCATION`, `PUBLIC_BASE_URL`); without it, builds fall back to a
+non-durable in-process thread (logged at startup by `builder_async_health`).
 
 ## 3. Monitor the jobs
 

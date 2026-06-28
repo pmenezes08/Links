@@ -38,6 +38,10 @@ import CommunityFeed from './pages/CommunityFeed'
 import CommunityCalendar from './pages/CommunityCalendar'
 import CommunityTasks from './pages/CommunityTasks'
 import CommunityPolls from './pages/CommunityPolls'
+import BuilderPage from './pages/BuilderPage'
+import MyBuilds from './pages/MyBuilds'
+import ExploreCreations from './pages/ExploreCreations'
+import CreationPlay from './pages/CreationPlay'
 import CommunityResources from './pages/CommunityResources'
 import UsefulLinks from './pages/UsefulLinks'
 import CommunityPhotos from './pages/CommunityPhotos'
@@ -888,6 +892,8 @@ function AppRoutes(){
     currentPathName.startsWith('/group_reply/') ||
     currentPathName.startsWith('/community_feed_react/') ||
     currentPathName.startsWith('/group_feed_react/') ||
+    currentPathName === '/builder' ||
+    (currentPathName.startsWith('/community/') && (currentPathName.includes('/builder') || currentPathName.includes('/creation/'))) ||
     currentPathName.startsWith('/community/') && currentPathName.includes('/feed')
   const showHeader = authLoaded && !hideHeader && !headerHiddenOverride
   const headerHeightValue = showHeader
@@ -952,6 +958,8 @@ function AppRoutes(){
                   <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
                   <Route path="/feed" element={<HomeTimeline mode="dashboard_feed" />} />
                   <Route path="/about_cpoint" element={<AboutCPoint />} />
+                  <Route path="/builds" element={<MyBuilds />} />
+                  <Route path="/explore-creations" element={<ExploreCreations />} />
                 </Route>
                 <Route path="/crossfit" element={<CrossfitExact />} />
                 <Route path="/crossfit_react" element={<CrossfitExact />} />
@@ -985,6 +993,8 @@ function AppRoutes(){
                 <Route path="/home" element={<HomeTimeline />} />
                 <Route path="/workout_tracking" element={<WorkoutTracking />} />
                 <Route path="/steve/profile-builder/:section" element={<ScopedProfileBuilder />} />
+                <Route path="/builder" element={<BuilderPage />} />
+                <Route path="/creation/:creation_id" element={<CreationPlay />} />
                 <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
                 <Route path="/community/:community_id/calendar_react" element={<CommunityCalendar />} />
                 <Route path="/community/:community_id/tasks_react" element={<CommunityTasks />} />
@@ -996,6 +1006,8 @@ function AppRoutes(){
                 <Route path="/community/:community_id/members" element={<Members />} />
                 <Route path="/community/:community_id/edit" element={<EditCommunity />} />
                 <Route path="/community/:community_id/owner" element={<OwnerDashboard />} />
+                <Route path="/community/:community_id/builder" element={<BuilderPage />} />
+                <Route path="/community/:community_id/creation/:creation_id" element={<CreationPlay />} />
                 <Route path="/event/:event_id" element={<EventDetail />} />
                 <Route path="/post/:post_id" element={<PostDetail />} />
                 <Route path="/reply/:reply_id" element={<CommentReply />} />

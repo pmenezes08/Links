@@ -64,6 +64,9 @@ _DEFAULTS: Dict[str, Any] = {
     # Credits & Entitlements
     "steve_uses_per_month": 100,
     "whisper_minutes_per_month": 100,
+    # Steve Builder (front-end creations): free/trial monthly turn quota;
+    # paid tiers are uncapped (None) — see resolve_entitlements tier blocks.
+    "builder_turns_per_month": 10,
     "monthly_spend_ceiling_eur": 3.99,
     "internal_weights": {"dm": 1, "group": 3, "feed": 3, "post_summary": 2, "voice_minute": 1},
     # Hard Limits (Premium defaults)
@@ -151,6 +154,10 @@ def _load_kb_defaults() -> Dict[str, Any]:
     out["steve_uses_per_month"] = int(
         _kb_field_value("credits-entitlements", "steve_uses_per_month_user_facing",
                         _DEFAULTS["steve_uses_per_month"]) or _DEFAULTS["steve_uses_per_month"]
+    )
+    out["builder_turns_per_month"] = int(
+        _kb_field_value("credits-entitlements", "builder_turns_per_month",
+                        _DEFAULTS["builder_turns_per_month"]) or _DEFAULTS["builder_turns_per_month"]
     )
     out["whisper_minutes_per_month"] = int(
         _kb_field_value("credits-entitlements", "whisper_minutes_per_month",
@@ -414,6 +421,10 @@ def resolve_entitlements(username: Optional[str]) -> Dict[str, Any]:
         "chat_memory_indexing_daily_budget_usd": defaults.get("chat_memory_indexing_daily_budget_usd", 0.0),
         "chat_media_max_bytes": defaults.get("chat_media_max_bytes", 500 * 1024 * 1024),
         "chat_media_max_daily": defaults.get("chat_media_max_daily", 50),
+        # Steve Builder is available to every logged-in tier; free/trial get a
+        # monthly quota (below), paid tiers are uncapped (overridden per-tier).
+        "can_build": True,
+        "builder_turns_per_month": defaults["builder_turns_per_month"],
     }
 
     if tier == TIER_SPECIAL:
@@ -422,6 +433,7 @@ def resolve_entitlements(username: Optional[str]) -> Dict[str, Any]:
             "can_create_communities": True,
             "steve_uses_per_month": None,          # unlimited (business)
             "whisper_minutes_per_month": None,     # unlimited (business)
+            "builder_turns_per_month": None,       # unlimited (paid)
             "communities_max": None,               # unlimited (business)
             "members_per_owned_community": None,   # unlimited (business)
             # Technical safeguards still apply:
@@ -437,6 +449,7 @@ def resolve_entitlements(username: Optional[str]) -> Dict[str, Any]:
             "can_create_communities": True,
             "steve_uses_per_month": defaults["steve_uses_per_month"],
             "whisper_minutes_per_month": defaults["whisper_minutes_per_month"],
+            "builder_turns_per_month": None,       # unlimited (paid)
             "communities_max": defaults["premium_communities_max"],
             # Premium = Steve access + 10 owned communities. Member caps
             # come from the *community's* tier (Free=25, Paid L1=75,

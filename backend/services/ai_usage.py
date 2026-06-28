@@ -64,6 +64,19 @@ SURFACE_CONTENT_GEN = "content_gen"
 SURFACE_WHISPER = "whisper"
 SURFACE_NETWORKING_STEVE = "networking_steve"
 SURFACE_ONBOARDING_AI = "onboarding_ai"
+SURFACE_BUILDER = "builder"
+# A tiny "here's what I'll make" narration call shown while a build runs. Logged
+# for AI-spend visibility but deliberately a DISTINCT surface so it does NOT
+# count against the builder_turns_per_month cap (which filters surface='builder').
+SURFACE_BUILDER_PLAN = "builder_plan"
+# Steve's design conversation (reason / ideate / discuss / confirm) before a
+# build. Distinct surface so chatting never consumes a build turn.
+SURFACE_BUILDER_CHAT = "builder_chat"
+# The vision-judge: a screenshot of a rendered build is graded by a vision model
+# (render OK? data correct? design quality?) to drive render-fix / web-data
+# verification / design-refine inside a build. Logged for AI-spend visibility but
+# a DISTINCT surface so it never counts against the builder_turns_per_month cap.
+SURFACE_BUILDER_JUDGE = "builder_judge"
 
 ALL_SURFACES = (
     SURFACE_DM,
@@ -397,6 +410,32 @@ def _fetch_count(cursor, sql: str, params: tuple) -> int:
         return int(row["cnt"] if hasattr(row, "keys") else row[0] or 0)
     except Exception:
         return 0
+
+
+def builder_turns_this_month(username: str) -> int:
+    """Successful Steve Builder turns this calendar month for ``username``.
+
+    Powers the ``builder_turns_per_month`` cap. Builder rows carry a
+    ``community_id`` (builds happen inside a community), so unlike the
+    personal-Steve counters this does not filter on ``community_id``.
+    """
+    if not username:
+        return 0
+    ensure_tables()
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        return _fetch_count(
+            c,
+            f"""
+            SELECT COUNT(*) AS cnt FROM ai_usage_log
+            WHERE username = {ph}
+              AND surface = 'builder'
+              AND success = 1
+              AND created_at >= {ph}
+            """,
+            (username, _first_of_current_month_utc()),
+        )
 
 
 def _fetch_sum_credits(cursor, sql: str, params: tuple) -> float:
