@@ -286,12 +286,12 @@ See `docs/AGENT_TASK_CHECKLIST.md`, `AGENTS.md` § Living engineering docs. For 
 
 ## 8b. Post detail read + viewer-scoped cache
 
-The post detail pages (`/get_post` and `/api/group_post`) are read through a single service and a viewer-scoped Redis cache so repeat opens of a community or group post are fast without leaking another viewer's per-user flags.
+The post detail pages (`/get_post` and `/api/group_post`) are read through a single service and a viewer-scoped Redis cache so repeat opens of a community or group post are fast without leaking another viewer's per-user flags. Community and group poll posts now hydrate the same `poll` payload as feed cards, including closed polls, so discussion remains available after voting closes.
 
 1. **Single read service** — `backend/services/post_detail_read.py` owns `read_community_post_detail(post_id, username)` and `read_group_post_detail(post_id, username)`. Both return `(body, status)` dicts so the same function is reusable from background workers and tests. The community read keeps the existing Firestore + MySQL hybrid path; the group read mirrors the legacy route body (reactions, nested reply tree with audio, reply counts, viewer flags, star + community-star flags, NSFW flag, view count). The `bodybuilding_app.py` routes are now ~10-line wrappers.
 2. **Viewer-scoped cache layer** — `backend/services/post_detail_cache.py` wraps the read service. Keys are versioned and viewer-scoped:
-   - `post_detail:v1:community:{post_id}:viewer:{username}`
-   - `post_detail:v1:group:{post_id}:viewer:{username}`
+   - `post_detail:v2:community:{post_id}:viewer:{username}`
+   - `post_detail:v2:group:{post_id}:viewer:{username}`
    Only successful 200 responses are cached (TTL `CACHE_TTL_POST_DETAIL`, default 60s). Errors and 404s are served live. Viewer-scoping is required because the payload includes per-viewer flags (`user_reaction`, `is_starred`, `is_community_starred`, `is_community_admin`, `can_edit`, `can_delete`, `can_toggle_community_key`) and sharing a key would mis-report them.
 3. **Invalidation matrix** — every mutation site that changes what the cached blob would return calls `invalidate_post_detail(post_id, scope)` (full bust across all viewers) or `invalidate_post_detail_viewer(post_id, username, scope)` (viewer-only):
 
@@ -304,13 +304,17 @@ The post detail pages (`/get_post` and `/api/group_post`) are read through a sin
 | `/api/toggle_community_key_post` (admin community star) | `invalidate_post_detail` | community |
 | `/api/group_posts/react`, `/api/group_posts/edit`, `/api/group_posts/delete` | `invalidate_post_detail` | group |
 | `/api/group_replies`, `/api/group_replies/react` | `invalidate_post_detail` | group |
+| `/create_poll`, `/vote_poll`, `/edit_poll`, `/close_poll`, `/delete_poll`, `/remove_poll_option` | `invalidate_post_detail` | community |
+| `/api/group_poll_vote`, `/api/group_polls/create` | `invalidate_post_detail` | group |
 | `/api/toggle_group_key_post` (viewer star) | `invalidate_post_detail_viewer` | group |
 | `/api/toggle_group_community_key_post` (admin community star) | `invalidate_post_detail` | group |
 
 The legacy orphan `cache.delete(f"post:{reply_post_id}")` in `/delete_reply` was a no-op (no writer set that key); it has been replaced with `invalidate_post_detail(reply_post_id, scope="community")`. `post_view` is intentionally **not** an invalidation event — view counts change on every viewer, and busting every cached blob per view would defeat the cache. View counts come back fresh on the next 60s window expiry; the client-side device cache (PR 5) handles short-term smoothing.
 
 4. **Failure handling** — cache `get`/`set`/`delete_pattern` failures are logged and swallowed; a Redis outage degrades to the underlying service read, never blocks a mutation.
-5. **Observability** — `post_detail cache hit/miss` lines log at DEBUG, matching the feed cache pattern. To bump the payload shape (e.g. add a new viewer flag), set `POST_DETAIL_CACHE_VERSION=v2` in env; existing `v1` keys age out naturally.
+5. **Observability** — `post_detail cache hit/miss` lines log at DEBUG, matching the feed cache pattern. To bump the payload shape (e.g. add a new viewer flag), set `POST_DETAIL_CACHE_VERSION=v3` in env; existing `v2` keys age out naturally.
+
+Poll discussion entry points stay on the existing post detail route: feed poll cards expose a dedicated `Discuss` action, `CommunityPolls` active/archive rows link to `/post/<post_id>`, and replies continue using the existing `replies(post_id)` / group reply models.
 
 ---
 

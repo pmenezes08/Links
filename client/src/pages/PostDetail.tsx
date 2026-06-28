@@ -34,11 +34,13 @@ import {
 import { preflightSteveMention } from '../utils/stevePreflight'
 import { NativeActionButton } from '../components/NativeActionButton'
 import { NativeIconButton } from '../components/NativeIconButton'
+import PollCard from '../components/feed/PollCard'
 import { FixedComposerShell } from '../components/FixedComposerShell'
 import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
 import { preventComposerBlur, composerControlPointerProps } from '../utils/composerBlurGuard'
 import { triggerHaptic, hapticImpactLight } from '../utils/haptics'
 import { handleBasicProfileRequired } from '../utils/basicProfileGate'
+import { applyOptimisticPollVote, reconcilePollResults, usePollVote, type Poll } from '../hooks/usePollVote'
 import {
   attachReplyToPostTree,
   normalizePostForDetail,
@@ -46,9 +48,9 @@ import {
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, audio_path?: string|null, audio_summary?: string|null, reply_count?: number, view_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
-type Post = { id: number; username: string; content: string; link_urls?: string[] | string | null; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}>; view_count?: number; reply_count?: number; media_paths?: MediaItem[] | string | null }
+type Post = { id: number; username: string; content: string; link_urls?: string[] | string | null; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; poll?: Poll | null; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}>; view_count?: number; reply_count?: number; media_paths?: MediaItem[] | string | null }
 
-const POST_DETAIL_CACHE_VERSION = 'post-detail-v3'
+const POST_DETAIL_CACHE_VERSION = 'post-detail-v4'
 // SWR window: long enough that repeat opens skip the spinner, short enough that
 // a backgrounded user does not see truly stale data on their next visit. Server
 // invalidates every mutation, so a 5 minute drift cap is safe.
@@ -141,6 +143,9 @@ export default function PostDetail(){
   const [currentUser, setCurrentUser] = useState<{username: string; profile_picture?: string | null} | null>(null)
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [submittingReply, setSubmittingReply] = useState(false)
+  const [viewingPollVoters, setViewingPollVoters] = useState<number | null>(null)
+  const [pollVotersData, setPollVotersData] = useState<any[] | null>(null)
+  const [pollVotersLoading, setPollVotersLoading] = useState(false)
   const [mediaCarouselIndex, setMediaCarouselIndex] = useState(0)
   const [steveIsTyping, setSteveIsTyping] = useState(false)
   const [replyComposerExpanded, setReplyComposerExpanded] = useState(false)
@@ -703,6 +708,57 @@ export default function PostDetail(){
       writePostDetailCache(r.post, r.isGroupPost)
     }
   }, [fetchPostDetail, isGroupPost, post, writePostDetailCache])
+
+  const votePoll = usePollVote({
+    onBasicProfileRequired: refreshPost,
+    onSuccess: () => {
+      clearDeviceCache(postDetailCacheKey(viewerUsername, post_id))
+      const communityId = (post as any)?.community_id
+      if (communityId !== undefined && communityId !== null && communityId !== '') {
+        clearDeviceCache(`community-feed:${communityId}`)
+      }
+      clearDeviceCache('home-timeline')
+    },
+  })
+
+  const handlePollVote = useCallback(async (postId: number, pollId: number, optionId: number, isGroupPoll = false) => {
+    await votePoll({
+      pollId,
+      optionId,
+      isGroupPoll: isGroupPost || isGroupPoll,
+      onOptimistic: () => {
+        setPost(prev => (
+          prev?.id === postId && prev.poll
+            ? ({ ...prev, poll: applyOptimisticPollVote(prev.poll, optionId) } as Post)
+            : prev
+        ))
+      },
+      onReconcile: rows => {
+        setPost(prev => (
+          prev?.id === postId && prev.poll
+            ? ({ ...prev, poll: reconcilePollResults(prev.poll, rows) } as Post)
+            : prev
+        ))
+      },
+      onRejected: refreshPost,
+    })
+  }, [isGroupPost, refreshPost, votePoll])
+
+  const openPollVoters = useCallback(async (pollId: number) => {
+    if (isGroupPost) return
+    setViewingPollVoters(pollId)
+    setPollVotersLoading(true)
+    setPollVotersData(null)
+    try {
+      const r = await fetch(`/get_poll_voters/${pollId}`, { credentials: 'include' })
+      const j = await r.json().catch(() => null)
+      if (j?.success) {
+        setPollVotersData(Array.isArray(j.options) ? j.options : [])
+      }
+    } finally {
+      setPollVotersLoading(false)
+    }
+  }, [isGroupPost])
 
   const clearRelatedPostListCaches = useCallback((nextPost: Post | null) => {
     if (!nextPost?.id) return
@@ -1916,6 +1972,31 @@ export default function PostDetail(){
                     })()} />
                   </div>
                 ) : null}
+                {post.poll ? (
+                  <PollCard
+                    postId={post.id}
+                    poll={post.poll}
+                    postTimestamp={(post as any).display_timestamp || post.timestamp}
+                    detail
+                    canManage={!isGroupPost && (currentUser?.username === post.username || currentUser?.username === 'admin' || !!(post as any).is_community_admin)}
+                    onVote={handlePollVote}
+                    onEdit={!isGroupPost ? () => {
+                      const communityId = (post as any)?.community_id
+                      if (communityId) navigate(`/community/${communityId}/polls_react?edit=${post.poll?.id}`)
+                    } : undefined}
+                    onDelete={!isGroupPost ? () => {
+                      if (!confirm(t('feed.delete_poll_confirm'))) return
+                      fetch('/delete_poll', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ poll_id: post.poll?.id }),
+                      }).then(() => navigate(-1)).catch(() => undefined)
+                    } : undefined}
+                    onOpenVoters={!isGroupPost ? openPollVoters : undefined}
+                    repliesCount={post.replies?.length || post.reply_count || 0}
+                  />
+                ) : null}
               </>
             ) : (
               <div className="px-3 space-y-2">
@@ -2055,6 +2136,43 @@ export default function PostDetail(){
         </div>
       </div>
     </div>
+      {viewingPollVoters ? (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setViewingPollVoters(null); setPollVotersData(null) }}>
+          <div className="bg-c-bg-app border border-c-border rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-c-border flex items-center justify-between">
+              <div className="font-medium">{t('communities.polls_voters_modal')}</div>
+              <button className="p-2 hover:bg-c-hover-bg rounded-full" onClick={() => { setViewingPollVoters(null); setPollVotersData(null) }}>
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            <div className="overflow-y-auto max-h-[calc(80vh-60px)] p-4">
+              {pollVotersLoading ? (
+                <div className="text-c-text-tertiary">{t('communities.loading_voters')}</div>
+              ) : pollVotersData ? (
+                <div className="space-y-4">
+                  {pollVotersData.map((option: any) => (
+                    <div key={option.id} className="border border-c-border rounded-lg p-3">
+                      <div className="font-medium text-sm mb-2 text-cpoint-turquoise">{option.option_text}</div>
+                      {option.voters?.length ? (
+                        <div className="space-y-2">
+                          {option.voters.map((voter: any, idx: number) => (
+                            <div key={`${voter.username}-${idx}`} className="flex items-center gap-2 text-sm">
+                              <Avatar username={voter.username} url={voter.profile_picture} size={24} linkToProfile />
+                              <span>{voter.username}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-c-text-tertiary">{t('communities.no_votes')}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
       {/* Image preview modal */}
           {previewSrc ? (
         <div 
