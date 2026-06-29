@@ -1697,7 +1697,12 @@ export default function PostDetail(){
         style={{
           paddingTop: 'var(--app-content-gap, 8px)',
           WebkitOverflowScrolling: 'touch' as any,
-          overscrollBehaviorY: 'auto' as any,
+          // `contain` (not `auto`) so an overscroll/pull at the top stays inside
+          // this content area and does NOT chain up to the parent
+          // `.app-scroll-region` — chaining there rubber-banded the whole 100dvh
+          // page (fixed header included) and exposed the canvas above it. The
+          // pinned `flex-shrink-0` header now stays put while content still bounces.
+          overscrollBehaviorY: 'contain' as any,
         }}
       >
         <div className="max-w-2xl mx-auto px-3" style={{ paddingBottom: contentPaddingBottom }}>
