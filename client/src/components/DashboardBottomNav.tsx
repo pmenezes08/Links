@@ -82,7 +82,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
   const chrome = (
     <>
       <div
-        className="fixed bottom-0 left-0 right-0 z-[900] bg-c-nav-bg border-t border-[#262f30]"
+        className="fixed bottom-0 left-0 right-0 z-[900] bg-c-nav-bg border-t border-c-border"
         style={{
           paddingBottom: 'var(--sab-px, 0px)',
           paddingLeft: 'var(--sal-px, 0px)',

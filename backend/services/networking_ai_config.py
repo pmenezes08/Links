@@ -16,30 +16,25 @@ logger = logging.getLogger(__name__)
 KB_SLUG = "networking-ai"
 
 MODEL_GROK_43 = "grok-4.3"
-MODEL_GROK_420_REASONING = "grok-4.20-reasoning"
 MODEL_GROK_420_MULTI_AGENT = "grok-4.20-multi-agent"
 
-PLANNER_MODELS = frozenset({
-    MODEL_GROK_43,
-    MODEL_GROK_420_REASONING,
-})
-FINAL_MODELS = frozenset({
-    MODEL_GROK_43,
-    MODEL_GROK_420_REASONING,
-})
-KB_SYNTHESIS_MODELS = frozenset({
-    MODEL_GROK_43,
-    MODEL_GROK_420_REASONING,
-})
-LARGE_CONTEXT_MODELS = frozenset({
-    MODEL_GROK_420_REASONING,
-    MODEL_GROK_43,
-})
+# grok-4.3 is the flagship model for every generative networking stage. Its
+# reasoning depth is controlled by the reasoning_effort parameter
+# (none|low|medium|high) — there is no separate "-reasoning" SKU. The retired
+# grok-4.20-reasoning model is no longer selectable for any networking stage.
+PLANNER_MODELS = frozenset({MODEL_GROK_43})
+FINAL_MODELS = frozenset({MODEL_GROK_43})
+KB_SYNTHESIS_MODELS = frozenset({MODEL_GROK_43})
+LARGE_CONTEXT_MODELS = frozenset({MODEL_GROK_43})
 FALLBACK_MODELS = frozenset({
     MODEL_GROK_43,
-    MODEL_GROK_420_REASONING,
     MODEL_GROK_420_MULTI_AGENT,
 })
+
+# Allowed reasoning_effort values for grok-4.3 (xAI). "low" is the API default;
+# the planner uses "medium" because it decomposes intent into facets,
+# constraints, and dimensions. "none" disables reasoning (legacy fast path).
+REASONING_EFFORTS = frozenset({"none", "low", "medium", "high"})
 
 
 @dataclass(frozen=True)
@@ -51,12 +46,16 @@ class NetworkingAiConfig:
     planner_model: str = MODEL_GROK_43
     final_answer_model: str = MODEL_GROK_43
     kb_synthesis_model: str = MODEL_GROK_43
-    large_context_model: str = MODEL_GROK_420_REASONING
+    large_context_model: str = MODEL_GROK_43
     fallback_model: str = MODEL_GROK_43
     fallback_enabled: bool = False
+    # Reasoning depth for the planner stage. grok-4.3 defaults to "low" at the
+    # API; intent decomposition benefits from "medium". "none" = fast/no-reasoning.
+    planner_reasoning_effort: str = "medium"
     use_large_context_model_after_tokens: int = 900_000
-    planner_input_usd_per_million: float = 0.20
-    planner_output_usd_per_million: float = 0.50
+    # Planner runs grok-4.3 ($1.25 in / $2.50 out per 1M) — keep cost estimates honest.
+    planner_input_usd_per_million: float = 1.25
+    planner_output_usd_per_million: float = 2.50
     final_input_usd_per_million: float = 1.25
     final_output_usd_per_million: float = 2.50
     kb_synthesis_input_usd_per_million: float = 1.25
@@ -111,6 +110,15 @@ def _model(fields: Mapping[str, Any], name: str, default: str, allowed: frozense
         return value
     if value:
         logger.warning("Ignoring unsupported networking AI model for %s: %s", name, value)
+    return default
+
+
+def _effort(fields: Mapping[str, Any], name: str, default: str) -> str:
+    value = str(fields.get(name) or "").strip().lower()
+    if value in REASONING_EFFORTS:
+        return value
+    if value:
+        logger.warning("Ignoring unsupported networking reasoning effort for %s: %s", name, value)
     return default
 
 
@@ -228,6 +236,11 @@ def _build_config(page: Optional[Mapping[str, Any]]) -> NetworkingAiConfig:
         ),
         fallback_model=_model(fields, "fallback_model", defaults.fallback_model, FALLBACK_MODELS),
         fallback_enabled=_bool(fields, "fallback_enabled", defaults.fallback_enabled),
+        planner_reasoning_effort=_effort(
+            fields,
+            "planner_reasoning_effort",
+            defaults.planner_reasoning_effort,
+        ),
         use_large_context_model_after_tokens=_int(
             fields,
             "use_large_context_model_after_tokens",

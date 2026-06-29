@@ -31,6 +31,8 @@ def test_networking_ai_config_defaults_without_page():
     assert config.planner_model == "grok-4.3"
     assert config.final_answer_model == "grok-4.3"
     assert config.kb_synthesis_model == "grok-4.3"
+    assert config.large_context_model == "grok-4.3"
+    assert config.planner_reasoning_effort == "medium"
 
 
 def test_networking_ai_config_reads_b2b_gate_fields():
@@ -50,8 +52,9 @@ def test_networking_ai_config_accepts_allowed_models_and_caps():
             "networking_ai_enabled": False,
             "weekly_prompts_per_user": 12,
             "planner_model": "grok-4.3",
-            "final_answer_model": "grok-4.20-reasoning",
-            "kb_synthesis_model": "grok-4.20-reasoning",
+            "final_answer_model": "grok-4.3",
+            "kb_synthesis_model": "grok-4.3",
+            "planner_reasoning_effort": "high",
             "fallback_enabled": True,
             "fallback_model": "grok-4.20-multi-agent",
         })
@@ -60,10 +63,42 @@ def test_networking_ai_config_accepts_allowed_models_and_caps():
     assert config.enabled is False
     assert config.weekly_prompts_per_user == 12
     assert config.planner_model == "grok-4.3"
-    assert config.final_answer_model == "grok-4.20-reasoning"
-    assert config.kb_synthesis_model == "grok-4.20-reasoning"
+    assert config.final_answer_model == "grok-4.3"
+    assert config.kb_synthesis_model == "grok-4.3"
+    assert config.planner_reasoning_effort == "high"
     assert config.fallback_enabled is True
     assert config.fallback_model == "grok-4.20-multi-agent"
+
+
+def test_networking_ai_config_retires_grok_420_reasoning():
+    """grok-4.20-reasoning is no longer selectable for any networking stage;
+    any KB override pointing at it falls back to grok-4.3."""
+    config = get_networking_ai_config(
+        _page({
+            "planner_model": "grok-4.20-reasoning",
+            "final_answer_model": "grok-4.20-reasoning",
+            "kb_synthesis_model": "grok-4.20-reasoning",
+            "large_context_model": "grok-4.20-reasoning",
+            "fallback_model": "grok-4.20-reasoning",
+        })
+    )
+
+    assert config.planner_model == "grok-4.3"
+    assert config.final_answer_model == "grok-4.3"
+    assert config.kb_synthesis_model == "grok-4.3"
+    assert config.large_context_model == "grok-4.3"
+    assert config.fallback_model == "grok-4.3"
+
+
+def test_networking_planner_reasoning_effort_default_and_validation():
+    assert get_networking_ai_config({}).planner_reasoning_effort == "medium"
+    assert get_networking_ai_config(
+        _page({"planner_reasoning_effort": "none"})
+    ).planner_reasoning_effort == "none"
+    # Unsupported effort values fall back to the default.
+    assert get_networking_ai_config(
+        _page({"planner_reasoning_effort": "ultra"})
+    ).planner_reasoning_effort == "medium"
 
 
 def test_networking_ai_config_rejects_invalid_models():

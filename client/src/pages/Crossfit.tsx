@@ -93,8 +93,8 @@ export default function Crossfit() {
 
   return (
     <div className="min-h-screen bg-c-bg-elevated text-c-text-primary">
-      <div className="fixed left-0 right-0 top-0 h-14 border-b border-[#333] flex items-center px-3 z-40 bg-c-bg-app/50 backdrop-blur">
-        <button className="px-3 py-2 rounded border border-[#333] bg-c-bg-surface" onClick={() => history.back()}>
+      <div className="fixed left-0 right-0 top-0 h-14 border-b border-c-border flex items-center px-3 z-40 bg-c-bg-app/50 backdrop-blur">
+        <button className="px-3 py-2 rounded border border-c-border bg-c-bg-surface" onClick={() => history.back()}>
           <i className="fa-solid fa-arrow-left" /> Back
         </button>
         <h1 className="ml-3 text-lg font-semibold">Crossfit Tracking</h1>
@@ -220,35 +220,35 @@ export default function Crossfit() {
       </div>
 
       {modalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur" onClick={(e) => e.currentTarget === e.target && setModalOpen(false)}>
-          <form onSubmit={submitEntry} className="w-[90%] max-w-[480px] rounded-xl bg-[#2d3839] shadow-2xl overflow-hidden">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-c-bg-overlay backdrop-blur" onClick={(e) => e.currentTarget === e.target && setModalOpen(false)}>
+          <form onSubmit={submitEntry} className="w-[90%] max-w-[480px] rounded-xl bg-c-bg-elevated shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3 border-b border-teal-700/30 bg-c-bg-app">
               <h3 className="text-base font-semibold">Add Crossfit Entry</h3>
-              <button type="button" className="text-2xl text-c-text-tertiary hover:text-white" onClick={() => setModalOpen(false)}>&times;</button>
+              <button type="button" className="text-2xl text-c-text-tertiary hover:text-c-text-primary" onClick={() => setModalOpen(false)}>&times;</button>
             </div>
             <div className="p-4">
               <div className="grid grid-cols-1 gap-3">
                 <label className="text-sm">Type
-                  <select className="w-full mt-1 p-2 rounded bg-c-bg-surface border border-[#333]" value={type} onChange={(e)=> setType(e.target.value as 'lift'|'wod')}>
+                  <select className="w-full mt-1 p-2 rounded bg-c-bg-surface border border-c-border" value={type} onChange={(e)=> setType(e.target.value as 'lift'|'wod')}>
                     <option value="lift">Lift</option>
                     <option value="wod">WOD</option>
                   </select>
                 </label>
                 <label className="text-sm">Name
-                  <input className="w-full mt-1 p-2 rounded bg-c-bg-surface border border-[#333]" value={name} onChange={(e)=> setName(e.target.value)} placeholder="e.g., Fran / Clean & Jerk" required />
+                  <input className="w-full mt-1 p-2 rounded bg-c-bg-surface border border-c-border" value={name} onChange={(e)=> setName(e.target.value)} placeholder="e.g., Fran / Clean & Jerk" required />
                 </label>
                 <label className="text-sm">Weight (kg) (for lifts)
-                  <input type="number" className="w-full mt-1 p-2 rounded bg-c-bg-surface border border-[#333]" value={weight} onChange={(e)=> setWeight(e.target.value)} min={0} step={0.1} />
+                  <input type="number" className="w-full mt-1 p-2 rounded bg-c-bg-surface border border-c-border" value={weight} onChange={(e)=> setWeight(e.target.value)} min={0} step={0.1} />
                 </label>
                 <label className="text-sm">Reps (for lifts) or Time/Score (for WODs)
-                  <input className="w-full mt-1 p-2 rounded bg-c-bg-surface border border-[#333]" value={reps} onChange={(e)=> setReps(e.target.value)} placeholder="e.g., 5x3, or 5:12" />
+                  <input className="w-full mt-1 p-2 rounded bg-c-bg-surface border border-c-border" value={reps} onChange={(e)=> setReps(e.target.value)} placeholder="e.g., 5x3, or 5:12" />
                 </label>
                 <label className="text-sm">Date
-                  <input type="date" className="w-full mt-1 p-2 rounded bg-c-bg-surface border border-[#333]" value={date} onChange={(e)=> setDate(e.target.value)} required />
+                  <input type="date" className="w-full mt-1 p-2 rounded bg-c-bg-surface border border-c-border" value={date} onChange={(e)=> setDate(e.target.value)} required />
                 </label>
               </div>
               <div className="mt-4 flex justify-end gap-2">
-                <button type="button" className="px-3 py-2 rounded border border-[#333]" onClick={()=> setModalOpen(false)}>Cancel</button>
+                <button type="button" className="px-3 py-2 rounded border border-c-border" onClick={()=> setModalOpen(false)}>Cancel</button>
                 <button type="submit" className="px-3 py-2 rounded bg-teal-700/20 text-teal-300 border border-teal-500/40"><i className="fas fa-save" /> Save</button>
               </div>
             </div>

@@ -77,9 +77,9 @@ export default function NotificationPrompt() {
 
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }} />
+      <div style={{ position: 'absolute', inset: 0, background: 'var(--c-bg-overlay)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }} />
       <div
-        style={{ position: 'relative', width: '100%', maxWidth: 360, borderRadius: 16, border: '1px solid rgba(255,255,255,0.1)', background: '#111', padding: 20, color: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}
+        style={{ position: 'relative', width: '100%', maxWidth: 360, borderRadius: 16, border: '1px solid var(--c-border-default)', background: 'var(--c-bg-elevated)', padding: 20, color: 'var(--c-text-primary)', boxShadow: 'var(--c-glass-shadow)' }}
         onClick={e => e.stopPropagation()}
       >
         <div style={{ textAlign: 'center', marginBottom: 16 }}>
@@ -89,7 +89,7 @@ export default function NotificationPrompt() {
           <h3 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>Turn On Notifications</h3>
         </div>
 
-        <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.7)', textAlign: 'center', marginBottom: 16, lineHeight: 1.5 }}>
+        <p style={{ fontSize: 14, color: 'var(--c-text-secondary)', textAlign: 'center', marginBottom: 16, lineHeight: 1.5 }}>
           Stay in the loop with your communities. Get notified about new messages, event reminders, poll updates, and when someone mentions you.
         </p>
 
@@ -102,7 +102,7 @@ export default function NotificationPrompt() {
           </button>
           <button
             onClick={dismiss}
-            style={{ width: '100%', padding: '12px 0', borderRadius: 12, background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)', fontSize: 14, border: 'none', cursor: 'pointer' }}
+            style={{ width: '100%', padding: '12px 0', borderRadius: 12, background: 'var(--c-hover-bg)', color: 'var(--c-text-secondary)', fontSize: 14, border: 'none', cursor: 'pointer' }}
           >
             Not Now
           </button>

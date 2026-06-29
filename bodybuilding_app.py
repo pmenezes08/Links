@@ -1189,8 +1189,7 @@ TYPING_TTL_SECONDS = 5
 # Grok model configuration for Steve
 # Using 4.20 multi-agent only for complex networking/community analysis to control costs
 GROK_MODEL_FAST = "grok-4.20-non-reasoning"          # Default for most interactions
-GROK_MODEL_REASONING = "grok-4.3"         # For group chat reasoning
-GROK_MODEL_420_REASONING = "grok-4.20-0309-reasoning"    # Premium reasoning for flagship networking
+GROK_MODEL_REASONING = "grok-4.3"         # For group chat reasoning (and flagship networking)
 GROK_MODEL_MULTI_AGENT = "grok-4.20-multi-agent-0309"    # Only for profile analysis (web_search tool use)
 STEVE_NETWORKING_MODEL = os.getenv('STEVE_NETWORKING_MODEL', GROK_MODEL_REASONING)
 STEVE_NETWORKING_MULTI_AGENT = os.getenv('STEVE_NETWORKING_MULTI_AGENT', 'false').strip().lower() in ('1', 'true', 'yes', 'on')

@@ -306,12 +306,20 @@ def plan_networking_query(
     )
     try:
         t0 = time.time()
-        response = client.responses.create(
-            model=networking_ai_config.planner_model,
-            input=planner_input,
-            max_output_tokens=PLANNER_MAX_OUTPUT_TOKENS,
-            temperature=0.1,
-        )
+        create_kwargs: dict[str, Any] = {
+            "model": networking_ai_config.planner_model,
+            "input": planner_input,
+            "max_output_tokens": PLANNER_MAX_OUTPUT_TOKENS,
+        }
+        # grok-4.3 reasoning depth is set via reasoning_effort (none|low|medium|high).
+        # Reasoning models do not accept temperature, so only send it when reasoning
+        # is disabled (effort "none"), preserving the legacy fast-path behavior.
+        effort = getattr(networking_ai_config, "planner_reasoning_effort", "") or ""
+        if effort and effort != "none":
+            create_kwargs["reasoning"] = {"effort": effort}
+        else:
+            create_kwargs["temperature"] = 0.1
+        response = client.responses.create(**create_kwargs)
         response_time_ms = int((time.time() - t0) * 1000)
         try:
             from backend.services import ai_usage
