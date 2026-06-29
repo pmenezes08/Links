@@ -230,7 +230,7 @@ export default function GroupChatCreator() {
   const filteredCommunities = useMemo(() => communities, [communities])
 
   const searchInputClasses =
-    'w-full rounded-lg border border-c-border bg-[#0f1318] pl-9 pr-3 py-2 text-sm text-c-text-secondary outline-none focus:border-cpoint-turquoise/70 focus:ring-0 transition'
+    'w-full rounded-lg border border-c-border bg-c-bg-recessed pl-9 pr-3 py-2 text-sm text-c-text-secondary outline-none focus:border-cpoint-turquoise/70 focus:ring-0 transition'
 
   function renderMembers(commId: number) {
     const members = membersByCommunity[commId] || []
