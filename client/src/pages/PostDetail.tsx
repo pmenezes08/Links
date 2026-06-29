@@ -2195,10 +2195,12 @@ export default function PostDetail(){
         </div>
       ) : null}
 
-      {/* Fixed-bottom reply composer - hidden when inline reply is active or
+      {/* Fixed-bottom reply composer - hidden when inline reply is active,
           when the GIF picker is open (so the glass sheet does not show the
-          composer chrome through it). */}
-      {activeInlineReplyFor === null && !gifPickerOpen && (
+          composer chrome through it), or when the expanded editor is open
+          (the compact composer is portaled at z-[1000], above the inline
+          expanded overlay, so it would otherwise show through it). */}
+      {activeInlineReplyFor === null && !gifPickerOpen && !replyComposerExpanded && (
       <FixedComposerShell
         shellRef={composerRef}
         keyboardLift={keyboardLift}
@@ -2406,7 +2408,7 @@ export default function PostDetail(){
       )}
       {replyComposerExpanded && (
         <div
-          className="fixed inset-0 z-[300] bg-black/90 backdrop-blur"
+          className="fixed inset-0 z-[300] bg-c-bg-app"
           role="dialog"
           aria-modal="true"
           aria-labelledby="expanded-reply-composer-title"
@@ -2445,7 +2447,7 @@ export default function PostDetail(){
             {(file || replyGif || replyPreview) && (
               <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
                 {file && (
-                  <div className="flex items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-2">
+                  <div className="flex items-center gap-2 rounded-2xl bg-c-bg-recessed px-2 py-2">
                     <div className="h-12 w-12 overflow-hidden rounded-md border border-c-border">
                       {filePreviewUrl ? (
                         <img src={filePreviewUrl} alt={t('feed.preview_alt', { number: '' })} className="h-full w-full object-cover" />
@@ -2471,7 +2473,7 @@ export default function PostDetail(){
                   </div>
                 )}
                 {replyGif && (
-                  <div className="flex items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-2">
+                  <div className="flex items-center gap-2 rounded-2xl bg-c-bg-recessed px-2 py-2">
                     <div className="h-12 w-12 overflow-hidden rounded-md border border-c-border">
                       <img src={replyGif.previewUrl} alt={t('feed.selected_gif_alt')} className="h-full w-full object-cover" loading="lazy" />
                     </div>
@@ -2486,7 +2488,7 @@ export default function PostDetail(){
                   </div>
                 )}
                 {replyPreview && (
-                  <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-2">
+                  <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl bg-c-bg-recessed px-2 py-2">
                     <audio controls className="h-8 flex-1" playsInline webkit-playsinline="true" src={replyPreview.url} />
                     <button
                       type="button"
@@ -2502,7 +2504,7 @@ export default function PostDetail(){
             )}
 
             <div className="flex min-h-0 flex-1 px-5 pb-3">
-              <div className="flex min-h-0 flex-1 rounded-2xl border border-c-border bg-white/[0.035] transition-colors focus-within:border-cpoint-turquoise/60">
+              <div className="flex min-h-0 flex-1 rounded-2xl border border-c-border bg-c-bg-recessed transition-colors focus-within:border-cpoint-turquoise/60">
                 <MentionTextarea
                   value={content}
                   onChange={setContent}
