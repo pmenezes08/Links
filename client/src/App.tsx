@@ -916,6 +916,7 @@ function AppRoutes(){
   const mainStyle = {
     paddingTop: contentOffsetValue,
     minHeight: '100%',
+    backgroundColor: 'var(--c-bg-app)',
     paddingBottom: mainPaddingBottom,
     '--app-header-offset': contentOffsetValue,
     '--app-header-height': headerHeightValue,

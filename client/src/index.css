@@ -87,6 +87,7 @@
     min-height: 100%;
     position: relative;
     isolation: isolate;
+    background-color: var(--c-bg-app);
   }
 }
 
@@ -675,11 +676,19 @@ html[data-theme='light'] .chat-search-highlight {
   overflow-x: hidden;
   overflow-y: auto;
   z-index: 0;
-  background-color: transparent;
+  background-color: var(--c-bg-app);
   touch-action: pan-y;
   /* Allow elastic/bouncy scroll behavior on iOS */
   overscroll-behavior-y: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+html[data-theme='light'],
+html[data-theme='light'] body,
+html[data-theme='light'] #root,
+html[data-theme='light'] .app-scroll-region,
+html[data-theme='light'] .ios-scroll-region {
+  background-color: var(--c-bg-app);
 }
 
 .app-scroll-region > .h-screen.overflow-hidden,
@@ -726,6 +735,7 @@ html[data-theme='light'] .chat-search-highlight {
 .ios-scroll-region,
 .app-scroll-region,
 [data-scroll-region='true'] {
+  background-color: var(--c-bg-app);
   overscroll-behavior-y: auto;
   -webkit-overflow-scrolling: touch;
 }
