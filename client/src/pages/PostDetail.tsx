@@ -250,7 +250,6 @@ export default function PostDetail(){
   const [inlineSending, setInlineSending] = useState<Record<number, boolean>>({})
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const [refreshHint, setRefreshHint] = useState(false)
-  const [pullPx, setPullPx] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
   const [isEditingPost, setIsEditingPost] = useState(false)
   const [editPostText, setEditPostText] = useState('')
@@ -286,12 +285,12 @@ export default function PostDetail(){
     prevKeyboardLiftRef.current = keyboardLift
     const delta = keyboardLift - prev
     if (delta <= 0) return
-    const el = contentRef.current
-    if (!el) return
+    const scroller = contentRef.current
+    if (!scroller) return
     // Next frame so the grown bottom padding (contentPaddingBottom) is applied
     // first, giving the scroller room to move into.
     const raf = requestAnimationFrame(() => {
-      try { el.scrollBy({ top: delta, left: 0, behavior: 'auto' }) } catch { /* ignore */ }
+      try { scroller.scrollBy({ top: delta, left: 0, behavior: 'auto' }) } catch { /* ignore */ }
     })
     return () => cancelAnimationFrame(raf)
   }, [keyboardLift])
@@ -770,48 +769,51 @@ export default function PostDetail(){
   }, [])
 
   useEffect(() => {
-    // Pull-to-refresh on overscroll at top
+    // Pull-to-refresh hint only. Let iOS/webview keep the native elastic scroll;
+    // moving the content with extra padding fights the bounce and feels broken.
+    const scroller = contentRef.current
+    if (!scroller) return
+    const scrollEl: HTMLDivElement = scroller
     let startY = 0
-    const threshold = 64
+    let eligible = false
+    const hintThreshold = 32
+    const refreshThreshold = 88
     const reloading = { current: false }
     function onTS(ev: TouchEvent){
       try{ startY = ev.touches?.[0]?.clientY || 0 }catch{ startY = 0 }
-      setPullPx(0)
+      eligible = (scrollEl.scrollTop || 0) <= 1
       setRefreshHint(false)
     }
     function onTM(ev: TouchEvent){
       try{
-        const y = window.scrollY || 0
         const curY = ev.touches?.[0]?.clientY || 0
         const dy = curY - startY
-        if (y <= 0 && dy > 0){
-          const px = Math.min(100, Math.max(0, dy * 0.5))
-          setPullPx(px)
-          setRefreshHint(px > 8)
-          if (px >= threshold && !reloading.current){
+        if (eligible && dy > 0 && (scrollEl.scrollTop || 0) <= 1){
+          setRefreshHint(dy >= hintThreshold)
+          if (dy >= refreshThreshold && !reloading.current){
             reloading.current = true
             setRefreshing(true)
             refreshPost().finally(()=>{
               setRefreshing(false)
-              setPullPx(0)
               setRefreshHint(false)
               reloading.current = false
             })
           }
         } else {
-          setPullPx(0)
           setRefreshHint(false)
         }
       }catch{}
     }
-    function onTE(){ setPullPx(0); setRefreshHint(false) }
-    window.addEventListener('touchstart', onTS, { passive: true })
-    window.addEventListener('touchmove', onTM, { passive: true })
-    window.addEventListener('touchend', onTE, { passive: true })
+    function onTE(){ setRefreshHint(false); eligible = false }
+    scrollEl.addEventListener('touchstart', onTS, { passive: true })
+    scrollEl.addEventListener('touchmove', onTM, { passive: true })
+    scrollEl.addEventListener('touchend', onTE, { passive: true })
+    scrollEl.addEventListener('touchcancel', onTE, { passive: true })
     return () => {
-      window.removeEventListener('touchstart', onTS as any)
-      window.removeEventListener('touchmove', onTM as any)
-      window.removeEventListener('touchend', onTE as any)
+      scrollEl.removeEventListener('touchstart', onTS as any)
+      scrollEl.removeEventListener('touchmove', onTM as any)
+      scrollEl.removeEventListener('touchend', onTE as any)
+      scrollEl.removeEventListener('touchcancel', onTE as any)
     }
   }, [refreshPost])
 
@@ -1693,7 +1695,7 @@ export default function PostDetail(){
         ref={contentRef}
         className="flex-1 overflow-y-auto overflow-x-hidden min-h-0"
         style={{
-          paddingTop: `calc(var(--app-content-gap, 8px) + ${pullPx}px)`,
+          paddingTop: 'var(--app-content-gap, 8px)',
           WebkitOverflowScrolling: 'touch' as any,
           overscrollBehaviorY: 'auto' as any,
         }}
