@@ -516,12 +516,12 @@ html[data-theme='light'] .glass-highlight {
 }
 
 html[data-theme='light'] .liquid-glass-surface {
-  backdrop-filter: blur(24px) saturate(120%);
-  -webkit-backdrop-filter: blur(24px) saturate(120%);
-}
-
-html[data-theme='light'] .liquid-glass-surface {
-  background: rgba(255, 255, 255, 0.95);
+  /* Phase 0 scroll perf (mirrors the dark base rule): NO backdrop-blur. This
+     class backs scroll-persistent chrome (FeedBottomNav, dashboard cards,
+     EventDetail) — blurring re-rasters every scroll frame on iOS WKWebView and
+     was the main reason light scrolling felt less fluid than dark. The fill is
+     near-opaque (0.96) so the surface still reads solid without the blur. */
+  background: rgba(255, 255, 255, 0.96);
 }
 
 html[data-theme='light'] .liquid-glass-surface::before {
