@@ -106,7 +106,7 @@ export default function BurgerMenuDrawer({
               <MenuItem icon="fa-solid fa-chart-line" label={t('navigation.admin_dashboard')} onClick={() => goTo('/admin')} />
             </>
           ) : null}
-          <MenuItem icon="fa-solid fa-table-cells-large" label={t('navigation.dashboard')} onClick={() => goTo('/premium_dashboard')} />
+          <MenuItem icon="fa-solid fa-house" label={t('navigation.dashboard')} onClick={() => goTo('/premium_dashboard')} />
           {ownedCommunityId != null ? (
             <MenuItem icon="fa-solid fa-chart-simple" label={t('navigation.owner_tools')} onClick={() => goTo(`/community/${ownedCommunityId}/owner`)} />
           ) : null}
