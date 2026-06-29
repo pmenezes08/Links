@@ -2144,7 +2144,7 @@ export default function PostDetail(){
       </div>
     </div>
       {viewingPollVoters ? (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setViewingPollVoters(null); setPollVotersData(null) }}>
+        <div className="fixed inset-0 bg-c-bg-overlay backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setViewingPollVoters(null); setPollVotersData(null) }}>
           <div className="bg-c-bg-app border border-c-border rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="px-4 py-3 border-b border-c-border flex items-center justify-between">
               <div className="font-medium">{t('communities.polls_voters_modal')}</div>
@@ -2559,7 +2559,7 @@ export default function PostDetail(){
       {/* Hide Post Modal */}
       {showHideModal && (
         <div 
-          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
+          className="fixed inset-0 z-[200] bg-c-bg-overlay backdrop-blur flex items-center justify-center p-4"
           onClick={(e) => e.currentTarget === e.target && setShowHideModal(false)}
         >
           <div className="w-full max-w-sm rounded-2xl border border-c-border bg-c-bg-elevated p-5">
@@ -2609,7 +2609,7 @@ export default function PostDetail(){
       {/* Block User Modal */}
       {showBlockModal && (
         <div 
-          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
+          className="fixed inset-0 z-[200] bg-c-bg-overlay backdrop-blur flex items-center justify-center p-4"
           onClick={(e) => e.currentTarget === e.target && !blockSubmitting && setShowBlockModal(false)}
         >
           <div className="w-full max-w-sm rounded-2xl border border-c-border bg-c-bg-elevated p-5">
@@ -2672,7 +2672,7 @@ export default function PostDetail(){
       {/* Report Post Modal */}
       {showReportModal && (
         <div 
-          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
+          className="fixed inset-0 z-[200] bg-c-bg-overlay backdrop-blur flex items-center justify-center p-4"
           onClick={(e) => e.currentTarget === e.target && !reportSubmitting && setShowReportModal(false)}
         >
           <div className="w-full max-w-md rounded-2xl border border-c-border bg-c-bg-elevated p-5 max-h-[90vh] overflow-y-auto">
@@ -2751,7 +2751,7 @@ export default function PostDetail(){
       {/* Viewers/Reactors Modal */}
       {showReactorsModal && (
         <div
-          className="fixed inset-0 z-[95] bg-black/70 backdrop-blur flex items-center justify-center"
+          className="fixed inset-0 z-[95] bg-c-bg-overlay backdrop-blur flex items-center justify-center"
           onClick={(e) => e.currentTarget === e.target && closeReactorsModal()}
         >
           <div className="w-[92%] max-w-[560px] rounded-2xl border border-c-border bg-c-bg-app p-3">
@@ -2825,7 +2825,7 @@ export default function PostDetail(){
       {/* Reply Viewers/Reactors Modal */}
       {showReplyReactorsModal && (
         <div
-          className="fixed inset-0 z-[95] bg-black/70 backdrop-blur flex items-center justify-center"
+          className="fixed inset-0 z-[95] bg-c-bg-overlay backdrop-blur flex items-center justify-center"
           onClick={(e) => e.currentTarget === e.target && setShowReplyReactorsModal(false)}
         >
           <div className="w-[92%] max-w-[560px] rounded-2xl border border-c-border bg-c-bg-app p-3">

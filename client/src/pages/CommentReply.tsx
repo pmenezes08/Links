@@ -871,7 +871,7 @@ export default function CommentReply() {
           {/* Original Post Context */}
           {post && (
             <div
-              className="px-4 py-4 border-b border-c-border cursor-pointer hover:bg-white/[0.02]"
+              className="px-4 py-4 border-b border-c-border cursor-pointer hover:bg-c-hover-bg"
               onClick={() => navigate(`/post/${post.id}`)}
             >
               <div className="flex gap-3">
@@ -918,7 +918,7 @@ export default function CommentReply() {
           {parentChain.map((parent) => (
             <div
               key={parent.id}
-              className="px-4 py-3 border-b border-c-border cursor-pointer hover:bg-white/[0.02]"
+              className="px-4 py-3 border-b border-c-border cursor-pointer hover:bg-c-hover-bg"
               onClick={() => navigate(threadPath(parent.id))}
             >
               <div className="flex gap-3">
@@ -985,7 +985,7 @@ export default function CommentReply() {
           ))}
 
           {/* Main Reply (the focus of this page) */}
-          <div ref={mainReplyRef} className="px-4 py-4 border-b border-c-border bg-white/[0.02]">
+          <div ref={mainReplyRef} className="px-4 py-4 border-b border-c-border bg-c-hover-bg">
             <div className="flex gap-3">
               <Avatar username={reply.username} url={reply.profile_picture || undefined} size={44} linkToProfile />
               <div className="flex-1 min-w-0">
@@ -1189,7 +1189,7 @@ export default function CommentReply() {
                 return (
                   <div
                     key={nr.id}
-                    className="px-4 py-4 hover:bg-white/[0.02] cursor-pointer"
+                    className="px-4 py-4 hover:bg-c-hover-bg cursor-pointer"
                     onClick={() => !isEditingThis && navigate(threadPath(nr.id))}
                   >
                     <div className="flex gap-3">
@@ -1831,7 +1831,7 @@ export default function CommentReply() {
       {/* Reply Reactors/Viewers Modal */}
       {showReactorsModal && (
         <div
-          className="fixed inset-0 z-[95] bg-black/70 backdrop-blur flex items-center justify-center"
+          className="fixed inset-0 z-[95] bg-c-bg-overlay backdrop-blur flex items-center justify-center"
           onClick={(e) => e.currentTarget === e.target && setShowReactorsModal(false)}
         >
           <div className="w-[92%] max-w-[560px] rounded-2xl border border-c-border bg-c-bg-app p-3">
