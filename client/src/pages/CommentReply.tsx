@@ -1412,8 +1412,10 @@ export default function CommentReply() {
       </div>
 
       {/* Fixed bottom reply composer — hidden while the GIF picker is open
-          so the glass sheet does not show the composer chrome through it. */}
-      {!showGifPicker && (
+          (so the glass sheet does not show the composer chrome through it) or
+          while the expanded editor is open (the composer is portaled and would
+          otherwise show through the inline expanded overlay). */}
+      {!showGifPicker && !replyComposerExpanded && (
       <FixedComposerShell
         keyboardLift={keyboardLift}
         safeBottomPx={safeBottomPx}
@@ -1606,7 +1608,7 @@ export default function CommentReply() {
 
       {replyComposerExpanded && reply && post && (
         <div
-          className="fixed inset-0 z-[300] bg-black/90 backdrop-blur"
+          className="fixed inset-0 z-[300] bg-c-bg-app"
           role="dialog"
           aria-modal="true"
           aria-labelledby="expanded-nested-reply-composer-title"
@@ -1645,7 +1647,7 @@ export default function CommentReply() {
             {(file || selectedGif || replyPreview) && (
               <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
                 {file && (
-                  <div className="flex items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-2">
+                  <div className="flex items-center gap-2 rounded-2xl bg-c-bg-recessed px-2 py-2">
                     <div className="h-12 w-12 overflow-hidden rounded-md border border-c-border">
                       {filePreviewUrl ? (
                         typeof file.type === 'string' && file.type.startsWith('video/') ? (
@@ -1675,7 +1677,7 @@ export default function CommentReply() {
                   </div>
                 )}
                 {selectedGif && (
-                  <div className="flex items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-2">
+                  <div className="flex items-center gap-2 rounded-2xl bg-c-bg-recessed px-2 py-2">
                     <div className="h-12 w-12 overflow-hidden rounded-md border border-c-border">
                       <img src={selectedGif.previewUrl} alt={t('feed.selected_gif_alt')} className="h-full w-full object-cover" loading="lazy" />
                     </div>
@@ -1690,7 +1692,7 @@ export default function CommentReply() {
                   </div>
                 )}
                 {replyPreview && (
-                  <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-2">
+                  <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl bg-c-bg-recessed px-2 py-2">
                     <audio controls className="h-8 flex-1" playsInline webkit-playsinline="true" src={replyPreview.url} />
                     <button
                       type="button"
@@ -1706,7 +1708,7 @@ export default function CommentReply() {
             )}
 
             <div className="flex min-h-0 flex-1 px-5 pb-3">
-              <div className="flex min-h-0 flex-1 rounded-2xl border border-c-border bg-white/[0.035] transition-colors focus-within:border-cpoint-turquoise/60">
+              <div className="flex min-h-0 flex-1 rounded-2xl border border-c-border bg-c-bg-recessed transition-colors focus-within:border-cpoint-turquoise/60">
                 <MentionTextarea
                   value={replyText}
                   onChange={setReplyText}
