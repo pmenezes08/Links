@@ -16,6 +16,55 @@ logger = logging.getLogger(__name__)
 
 FIRESTORE_USER_STATE_COLLECTIONS = ("steve_onboarding", "steve_user_profiles")
 
+# ---------------------------------------------------------------------------
+# Firestore helpers — DM and group-chat cleanup on account deletion
+# ---------------------------------------------------------------------------
+
+def _delete_firestore_dm_convs(username: str, peers: List[str], db: Optional[Any] = None) -> None:
+    """Delete all DM conversation documents (and their messages subcollection) where username was a participant."""
+    if not peers:
+        return
+    try:
+        fs = db
+        if fs is None:
+            from backend.services.firestore_reads import _get_client
+            fs = _get_client()
+        for peer in peers:
+            a, b = sorted([username.lower(), peer.lower()])
+            conv_id = f"{a}_{b}"
+            conv_ref = fs.collection("dm_conversations").document(conv_id)
+            try:
+                for msg_doc in conv_ref.collection("messages").stream():
+                    msg_doc.reference.delete()
+            except Exception as e:
+                logger.warning("dm_conversations/messages delete failed conv=%s: %s", conv_id, e)
+            try:
+                conv_ref.delete()
+            except Exception as e:
+                logger.warning("dm_conversations delete failed conv=%s: %s", conv_id, e)
+    except Exception as e:
+        logger.warning("_delete_firestore_dm_convs failed for %s: %s", username, e)
+
+
+def _delete_firestore_group_sender_messages(username: str, group_ids: List[int], db: Optional[Any] = None) -> None:
+    """Delete this user's messages from each group's Firestore chat document."""
+    if not group_ids:
+        return
+    try:
+        fs = db
+        if fs is None:
+            from backend.services.firestore_reads import _get_client
+            fs = _get_client()
+        for gid in group_ids:
+            try:
+                msgs_ref = fs.collection("group_chats").document(str(gid)).collection("messages")
+                for msg_doc in msgs_ref.where("sender", "==", username).stream():
+                    msg_doc.reference.delete()
+            except Exception as e:
+                logger.warning("group_chats/messages delete failed gid=%s user=%s: %s", gid, username, e)
+    except Exception as e:
+        logger.warning("_delete_firestore_group_sender_messages failed for %s: %s", username, e)
+
 
 class AccountDeletionMode(Enum):
     """SELF: reassign community/group posts to ``admin``; ADMIN: delete target's posts."""
@@ -151,8 +200,44 @@ def delete_user_in_connection(conn, username: str, mode: AccountDeletionMode) ->
     user_email = (row["email"] if hasattr(row, "keys") else (row[1] if len(row) > 1 else "")) or ""
     user_id = int(user_id)
 
+    # Collect data for out-of-band cleanup before MySQL rows are removed.
+    dm_peers: List[str] = []
+    try:
+        c.execute(
+            f"SELECT DISTINCT CASE WHEN LOWER(sender)=LOWER({ph}) THEN receiver ELSE sender END AS peer"
+            f" FROM messages WHERE LOWER(sender)=LOWER({ph}) OR LOWER(receiver)=LOWER({ph})",
+            (username, username, username),
+        )
+        for r in c.fetchall() or []:
+            peer = (r["peer"] if hasattr(r, "keys") else r[0]) or ""
+            if peer:
+                dm_peers.append(peer)
+    except Exception as e:
+        logger.warning("dm_peers collection failed for %s: %s", username, e)
+
+    group_ids: List[int] = []
+    try:
+        c.execute(f"SELECT group_id FROM group_members WHERE username={ph}", (username,))
+        for r in c.fetchall() or []:
+            gid = r["group_id"] if hasattr(r, "keys") else r[0]
+            if gid is not None:
+                group_ids.append(int(gid))
+    except Exception as e:
+        logger.warning("group_ids collection failed for %s: %s", username, e)
+
+    cv_r2_key: Optional[str] = None
+    try:
+        c.execute(f"SELECT professional_cv_r2_key FROM users WHERE username={ph}", (username,))
+        cv_row = c.fetchone()
+        if cv_row:
+            cv_r2_key = (cv_row["professional_cv_r2_key"] if hasattr(cv_row, "keys") else cv_row[0]) or None
+    except Exception as e:
+        logger.warning("cv_r2_key fetch failed for %s: %s", username, e)
+
     former_community_ids = _former_community_ids(c, ph, user_id)
     delete_firestore_user_state(username)
+    _delete_firestore_dm_convs(username, dm_peers)
+    _delete_firestore_group_sender_messages(username, group_ids)
 
     _exec_optional(
         c,
@@ -277,8 +362,26 @@ def delete_user_in_connection(conn, username: str, mode: AccountDeletionMode) ->
     except Exception as e:
         logger.debug("fitness tables cleanup: %s", e)
 
+    _exec_optional(c, f"DELETE FROM ai_usage_log WHERE username={ph}", (username,))
+    _exec_optional(c, f"DELETE FROM steve_chat_sessions WHERE username={ph}", (username,))
+    _exec_optional(c, f"DELETE FROM steve_recommendation_feedback WHERE username={ph}", (username,))
+
     c.execute(f"DELETE FROM users WHERE username={ph}", (username,))
+
+    if cv_r2_key:
+        try:
+            from backend.services.r2_storage import delete_from_r2
+            delete_from_r2(cv_r2_key)
+        except Exception as e:
+            logger.warning("CV R2 delete failed for %s: %s", username, e)
+
     return former_community_ids
 
 
-__all__ = ["AccountDeletionMode", "delete_firestore_user_state", "delete_user_in_connection"]
+__all__ = [
+    "AccountDeletionMode",
+    "delete_firestore_user_state",
+    "delete_user_in_connection",
+    "_delete_firestore_dm_convs",
+    "_delete_firestore_group_sender_messages",
+]
