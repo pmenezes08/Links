@@ -803,7 +803,7 @@ export default function Messages(){
                         {/* Group chat row */}
                         <div
                           className="relative bg-c-bg-app"
-                          style={{ transform: `translateX(${gtx}px)`, transition: gTransition }}
+                          style={{ transform: `translateX(${gtx}px)`, transition: gTransition, touchAction: 'pan-y' }}
                           onPointerDown={(e) => {
                             if (e.button !== 0) return
                             groupStartXRef.current = e.clientX
@@ -1018,7 +1018,7 @@ export default function Messages(){
                       draggingIdRef.current = null
                     }}
                     className="px-3 py-2 gap-3 bg-transparent"
-                    style={{ transform: `translateX(${tx}px)`, transition }}
+                    style={{ transform: `translateX(${tx}px)`, transition, touchAction: 'pan-y' }}
                   >
                     <Avatar username={thread.other_username} url={thread.profile_picture_url || undefined} size={48} linkToProfile displayName={thread.display_name} loading="eager" />
                     <div className="flex-1 min-w-0 text-left">
@@ -1135,7 +1135,7 @@ export default function Messages(){
                               draggingIdRef.current = null
                             }}
                             className="w-full px-3 py-2 flex items-center gap-3 bg-transparent"
-                            style={{ transform: `translateX(${tx}px)`, transition }}
+                            style={{ transform: `translateX(${tx}px)`, transition, touchAction: 'pan-y' }}
                           >
                             <Avatar username={archivedThread.other_username} url={archivedThread.profile_picture_url || undefined} size={44} displayName={archivedThread.display_name} loading="eager" />
                             <div className="flex-1 min-w-0 text-left">
