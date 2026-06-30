@@ -362,7 +362,27 @@ def delete_user_in_connection(conn, username: str, mode: AccountDeletionMode) ->
     except Exception as e:
         logger.debug("fitness tables cleanup: %s", e)
 
-    _exec_optional(c, f"DELETE FROM ai_usage_log WHERE username={ph}", (username,))
+    # AI / billing: anonymize rows with revenue value; hard-delete personal-only rows.
+    # ai_usage_log: NULL the username so cost/surface/model aggregates survive for revenue analysis.
+    _exec_optional(c, f"UPDATE ai_usage_log SET username=NULL WHERE username={ph}", (username,))
+    # ai_usage_daily_rollups: username is part of the PK so cannot be NULLed; delete the rows.
+    # The anonymised ai_usage_log rows above are the source of truth for rebuilding rollups.
+    _exec_optional(c, f"DELETE FROM ai_usage_daily_rollups WHERE username={ph}", (username,))
+    # subscription_invoice_payments: NULL the username; stripe_invoice_id / amount / dates are kept
+    # intact for historical revenue reporting and Stripe reconciliation.
+    _exec_optional(
+        c,
+        f"UPDATE subscription_invoice_payments SET username=NULL WHERE LOWER(username)=LOWER({ph})",
+        (username,),
+    )
+    # subscription_audit_log: NULL both username fields; the action/source/dates survive for
+    # churn and upgrade-path analysis.
+    _exec_optional(
+        c,
+        f"UPDATE subscription_audit_log SET username=NULL, actor_username=NULL"
+        f" WHERE LOWER(username)=LOWER({ph})",
+        (username,),
+    )
     _exec_optional(c, f"DELETE FROM steve_chat_sessions WHERE username={ph}", (username,))
     _exec_optional(c, f"DELETE FROM steve_recommendation_feedback WHERE username={ph}", (username,))
 
