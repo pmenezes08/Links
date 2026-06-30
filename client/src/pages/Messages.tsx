@@ -1207,9 +1207,17 @@ export default function Messages(){
               </button>
             )}
             {chatMoreTarget.type === 'dm' && (
-              <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-c-text-primary" onClick={() => {
+              <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-c-text-primary" onClick={async () => {
+                if (!confirm(t('chat.block_user_confirm', { name: chatMoreTarget.displayName, defaultValue: `Block ${chatMoreTarget.displayName}? They won't be able to message you.` }))) return
                 setChatMoreTarget(null)
-                navigate(`/user_chat/chat/${encodeURIComponent(chatMoreTarget.username ?? '')}${shareQuery}`)
+                const u = chatMoreTarget.username
+                await fetch('/api/block_user', {
+                  method: 'POST',
+                  credentials: 'include',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ blocked_username: u }),
+                }).catch(() => {})
+                if (u) setThreads(prev => prev.filter(x => x.other_username !== u))
               }}>
                 <i className="fa-solid fa-ban text-c-text-tertiary w-6 text-center" />
                 {t('chat.block_user')}
@@ -1227,22 +1235,39 @@ export default function Messages(){
             )}
             {chatMoreTarget.type === 'group' && chatMoreTarget.groupId && (
               <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-c-text-primary" onClick={async () => {
+                if (!confirm(t('chat.leave_group_confirm', { name: chatMoreTarget.displayName, defaultValue: `Leave "${chatMoreTarget.displayName}"?` }))) return
+                setChatMoreTarget(null)
                 const fd = new URLSearchParams()
                 fd.append('group_id', String(chatMoreTarget.groupId))
                 await fetch('/api/groups/leave', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd }).catch(() => {})
                 setGroupChats(prev => prev.filter(g => g.id !== chatMoreTarget.groupId))
-                setChatMoreTarget(null)
               }}>
                 <i className="fa-solid fa-right-from-bracket text-c-text-tertiary w-6 text-center" />
                 {t('chat.leave_group')}
               </button>
             )}
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-red-400" onClick={() => {
-              setChatMoreTarget(null)
               if (chatMoreTarget.type === 'dm') {
-                const fd = new URLSearchParams({ other_username: chatMoreTarget.username! })
-                fetch('/delete_chat_thread', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd }).then(r=>r.json()).then(j=>{ if(j?.success) setThreads(prev=>prev.filter(x=>x.other_username!==chatMoreTarget.username)) }).catch(()=>{})
+                if (!confirm(t('chat.delete_dm_confirm', { name: chatMoreTarget.displayName }))) return
+                setChatMoreTarget(null)
+                const u = chatMoreTarget.username!
+                const fd = new URLSearchParams({ other_username: u })
+                fetch('/delete_chat_thread', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+                  .then(r=>r.json()).then(j=>{
+                    if (j?.success) {
+                      setThreads(prev => prev.filter(x => x.other_username !== u))
+                      if (me) {
+                        clearDeviceCache(chatMessagesDeviceCacheKey(me, u))
+                        clearDeviceCache(chatProfileDeviceCacheKey(me, u))
+                        clearDeviceCache(threadsListCacheKey(me))
+                        void clearConversationMessages(dmConversationOfflineKey(me, u))
+                        void deleteCachedConversationRow(me, u)
+                      }
+                      refreshBadges()
+                    }
+                  }).catch(()=>{})
               } else if (chatMoreTarget.type === 'group' && chatMoreTarget.groupId) {
+                setChatMoreTarget(null)
                 deleteGroupChat(chatMoreTarget.groupId)
               }
             }}>
