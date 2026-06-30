@@ -808,6 +808,8 @@
     "description_feed_hint": "Wird unter dem Community-Namen im Feed angezeigt.",
     "handle_section_title": "Community-Handle",
     "handle_helper": "Ein einzigartiger @Handle für deine Community. Teile ihn, wie du möchtest – er ist eine Adresse, kein Verzeichniseintrag.",
+    "handle_create_explainer": "Das ist die @Adresse deiner Community. Wenn du sie später auffindbar machst, können andere sie nutzen, um dich zu finden und einen Beitritt anzufragen.",
+    "handle_fix_before_create": "Dieser Handle ist nicht verfügbar. Wähle einen anderen, bevor du die Community erstellst.",
     "handle_checking": "Wird geprüft…",
     "handle_available": "Verfügbar.",
     "handle_taken": "Dieser Handle ist bereits vergeben.",

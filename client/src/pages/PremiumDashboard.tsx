@@ -174,6 +174,9 @@ export default function PremiumDashboard() {
   // to auto-generation on conflict, adjustable later in Manage Community).
   const [newCommHandle, setNewCommHandle] = useState('')
   const [handleEdited, setHandleEdited] = useState(false)
+  // Live availability for the create-modal handle field so the creator picks a
+  // free @address up front instead of silently getting an auto-generated one.
+  const [commHandleHint, setCommHandleHint] = useState<'idle'|'checking'|'available'|'taken'|'invalid'>('idle')
   const [newCommType, setNewCommType] = useState<'Gym'|'University'|'General'|'Business'>('General')
   const [isCreatingCommunity, setIsCreatingCommunity] = useState(false)
   const [isAppAdmin, setIsAppAdmin] = useState(false)
@@ -304,9 +307,36 @@ export default function PremiumDashboard() {
     setNewCommName('')
     setNewCommHandle('')
     setHandleEdited(false)
+    setCommHandleHint('idle')
     setNewCommType('General')
     setIsCreatingCommunity(false)
   }
+
+  // Debounced availability check for the create-modal handle (mirrors
+  // HandleSettings). Runs for both the auto-suggested slug and manual edits so
+  // the creator always sees taken/available before they submit.
+  useEffect(() => {
+    if (!showCreateModal) return
+    const h = newCommHandle.trim()
+    if (!h) { setCommHandleHint('idle'); return }
+    if (h.length < 3 || !/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(h)) { setCommHandleHint('invalid'); return }
+    let cancelled = false
+    setCommHandleHint('checking')
+    const id = window.setTimeout(() => {
+      fetch(`/api/community/handle_check?handle=${encodeURIComponent(h)}`, {
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (cancelled) return
+          if (!data?.valid) setCommHandleHint('invalid')
+          else setCommHandleHint(data.available ? 'available' : 'taken')
+        })
+        .catch(() => { if (!cancelled) setCommHandleHint('idle') })
+    }, 400)
+    return () => { cancelled = true; window.clearTimeout(id) }
+  }, [newCommHandle, showCreateModal])
 
   useEffect(() => {
     let cancelled = false
@@ -1487,10 +1517,17 @@ export default function PremiumDashboard() {
                     spellCheck={false}
                     autoCapitalize="none"
                     autoCorrect="off"
+                    aria-invalid={commHandleHint === 'taken' || commHandleHint === 'invalid'}
                     className="w-full pl-7 pr-3 py-2 rounded-md bg-c-bg-app border border:white/15 text-sm text-c-text-primary"
                   />
                 </div>
-                <div className="text-[11px] text-c-text-tertiary mt-1">{t('communities.handle_helper')}</div>
+                <div className="text-[11px] mt-1 min-h-[14px]">
+                  {commHandleHint === 'checking' && <span className="text-c-text-tertiary">{t('communities.handle_checking')}</span>}
+                  {commHandleHint === 'available' && <span className="text-cpoint-turquoise">{t('communities.handle_available')}</span>}
+                  {commHandleHint === 'taken' && <span className="text-red-400">{t('communities.handle_taken')}</span>}
+                  {commHandleHint === 'invalid' && <span className="text-red-400">{t('communities.handle_invalid')}</span>}
+                </div>
+                <div className="text-[11px] text-c-text-tertiary mt-1">{t('communities.handle_create_explainer')}</div>
               </div>
                 <div>
                   <label className="block text-xs text-c-text-tertiary mb-1">{t('dashboard.community_type_label')}</label>
@@ -1512,10 +1549,13 @@ export default function PremiumDashboard() {
                   <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={handleCloseCreateModal} disabled={isCreatingCommunity}>{t('common.cancel')}</button>
                     <button 
                       className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" 
-                      disabled={isCreatingCommunity}
+                      disabled={isCreatingCommunity || (!!newCommHandle.trim() && (commHandleHint === 'taken' || commHandleHint === 'invalid' || commHandleHint === 'checking'))}
                       onClick={async()=> {
                         if (isCreatingCommunity) return
                         if (!newCommName.trim()) { alert(t('dashboard.name_required')); return }
+                        if (newCommHandle.trim() && (commHandleHint === 'taken' || commHandleHint === 'invalid')) {
+                          alert(t('communities.handle_fix_before_create')); return
+                        }
                         setIsCreatingCommunity(true)
                         try{
                           const fd = new URLSearchParams({ name: newCommName.trim(), type: isAppAdmin ? newCommType : 'General' })

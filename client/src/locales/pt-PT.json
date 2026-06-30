@@ -808,6 +808,8 @@
     "description_feed_hint": "Aparece abaixo do nome da comunidade no feed.",
     "handle_section_title": "Identificador da comunidade",
     "handle_helper": "Um @identificador único para a tua comunidade. Partilha-o como quiseres — é uma morada, não um anúncio.",
+    "handle_create_explainer": "Esta é a @morada da tua comunidade. Se a tornares pesquisável mais tarde, as pessoas podem usá-la para te encontrar e pedir para entrar.",
+    "handle_fix_before_create": "Esse identificador não está disponível. Escolhe outro antes de criar a comunidade.",
     "handle_checking": "A verificar…",
     "handle_available": "Disponível.",
     "handle_taken": "Esse identificador já está ocupado.",

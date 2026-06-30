@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 
 import { isAtLeast18, isValidDobIso } from '../../lib/ageGate'
@@ -169,8 +170,11 @@ export function AgeGate({ onConfirmed }: { onConfirmed: () => void }) {
     }
   }, [deleteConfirmation, t])
 
-  return (
-    <div className="fixed inset-0 z-[1300] overflow-y-auto bg-c-bg-app text-c-text-primary">
+  // Portaled to document.body at the highest app z-index so the compliance
+  // gate visually precedes EVERYTHING — including the onboarding overlays that
+  // PremiumDashboard portals to body (max z-[1300]). Age is answered first.
+  return createPortal(
+    <div className="fixed inset-0 z-[1400] overflow-y-auto bg-c-bg-app text-c-text-primary">
       <div className="min-h-full px-5 py-8 flex items-center justify-center">
         <div className="w-full max-w-md">
           <div className="rounded-[28px] border border-cpoint-turquoise/45 bg-c-bg-app overflow-hidden">
@@ -393,7 +397,8 @@ export function AgeGate({ onConfirmed }: { onConfirmed: () => void }) {
           </div>
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   )
 }
 
