@@ -411,7 +411,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                         )
                       })}
                     </div>
-                    <p className="mt-2 text-xs text-c-text-tertiary">{t('onboarding_intro.appearance_change_later')}</p>
+                    <p className="mt-2 mb-4 text-xs text-c-text-tertiary">{t('onboarding_intro.appearance_change_later')}</p>
                   </div>
                 </div>
               ) : page === 1 ? (
