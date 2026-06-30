@@ -7,7 +7,6 @@ import { useUserProfile } from '../contexts/UserProfileContext'
 import { normalizeHandleInput } from '../components/community/HandleSettings'
 import SpotlightAsk from '../components/dashboard/SpotlightAsk'
 import DashboardEmptyState from '../components/dashboard/DashboardEmptyState'
-import SteveCreateCard from '../components/dashboard/SteveCreateCard'
 import JoinByHandlePanel from '../components/community/JoinByHandlePanel'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
@@ -1012,9 +1011,43 @@ export default function PremiumDashboard() {
   // Host-register ask, one section at a time: personal copy only when the
   // professional section is already done (professional first by default).
   // Shares the feed card's strings so the two surfaces can't drift.
-  const onboardingCardAskPersonal = !personalSectionComplete && professionalSectionComplete
-  const onboardingCardTitle = t(onboardingCardAskPersonal ? 'feed.steve_ask_personal_title' : 'feed.steve_ask_professional_title')
-  const onboardingCardBody = t(onboardingCardAskPersonal ? 'feed.steve_ask_personal_body' : 'feed.steve_ask_professional_body')
+  // Three-state profile-completion card. Fresh (nothing yet) opens the full
+  // Steve chat; one-side-done opens the scoped 2-minute builder for the missing
+  // side. States differ by icon + copy only — no progress UI, per the ask
+  // register (no countdowns / pills / percentages).
+  const profileAsk: 'fresh' | 'personal' | 'professional' =
+    !personalSectionComplete && !professionalSectionComplete
+      ? 'fresh'
+      : !personalSectionComplete && professionalSectionComplete
+        ? 'personal'
+        : 'professional'
+  const onboardingCardTitle = t(
+    profileAsk === 'fresh'
+      ? 'dashboard.steve_ask_fresh_title'
+      : profileAsk === 'personal'
+        ? 'feed.steve_ask_personal_title'
+        : 'feed.steve_ask_professional_title',
+  )
+  const onboardingCardBody = t(
+    profileAsk === 'fresh'
+      ? 'dashboard.steve_ask_fresh_body'
+      : profileAsk === 'personal'
+        ? 'feed.steve_ask_personal_body'
+        : 'feed.steve_ask_professional_body',
+  )
+  const onboardingCardCta = t(
+    profileAsk === 'fresh'
+      ? 'dashboard.steve_ask_fresh_cta'
+      : profileAsk === 'personal'
+        ? 'feed.steve_ask_personal_cta'
+        : 'feed.steve_ask_professional_cta',
+  )
+  const onboardingCardIcon =
+    profileAsk === 'fresh'
+      ? 'fa-wand-magic-sparkles'
+      : profileAsk === 'personal'
+        ? 'fa-user'
+        : 'fa-briefcase'
   const onboardingOverlayActive =
     showOnboarding || showOnboardingWelcome || onboardingLaunching || !!activeInvitePrompt
   const { setNavOverrides, clearNavOverrides } = useDashboardLayout()
@@ -1033,36 +1066,42 @@ export default function PremiumDashboard() {
     return communities[0]?.name || communityFallback
   })()
   const onboardingCompletionCard = showOnboardingCompletionCard ? (
-    <div className="mb-4 rounded-2xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 p-4 shadow-c-card">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+    <div className="mb-4 rounded-2xl border border-c-border bg-c-bg-elevated p-4 shadow-c-card">
+      <div className="flex items-start gap-3.5">
+        {/* Turquoise icon chip = the "from Steve" anchor; it carries the accent
+            so the card body stays neutral and the CTA remains the single
+            turquoise primary action on the surface. */}
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-cpoint-turquoise/12 text-cpoint-turquoise ring-1 ring-cpoint-turquoise/25">
+          <i className={`fa-solid ${onboardingCardIcon}`} aria-hidden="true" />
+        </div>
+        <div className="min-w-0 flex-1">
           <div className="text-base font-semibold text-c-text-primary">{onboardingCardTitle}</div>
-          {/* No countdown, no per-section status pills: deadlines are
-              manufactured urgency and pills are progress framing —
-              both banned by the ask register. Title + one line + CTA. */}
+          {/* No countdown, no per-section status pills, no progress bar: the ask
+              register bans manufactured urgency and progress framing. Each state
+              is a different door (icon + copy), never a progress readout. */}
           <p className="mt-1 text-sm leading-relaxed text-c-text-secondary">
             {onboardingCardBody}
           </p>
+          <button
+            type="button"
+            onClick={() => {
+              // When exactly one section is missing, open the scoped
+              // 2-minute builder for that section — the full chat
+              // (name/photo/section picker) is only right for a
+              // completely fresh profile.
+              if (personalSectionComplete && !professionalSectionComplete) {
+                navigate('/steve/profile-builder/professional')
+              } else if (professionalSectionComplete && !personalSectionComplete) {
+                navigate('/steve/profile-builder/personal')
+              } else {
+                openOnboardingResume()
+              }
+            }}
+            className="mt-3 inline-flex min-h-[44px] items-center rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-sm font-semibold text-black transition hover:brightness-110"
+          >
+            {onboardingCardCta}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            // When exactly one section is missing, open the scoped
-            // 2-minute builder for that section — the full chat
-            // (name/photo/section picker) is only right for a
-            // completely fresh profile.
-            if (personalSectionComplete && !professionalSectionComplete) {
-              navigate('/steve/profile-builder/professional')
-            } else if (professionalSectionComplete && !personalSectionComplete) {
-              navigate('/steve/profile-builder/personal')
-            } else {
-              openOnboardingResume()
-            }
-          }}
-          className="shrink-0 rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-sm font-semibold text-black transition hover:brightness-110"
-        >
-          {t(onboardingCardAskPersonal ? 'feed.steve_ask_personal_cta' : 'feed.steve_ask_professional_cta')}
-        </button>
       </div>
     </div>
   ) : null
@@ -1092,7 +1131,6 @@ export default function PremiumDashboard() {
           <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/profile">{t('navigation.profile')}</a>
           <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/user_chat">{t('navigation.messages')}</a>
           <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/followers">{t('navigation.followers')}</a>
-          <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/builds">My Builds</a>
           {hasGymAccess && <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/your_sports">{t('dashboard.your_sports')}</a>}
           <button className="block w-full text-left px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" onClick={requestLogout}>{t('navigation.logout')}</button>
           <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/account_settings">
@@ -1138,7 +1176,10 @@ export default function PremiumDashboard() {
         className={`min-h-screen pb-[var(--app-dashboard-content-pad-bottom)] ${isWeb ? 'lg:ml-64' : 'md:ml-52'}`}
       >
         <div className="app-content max-w-5xl mx-auto px-3 py-6">
-          {hasAnyCommunity && onboardingCompletionCard}
+          {/* Always visible while the profile is incomplete — including users
+              with no community yet. Hidden only during load (summary null) so
+              it never flashes; see shouldShowProfileHelpCard. */}
+          {onboardingCompletionCard}
           {hasCoarsePointer && (
           <div
             className="sticky top-0 z-20 mb-3 flex justify-center pointer-events-none transition-transform duration-150"
@@ -1180,24 +1221,13 @@ export default function PremiumDashboard() {
                 <SkeletonCommunityCard />
               </div>
             ) : communities.length === 0 ? (
-              <>
-                <DashboardEmptyState
-                  onCreate={() => { setNewCommType('General'); setShowCreateModal(true) }}
-                  onJoin={() => setShowJoinModal(true)}
-                  onAbout={() => setShowAboutCPointModal(true)}
-                />
-                <SteveCreateCard
-                  onCreate={() => navigate('/builder')}
-                  onExplore={() => navigate('/explore-creations')}
-                />
-                {onboardingCompletionCard}
-              </>
+              <DashboardEmptyState
+                onCreate={() => { setNewCommType('General'); setShowCreateModal(true) }}
+                onJoin={() => setShowJoinModal(true)}
+                onAbout={() => setShowAboutCPointModal(true)}
+              />
             ) : (
             <>
-              <SteveCreateCard
-                onCreate={() => navigate('/builder')}
-                onExplore={() => navigate('/explore-creations')}
-              />
               {searchOpen && (
                 <div className="mb-4">
                   <div className="relative w-full max-w-xl">
@@ -1245,21 +1275,6 @@ export default function PremiumDashboard() {
                       <i className="fa-solid fa-at text-sm text-c-text-tertiary" aria-hidden="true" />
                       <span className="min-w-0 flex-1 truncate text-sm font-medium text-c-text-primary">
                         {t('communities.find_entry_label')}
-                      </span>
-                      <i className="fa-solid fa-chevron-right text-xs text-c-text-tertiary" aria-hidden="true" />
-                    </button>
-
-                    {/* My Builds — direct access to Steve Build creations without
-                        remembering which community they were made in. */}
-                    <button
-                      type="button"
-                      onClick={() => navigate('/builds')}
-                      aria-label="My Builds"
-                      className="flex h-11 w-full items-center gap-3 rounded-2xl border border-c-border bg-c-bg-elevated px-3 text-left transition hover:bg-c-hover-bg active:scale-[0.99]"
-                    >
-                      <i className="fa-solid fa-wand-magic-sparkles text-sm text-cpoint-turquoise" aria-hidden="true" />
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-c-text-primary">
-                        My Builds
                       </span>
                       <i className="fa-solid fa-chevron-right text-xs text-c-text-tertiary" aria-hidden="true" />
                     </button>
