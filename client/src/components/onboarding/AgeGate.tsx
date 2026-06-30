@@ -53,6 +53,13 @@ function normalizeDobInput(value: string): string {
   return trimmed
 }
 
+function formatDobAsUserTypes(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 8)
+  if (digits.length <= 2) return digits
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`
+}
+
 export function AgeGate({ onConfirmed }: { onConfirmed: () => void }) {
   const { t } = useTranslation()
   const [dob, setDob] = useState('')
@@ -211,7 +218,7 @@ export function AgeGate({ onConfirmed }: { onConfirmed: () => void }) {
                   }
                   onChange={(event) => {
                     setAgeGateError(null)
-                    setDob(event.target.value)
+                    setDob(formatDobAsUserTypes(event.target.value))
                   }}
                   className="mt-1 w-full min-h-[44px] rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-base text-c-text-primary outline-none focus:border-cpoint-turquoise focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
                 />
