@@ -93,15 +93,9 @@ export function getEffectiveProfileSectionStatus(summary: OnboardingStateSummary
 }
 
 export function shouldShowProfileHelpCard(summary: OnboardingStateSummary | null | undefined): boolean {
-  if (!summary || summary.onboardingComplete) return false
+  if (!summary) return false
   const sections = getEffectiveProfileSectionStatus(summary)
-  if (sections.complete) return false
-  return Boolean(
-    summary.profileDeferUntil ||
-    summary.requiresOnboardingResume ||
-    !sections.personal ||
-    !sections.professional,
-  )
+  return !sections.complete
 }
 
 function formatInviteExpiry(value?: string | null) {
