@@ -66,6 +66,34 @@ def _delete_firestore_group_sender_messages(username: str, group_ids: List[int],
         logger.warning("_delete_firestore_group_sender_messages failed for %s: %s", username, e)
 
 
+def _purge_firestore_dm_chat_memory(username: str, peers: List[str], db: Optional[Any] = None) -> None:
+    """Purge the Steve chat-memory sidecar (semantic chunks / event ledger /
+    scope doc) for every DM conversation the user was part of.
+
+    These scopes are keyed by the DM conversation id (``dm:{a}_{b}``), which is
+    derived from the username. A recreated same-username account would otherwise
+    inherit them, so they must be erased alongside the conversation docs. Group
+    memory scopes are shared by all members and are deliberately NOT touched.
+    """
+    if not peers:
+        return
+    try:
+        from backend.services.firestore_reads import _get_client
+        from backend.services.steve_chat_memory import scope_for_peer_dm
+        from backend.services.steve_chat_memory_ops import purge_scope_memory
+
+        fs = db or _get_client()
+        for peer in peers:
+            a, b = sorted([username.lower(), peer.lower()])
+            conv_id = f"{a}_{b}"
+            try:
+                purge_scope_memory(fs, scope_for_peer_dm(conv_id))
+            except Exception as e:
+                logger.warning("steve_chat_memory purge failed conv=%s: %s", conv_id, e)
+    except Exception as e:
+        logger.warning("_purge_firestore_dm_chat_memory failed for %s: %s", username, e)
+
+
 class AccountDeletionMode(Enum):
     """SELF: reassign community/group posts to ``admin``; ADMIN: delete target's posts."""
 
@@ -197,7 +225,10 @@ def delete_user_in_connection(conn, username: str, mode: AccountDeletionMode) ->
     if not row:
         raise ValueError("user_not_found")
     user_id = row["id"] if hasattr(row, "keys") else row[0]
-    user_email = (row["email"] if hasattr(row, "keys") else (row[1] if len(row) > 1 else "")) or ""
+    if hasattr(row, "keys"):
+        user_email = (row["email"] if "email" in row.keys() else "") or ""
+    else:
+        user_email = (row[1] if len(row) > 1 else "") or ""
     user_id = int(user_id)
 
     # Collect data for out-of-band cleanup before MySQL rows are removed.
@@ -214,6 +245,13 @@ def delete_user_in_connection(conn, username: str, mode: AccountDeletionMode) ->
                 dm_peers.append(peer)
     except Exception as e:
         logger.warning("dm_peers collection failed for %s: %s", username, e)
+
+    # Always purge the Steve DM pair, even if the MySQL messages rows were
+    # already pruned — the Firestore dm_conversations/steve_{username} doc and
+    # its chat-memory scope are username-derived and would otherwise survive a
+    # delete + same-username recreate (the user could see old Steve history).
+    if not any((p or "").lower() == "steve" for p in dm_peers):
+        dm_peers.append("steve")
 
     group_ids: List[int] = []
     try:
@@ -238,6 +276,7 @@ def delete_user_in_connection(conn, username: str, mode: AccountDeletionMode) ->
     delete_firestore_user_state(username)
     _delete_firestore_dm_convs(username, dm_peers)
     _delete_firestore_group_sender_messages(username, group_ids)
+    _purge_firestore_dm_chat_memory(username, dm_peers)
 
     _exec_optional(
         c,
@@ -404,4 +443,5 @@ __all__ = [
     "delete_user_in_connection",
     "_delete_firestore_dm_convs",
     "_delete_firestore_group_sender_messages",
+    "_purge_firestore_dm_chat_memory",
 ]

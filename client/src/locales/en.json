@@ -808,6 +808,8 @@
     "description_feed_hint": "Shown below the community name on the feed.",
     "handle_section_title": "Community handle",
     "handle_helper": "A unique @handle for your community. Share it however you like — it's an address, not a listing.",
+    "handle_create_explainer": "This is your community's @address. If you make the community discoverable later, people can use it to find you and ask to join.",
+    "handle_fix_before_create": "That handle isn't available. Pick a different one before creating the community.",
     "handle_checking": "Checking…",
     "handle_available": "Available.",
     "handle_taken": "That handle is taken.",
