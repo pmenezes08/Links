@@ -121,12 +121,12 @@
       input, textarea, select { font-size: 16px !important; }
     </style>
     <!-- Font Awesome is now bundled via npm (@fortawesome/fontawesome-free) in main.tsx -->
-    <script type="module" crossorigin src="/assets/index-DO2jO-lo.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DaVVoAZK.css">
-      <link rel="modulepreload" href="/assets/index-DO2jO-lo.js">
+    <script type="module" crossorigin src="/assets/index-C1TNyepH.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CQk9GFlM.css">
+      <link rel="modulepreload" href="/assets/index-C1TNyepH.js">
       <link rel="preload" as="style" crossorigin href="/assets/fontawesome-Df6ZmiVu.css">
-    <link rel="preload" as="font" type="font/woff2" crossorigin href="/assets/fa-solid-900-DAI24fNt.woff2">
     <link rel="preload" as="font" type="font/woff2" crossorigin href="/assets/fa-regular-400-OOsPf1xj.woff2">
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/assets/fa-solid-900-DAI24fNt.woff2">
   </head>
   <body>
     <!-- Outside #root so React createRoot() does not remove this until auth is ready -->
@@ -156,7 +156,12 @@
         }
       </style>
     </div>
-    <div id="root" style="background-color: #000000;"></div>
+    <!-- No inline background here: it would beat the light-theme #root override
+         (inline styles win over stylesheet rules without !important), leaving the
+         overscroll rubber-band black in light mode. The <head> `#root` rule above
+         guarantees the dark first paint; the `[data-theme='light'] #root` rule
+         themes it for light. -->
+    <div id="root"></div>
     <script>
       /*
        * Safe-area probe — runs synchronously before the React bundle loads.
