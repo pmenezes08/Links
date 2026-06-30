@@ -24,6 +24,7 @@ import { cacheConversations, getCachedConversations, cacheKeyVal, getCachedKeyVa
 import { mergeGroupChatLists, mergeThreadLists } from '../utils/chatThreadListMerge'
 import { triggerHaptic } from '../utils/haptics'
 import { useTouchPullToRefresh } from '../hooks/useTouchPullToRefresh'
+import { useHorizontalSwipeLock } from '../hooks/useHorizontalSwipeLock'
 
 type Thread = {
   other_username: string
@@ -387,6 +388,11 @@ export default function Messages(){
     scrollRef: listScrollRef,
     onRefresh: refreshInbox,
   })
+
+  // Lock horizontal swipe-to-reveal rows to the X axis so a sideways swipe on a
+  // DM/group/archived row doesn't scroll the inbox vertically (iOS WKWebView
+  // ignores touch-action for this; needs a non-passive preventDefault).
+  useHorizontalSwipeLock(listScrollRef)
 
   // Refresh communities on visibility change (when returning to app)
   useEffect(() => {
@@ -772,7 +778,7 @@ export default function Messages(){
                     const gShowActions = isGDragging ? (groupDragX < -20) : (groupSwipeId === gc.id)
                     
                     return (
-                      <div key={gc.id} className="relative w-full overflow-hidden">
+                      <div key={gc.id} data-swipe-row className="relative w-full overflow-hidden">
                         {/* Delete action (revealed on swipe) */}
                         <div 
                           className="absolute inset-y-0 right-0 flex items-stretch gap-1 pr-2" 
@@ -938,7 +944,7 @@ export default function Messages(){
               const showActions = isDragging ? (dragX < -20) : (swipeId === thread.other_username)
               const isMuted = thread.muted === true
               return (
-                <div key={thread.other_username} className="relative w-full overflow-hidden">
+                <div key={thread.other_username} data-swipe-row className="relative w-full overflow-hidden">
                   {/* Actions (revealed on swipe) */}
                   <div className="absolute inset-y-0 right-0 flex items-stretch gap-1 pr-2" style={{ opacity: showActions ? 1 : 0, pointerEvents: showActions ? 'auto' : 'none', transition: 'opacity 150ms ease-out' }}>
                     <button
@@ -1094,7 +1100,7 @@ export default function Messages(){
                       const transition = isDragging ? 'none' : 'transform 150ms ease-out'
                       const showActions = isDragging ? (dragX < -20) : (swipeId === `archived-${archivedThread.other_username}`)
                       return (
-                        <div key={`archived-${archivedThread.other_username}`} className="relative w-full overflow-hidden bg-c-hover-bg">
+                        <div key={`archived-${archivedThread.other_username}`} data-swipe-row className="relative w-full overflow-hidden bg-c-hover-bg">
                           {/* Unarchive action */}
                           <div className="absolute inset-y-0 right-0 flex items-stretch pr-2" style={{ opacity: showActions ? 1 : 0, pointerEvents: showActions ? 'auto' : 'none', transition: 'opacity 150ms ease-out' }}>
                             <button
