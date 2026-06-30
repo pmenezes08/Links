@@ -1011,9 +1011,43 @@ export default function PremiumDashboard() {
   // Host-register ask, one section at a time: personal copy only when the
   // professional section is already done (professional first by default).
   // Shares the feed card's strings so the two surfaces can't drift.
-  const onboardingCardAskPersonal = !personalSectionComplete && professionalSectionComplete
-  const onboardingCardTitle = t(onboardingCardAskPersonal ? 'feed.steve_ask_personal_title' : 'feed.steve_ask_professional_title')
-  const onboardingCardBody = t(onboardingCardAskPersonal ? 'feed.steve_ask_personal_body' : 'feed.steve_ask_professional_body')
+  // Three-state profile-completion card. Fresh (nothing yet) opens the full
+  // Steve chat; one-side-done opens the scoped 2-minute builder for the missing
+  // side. States differ by icon + copy only — no progress UI, per the ask
+  // register (no countdowns / pills / percentages).
+  const profileAsk: 'fresh' | 'personal' | 'professional' =
+    !personalSectionComplete && !professionalSectionComplete
+      ? 'fresh'
+      : !personalSectionComplete && professionalSectionComplete
+        ? 'personal'
+        : 'professional'
+  const onboardingCardTitle = t(
+    profileAsk === 'fresh'
+      ? 'dashboard.steve_ask_fresh_title'
+      : profileAsk === 'personal'
+        ? 'feed.steve_ask_personal_title'
+        : 'feed.steve_ask_professional_title',
+  )
+  const onboardingCardBody = t(
+    profileAsk === 'fresh'
+      ? 'dashboard.steve_ask_fresh_body'
+      : profileAsk === 'personal'
+        ? 'feed.steve_ask_personal_body'
+        : 'feed.steve_ask_professional_body',
+  )
+  const onboardingCardCta = t(
+    profileAsk === 'fresh'
+      ? 'dashboard.steve_ask_fresh_cta'
+      : profileAsk === 'personal'
+        ? 'feed.steve_ask_personal_cta'
+        : 'feed.steve_ask_professional_cta',
+  )
+  const onboardingCardIcon =
+    profileAsk === 'fresh'
+      ? 'fa-wand-magic-sparkles'
+      : profileAsk === 'personal'
+        ? 'fa-user'
+        : 'fa-briefcase'
   const onboardingOverlayActive =
     showOnboarding || showOnboardingWelcome || onboardingLaunching || !!activeInvitePrompt
   const { setNavOverrides, clearNavOverrides } = useDashboardLayout()
@@ -1031,6 +1065,46 @@ export default function PremiumDashboard() {
     }
     return communities[0]?.name || communityFallback
   })()
+  const onboardingCompletionCard = showOnboardingCompletionCard ? (
+    <div className="mb-4 rounded-2xl border border-c-border bg-c-bg-elevated p-4 shadow-c-card">
+      <div className="flex items-start gap-3.5">
+        {/* Turquoise icon chip = the "from Steve" anchor; it carries the accent
+            so the card body stays neutral and the CTA remains the single
+            turquoise primary action on the surface. */}
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-cpoint-turquoise/12 text-cpoint-turquoise ring-1 ring-cpoint-turquoise/25">
+          <i className={`fa-solid ${onboardingCardIcon}`} aria-hidden="true" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-base font-semibold text-c-text-primary">{onboardingCardTitle}</div>
+          {/* No countdown, no per-section status pills, no progress bar: the ask
+              register bans manufactured urgency and progress framing. Each state
+              is a different door (icon + copy), never a progress readout. */}
+          <p className="mt-1 text-sm leading-relaxed text-c-text-secondary">
+            {onboardingCardBody}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              // When exactly one section is missing, open the scoped
+              // 2-minute builder for that section — the full chat
+              // (name/photo/section picker) is only right for a
+              // completely fresh profile.
+              if (personalSectionComplete && !professionalSectionComplete) {
+                navigate('/steve/profile-builder/professional')
+              } else if (professionalSectionComplete && !personalSectionComplete) {
+                navigate('/steve/profile-builder/personal')
+              } else {
+                openOnboardingResume()
+              }
+            }}
+            className="mt-3 inline-flex min-h-[44px] items-center rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-sm font-semibold text-black transition hover:brightness-110"
+          >
+            {onboardingCardCta}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null
   // Show skeleton shell while initial data loads (matches final layout to prevent CLS)
   if (initialLoading) {
     return (
@@ -1102,40 +1176,10 @@ export default function PremiumDashboard() {
         className={`min-h-screen pb-[var(--app-dashboard-content-pad-bottom)] ${isWeb ? 'lg:ml-64' : 'md:ml-52'}`}
       >
         <div className="app-content max-w-5xl mx-auto px-3 py-6">
-          {showOnboardingCompletionCard && (
-            <div className="mb-4 rounded-2xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 p-4 shadow-c-card">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="text-base font-semibold text-c-text-primary">{onboardingCardTitle}</div>
-                  {/* No countdown, no per-section status pills: deadlines are
-                      manufactured urgency and pills are progress framing —
-                      both banned by the ask register. Title + one line + CTA. */}
-                  <p className="mt-1 text-sm leading-relaxed text-c-text-secondary">
-                    {onboardingCardBody}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    // When exactly one section is missing, open the scoped
-                    // 2-minute builder for that section — the full chat
-                    // (name/photo/section picker) is only right for a
-                    // completely fresh profile.
-                    if (personalSectionComplete && !professionalSectionComplete) {
-                      navigate('/steve/profile-builder/professional')
-                    } else if (professionalSectionComplete && !personalSectionComplete) {
-                      navigate('/steve/profile-builder/personal')
-                    } else {
-                      openOnboardingResume()
-                    }
-                  }}
-                  className="shrink-0 rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-sm font-semibold text-black transition hover:brightness-110"
-                >
-                  {t(onboardingCardAskPersonal ? 'feed.steve_ask_personal_cta' : 'feed.steve_ask_professional_cta')}
-                </button>
-              </div>
-            </div>
-          )}
+          {/* Always visible while the profile is incomplete — including users
+              with no community yet. Hidden only during load (summary null) so
+              it never flashes; see shouldShowProfileHelpCard. */}
+          {onboardingCompletionCard}
           {hasCoarsePointer && (
           <div
             className="sticky top-0 z-20 mb-3 flex justify-center pointer-events-none transition-transform duration-150"
