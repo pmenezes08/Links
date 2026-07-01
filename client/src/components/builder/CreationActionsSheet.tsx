@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import CommunitySharePicker from './CommunitySharePicker'
 
 export type SheetCreation = {
@@ -55,12 +56,16 @@ export default function CreationActionsSheet({
   onUnpublishWeb,
 }: Props) {
   const [shareOpen, setShareOpen] = useState(false)
-  if (!creation) return null
+  if (!creation || typeof document === 'undefined') return null
   const isListed = creation.gallery_status === 'pending' || creation.gallery_status === 'approved'
   const isPublic = creation.public_status === 'published' && !!creation.public_url
   const sharedIds = creation.shared_community_ids || []
 
-  return (
+  // Portaled to <body>: page-transition containers carry CSS transforms, which
+  // re-anchor position:fixed to the PAGE instead of the screen — the sheet's
+  // bottom (Delete build) ended up below the visible viewport with nothing to
+  // scroll. Same escape hatch DashboardBottomNav uses.
+  return createPortal(
     <div
       // z-[1000]: must stack ABOVE DashboardBottomNav (z-[900]) and its flyout
       // (z-[950]) or the nav occludes the sheet's last rows (Delete build).
@@ -71,7 +76,9 @@ export default function CreationActionsSheet({
       onClick={onClose}
     >
       <div
-        className="max-h-[88vh] w-full overflow-y-auto overscroll-contain rounded-t-3xl border border-c-border bg-c-bg-elevated p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-c-card sm:max-w-xl sm:rounded-3xl sm:pb-4"
+        // backdrop-blur: --c-bg-elevated is translucent in dark theme; without
+        // blur the page bleeds through and the sheet is hard to read.
+        className="max-h-[82dvh] w-full overflow-y-auto overscroll-contain rounded-t-3xl border border-c-border bg-c-bg-elevated p-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] shadow-[0_-28px_80px_rgba(0,0,0,0.6)] backdrop-blur-2xl sm:max-w-xl sm:rounded-3xl sm:pb-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-c-border sm:hidden" />
@@ -191,6 +198,7 @@ export default function CreationActionsSheet({
           </section>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
