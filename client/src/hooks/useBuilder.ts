@@ -155,13 +155,22 @@ export function useBuilder(communityId: string) {
     }
   }, [clearActiveJob])
 
+  // Poll while a job is in flight. Depend on the job's id + status PRIMITIVES,
+  // never the whole activeJob object: pollJob calls setActiveJob(data.job) on
+  // every tick with a fresh object, so depending on the object identity would
+  // re-run this effect on every poll — cancelling the 3s interval and firing an
+  // immediate re-poll each time, i.e. a hot loop that hammers the server and
+  // never settles. Keying on (id, status) means the effect only re-subscribes
+  // when the job actually transitions, and the 3s interval is respected.
+  const activeJobId = activeJob?.id ?? 0
+  const activeJobStatus = activeJob?.status
   useEffect(() => {
-    if (!activeJob || activeJob.status === 'succeeded' || activeJob.status === 'failed') return
+    if (!activeJobId || activeJobStatus === 'succeeded' || activeJobStatus === 'failed') return
     setBuilding(true)
-    const id = window.setInterval(() => { pollJob(activeJob.id).catch(() => { /* keep waiting */ }) }, 3000)
-    pollJob(activeJob.id).catch(() => { /* keep waiting */ })
+    const id = window.setInterval(() => { pollJob(activeJobId).catch(() => { /* keep waiting */ }) }, 3000)
+    pollJob(activeJobId).catch(() => { /* keep waiting */ })
     return () => window.clearInterval(id)
-  }, [activeJob, pollJob])
+  }, [activeJobId, activeJobStatus, pollJob])
 
   useEffect(() => {
     try {
