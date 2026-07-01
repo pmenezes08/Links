@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { prepareCreationHtml } from '../../utils/creationHtml'
+import MatchLobby from './MatchLobby'
 
 /**
  * Full-screen play surface for a front-end creation. Renders the artifact in a
@@ -32,8 +33,12 @@ export default function PlayableCreation({ html, title, onClose, creationId, com
     window.clearTimeout(noticeTimer.current)
     noticeTimer.current = window.setTimeout(() => setCpNotice(null), 6000)
   }
+  // Host owns the multiplayer lobby for turnBasedGame creations: the injected
+  // runtime announces itself (__cpmp ready/lobby) and this component overlays a
+  // native lobby, handing picked matches to the iframe via __cpmp_open.
+  const [showLobby, setShowLobby] = useState(false)
   const srcDoc = useMemo(
-    () => prepareCreationHtml(html, { dataBridge: creationId != null, errorReporter: true, startMatchId }),
+    () => prepareCreationHtml(html, { dataBridge: creationId != null, errorReporter: true, startMatchId, hostLobby: true }),
     [html, creationId, startMatchId],
   )
   const contextPayload = useMemo(() => {
@@ -87,10 +92,11 @@ export default function PlayableCreation({ html, title, onClose, creationId, com
     }
     const onMsg = async (e: MessageEvent) => {
       if (e.source !== iframeRef.current?.contentWindow) return // only our artifact
-      const d = e.data as { __cpdata?: boolean; __cperr?: boolean; __cpend?: boolean; rid?: string; op?: string; payload?: Record<string, unknown>; message?: string; score?: unknown; key?: unknown } | null
+      const d = e.data as { __cpdata?: boolean; __cperr?: boolean; __cpend?: boolean; __cpmp?: boolean; kind?: string; rid?: string; op?: string; payload?: Record<string, unknown>; message?: string; score?: unknown; key?: unknown } | null
       if (!d || typeof d !== 'object') return
       if (d.__cperr) { if (onRuntimeError && typeof d.message === 'string') onRuntimeError(d.message); return }
       if (d.__cpend) { handleGameOver(d.score, d.key); return }
+      if (d.__cpmp) { if (d.kind === 'lobby') setShowLobby(true); return }
       if (!d.__cpdata || !d.rid || !d.op) return
       const rid = d.rid
       const p = (d.payload || {}) as Record<string, unknown>
@@ -229,6 +235,19 @@ export default function PlayableCreation({ html, title, onClose, creationId, com
     }}>
       <div style={{ flex: '1 1 auto', position: 'relative', overflow: 'hidden', minHeight: 0, background: bgColor }}>
         <iframe ref={iframeRef} title={title || 'Creation'} sandbox="allow-scripts" srcDoc={srcDoc} style={iframeStyle} />
+        {showLobby && creationId != null && (
+          <MatchLobby
+            creationId={creationId}
+            title={title}
+            withContext={withContext}
+            contextPayload={contextPayload}
+            onOpenMatch={(matchId) => {
+              setShowLobby(false)
+              try { iframeRef.current?.contentWindow?.postMessage({ __cpmp_open: true, matchId }, '*') } catch { /* noop */ }
+            }}
+            onClose={() => setShowLobby(false)}
+          />
+        )}
       </div>
 
       <button onClick={onClose} aria-label="Close"

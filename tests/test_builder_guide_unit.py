@@ -10,17 +10,28 @@ def test_build_guide_teaches_multiplayer_state_machine():
         "phase",
         "canMove",
         "pending_sent",
-        "pending_received",
         "opponent turn",
         "stale_version",
-        "sent invites",
-        "received invites",
         "matchController",
-        "live-feeling",
         "onOpponentMove",
         "lastMove",
         "from,to,piece",
         "pollMs",
+    ):
+        assert anchor.lower() in guide.lower()
+
+
+def test_build_guide_teaches_host_owned_lobby():
+    """The HOST renders the multiplayer lobby; generated games must not build
+    their own opponents/invites UI and instead open the host lobby via
+    actions.refreshLobby()."""
+    guide = builder._SYSTEM_PROMPT
+    for anchor in (
+        "hostLobby",
+        "HOST owns the lobby",
+        "do NOT build one",
+        "actions.refreshLobby()",
+        "pre-match/idle screen",
     ):
         assert anchor.lower() in guide.lower()
 

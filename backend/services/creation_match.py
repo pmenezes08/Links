@@ -319,17 +319,29 @@ def resign_match(match_id: int, username: str, *, creation_id: Optional[int] = N
     return _view(_fetch_match(match_id, creation_id=creation_id, community_id=community_id) or {}, username)
 
 
-def list_matches(creation_id: int, username: str) -> List[Dict[str, Any]]:
-    """The user's matches for this creation (in-progress + finished), newest first."""
+def list_matches(creation_id: int, username: str,
+                 community_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """The user's matches for this creation (in-progress + finished), newest first.
+
+    When ``community_id`` is a positive community context, the lobby is scoped
+    to that community (per-community isolation: a match created in community X
+    never appears in community Y's lobby). Context-less entry points (owner
+    drafts, Explore — context 0/None) list all the user's matches for the
+    creation so games stay resumable from anywhere.
+    """
     _ensure_tables()
     ph = get_sql_placeholder()
+    where = f"creation_id = {ph} AND (seat1_username = {ph} OR seat2_username = {ph})"
+    args: List[Any] = [creation_id, username, username]
+    if community_id is not None and int(community_id) > 0:
+        where += f" AND community_id = {ph}"
+        args.append(int(community_id))
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute(
             f"""SELECT {', '.join(_MATCH_COLS)} FROM creation_matches
-                WHERE creation_id = {ph} AND (seat1_username = {ph} OR seat2_username = {ph})
-                ORDER BY updated_at DESC LIMIT 50""",
-            (creation_id, username, username),
+                WHERE {where} ORDER BY updated_at DESC LIMIT 50""",
+            tuple(args),
         )
         rows = c.fetchall() or []
     matches = [{col: _cell(r, i) for i, col in enumerate(_MATCH_COLS)} for r in rows]

@@ -1066,7 +1066,17 @@ def _match_fail(e: Exception):
 
 
 def _match_access(creation_id: int):
-    """Shared auth for match routes -> (username, community_id) or an error response."""
+    """Shared auth for match routes -> (username, community_id) or an error response.
+
+    The resolved community context is authoritative for CONTEXT-scoped routes
+    (opponents / create / list — the lobby is per-community). Ops on an
+    EXISTING match must NOT filter by this caller context: the two players may
+    have entered the same creation through different surfaces (another shared
+    community, Explore, My Builds, a notification deep link) and a context
+    filter would 404 mid-game. For those ops the real security boundary is the
+    seat check in creation_match (only seat 1/2 can read or act), so the
+    routes below pass community_id=None to the service.
+    """
     username = session.get("username")
     if not username:
         return None, None, (jsonify({"success": False, "error": "auth_required"}), 401)
@@ -1089,7 +1099,8 @@ def builder_match_list(creation_id: int):
     username, community_id, err = _match_access(creation_id)
     if err:
         return err
-    return jsonify({"success": True, "matches": match_svc.list_matches(creation_id, username)})
+    return jsonify({"success": True, "matches": match_svc.list_matches(
+        creation_id, username, community_id=community_id)})
 
 
 @builder_bp.route("/api/builder/<int:creation_id>/match/create", methods=["POST"])
@@ -1114,8 +1125,9 @@ def builder_match_get(creation_id: int, match_id: int):
     if err:
         return err
     try:
+        # Seat-authorized: no caller-context community filter (see _match_access).
         return jsonify({"success": True, "match": match_svc.get_match(
-            match_id, username, creation_id=creation_id, community_id=community_id,
+            match_id, username, creation_id=creation_id,
         )})
     except Exception as e:
         return _match_fail(e)
@@ -1132,7 +1144,7 @@ def builder_match_move(creation_id: int, match_id: int):
     try:
         res = match_svc.submit_move(match_id, username, move=data.get("move"), state=data.get("state"),
                                     expected_version=int(data.get("version") or 0), result=data.get("result"),
-                                    creation_id=creation_id, community_id=community_id)
+                                    creation_id=creation_id)
     except Exception as e:
         return _match_fail(e)
     return jsonify({"success": True, **res})
@@ -1149,7 +1161,7 @@ def builder_match_poll(creation_id: int, match_id: int):
         since = 0
     try:
         return jsonify({"success": True, **match_svc.poll_match(
-            match_id, username, since, creation_id=creation_id, community_id=community_id,
+            match_id, username, since, creation_id=creation_id,
         )})
     except Exception as e:
         return _match_fail(e)
@@ -1162,7 +1174,7 @@ def builder_match_accept(creation_id: int, match_id: int):
         return err
     try:
         return jsonify({"success": True, "match": match_svc.accept_match(
-            match_id, username, creation_id=creation_id, community_id=community_id,
+            match_id, username, creation_id=creation_id,
         )})
     except Exception as e:
         return _match_fail(e)
@@ -1175,7 +1187,7 @@ def builder_match_decline(creation_id: int, match_id: int):
         return err
     try:
         return jsonify({"success": True, "match": match_svc.decline_match(
-            match_id, username, creation_id=creation_id, community_id=community_id,
+            match_id, username, creation_id=creation_id,
         )})
     except Exception as e:
         return _match_fail(e)
@@ -1188,7 +1200,7 @@ def builder_match_cancel(creation_id: int, match_id: int):
         return err
     try:
         return jsonify({"success": True, "match": match_svc.cancel_match(
-            match_id, username, creation_id=creation_id, community_id=community_id,
+            match_id, username, creation_id=creation_id,
         )})
     except Exception as e:
         return _match_fail(e)
@@ -1201,7 +1213,7 @@ def builder_match_resign(creation_id: int, match_id: int):
         return err
     try:
         return jsonify({"success": True, "match": match_svc.resign_match(
-            match_id, username, creation_id=creation_id, community_id=community_id,
+            match_id, username, creation_id=creation_id,
         )})
     except Exception as e:
         return _match_fail(e)

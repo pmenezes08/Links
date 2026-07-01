@@ -1085,10 +1085,6 @@ export default function PremiumDashboard() {
           <button
             type="button"
             onClick={() => {
-              // When exactly one section is missing, open the scoped
-              // 2-minute builder for that section — the full chat
-              // (name/photo/section picker) is only right for a
-              // completely fresh profile.
               if (personalSectionComplete && !professionalSectionComplete) {
                 navigate('/steve/profile-builder/professional')
               } else if (professionalSectionComplete && !personalSectionComplete) {
