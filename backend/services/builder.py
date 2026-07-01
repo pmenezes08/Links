@@ -1669,9 +1669,57 @@ def get_build_job(job_id: int) -> Optional[Dict[str, Any]]:
     return _job_row_to_dict(row) if row else None
 
 
-def user_has_active_job(username: str) -> bool:
-    """Limit each user to one in-flight build to avoid accidental queue spam."""
+def _stale_job_cutoff(now_s: str) -> str:
+    """Timestamp one lease window before ``now_s`` (same "%Y-%m-%d %H:%M:%S"
+    shape as stored rows, so string comparison in SQL is chronological)."""
+    try:
+        base_dt = datetime.strptime(now_s, "%Y-%m-%d %H:%M:%S")
+    except Exception:
+        base_dt = datetime.utcnow()
+    return (base_dt - timedelta(seconds=_LEASE_SECONDS)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def reclaim_stale_jobs_for_user(username: str, *, now: Optional[str] = None) -> int:
+    """Fail a user's abandoned in-flight jobs so an orphaned build can't wedge
+    the one-build-at-a-time guard into a permanent 409 on every future build.
+
+    "Abandoned" = a queued/running job that has made no state change within a
+    lease window: a queued job the worker never picked up (in-process thread
+    died or the instance recycled before dispatch), or a running job whose
+    worker crashed mid-build. Such rows are marked terminally ``failed`` so the
+    guard frees up and the user's fresh build proceeds. No usage/block row is
+    written — an abandoned job never made a paid model call, so counting it
+    would distort the revenue metrics. Returns the number reclaimed.
+    """
     ensure_tables()
+    ph = get_sql_placeholder()
+    cutoff = _stale_job_cutoff(now or _now())
+    placeholders = ", ".join([ph for _ in _ACTIVE_JOB_STATUSES])
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""SELECT id FROM builder_jobs
+                WHERE username = {ph} AND status IN ({placeholders}) AND updated_at < {ph}""",
+            (username, *_ACTIVE_JOB_STATUSES, cutoff),
+        )
+        rows = c.fetchall() or []
+    ids = [int(r["id"] if hasattr(r, "keys") else r[0]) for r in rows]
+    for jid in ids:
+        _set_job_status(jid, "failed", error="build_abandoned", finished=True, clear_worker=True)
+    if ids:
+        logger.info("builder: reclaimed %s stale job(s) for %s", len(ids), username)
+    return len(ids)
+
+
+def user_has_active_job(username: str) -> bool:
+    """Limit each user to one in-flight build to avoid accidental queue spam.
+
+    Self-heals first: a job orphaned by a dead worker (queued-never-started or
+    running-past-lease) is failed so it can't wedge this guard into a permanent
+    409 for every future build.
+    """
+    ensure_tables()
+    reclaim_stale_jobs_for_user(username)
     ph = get_sql_placeholder()
     placeholders = ", ".join([ph for _ in _ACTIVE_JOB_STATUSES])
     with get_db_connection() as conn:

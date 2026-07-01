@@ -249,6 +249,51 @@ def test_delete_creation_removes_public_artifacts(monkeypatch):
     assert any(k.endswith(".html") for k in deleted)
 
 
+def _backdate_job(job_id: int, seconds_ago: int) -> None:
+    """Age a job's updated_at so it looks orphaned (worker never advanced it)."""
+    from datetime import datetime, timedelta
+    ph = get_sql_placeholder()
+    old = (datetime.utcnow() - timedelta(seconds=seconds_ago)).strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"UPDATE builder_jobs SET updated_at = {ph} WHERE id = {ph}", (old, job_id))
+        conn.commit()
+
+
+def test_fresh_queued_job_blocks_but_abandoned_one_self_heals():
+    """A stale queued job (worker died before dispatch) must not 409 the user
+    forever: user_has_active_job self-heals it so the next build proceeds."""
+    _make_user("maker")
+    cid = _make_community()
+
+    job = builder.create_build_job(username="maker", community_id=cid, prompt="a game", tier="balanced")
+    # Fresh job → genuinely in-flight → blocks a second build.
+    assert builder.user_has_active_job("maker") is True
+
+    # Same job orphaned past the lease window → reclaimed, guard frees up.
+    _backdate_job(int(job["id"]), builder._LEASE_SECONDS + 60)
+    assert builder.user_has_active_job("maker") is False
+    reclaimed = builder.get_build_job(int(job["id"]))
+    assert reclaimed is not None and reclaimed["status"] == "failed"
+    assert reclaimed["error"] == "build_abandoned"
+
+
+def test_reclaim_leaves_other_users_and_fresh_jobs_untouched():
+    """Self-heal is scoped + age-gated: it never fails a peer's job or a job
+    that is still within its lease window."""
+    _make_user("maker"); _make_user("other")
+    cid = _make_community()
+
+    fresh = builder.create_build_job(username="maker", community_id=cid, prompt="a", tier="balanced")
+    peer = builder.create_build_job(username="other", community_id=cid, prompt="b", tier="balanced")
+    _backdate_job(int(peer["id"]), builder._LEASE_SECONDS + 60)
+
+    # Reclaiming maker's jobs must not touch a fresh maker job or the peer's job.
+    assert builder.reclaim_stale_jobs_for_user("maker") == 0
+    assert builder.get_build_job(int(fresh["id"]))["status"] == "queued"
+    assert builder.get_build_job(int(peer["id"]))["status"] == "queued"
+
+
 def test_gate_allows_free_quota_then_blocks_at_cap():
     _make_user("capped")  # free tier → free builder quota
     allowed, reason, ent = gate_builder_or_reason("capped", enforce_override=True)
