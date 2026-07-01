@@ -150,6 +150,33 @@ def test_list_matches_and_non_player_blocked():
         cm.submit_move(m["id"], "eve", move={}, state={}, expected_version=0)
 
 
+def test_list_matches_scoped_per_community_context():
+    """Lobby isolation: a match created in community X never appears in
+    community Y's lobby, while context-less entry points (Explore / owner
+    drafts) still list everything so games stay resumable."""
+    cid_a = _seed_two()
+    cid_b = _community()
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT id FROM users WHERE username IN ({ph}, {ph})", ("alice", "bob"))
+        for row in c.fetchall():
+            _join(int(cm._cell(row, 0)), cid_b)
+    crid = 13
+    m_a = cm.create_match(creation_id=crid, community_id=cid_a, challenger="alice",
+                          opponent_handle=cm._handle("bob"))
+    m_b = cm.create_match(creation_id=crid, community_id=cid_b, challenger="alice",
+                          opponent_handle=cm._handle("bob"))
+
+    ids_a = [x["id"] for x in cm.list_matches(crid, "alice", community_id=cid_a)]
+    ids_b = [x["id"] for x in cm.list_matches(crid, "alice", community_id=cid_b)]
+    assert m_a["id"] in ids_a and m_b["id"] not in ids_a
+    assert m_b["id"] in ids_b and m_a["id"] not in ids_b
+    # Context-less (0/None): everything, so any surface can resume a game.
+    ids_all = [x["id"] for x in cm.list_matches(crid, "alice", community_id=0)]
+    assert m_a["id"] in ids_all and m_b["id"] in ids_all
+
+
 def test_cannot_challenge_self_or_nonmember():
     cid = _seed_two()
     crid = 9
@@ -250,3 +277,73 @@ def test_match_routes_full_flow_and_cross_creation_scope():
     resigned = client.post(f"/api/builder/{crid}/match/{match_id}/resign")
     assert resigned.status_code == 200
     assert resigned.get_json()["match"]["status"] == "finished"
+
+
+def test_match_ops_are_seat_authorized_across_community_contexts():
+    """Regression for the mid-game 404: ops on an EXISTING match must work no
+    matter which community context each player's screen was opened from. The
+    seat check is the security boundary; a non-seat member still gets 403."""
+    from flask import Flask
+    from backend.blueprints.builder import builder_bp
+
+    cid_a = _seed_two()
+    cid_b = _community()
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT id, username FROM users WHERE username IN ({ph}, {ph})", ("alice", "bob"))
+        for row in c.fetchall():
+            _join(int(cm._cell(row, 0)), cid_b)
+    crid = _creation(cid_a)
+    # The creation is also shared into community B (post_id is irrelevant here).
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""INSERT INTO creation_shares (creation_id, community_id, post_id, shared_by, created_at)
+                VALUES ({ph}, {ph}, 1, 'alice', '2026-01-01 00:00:00')""",
+            (crid, cid_b),
+        )
+        conn.commit()
+
+    app = Flask(__name__)
+    app.secret_key = "test-secret"
+    app.register_blueprint(builder_bp)
+    client = app.test_client()
+
+    def login(username: str) -> None:
+        with client.session_transaction() as sess:
+            sess["username"] = username
+
+    # Alice challenges from the home community context (A).
+    login("alice")
+    handle = client.get(f"/api/builder/{crid}/match/opponents").get_json()["opponents"][0]["handle"]
+    match_id = int(client.post(f"/api/builder/{crid}/match/create",
+                               json={"opponent": handle}).get_json()["match"]["id"])
+
+    # Bob plays from a DIFFERENT context (community B) — every op must work.
+    login("bob")
+    accepted = client.post(f"/api/builder/{crid}/match/{match_id}/accept?community_id={cid_b}")
+    assert accepted.status_code == 200
+    assert accepted.get_json()["match"]["status"] == "active"
+
+    login("alice")
+    moved = client.post(f"/api/builder/{crid}/match/{match_id}/move", json={
+        "move": {"cell": 4}, "state": {"board": ["X"]}, "version": 0,
+    })
+    assert moved.status_code == 200
+
+    login("bob")
+    polled = client.get(f"/api/builder/{crid}/match/{match_id}/poll?since=0&community_id={cid_b}")
+    assert polled.status_code == 200
+    assert polled.get_json()["your_turn"] is True
+
+    # The lobby stays context-scoped: the match lives in A's lobby, not B's.
+    lobby_b = client.get(f"/api/builder/{crid}/match/list?community_id={cid_b}").get_json()["matches"]
+    assert all(int(x["id"]) != match_id for x in lobby_b)
+    lobby_a = client.get(f"/api/builder/{crid}/match/list").get_json()["matches"]
+    assert any(int(x["id"]) == match_id for x in lobby_a)
+
+    # A community member who is NOT a seat is still blocked from the match.
+    _join(_user("mallory"), cid_a)
+    login("mallory")
+    assert client.get(f"/api/builder/{crid}/match/{match_id}").status_code == 403

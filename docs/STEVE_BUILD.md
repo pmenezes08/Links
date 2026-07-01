@@ -154,11 +154,14 @@ Two-player games use a host-brokered match system. The sandbox never sees raw us
 
 Preferred path:
 
+- **The host owns the lobby.** `PlayableCreation` renders a native `MatchLobby` overlay (opponents, your games, invites with Accept/Decline, sent invites with Cancel, New game) for every creation built on `CPoint.turnBasedGame`. The injected runtime announces itself with a `__cpmp` postMessage (`ready`/`lobby`); the host hands a picked match to the iframe with `__cpmp_open` (same mechanism as `startMatchId` deep links). Generated code renders only match screens: pre-match idle, waiting-for-accept, play, finished. Legacy games that hand-rolled `matchController`/raw `match.*` keep their own lobby and still get all runtime hardening.
 - Generated turn-based games should use `CPoint.turnBasedGame(config)` first. The generated code supplies `initialState`, `canMove`, `applyMove`, `getResult`, `render`, and optionally `onOpponentMove`; the platform owns the lifecycle.
-- Generated games should use `CPoint.matchController(opts)` for normal turn-based games. The controller owns the common lifecycle: lobby refresh, accepting/declining received invites, cancelling sent invites, opening a match, polling sent pending invites until they become active, polling active matches only while waiting for the opponent's move, reloading authoritative state after poll changes, backing off reconnect UI until repeated failures, and cleaning up timers when the tab is hidden.
+- `CPoint.matchController(opts)` is the advanced escape hatch. The controller owns the common lifecycle: lobby refresh (auto-polled ~5s while the lobby is active), accepting/declining received invites, cancelling sent invites, opening a match, polling, reloads, retries, and tab cleanup.
+- **Hardened sync loop:** polling is a self-chaining loop with a generation token — ticks never overlap (no duplicate reloads/animations from slow round trips), a failed reload backs off and retries instead of silently killing polling (the historic "moves stop syncing mid-game" bug), and returning from a hidden tab reloads authoritative state. Cadence: ~1s while `pending_sent`/`opponent_turn`, ~5s on `your_turn`/`pending_received` (so resigns, accepts, and cancels surface everywhere), ~5s in the lobby.
+- **Conflict absorption:** `submitMove` on a stale local view (or a `stale_version`/`not_your_turn` rejection) reloads authoritative state and retries once before surfacing an error to game code.
 - Game code supplies only the rules and rendering callbacks: `startingState(match)`, `applyMove(state, action, match)`, `getResult(nextState, match, action)`, `onLobby(matches)`, `onMatch(view)`, and `onReconnect(count)`.
 - `controller.view()` returns stable lifecycle and seat helpers: `phase`, `canMove`, `isPending`, `isWaitingForAccept`, `isInviteReceived`, `isActive`, `isFinished`, `yourSeat`, `isWhite`, `isBlack`, `yourTurn`, `status`, `winner`, `lastSeq`, and `opponent`. Generated games should render from `phase`/`canMove`, not from `yourTurn` alone; `yourTurn=false` can mean pending, finished, or opponent turn.
-- For live-feeling turn-based play, `turnBasedGame` defaults to faster polling while the local player is waiting. Poll deltas are exposed as `view.moves`, `view.lastMove`, and `onOpponentMove(move, state, view, delta)`. Board/card games should include animation metadata in submitted actions, such as `{from,to,piece}` or `{cardId,fromZone,toZone}`, so the opponent can animate the move when both players have the game open.
+- Poll deltas are exposed as `view.moves`, `view.lastMove`, and `onOpponentMove(move, state, view, delta)`. Board/card games should include animation metadata in submitted actions, such as `{from,to,piece}` or `{cardId,fromZone,toZone}`, so the opponent can animate the move when both players have the game open.
 
 Raw API:
 
@@ -168,6 +171,11 @@ Raw API:
 - `CPoint.match.cancel(id)` is for the challenger to cancel a pending invite before it is accepted.
 - `CPoint.match.resign(id)` forfeits an active or pending match as the current player.
 - `CPoint.match.move(id,{move,state,version,result})` writes a full compact state blob and enforces optimistic concurrency.
+
+Authorization model:
+
+- Ops on an **existing** match (`get`, `poll`, `move`, `accept`, `decline`, `cancel`, `resign`) are **seat-authorized**: only seat 1 or seat 2 can read or act, regardless of which surface (community share, Explore, My Builds, deep link) the player entered from. The caller's community context is deliberately NOT a filter here — two players entering via different contexts must never 404 mid-game.
+- Context-scoped routes stay context-scoped: `opponents` and `create` resolve within the caller's active community, and `list` (the lobby) is filtered to the caller's community context when it is a real community (context-less entry points list all the user's matches for the creation so games stay resumable).
 
 Backend routes live under `/api/builder/<id>/match/*`; the route inventory is regenerated in `docs/BACKEND_ROUTES.md`.
 
@@ -320,6 +328,11 @@ Before shipping Builder changes:
 - Confirm there is no host gamepad button, D-pad overlay, or host sound icon.
 - Confirm generated creations include their own touch controls.
 - Confirm Steve chat replies render paragraphs/bullets.
+- Multiplayer (two browsers, same community): challenge from A — the invite
+  appears in B's host lobby within ~5s without reloading; accept as B — A's
+  game goes active within ~1s; play 10+ alternating moves and confirm both
+  boards stay in sync; resign as B while it is A's turn — A sees it within ~5s;
+  kill B's network for 15s mid-game and confirm sync recovers by itself.
 
 ## Roadmap
 

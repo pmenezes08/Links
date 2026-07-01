@@ -59,7 +59,11 @@ describe('prepareCreationHtml', () => {
     expect(out).toContain("phaseFor")
     expect(out).toContain("pending_sent")
     expect(out).toContain("canMove")
-    expect(out).toContain("current.phase==='pending_sent'||current.phase==='opponent_turn'")
+    // Cadence by phase: fast while waiting on the opponent, slow on your own
+    // turn / received invites / lobby (resigns + accepts + invites surface).
+    expect(out).toContain("if(ph==='pending_sent'||ph==='opponent_turn') return FAST")
+    expect(out).toContain("if(ph==='your_turn'||ph==='pending_received') return SLOW")
+    expect(out).toContain('lobbyOn?LOBBY:0')
     expect(out).toContain('turnBasedGame=function')
     expect(out).toContain('hasTurnBasedGame=true')
     expect(out).toContain('initialState')
@@ -68,6 +72,27 @@ describe('prepareCreationHtml', () => {
     expect(out).toContain('lastMove')
     expect(out).toContain("pollMs:config.pollMs||(config.live===false?2500:1000)")
     expect(out).toContain('moves:lastMoves')
+  })
+
+  it('hardens the match runtime against poll death, overlap, and stale conflicts', () => {
+    const out = prepareCreationHtml(HTML, { dataBridge: true })
+    // Self-chaining timeout loop with a generation token — no overlapping ticks,
+    // superseded work is discarded, and a failed reload retries with backoff.
+    expect(out).toContain('var g=++gen')
+    expect(out).toContain('if(g!==gen') // stale completions discarded
+    expect(out).toContain('timer=setTimeout(tick,d)')
+    expect(out).toContain('Math.min(1000*(failures+1),MAXBACK)') // reload retry backoff — polling never dies
+    // Conflict-absorbing submit: reload + retry once on stale_version/not_your_turn.
+    expect(out).toContain("msg==='stale_version'||msg==='not_your_turn'")
+  })
+
+  it('injects the host-owned lobby contract for turn-based games', () => {
+    const on = prepareCreationHtml(HTML, { dataBridge: true, hostLobby: true })
+    expect(on).toContain('window.CPoint.hostLobby=true')
+    expect(on).toContain('__cpmp') // runtime announces ready/lobby to the host
+    expect(on).toContain('__cpmp_open') // host hands a picked match to the iframe
+    const off = prepareCreationHtml(HTML, { dataBridge: true })
+    expect(off).toContain('window.CPoint.hostLobby=false')
   })
 
   it('omits the data bridge entirely when dataBridge is off', () => {
