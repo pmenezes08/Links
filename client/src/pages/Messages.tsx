@@ -23,7 +23,7 @@ import {
 import { cacheConversations, getCachedConversations, cacheKeyVal, getCachedKeyVal, clearConversationMessages, deleteCachedConversationRow } from '../utils/offlineDb'
 import { mergeGroupChatLists, mergeThreadLists } from '../utils/chatThreadListMerge'
 import { triggerHaptic } from '../utils/haptics'
-import { useTouchPullToRefresh } from '../hooks/useTouchPullToRefresh'
+import { useHorizontalSwipeLock } from '../hooks/useHorizontalSwipeLock'
 
 type Thread = {
   other_username: string
@@ -367,26 +367,14 @@ export default function Messages(){
     return { success: false, error: membersRes?.error || t('chat.failed_load_communities') }
   }, [t])
 
-  const refreshInbox = useCallback(async () => {
-    loadThreads(true)
-    loadGroupChats(true)
-    loadArchivedThreads()
-    refreshBadges()
-    try {
-      const result = await fetchCommunitiesData(true)
-      if (result.success && result.tree && me) {
-        writeDeviceCache(communitiesTreeCacheKey(me), result.tree, CACHE_TTL_MS, CACHE_VERSION)
-        setCommunityTree(result.tree)
-      }
-    } catch {
-      /* keep cached communities */
-    }
-  }, [loadThreads, loadGroupChats, loadArchivedThreads, refreshBadges, fetchCommunitiesData, me])
+  // No pull-to-refresh on this page: the inbox already polls every 3s and refreshes
+  // on visibility/popstate/navigation, and a pull gesture conflicts with the
+  // horizontal swipe-to-reveal rows. See the polling effect + onVis handlers below.
 
-  const { pullPx, hint } = useTouchPullToRefresh({
-    scrollRef: listScrollRef,
-    onRefresh: refreshInbox,
-  })
+  // Lock horizontal swipe-to-reveal rows to the X axis so a sideways swipe on a
+  // DM/group/archived row doesn't scroll the inbox vertically (iOS WKWebView
+  // ignores touch-action for this; needs a non-passive preventDefault).
+  useHorizontalSwipeLock(listScrollRef)
 
   // Refresh communities on visibility change (when returning to app)
   useEffect(() => {
@@ -624,14 +612,6 @@ export default function Messages(){
           minHeight: 'calc(100vh - var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))))',
         }}
       >
-        {(pullPx > 0 || hint === 'refreshing') && (
-          <div
-            className="flex justify-center py-2 text-xs text-c-text-tertiary"
-            style={{ transform: `translateY(${Math.min(pullPx, 48)}px)` }}
-          >
-            {hint === 'refreshing' ? t('common.loading') : t('chat.pull_to_refresh', { defaultValue: 'Pull to refresh' })}
-          </div>
-        )}
         {sharePick && (
           <div className="mb-3 px-2 py-2 rounded-xl border border-cpoint-turquoise/40 bg-cpoint-turquoise/10 text-sm text-c-text-primary">
             {t('chat.share_pick_banner')}
@@ -767,25 +747,25 @@ export default function Messages(){
                   )}
                   {groupChats.filter(gc => !groupSearchQuery || gc.name.toLowerCase().includes(groupSearchQuery.toLowerCase())).map((gc) => {
                     const isGDragging = groupDraggingIdRef.current === gc.id
-                    const gtx = isGDragging ? Math.min(0, groupDragX) : (groupSwipeId === gc.id ? -116 : 0)
+                    const gtx = isGDragging ? Math.min(0, groupDragX) : (groupSwipeId === gc.id ? -120 : 0)
                     const gTransition = isGDragging ? 'none' : 'transform 150ms ease-out'
                     const gShowActions = isGDragging ? (groupDragX < -20) : (groupSwipeId === gc.id)
                     
                     return (
-                      <div key={gc.id} className="relative w-full overflow-hidden">
+                      <div key={gc.id} data-swipe-row className="relative w-full overflow-hidden">
                         {/* Delete action (revealed on swipe) */}
-                        <div 
-                          className="absolute inset-y-0 right-0 flex items-stretch gap-1 pr-2" 
-                          style={{ 
-                            opacity: gShowActions ? 1 : 0, 
-                            pointerEvents: gShowActions ? 'auto' : 'none', 
-                            transition: 'opacity 150ms ease-out' 
+                        <div
+                          className="absolute inset-y-0 right-0 flex items-stretch"
+                          style={{
+                            opacity: gShowActions ? 1 : 0,
+                            pointerEvents: gShowActions ? 'auto' : 'none',
+                            transition: 'opacity 150ms ease-out'
                           }}
                         >
                           <button
                             type="button"
                             onClick={() => setChatMoreTarget({ type: 'group', groupId: gc.id, displayName: gc.name })}
-                            className="my-1 h-[44px] w-[52px] rounded-md bg-c-active-bg text-c-text-secondary hover:bg-c-hover-bg flex items-center justify-center"
+                            className="h-full w-[60px] min-h-[44px] bg-c-active-bg text-c-text-secondary hover:bg-c-hover-bg flex items-center justify-center"
                             aria-label={t('chat.more_options')}
                           >
                             <i className="fa-solid fa-ellipsis" />
@@ -793,7 +773,7 @@ export default function Messages(){
                           <button
                             type="button"
                             onClick={() => deleteGroupChat(gc.id)}
-                            className="my-1 h-[44px] w-[52px] rounded-md bg-red-500/20 text-red-300 hover:bg-red-500/30 flex items-center justify-center"
+                            className="h-full w-[60px] min-h-[44px] rounded-r-md bg-red-500/20 text-red-300 hover:bg-red-500/30 flex items-center justify-center"
                             aria-label={t('chat.delete_group_aria')}
                           >
                             <i className="fa-solid fa-trash text-lg" />
@@ -803,7 +783,7 @@ export default function Messages(){
                         {/* Group chat row */}
                         <div
                           className="relative bg-c-bg-app"
-                          style={{ transform: `translateX(${gtx}px)`, transition: gTransition }}
+                          style={{ transform: `translateX(${gtx}px)`, transition: gTransition, touchAction: 'pan-y' }}
                           onPointerDown={(e) => {
                             if (e.button !== 0) return
                             groupStartXRef.current = e.clientX
@@ -933,18 +913,18 @@ export default function Messages(){
                 )}
                 {visibleThreads.filter(thread => !dmSearchQuery || (thread.display_name || thread.other_username).toLowerCase().includes(dmSearchQuery.toLowerCase()) || thread.other_username.toLowerCase().includes(dmSearchQuery.toLowerCase())).map((thread) => {
               const isDragging = draggingIdRef.current === thread.other_username
-              const tx = isDragging ? Math.min(0, dragX) : (swipeId === thread.other_username ? -116 : 0)
+              const tx = isDragging ? Math.min(0, dragX) : (swipeId === thread.other_username ? -120 : 0)
               const transition = isDragging ? 'none' : 'transform 150ms ease-out'
               const showActions = isDragging ? (dragX < -20) : (swipeId === thread.other_username)
               const isMuted = thread.muted === true
               return (
-                <div key={thread.other_username} className="relative w-full overflow-hidden">
+                <div key={thread.other_username} data-swipe-row className="relative w-full overflow-hidden">
                   {/* Actions (revealed on swipe) */}
-                  <div className="absolute inset-y-0 right-0 flex items-stretch gap-1 pr-2" style={{ opacity: showActions ? 1 : 0, pointerEvents: showActions ? 'auto' : 'none', transition: 'opacity 150ms ease-out' }}>
+                  <div className="absolute inset-y-0 right-0 flex items-stretch" style={{ opacity: showActions ? 1 : 0, pointerEvents: showActions ? 'auto' : 'none', transition: 'opacity 150ms ease-out' }}>
                     <button
                       type="button"
                       onClick={() => setChatMoreTarget({ type: 'dm', username: thread.other_username, displayName: thread.display_name || thread.other_username })}
-                      className="my-1 h-[44px] w-[52px] rounded-md bg-c-active-bg text-c-text-secondary hover:bg-c-hover-bg flex items-center justify-center"
+                      className="h-full w-[60px] min-h-[44px] bg-c-active-bg text-c-text-secondary hover:bg-c-hover-bg flex items-center justify-center"
                       aria-label={t('chat.more_options')}
                     >
                       <i className="fa-solid fa-ellipsis" />
@@ -979,7 +959,7 @@ export default function Messages(){
                             }
                           }).catch(()=>{})
                       }}
-                      className="my-1 h-[44px] w-[52px] rounded-md bg-red-500/20 text-red-300 hover:bg-red-500/30 flex items-center justify-center"
+                      className="h-full w-[60px] min-h-[44px] rounded-r-md bg-red-500/20 text-red-300 hover:bg-red-500/30 flex items-center justify-center"
                       aria-label={t('chat.delete_chat_aria')}
                     >
                       <i className="fa-solid fa-trash" />
@@ -997,7 +977,7 @@ export default function Messages(){
                     onTouchStart={(e) => {
                       startXRef.current = e.touches[0].clientX
                       draggingIdRef.current = thread.other_username
-                      setDragX(swipeId === thread.other_username ? -116 : 0)
+                      setDragX(swipeId === thread.other_username ? -120 : 0)
                     }}
                     onTouchMove={(e) => {
                       if (draggingIdRef.current !== thread.other_username) return
@@ -1018,7 +998,7 @@ export default function Messages(){
                       draggingIdRef.current = null
                     }}
                     className="px-3 py-2 gap-3 bg-transparent"
-                    style={{ transform: `translateX(${tx}px)`, transition }}
+                    style={{ transform: `translateX(${tx}px)`, transition, touchAction: 'pan-y' }}
                   >
                     <Avatar username={thread.other_username} url={thread.profile_picture_url || undefined} size={48} linkToProfile displayName={thread.display_name} loading="eager" />
                     <div className="flex-1 min-w-0 text-left">
@@ -1094,13 +1074,13 @@ export default function Messages(){
                       const transition = isDragging ? 'none' : 'transform 150ms ease-out'
                       const showActions = isDragging ? (dragX < -20) : (swipeId === `archived-${archivedThread.other_username}`)
                       return (
-                        <div key={`archived-${archivedThread.other_username}`} className="relative w-full overflow-hidden bg-c-hover-bg">
+                        <div key={`archived-${archivedThread.other_username}`} data-swipe-row className="relative w-full overflow-hidden bg-c-hover-bg">
                           {/* Unarchive action */}
-                          <div className="absolute inset-y-0 right-0 flex items-stretch pr-2" style={{ opacity: showActions ? 1 : 0, pointerEvents: showActions ? 'auto' : 'none', transition: 'opacity 150ms ease-out' }}>
+                          <div className="absolute inset-y-0 right-0 flex items-stretch" style={{ opacity: showActions ? 1 : 0, pointerEvents: showActions ? 'auto' : 'none', transition: 'opacity 150ms ease-out' }}>
                             <button
                               type="button"
                               onClick={() => unarchiveChat(archivedThread.other_username)}
-                              className="my-1 h-[44px] w-[52px] rounded-md bg-green-500/20 text-green-300 hover:bg-green-500/30 flex items-center justify-center"
+                              className="h-full w-[60px] min-h-[44px] rounded-r-md bg-green-500/20 text-green-300 hover:bg-green-500/30 flex items-center justify-center"
                               aria-label={t('chat.unarchive_chat_aria')}
                             >
                               <i className="fa-solid fa-arrow-up-from-bracket" />
@@ -1135,7 +1115,7 @@ export default function Messages(){
                               draggingIdRef.current = null
                             }}
                             className="w-full px-3 py-2 flex items-center gap-3 bg-transparent"
-                            style={{ transform: `translateX(${tx}px)`, transition }}
+                            style={{ transform: `translateX(${tx}px)`, transition, touchAction: 'pan-y' }}
                           >
                             <Avatar username={archivedThread.other_username} url={archivedThread.profile_picture_url || undefined} size={44} displayName={archivedThread.display_name} loading="eager" />
                             <div className="flex-1 min-w-0 text-left">
@@ -1227,9 +1207,17 @@ export default function Messages(){
               </button>
             )}
             {chatMoreTarget.type === 'dm' && (
-              <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-c-text-primary" onClick={() => {
+              <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-c-text-primary" onClick={async () => {
+                if (!confirm(t('chat.block_user_confirm', { name: chatMoreTarget.displayName, defaultValue: `Block ${chatMoreTarget.displayName}? They won't be able to message you.` }))) return
                 setChatMoreTarget(null)
-                navigate(`/user_chat/chat/${encodeURIComponent(chatMoreTarget.username ?? '')}${shareQuery}`)
+                const u = chatMoreTarget.username
+                await fetch('/api/block_user', {
+                  method: 'POST',
+                  credentials: 'include',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ blocked_username: u }),
+                }).catch(() => {})
+                if (u) setThreads(prev => prev.filter(x => x.other_username !== u))
               }}>
                 <i className="fa-solid fa-ban text-c-text-tertiary w-6 text-center" />
                 {t('chat.block_user')}
@@ -1247,22 +1235,39 @@ export default function Messages(){
             )}
             {chatMoreTarget.type === 'group' && chatMoreTarget.groupId && (
               <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-c-text-primary" onClick={async () => {
+                if (!confirm(t('chat.leave_group_confirm', { name: chatMoreTarget.displayName, defaultValue: `Leave "${chatMoreTarget.displayName}"?` }))) return
+                setChatMoreTarget(null)
                 const fd = new URLSearchParams()
                 fd.append('group_id', String(chatMoreTarget.groupId))
                 await fetch('/api/groups/leave', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd }).catch(() => {})
                 setGroupChats(prev => prev.filter(g => g.id !== chatMoreTarget.groupId))
-                setChatMoreTarget(null)
               }}>
                 <i className="fa-solid fa-right-from-bracket text-c-text-tertiary w-6 text-center" />
                 {t('chat.leave_group')}
               </button>
             )}
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-c-hover-bg text-red-400" onClick={() => {
-              setChatMoreTarget(null)
               if (chatMoreTarget.type === 'dm') {
-                const fd = new URLSearchParams({ other_username: chatMoreTarget.username! })
-                fetch('/delete_chat_thread', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd }).then(r=>r.json()).then(j=>{ if(j?.success) setThreads(prev=>prev.filter(x=>x.other_username!==chatMoreTarget.username)) }).catch(()=>{})
+                if (!confirm(t('chat.delete_dm_confirm', { name: chatMoreTarget.displayName }))) return
+                setChatMoreTarget(null)
+                const u = chatMoreTarget.username!
+                const fd = new URLSearchParams({ other_username: u })
+                fetch('/delete_chat_thread', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+                  .then(r=>r.json()).then(j=>{
+                    if (j?.success) {
+                      setThreads(prev => prev.filter(x => x.other_username !== u))
+                      if (me) {
+                        clearDeviceCache(chatMessagesDeviceCacheKey(me, u))
+                        clearDeviceCache(chatProfileDeviceCacheKey(me, u))
+                        clearDeviceCache(threadsListCacheKey(me))
+                        void clearConversationMessages(dmConversationOfflineKey(me, u))
+                        void deleteCachedConversationRow(me, u)
+                      }
+                      refreshBadges()
+                    }
+                  }).catch(()=>{})
               } else if (chatMoreTarget.type === 'group' && chatMoreTarget.groupId) {
+                setChatMoreTarget(null)
                 deleteGroupChat(chatMoreTarget.groupId)
               }
             }}>

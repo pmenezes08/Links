@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 
 import { isAtLeast18, isValidDobIso } from '../../lib/ageGate'
@@ -51,6 +52,13 @@ function normalizeDobInput(value: string): string {
     return `${year}-${month}-${day}`
   }
   return trimmed
+}
+
+function formatDobAsUserTypes(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 8)
+  if (digits.length <= 2) return digits
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`
 }
 
 export function AgeGate({ onConfirmed }: { onConfirmed: () => void }) {
@@ -162,8 +170,11 @@ export function AgeGate({ onConfirmed }: { onConfirmed: () => void }) {
     }
   }, [deleteConfirmation, t])
 
-  return (
-    <div className="fixed inset-0 z-[1300] overflow-y-auto bg-c-bg-app text-c-text-primary">
+  // Portaled to document.body at the highest app z-index so the compliance
+  // gate visually precedes EVERYTHING — including the onboarding overlays that
+  // PremiumDashboard portals to body (max z-[1300]). Age is answered first.
+  return createPortal(
+    <div className="fixed inset-0 z-[1400] overflow-y-auto bg-c-bg-app text-c-text-primary">
       <div className="min-h-full px-5 py-8 flex items-center justify-center">
         <div className="w-full max-w-md">
           <div className="rounded-[28px] border border-cpoint-turquoise/45 bg-c-bg-app overflow-hidden">
@@ -211,7 +222,7 @@ export function AgeGate({ onConfirmed }: { onConfirmed: () => void }) {
                   }
                   onChange={(event) => {
                     setAgeGateError(null)
-                    setDob(event.target.value)
+                    setDob(formatDobAsUserTypes(event.target.value))
                   }}
                   className="mt-1 w-full min-h-[44px] rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-base text-c-text-primary outline-none focus:border-cpoint-turquoise focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
                 />
@@ -386,7 +397,8 @@ export function AgeGate({ onConfirmed }: { onConfirmed: () => void }) {
           </div>
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   )
 }
 

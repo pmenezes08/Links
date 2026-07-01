@@ -195,7 +195,7 @@ export default function ParentCommunityPicker({
   const sectionPadding = variant === 'compact' ? 'px-3 pb-3' : 'px-4 pb-4'
 
   const searchInputClasses =
-    'w-full rounded-lg border border-c-border bg-[#0f1318] pl-9 pr-3 py-2 text-sm text-c-text-secondary outline-none focus:border-cpoint-turquoise/70 focus:ring-0 transition'
+    'w-full rounded-lg border border-c-border bg-c-bg-recessed pl-9 pr-3 py-2 text-sm text-c-text-secondary outline-none focus:border-cpoint-turquoise/70 focus:ring-0 transition'
 
   const filteredCommunities = useMemo(() => communities, [communities])
 

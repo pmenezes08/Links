@@ -83,9 +83,9 @@ export default function DangerZoneSheet({ open, onClose }: DangerZoneSheetProps)
       <div
         role="dialog"
         aria-modal="true"
-          className={`w-full max-h-[85dvh] overflow-y-auto overscroll-contain rounded-t-[2rem] border border-red-300/15 bg-c-bg-elevated px-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] pt-3 text-c-text-primary shadow-[0_-28px_80px_rgba(0,0,0,0.72)] transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
-          open ? 'translate-y-0' : 'translate-y-full'
-        }`}
+          className={`w-full overflow-y-auto overscroll-contain border border-red-300/15 bg-c-bg-elevated px-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] pt-3 text-c-text-primary shadow-[0_-28px_80px_rgba(0,0,0,0.72)] transition-[transform,border-radius,max-height] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+            showKeyboard ? 'rounded-t-none max-h-full' : 'rounded-t-[2rem] max-h-[85dvh]'
+          } ${open ? 'translate-y-0' : 'translate-y-full'}`}
         style={{
           marginBottom: showKeyboard ? `${keyboardLift}px` : undefined,
           transition: 'transform 0.5s cubic-bezier(0.32,0.72,0,1), margin-bottom 0.1s ease-out',

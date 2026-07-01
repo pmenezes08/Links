@@ -134,6 +134,10 @@ class TestNetworkingPlanner(unittest.TestCase):
         self.assertIn("analytical healthcare", diagnostics["raw_preview"])
         self.assertEqual(client.responses.kwargs["max_output_tokens"], PLANNER_MAX_OUTPUT_TOKENS)
         self.assertEqual(PLANNER_MAX_OUTPUT_TOKENS, 1200)
+        # Default config plans grok-4.3 at "medium" reasoning effort; reasoning
+        # models do not take temperature, so it must be omitted.
+        self.assertEqual(client.responses.kwargs["reasoning"], {"effort": "medium"})
+        self.assertNotIn("temperature", client.responses.kwargs)
 
     def test_plan_networking_query_records_empty_normalization_diagnostics(self):
         diagnostics = {}

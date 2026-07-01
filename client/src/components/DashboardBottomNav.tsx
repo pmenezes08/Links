@@ -82,7 +82,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
   const chrome = (
     <>
       <div
-        className="fixed bottom-0 left-0 right-0 z-[900] bg-c-nav-bg border-t border-[#262f30]"
+        className="fixed bottom-0 left-0 right-0 z-[900] bg-c-nav-bg border-t border-c-border"
         style={{
           paddingBottom: 'var(--sab-px, 0px)',
           paddingLeft: 'var(--sal-px, 0px)',
@@ -95,11 +95,11 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
           <button
             type="button"
             className={`p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${isDashboard ? 'bg-c-active-bg' : 'hover:bg-c-hover-bg active:bg-c-active-bg'}`}
-            aria-label={t('navigation.communities')}
+            aria-label={t('navigation.home')}
             aria-current={isDashboard ? 'page' : undefined}
             onClick={() => { tabPress(); setSteveOpen(false); navigate('/premium_dashboard') }}
           >
-            <i className={`fa-solid fa-th text-[24px] leading-none ${isDashboard ? 'text-cpoint-turquoise' : ''}`} />
+            <i className={`fa-solid fa-house text-[24px] leading-none ${isDashboard ? 'text-cpoint-turquoise' : ''}`} />
           </button>
           <button
             type="button"

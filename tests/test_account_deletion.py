@@ -90,6 +90,33 @@ def test_delete_user_in_connection_attempts_firestore_state_cleanup(monkeypatch)
     assert calls == ["deleted_user"]
 
 
+def test_delete_user_always_purges_steve_dm_and_chat_memory(monkeypatch):
+    """A recreated same-username account must never inherit old Steve history:
+    the Steve DM conversation + chat-memory scope are purged even when no MySQL
+    ``messages`` rows referencing 'steve' survive to derive the peer."""
+    monkeypatch.setattr(
+        account_deletion_service, "delete_firestore_user_state", lambda username: 2
+    )
+    dm_conv_peers = {}
+    memory_peers = {}
+    monkeypatch.setattr(
+        account_deletion_service,
+        "_delete_firestore_dm_convs",
+        lambda username, peers, db=None: dm_conv_peers.update({"u": username, "peers": list(peers)}),
+    )
+    monkeypatch.setattr(
+        account_deletion_service,
+        "_purge_firestore_dm_chat_memory",
+        lambda username, peers, db=None: memory_peers.update({"u": username, "peers": list(peers)}),
+    )
+
+    delete_user_in_connection(_FakeConnection(), "deleted_user", AccountDeletionMode.SELF_SERVICE)
+
+    # No MySQL message rows in the fake, yet 'steve' is injected unconditionally.
+    assert "steve" in dm_conv_peers["peers"]
+    assert "steve" in memory_peers["peers"]
+
+
 @pytest.fixture()
 def needs_mysql(mysql_dsn):
     """Dependency ensures Docker MySQL is up (mysql_dsn skips if not)."""

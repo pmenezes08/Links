@@ -56,14 +56,14 @@ export default function RequestMyDataModal({ open, onClose, username, accountEma
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-c-bg-overlay px-4"
       role="dialog"
       aria-modal="true"
       aria-label={t('account.privacy.request_data_modal.title')}
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-xl border border-c-border bg-[#0f1214] p-5 text-c-text-primary shadow-xl"
+        className="w-full max-w-lg rounded-xl border border-c-border bg-c-bg-elevated p-5 text-c-text-primary shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4">

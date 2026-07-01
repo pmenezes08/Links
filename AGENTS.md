@@ -144,6 +144,25 @@ prod values for store releases. See **`docs/DEPLOYMENT_INSTANCES.md`** § Mobile
 - Use `git mv` rather than delete+add when moving files so history
   follows.
 
+### Branch model: build vs non-build work
+
+The repo carries **two product lines on one shared codebase**: **C-Point** (the B2B connector) and the **build product** (Steve Build, a separate product in the making). Keep them on separate branches so connector releases never drag build code, and so non-build work promotes to `main` cleanly.
+
+- **`main`** — C-Point production. **Build-free.** Never commit build code here.
+- **`staging`** — C-Point development. **Build-free.** Connector work branches off `staging` and merges back; release by merging `staging → main`.
+- **`build`** — the build line (= `main` + the build delta). All Steve Build work lives here.
+
+Where to commit:
+- **Connector / non-build work** → branch off `staging` → merge to `staging` → (release) merge `staging → main`. Never put build code on `staging`/`main`.
+- **Build work** → branch off `build` → merge to `build`. Build-only files live **only** on `build`: `backend/blueprints/builder.py`, `backend/services/builder*.py`, `backend/services/creation_*.py`, `backend/services/builder_guide.md`, `client/src/pages/BuilderPage.tsx`, `client/src/pages/CreationPlay.tsx`, `client/src/pages/ExploreCreations.tsx`, `client/src/hooks/useBuilder.ts`, `client/src/components/builder/*`, `client/src/utils/creationHtml.ts`, plus the build routes in `client/src/App.tsx` and the build blueprint registration in `backend/blueprints/__init__.py`.
+- **Shared-spine changes both lines need** (`backend/services/content_generation/llm.py`, `ai_usage.py`, `entitlements*.py`, `knowledge_base.py`, auth, notifications/push, the communities/feed core) → commit on the **connector side** (`staging`/`main`) so they reach both, then `git merge main` into `build`. **Do not** make a shared-service fix as a build-only commit — it would be stranded on `build`.
+
+Rules:
+- **Never mix build and non-build changes in one commit** — it breaks clean promotion to `main`.
+- Keep `build` current: periodically `git merge main` into `build`. This is what prevents the two lines from drifting and pulls connector/security fixes into build. Conflicts surface in the shared files build touches (`App.tsx` routes, `blueprints/__init__.py`, `llm.py`) — resolve by **keeping build's additions**.
+- Standing rules still hold: never `--force` push `main`; force-push `staging` only with a fresh `backup/*` branch + `--force-with-lease`.
+- The build line may **fork to its own repo + database** later. Until then, keep it strictly isolated on `build`.
+
 ## CI + manual QA
 
 - **Automated tests** run via `.github/workflows/test.yml` on every

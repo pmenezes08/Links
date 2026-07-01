@@ -36,7 +36,7 @@ def test_debug_trace_is_compact_json_safe_and_redacts_sensitive_keys():
         forced_usernames=[],
         retrieval_policy={"prompt_member_cap": 2, "full_context_cap": 10, "secret": "hidden"},
         all_member_usernames=["chef", "food_investor", "pilot"],
-        model_used="grok-4.20-reasoning",
+        model_used="grok-4.3",
         recommended=["chef"],
         ai_response="@" + "chef " * 300,
         planner_model="grok-4.3",

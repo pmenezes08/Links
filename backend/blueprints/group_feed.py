@@ -32,6 +32,7 @@ from backend.services.group_polls_data import (
     ensure_group_poll_tables,
     vote_group_poll,
 )
+from backend.services.poll_hydration import invalidate_group_poll_post_detail
 
 group_feed_bp = Blueprint("group_feed", __name__)
 logger = logging.getLogger(__name__)
@@ -785,6 +786,7 @@ def api_group_poll_vote():
             if not ok_vote:
                 return jsonify({"success": False, "error": message}), 400
             conn.commit()
+            invalidate_group_poll_post_detail(c, ph, group_poll_id)
         return jsonify({"success": True, "message": message, "poll_results": poll_results})
     except Exception as e:
         logger.error("api_group_poll_vote error: %s", e, exc_info=True)
@@ -863,6 +865,12 @@ def api_group_polls_create():
             if err_c:
                 return jsonify({"success": False, "error": err_c}), 400
             conn.commit()
+            try:
+                from backend.services.post_detail_cache import invalidate_post_detail
+
+                invalidate_post_detail(group_post_id, scope="group")
+            except Exception:
+                pass
         return jsonify({"success": True, "group_poll_id": poll_id})
     except Exception as e:
         logger.error("api_group_polls_create error: %s", e, exc_info=True)

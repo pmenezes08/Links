@@ -125,7 +125,7 @@ export default function Avatar({ username, url, size = 40, className = '', linkT
     if (!p) return null
     
     let resolvedUrl: string
-    if (p.startsWith('http')) {
+    if (p.startsWith('http') || p.startsWith('blob:')) {
       resolvedUrl = p
     } else if (p.startsWith('/uploads') || p.startsWith('uploads/')) {
       resolvedUrl = p.startsWith('/') ? p : `/${p}`

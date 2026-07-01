@@ -64,6 +64,15 @@ function normalizeDobInput(value: string): string {
   return trimmed
 }
 
+/** Auto-format a raw DOB input into DD/MM/YYYY as the user types.
+ *  Strips every non-digit, caps at 8 digits, then inserts slashes. */
+function formatDobAsUserTypes(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 8)
+  if (digits.length <= 2) return digits
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`
+}
+
 function resolveInitialPage(hasSavedLocale: boolean, ageConfirmed: boolean): IntroPage {
   if (hasSavedLocale) {
     return ageConfirmed ? 2 : 1
@@ -411,7 +420,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                         )
                       })}
                     </div>
-                    <p className="mt-2 text-xs text-c-text-tertiary">{t('onboarding_intro.appearance_change_later')}</p>
+                    <p className="mt-2 mb-4 text-xs text-c-text-tertiary">{t('onboarding_intro.appearance_change_later')}</p>
                   </div>
                 </div>
               ) : page === 1 ? (
@@ -457,7 +466,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                       }
                       onChange={(event) => {
                         setAgeGateError(null)
-                        setDob(event.target.value)
+                        setDob(formatDobAsUserTypes(event.target.value))
                       }}
                       className="mt-1 w-full min-h-[44px] rounded-md bg-c-bg-app border border-c-border px-3 py-2 text-base text-c-text-primary outline-none focus:border-cpoint-turquoise focus-visible:ring-2 focus-visible:ring-cpoint-turquoise/50"
                     />

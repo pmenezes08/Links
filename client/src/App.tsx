@@ -907,7 +907,15 @@ function AppRoutes(){
     currentPathName.startsWith('/community_feed_react/') ||
     currentPathName.startsWith('/group_feed_react/') ||
     (currentPathName.startsWith('/community/') && currentPathName.includes('/feed'))
-  const suppressGlobalKeyboardPad = isChatRoute || isOnboardingFullscreenOverlayActive()
+  // PostDetail is a self-contained full-height page (own fixed header, 100dvh
+  // body, own inner scroller + composer that already pad for the bottom safe
+  // area). Giving <main> the global var(--sab-px) bottom padding here makes the
+  // main scroll-region taller than the viewport, so it gains a few px of
+  // scrollable overflow — enough for iOS to elastically rubber-band the WHOLE
+  // page (the fixed header included) on a pull-down. Suppress it like chat does.
+  const isSelfManagedScrollPage = currentPathName.startsWith('/post/')
+  const suppressGlobalKeyboardPad =
+    isChatRoute || isSelfManagedScrollPage || isOnboardingFullscreenOverlayActive()
   const mainPaddingBottom = suppressGlobalKeyboardPad
     ? '0px'
     : hasBottomChrome
@@ -916,6 +924,7 @@ function AppRoutes(){
   const mainStyle = {
     paddingTop: contentOffsetValue,
     minHeight: '100%',
+    backgroundColor: 'var(--c-bg-app)',
     paddingBottom: mainPaddingBottom,
     '--app-header-offset': contentOffsetValue,
     '--app-header-height': headerHeightValue,

@@ -34,11 +34,13 @@ import {
 import { preflightSteveMention } from '../utils/stevePreflight'
 import { NativeActionButton } from '../components/NativeActionButton'
 import { NativeIconButton } from '../components/NativeIconButton'
+import PollCard from '../components/feed/PollCard'
 import { FixedComposerShell } from '../components/FixedComposerShell'
 import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
 import { preventComposerBlur, composerControlPointerProps } from '../utils/composerBlurGuard'
 import { triggerHaptic, hapticImpactLight } from '../utils/haptics'
 import { handleBasicProfileRequired } from '../utils/basicProfileGate'
+import { applyOptimisticPollVote, reconcilePollResults, usePollVote, type Poll } from '../hooks/usePollVote'
 import {
   attachReplyToPostTree,
   normalizePostForDetail,
@@ -46,9 +48,9 @@ import {
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, audio_path?: string|null, audio_summary?: string|null, reply_count?: number, view_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
-type Post = { id: number; username: string; content: string; link_urls?: string[] | string | null; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}>; view_count?: number; reply_count?: number; media_paths?: MediaItem[] | string | null }
+type Post = { id: number; username: string; content: string; link_urls?: string[] | string | null; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; poll?: Poll | null; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}>; view_count?: number; reply_count?: number; media_paths?: MediaItem[] | string | null }
 
-const POST_DETAIL_CACHE_VERSION = 'post-detail-v3'
+const POST_DETAIL_CACHE_VERSION = 'post-detail-v4'
 // SWR window: long enough that repeat opens skip the spinner, short enough that
 // a backgrounded user does not see truly stale data on their next visit. Server
 // invalidates every mutation, so a 5 minute drift cap is safe.
@@ -141,6 +143,9 @@ export default function PostDetail(){
   const [currentUser, setCurrentUser] = useState<{username: string; profile_picture?: string | null} | null>(null)
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [submittingReply, setSubmittingReply] = useState(false)
+  const [viewingPollVoters, setViewingPollVoters] = useState<number | null>(null)
+  const [pollVotersData, setPollVotersData] = useState<any[] | null>(null)
+  const [pollVotersLoading, setPollVotersLoading] = useState(false)
   const [mediaCarouselIndex, setMediaCarouselIndex] = useState(0)
   const [steveIsTyping, setSteveIsTyping] = useState(false)
   const [replyComposerExpanded, setReplyComposerExpanded] = useState(false)
@@ -245,7 +250,6 @@ export default function PostDetail(){
   const [inlineSending, setInlineSending] = useState<Record<number, boolean>>({})
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const [refreshHint, setRefreshHint] = useState(false)
-  const [pullPx, setPullPx] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
   const [isEditingPost, setIsEditingPost] = useState(false)
   const [editPostText, setEditPostText] = useState('')
@@ -281,12 +285,12 @@ export default function PostDetail(){
     prevKeyboardLiftRef.current = keyboardLift
     const delta = keyboardLift - prev
     if (delta <= 0) return
-    const el = contentRef.current
-    if (!el) return
+    const scroller = contentRef.current
+    if (!scroller) return
     // Next frame so the grown bottom padding (contentPaddingBottom) is applied
     // first, giving the scroller room to move into.
     const raf = requestAnimationFrame(() => {
-      try { el.scrollBy({ top: delta, left: 0, behavior: 'auto' }) } catch { /* ignore */ }
+      try { scroller.scrollBy({ top: delta, left: 0, behavior: 'auto' }) } catch { /* ignore */ }
     })
     return () => cancelAnimationFrame(raf)
   }, [keyboardLift])
@@ -704,6 +708,57 @@ export default function PostDetail(){
     }
   }, [fetchPostDetail, isGroupPost, post, writePostDetailCache])
 
+  const votePoll = usePollVote({
+    onBasicProfileRequired: refreshPost,
+    onSuccess: () => {
+      clearDeviceCache(postDetailCacheKey(viewerUsername, post_id))
+      const communityId = (post as any)?.community_id
+      if (communityId !== undefined && communityId !== null && communityId !== '') {
+        clearDeviceCache(`community-feed:${communityId}`)
+      }
+      clearDeviceCache('home-timeline')
+    },
+  })
+
+  const handlePollVote = useCallback(async (postId: number, pollId: number, optionId: number, isGroupPoll = false) => {
+    await votePoll({
+      pollId,
+      optionId,
+      isGroupPoll: isGroupPost || isGroupPoll,
+      onOptimistic: () => {
+        setPost(prev => (
+          prev?.id === postId && prev.poll
+            ? ({ ...prev, poll: applyOptimisticPollVote(prev.poll, optionId) } as Post)
+            : prev
+        ))
+      },
+      onReconcile: rows => {
+        setPost(prev => (
+          prev?.id === postId && prev.poll
+            ? ({ ...prev, poll: reconcilePollResults(prev.poll, rows) } as Post)
+            : prev
+        ))
+      },
+      onRejected: refreshPost,
+    })
+  }, [isGroupPost, refreshPost, votePoll])
+
+  const openPollVoters = useCallback(async (pollId: number) => {
+    if (isGroupPost) return
+    setViewingPollVoters(pollId)
+    setPollVotersLoading(true)
+    setPollVotersData(null)
+    try {
+      const r = await fetch(`/get_poll_voters/${pollId}`, { credentials: 'include' })
+      const j = await r.json().catch(() => null)
+      if (j?.success) {
+        setPollVotersData(Array.isArray(j.options) ? j.options : [])
+      }
+    } finally {
+      setPollVotersLoading(false)
+    }
+  }, [isGroupPost])
+
   const clearRelatedPostListCaches = useCallback((nextPost: Post | null) => {
     if (!nextPost?.id) return
     const communityId = (nextPost as any).community_id
@@ -714,48 +769,51 @@ export default function PostDetail(){
   }, [])
 
   useEffect(() => {
-    // Pull-to-refresh on overscroll at top
+    // Pull-to-refresh hint only. Let iOS/webview keep the native elastic scroll;
+    // moving the content with extra padding fights the bounce and feels broken.
+    const scroller = contentRef.current
+    if (!scroller) return
+    const scrollEl: HTMLDivElement = scroller
     let startY = 0
-    const threshold = 64
+    let eligible = false
+    const hintThreshold = 32
+    const refreshThreshold = 88
     const reloading = { current: false }
     function onTS(ev: TouchEvent){
       try{ startY = ev.touches?.[0]?.clientY || 0 }catch{ startY = 0 }
-      setPullPx(0)
+      eligible = (scrollEl.scrollTop || 0) <= 1
       setRefreshHint(false)
     }
     function onTM(ev: TouchEvent){
       try{
-        const y = window.scrollY || 0
         const curY = ev.touches?.[0]?.clientY || 0
         const dy = curY - startY
-        if (y <= 0 && dy > 0){
-          const px = Math.min(100, Math.max(0, dy * 0.5))
-          setPullPx(px)
-          setRefreshHint(px > 8)
-          if (px >= threshold && !reloading.current){
+        if (eligible && dy > 0 && (scrollEl.scrollTop || 0) <= 1){
+          setRefreshHint(dy >= hintThreshold)
+          if (dy >= refreshThreshold && !reloading.current){
             reloading.current = true
             setRefreshing(true)
             refreshPost().finally(()=>{
               setRefreshing(false)
-              setPullPx(0)
               setRefreshHint(false)
               reloading.current = false
             })
           }
         } else {
-          setPullPx(0)
           setRefreshHint(false)
         }
       }catch{}
     }
-    function onTE(){ setPullPx(0); setRefreshHint(false) }
-    window.addEventListener('touchstart', onTS, { passive: true })
-    window.addEventListener('touchmove', onTM, { passive: true })
-    window.addEventListener('touchend', onTE, { passive: true })
+    function onTE(){ setRefreshHint(false); eligible = false }
+    scrollEl.addEventListener('touchstart', onTS, { passive: true })
+    scrollEl.addEventListener('touchmove', onTM, { passive: true })
+    scrollEl.addEventListener('touchend', onTE, { passive: true })
+    scrollEl.addEventListener('touchcancel', onTE, { passive: true })
     return () => {
-      window.removeEventListener('touchstart', onTS as any)
-      window.removeEventListener('touchmove', onTM as any)
-      window.removeEventListener('touchend', onTE as any)
+      scrollEl.removeEventListener('touchstart', onTS as any)
+      scrollEl.removeEventListener('touchmove', onTM as any)
+      scrollEl.removeEventListener('touchend', onTE as any)
+      scrollEl.removeEventListener('touchcancel', onTE as any)
     }
   }, [refreshPost])
 
@@ -1637,9 +1695,14 @@ export default function PostDetail(){
         ref={contentRef}
         className="flex-1 overflow-y-auto overflow-x-hidden min-h-0"
         style={{
-          paddingTop: `calc(var(--app-content-gap, 8px) + ${pullPx}px)`,
+          paddingTop: 'var(--app-content-gap, 8px)',
           WebkitOverflowScrolling: 'touch' as any,
-          overscrollBehaviorY: 'auto' as any,
+          // `contain` (not `auto`) so an overscroll/pull at the top stays inside
+          // this content area and does NOT chain up to the parent
+          // `.app-scroll-region` — chaining there rubber-banded the whole 100dvh
+          // page (fixed header included) and exposed the canvas above it. The
+          // pinned `flex-shrink-0` header now stays put while content still bounces.
+          overscrollBehaviorY: 'contain' as any,
         }}
       >
         <div className="max-w-2xl mx-auto px-3" style={{ paddingBottom: contentPaddingBottom }}>
@@ -1916,6 +1979,31 @@ export default function PostDetail(){
                     })()} />
                   </div>
                 ) : null}
+                {post.poll ? (
+                  <PollCard
+                    postId={post.id}
+                    poll={post.poll}
+                    postTimestamp={(post as any).display_timestamp || post.timestamp}
+                    detail
+                    canManage={!isGroupPost && (currentUser?.username === post.username || currentUser?.username === 'admin' || !!(post as any).is_community_admin)}
+                    onVote={handlePollVote}
+                    onEdit={!isGroupPost ? () => {
+                      const communityId = (post as any)?.community_id
+                      if (communityId) navigate(`/community/${communityId}/polls_react?edit=${post.poll?.id}`)
+                    } : undefined}
+                    onDelete={!isGroupPost ? () => {
+                      if (!confirm(t('feed.delete_poll_confirm'))) return
+                      fetch('/delete_poll', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ poll_id: post.poll?.id }),
+                      }).then(() => navigate(-1)).catch(() => undefined)
+                    } : undefined}
+                    onOpenVoters={!isGroupPost ? openPollVoters : undefined}
+                    repliesCount={post.replies?.length || post.reply_count || 0}
+                  />
+                ) : null}
               </>
             ) : (
               <div className="px-3 space-y-2">
@@ -2055,6 +2143,43 @@ export default function PostDetail(){
         </div>
       </div>
     </div>
+      {viewingPollVoters ? (
+        <div className="fixed inset-0 bg-c-bg-overlay backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setViewingPollVoters(null); setPollVotersData(null) }}>
+          <div className="bg-c-bg-app border border-c-border rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-c-border flex items-center justify-between">
+              <div className="font-medium">{t('communities.polls_voters_modal')}</div>
+              <button className="p-2 hover:bg-c-hover-bg rounded-full" onClick={() => { setViewingPollVoters(null); setPollVotersData(null) }}>
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            <div className="overflow-y-auto max-h-[calc(80vh-60px)] p-4">
+              {pollVotersLoading ? (
+                <div className="text-c-text-tertiary">{t('communities.loading_voters')}</div>
+              ) : pollVotersData ? (
+                <div className="space-y-4">
+                  {pollVotersData.map((option: any) => (
+                    <div key={option.id} className="border border-c-border rounded-lg p-3">
+                      <div className="font-medium text-sm mb-2 text-cpoint-turquoise">{option.option_text}</div>
+                      {option.voters?.length ? (
+                        <div className="space-y-2">
+                          {option.voters.map((voter: any, idx: number) => (
+                            <div key={`${voter.username}-${idx}`} className="flex items-center gap-2 text-sm">
+                              <Avatar username={voter.username} url={voter.profile_picture} size={24} linkToProfile />
+                              <span>{voter.username}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-c-text-tertiary">{t('communities.no_votes')}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
       {/* Image preview modal */}
           {previewSrc ? (
         <div 
@@ -2070,10 +2195,12 @@ export default function PostDetail(){
         </div>
       ) : null}
 
-      {/* Fixed-bottom reply composer - hidden when inline reply is active or
+      {/* Fixed-bottom reply composer - hidden when inline reply is active,
           when the GIF picker is open (so the glass sheet does not show the
-          composer chrome through it). */}
-      {activeInlineReplyFor === null && !gifPickerOpen && (
+          composer chrome through it), or when the expanded editor is open
+          (the compact composer is portaled at z-[1000], above the inline
+          expanded overlay, so it would otherwise show through it). */}
+      {activeInlineReplyFor === null && !gifPickerOpen && !replyComposerExpanded && (
       <FixedComposerShell
         shellRef={composerRef}
         keyboardLift={keyboardLift}
@@ -2281,7 +2408,7 @@ export default function PostDetail(){
       )}
       {replyComposerExpanded && (
         <div
-          className="fixed inset-0 z-[300] bg-black/90 backdrop-blur"
+          className="fixed inset-0 z-[300] bg-c-bg-app"
           role="dialog"
           aria-modal="true"
           aria-labelledby="expanded-reply-composer-title"
@@ -2320,7 +2447,7 @@ export default function PostDetail(){
             {(file || replyGif || replyPreview) && (
               <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
                 {file && (
-                  <div className="flex items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-2">
+                  <div className="flex items-center gap-2 rounded-2xl bg-c-bg-recessed px-2 py-2">
                     <div className="h-12 w-12 overflow-hidden rounded-md border border-c-border">
                       {filePreviewUrl ? (
                         <img src={filePreviewUrl} alt={t('feed.preview_alt', { number: '' })} className="h-full w-full object-cover" />
@@ -2346,7 +2473,7 @@ export default function PostDetail(){
                   </div>
                 )}
                 {replyGif && (
-                  <div className="flex items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-2">
+                  <div className="flex items-center gap-2 rounded-2xl bg-c-bg-recessed px-2 py-2">
                     <div className="h-12 w-12 overflow-hidden rounded-md border border-c-border">
                       <img src={replyGif.previewUrl} alt={t('feed.selected_gif_alt')} className="h-full w-full object-cover" loading="lazy" />
                     </div>
@@ -2361,7 +2488,7 @@ export default function PostDetail(){
                   </div>
                 )}
                 {replyPreview && (
-                  <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-2">
+                  <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl bg-c-bg-recessed px-2 py-2">
                     <audio controls className="h-8 flex-1" playsInline webkit-playsinline="true" src={replyPreview.url} />
                     <button
                       type="button"
@@ -2377,7 +2504,7 @@ export default function PostDetail(){
             )}
 
             <div className="flex min-h-0 flex-1 px-5 pb-3">
-              <div className="flex min-h-0 flex-1 rounded-2xl border border-c-border bg-white/[0.035] transition-colors focus-within:border-cpoint-turquoise/60">
+              <div className="flex min-h-0 flex-1 rounded-2xl border border-c-border bg-c-bg-recessed transition-colors focus-within:border-cpoint-turquoise/60">
                 <MentionTextarea
                   value={content}
                   onChange={setContent}
@@ -2432,7 +2559,7 @@ export default function PostDetail(){
       {/* Hide Post Modal */}
       {showHideModal && (
         <div 
-          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
+          className="fixed inset-0 z-[200] bg-c-bg-overlay backdrop-blur flex items-center justify-center p-4"
           onClick={(e) => e.currentTarget === e.target && setShowHideModal(false)}
         >
           <div className="w-full max-w-sm rounded-2xl border border-c-border bg-c-bg-elevated p-5">
@@ -2482,7 +2609,7 @@ export default function PostDetail(){
       {/* Block User Modal */}
       {showBlockModal && (
         <div 
-          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
+          className="fixed inset-0 z-[200] bg-c-bg-overlay backdrop-blur flex items-center justify-center p-4"
           onClick={(e) => e.currentTarget === e.target && !blockSubmitting && setShowBlockModal(false)}
         >
           <div className="w-full max-w-sm rounded-2xl border border-c-border bg-c-bg-elevated p-5">
@@ -2545,7 +2672,7 @@ export default function PostDetail(){
       {/* Report Post Modal */}
       {showReportModal && (
         <div 
-          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
+          className="fixed inset-0 z-[200] bg-c-bg-overlay backdrop-blur flex items-center justify-center p-4"
           onClick={(e) => e.currentTarget === e.target && !reportSubmitting && setShowReportModal(false)}
         >
           <div className="w-full max-w-md rounded-2xl border border-c-border bg-c-bg-elevated p-5 max-h-[90vh] overflow-y-auto">
@@ -2624,7 +2751,7 @@ export default function PostDetail(){
       {/* Viewers/Reactors Modal */}
       {showReactorsModal && (
         <div
-          className="fixed inset-0 z-[95] bg-black/70 backdrop-blur flex items-center justify-center"
+          className="fixed inset-0 z-[95] bg-c-bg-overlay backdrop-blur flex items-center justify-center"
           onClick={(e) => e.currentTarget === e.target && closeReactorsModal()}
         >
           <div className="w-[92%] max-w-[560px] rounded-2xl border border-c-border bg-c-bg-app p-3">
@@ -2698,7 +2825,7 @@ export default function PostDetail(){
       {/* Reply Viewers/Reactors Modal */}
       {showReplyReactorsModal && (
         <div
-          className="fixed inset-0 z-[95] bg-black/70 backdrop-blur flex items-center justify-center"
+          className="fixed inset-0 z-[95] bg-c-bg-overlay backdrop-blur flex items-center justify-center"
           onClick={(e) => e.currentTarget === e.target && setShowReplyReactorsModal(false)}
         >
           <div className="w-[92%] max-w-[560px] rounded-2xl border border-c-border bg-c-bg-app p-3">

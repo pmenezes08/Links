@@ -150,7 +150,12 @@
         }
       </style>
     </div>
-    <div id="root" style="background-color: #000000;"></div>
+    <!-- No inline background here: it would beat the light-theme #root override
+         (inline styles win over stylesheet rules without !important), leaving the
+         overscroll rubber-band black in light mode. The <head> `#root` rule above
+         guarantees the dark first paint; the `[data-theme='light'] #root` rule
+         themes it for light. -->
+    <div id="root"></div>
     <script>
       /*
        * Safe-area probe — runs synchronously before the React bundle loads.

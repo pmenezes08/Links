@@ -44,6 +44,7 @@ import GifPicker from '../components/GifPicker'
 import FeedBottomNav from '../components/FeedBottomNav'
 import AskSteveEntry from '../components/feed/AskSteveEntry'
 import PendingRequestsRow from '../components/feed/PendingRequestsRow'
+import PollCard from '../components/feed/PollCard'
 import SteveSummarySheet from '../components/steve/SteveSummarySheet'
 import { SteveGlyph } from '../components/steve/SteveMark'
 import { hasSummary } from '../components/steve/steveSummaryStore'
@@ -67,9 +68,8 @@ import {
 import { preflightSteveMention } from '../utils/stevePreflight'
 import { triggerHaptic, hapticImpactLight } from '../utils/haptics'
 import { handleBasicProfileRequired } from '../utils/basicProfileGate'
+import { applyOptimisticPollVote, reconcilePollResults, usePollVote, type Poll } from '../hooks/usePollVote'
 
-type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
-type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null, audio_path?: string|null, parent_reply_id?: number | null, reply_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
 type Post = { id: number; username: string; content: string; link_urls?: string[] | string | null; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean, view_count?: number, has_viewed?: boolean, media_paths?: MediaItem[] | string | null, is_system_post?: boolean | number | null, welcome_card_key?: string | null, creation_id?: number | null }
@@ -2450,73 +2450,40 @@ export default function CommunityFeed() {
 
   // Reply reactions handled inside PostDetail page
 
-  async function handlePollVote(postId: number, pollId: number, optionId: number){
-    void triggerHaptic('selection')
-    // Optimistic update for poll vote
-    setData((prev:any) => {
-      if (!prev) return prev
-      const updatedPosts = (prev.posts || []).map((p: any) => {
-        if (p.id !== postId || !p.poll) return p
-        const poll = p.poll
-        
-        // Find the option being clicked
-        const clickedOption = poll.options.find((opt: any) => opt.id === optionId)
-        const hasVotedOnThisOption = clickedOption?.user_voted || false
-        
-        const sv = (poll as any)?.single_vote
-        const isSingle = (sv === true || sv === 1 || sv === '1' || sv === 'true')
-        const updatedOptions = poll.options.map((opt: any) => {
-          if (opt.id === optionId) {
-            // Toggle: if already voted, remove vote; otherwise add vote
-            return { 
-              ...opt, 
-              votes: hasVotedOnThisOption ? Math.max(0, opt.votes - 1) : opt.votes + 1,
-              user_voted: !hasVotedOnThisOption 
-            }
-          }
-          // If single vote, reduce previous vote when voting on different option
-          if (isSingle && opt.user_voted && opt.id !== optionId) {
-            return { ...opt, votes: Math.max(0, opt.votes - 1), user_voted: false }
-          }
-          return opt
-        })
-        
-        // Update user_vote for single vote polls
-        const newUserVote = hasVotedOnThisOption ? null : optionId
-        return { ...p, poll: { ...poll, options: updatedOptions, user_vote: isSingle ? newUserVote : poll.user_vote } }
-      })
-      return { ...prev, posts: updatedPosts }
-    })
+  const votePoll = usePollVote({
+    onBasicProfileRequired: () => setRefreshKey(key => key + 1),
+    onSuccess: invalidateLocalFeedCache,
+  })
 
-    // Send vote to server
-    try{
-      const res = await fetch('/vote_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ poll_id: pollId, option_id: optionId }) })
-      const j = await res.json().catch(()=>null)
-      if (handleBasicProfileRequired(j)) {
-        setRefreshKey(key => key + 1)
-        return
-      }
-      if (!j?.success) return
-      invalidateLocalFeedCache()
-      if (Array.isArray(j.poll_results)){
-        // Reconcile this post's poll counts with server truth without full reload
+  async function handlePollVote(postId: number, pollId: number, optionId: number, isGroupPoll = false){
+    await votePoll({
+      pollId,
+      optionId,
+      isGroupPoll,
+      onOptimistic: () => {
         setData((prev:any) => {
           if (!prev) return prev
-          const updatedPosts = (prev.posts || []).map((p: any) => {
-            if (p.id !== postId || !p.poll) return p
-            const rows = j.poll_results as Array<any>
-            const newOptions = p.poll.options.map((opt:any) => {
-              const row = rows.find(r => r.id === opt.id)
-              return row ? { ...opt, votes: row.votes, user_voted: (row.user_voted ? true : false) } : opt
-            })
-            const newUserVote = typeof rows[0]?.user_vote !== 'undefined' ? (rows[0].user_vote || null) : p.poll.user_vote
-            const totalVotes = rows[0]?.total_votes ?? newOptions.reduce((a:number, b:any) => a + (b.votes||0), 0)
-            return { ...p, poll: { ...p.poll, options: newOptions, user_vote: newUserVote, total_votes: totalVotes } }
-          })
+          const updatedPosts = (prev.posts || []).map((p: any) => (
+            p.id === postId && p.poll
+              ? { ...p, poll: applyOptimisticPollVote(p.poll, optionId) }
+              : p
+          ))
           return { ...prev, posts: updatedPosts }
         })
-      }
-    }catch{}
+      },
+      onReconcile: rows => {
+        setData((prev:any) => {
+          if (!prev) return prev
+          const updatedPosts = (prev.posts || []).map((p: any) => (
+            p.id === postId && p.poll
+              ? { ...p, poll: reconcilePollResults(p.poll, rows) }
+              : p
+          ))
+          return { ...prev, posts: updatedPosts }
+        })
+      },
+      onRejected: () => setRefreshKey(key => key + 1),
+    })
   }
 
   const postsOnly = useMemo(() => Array.isArray(data?.posts) ? data.posts : [], [data])
@@ -4360,7 +4327,7 @@ export default function CommunityFeed() {
 
 // Ad components removed
 
-const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, collapseSteveWelcome = false, useCompactPoll = false, highlightStep, entitlements, enforcement_enabled, entitlementsLoading, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, onSummaryUpdate, onMarkViewed, onDeletePost, onDeletePoll, onHidePost, onReportPost, onBlockUser }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, collapseSteveWelcome?: boolean, useCompactPoll?: boolean, highlightStep: 'reaction' | 'post' | null, entitlements: EntitlementsSnapshot | null, enforcement_enabled: boolean, entitlementsLoading: boolean, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, onSummaryUpdate?: (postId: number, summary: string) => void, onMarkViewed?: (postId: number, alreadyViewed?: boolean) => void | Promise<boolean>, onDeletePost?: (postId: number) => void, onDeletePoll?: (postId: number, pollId: number) => void, onHidePost?: (post: Post) => void, onReportPost?: (post: Post) => void, onBlockUser?: (data: { username: string; postId?: number }) => void }) {
+const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, collapseSteveWelcome = false, useCompactPoll = false, highlightStep, entitlements, enforcement_enabled, entitlementsLoading, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, onSummaryUpdate, onMarkViewed, onDeletePost, onDeletePoll, onHidePost, onReportPost, onBlockUser }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, collapseSteveWelcome?: boolean, useCompactPoll?: boolean, highlightStep: 'reaction' | 'post' | null, entitlements: EntitlementsSnapshot | null, enforcement_enabled: boolean, entitlementsLoading: boolean, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number, isGroupPoll?: boolean)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, onSummaryUpdate?: (postId: number, summary: string) => void, onMarkViewed?: (postId: number, alreadyViewed?: boolean) => void | Promise<boolean>, onDeletePost?: (postId: number) => void, onDeletePoll?: (postId: number, pollId: number) => void, onHidePost?: (post: Post) => void, onReportPost?: (post: Post) => void, onBlockUser?: (data: { username: string; postId?: number }) => void }) {
   const { t } = useTranslation()
   const mentionToProfile = useCallback((u: string) => {
     navigate?.(`/profile/${encodeURIComponent(u)}`)
@@ -5210,137 +5177,26 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
         ) : null}
         {/* Poll display */}
         {post.poll && (
-          <div className="px-3 space-y-2" onClick={(e)=> e.stopPropagation()}>
-            {isSystemPoll && !useCompactPoll && (
-              <div className="flex items-center justify-between gap-2 border-b border-cpoint-turquoise/15 pb-2">
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-cpoint-turquoise/15 text-cpoint-turquoise">
-                    <i className="fa-solid fa-chart-bar text-xs" />
-                  </span>
-                  <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cpoint-turquoise/80">Icebreaker</div>
-                    <div className="text-xs text-c-text-tertiary">Posted by Steve</div>
-                  </div>
-                </div>
-                <div className="text-xs text-c-text-tertiary tabular-nums">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
-              </div>
-            )}
-            <div className={`flex items-center gap-2 ${useCompactPoll ? 'mb-1' : 'mb-2'}`}>
-              {!useCompactPoll && <i className="fa-solid fa-chart-bar text-cpoint-turquoise" />}
-              <div className={`flex-1 ${useCompactPoll ? 'text-sm text-c-text-secondary' : 'font-medium text-sm'}`}>
-                {post.poll.question}
-                {!useCompactPoll && post.poll.expires_at ? (
-                  <span className="ml-2 text-[11px] text-c-text-tertiary">{t('feed.poll_closes', { date: (() => { try { const d = new Date(post.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch { } return String(post.poll.expires_at) })() })}</span>
-                ) : null}
-              </div>
-              {!useCompactPoll && (post.username === currentUser || isAdmin || currentUser === 'admin') && !post.is_system_post && (
-                <>
-                  <button 
-                    className="px-2 py-1 rounded-full text-[#6c757d] hover:text-cpoint-turquoise" 
-                    title={t('feed.edit_poll')}
-                    onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (navigate && communityId) navigate(`/community/${communityId}/polls_react?edit=${post.poll?.id}`) }}
-                  >
-                    <i className="fa-regular fa-pen-to-square" />
-                  </button>
-                  <button 
-                    className="px-2 py-1 rounded-full text-red-400 hover:text-red-300" 
-                    title={t('feed.delete_poll')}
-                    onClick={(e)=> { 
-                      e.preventDefault()
-                      e.stopPropagation()
-                      if (!confirm(t('feed.delete_poll_confirm'))) return
-                      if (post.poll?.id) onDeletePoll?.(post.id, post.poll.id)
-                    }}
-                  >
-                    <i className="fa-regular fa-trash-can" />
-                  </button>
-                </>
-              )}
-              {!useCompactPoll && (
-                <button 
-                  className="ml-1 px-2 py-1 rounded-full text-[#6c757d] hover:text-cpoint-turquoise" 
-                  title={t('feed.voters')}
-                  onClick={(e)=> { 
-                    e.preventDefault()
-                    e.stopPropagation()
-                    if (onOpenVoters) {
-                      onOpenVoters(post.poll!.id)
-                    }
-                  }}
-                >
-                  <i className="fa-solid fa-users" />
-                </button>
-              )}
-            </div>
-            {useCompactPoll ? (
-              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={post.poll.question}>
-                {post.poll.options?.map(option => {
-                  const isUserVote = option.user_voted || false
-                  const isClosed = post.poll!.is_active === 0
-                  const isExpiredByTime = (() => { try { const raw = (post.poll as any)?.expires_at; if (!raw) return false; const d = new Date(raw); return !isNaN(d.getTime()) && Date.now() >= d.getTime(); } catch { return false } })()
-                  const isExpired = isClosed || isExpiredByTime
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={isUserVote}
-                      disabled={isExpired}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
-                        isExpired
-                          ? 'cursor-not-allowed border-c-border opacity-60'
-                          : isUserVote
-                            ? 'border-cpoint-turquoise/40 bg-cpoint-turquoise/15 text-cpoint-turquoise'
-                            : 'border-c-border bg-c-hover-bg text-c-text-secondary hover:border-cpoint-turquoise/40'
-                      }`}
-                      onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (!isExpired && onPollVote) { void triggerHaptic('selection'); onPollVote(post.id, post.poll!.id, option.id) } }}
-                    >
-                      {option.text}
-                    </button>
-                  )
-                })}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {post.poll.options?.map(option => {
-                  const percentage = post.poll?.total_votes ? Math.round((option.votes / post.poll.total_votes) * 100) : 0
-                  const isUserVote = option.user_voted || false
-                  const isClosed = post.poll!.is_active === 0
-                  const isExpiredByTime = (() => { try { const raw = (post.poll as any)?.expires_at; if (!raw) return false; const d = new Date(raw); return !isNaN(d.getTime()) && Date.now() >= d.getTime(); } catch { return false } })()
-                  const isExpired = isClosed || isExpiredByTime
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      disabled={isExpired}
-                      className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isExpired ? 'opacity-60 cursor-not-allowed' : (isUserVote ? 'border-cpoint-turquoise bg-cpoint-turquoise/10' : 'border-c-border hover:bg-c-hover-bg')}`}
-                      onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (!isExpired && onPollVote) { void triggerHaptic('selection'); onPollVote(post.id, post.poll!.id, option.id) } }}
-                    >
-                      <div className="absolute inset-0 bg-cpoint-turquoise/20" style={{ width: `${percentage}%`, transition: 'width 0.3s ease' }} />
-                      <div className="relative flex items-center justify-between">
-                        <span className="text-sm">{option.text}</span>
-                        <span className="text-xs text-c-text-tertiary font-medium">{option.votes} {percentage > 0 ? `(${percentage}%)` : ''}</span>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-            {!useCompactPoll && (
-              <div className="flex items-center justify-between text-xs text-c-text-tertiary pt-1">
-                {(() => { const sv = (post.poll as any)?.single_vote; const isSingle = !(sv === false || sv === 0 || sv === '0' || sv === 'false'); return isSingle })() && (
-                  <span>{t('feed.vote_count', { count: post.poll.total_votes || 0 })}</span>
-                )}
-                  <button 
-                    type="button"
-                    onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (onPollClick) onPollClick() }}
-                    className="text-cpoint-turquoise hover:underline"
-                  >
-                    {t('feed.view_all_polls')}
-                  </button>
-              </div>
-            )}
-          </div>
+          <PollCard
+            postId={post.id}
+            poll={post.poll}
+            postTimestamp={(post as any).display_timestamp || post.timestamp}
+            isSystemPoll={isSystemPoll}
+            compact={useCompactPoll}
+            canManage={(post.username === currentUser || isAdmin || currentUser === 'admin') && !post.is_system_post}
+            onVote={onPollVote}
+            onEdit={() => {
+              if (navigate && communityId) navigate(`/community/${communityId}/polls_react?edit=${post.poll?.id}`)
+            }}
+            onDelete={() => {
+              if (!confirm(t('feed.delete_poll_confirm'))) return
+              if (post.poll?.id) onDeletePoll?.(post.id, post.poll.id)
+            }}
+            onOpenVoters={onOpenVoters}
+            onViewAllPolls={onPollClick}
+            onDiscuss={onOpen}
+            repliesCount={post.replies?.length || (post as any).replies_count || 0}
+          />
         )}
         {/* Hide reactions and comments for poll posts */}
         {!post.poll && (
