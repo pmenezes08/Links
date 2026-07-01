@@ -62,14 +62,16 @@ export default function CreationActionsSheet({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 px-0 sm:items-center sm:px-4"
+      // z-[1000]: must stack ABOVE DashboardBottomNav (z-[900]) and its flyout
+      // (z-[950]) or the nav occludes the sheet's last rows (Delete build).
+      className="fixed inset-0 z-[1000] flex items-end justify-center bg-black/60 px-0 sm:items-center sm:px-4"
       role="dialog"
       aria-modal="true"
       aria-label={`Options for ${titleFor(creation)}`}
       onClick={onClose}
     >
       <div
-        className="max-h-[88vh] w-full overflow-y-auto rounded-t-3xl border border-c-border bg-c-bg-elevated p-4 shadow-c-card sm:max-w-xl sm:rounded-3xl"
+        className="max-h-[88vh] w-full overflow-y-auto overscroll-contain rounded-t-3xl border border-c-border bg-c-bg-elevated p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-c-card sm:max-w-xl sm:rounded-3xl sm:pb-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-c-border sm:hidden" />
