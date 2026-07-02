@@ -201,22 +201,17 @@ _SYSTEM_PROMPT_FALLBACK = (
     "Then call `CPoint.capsule('worldcup-fixtures').get()` and only on a user-triggered refresh button call "
     "`.refresh()`. Capsules may use only vetted feed connectors or `engine:\"images\"` with a search query; never raw URLs. "
     "TWO-PLAYER TURN-BASED MULTIPLAYER (chess, checkers, connect-4, tic-tac-toe, battleship, dominoes, card games): when "
-    "the user wants two people to play EACH OTHER, feature-detect `if (window.CPoint?.hasMultiplayer)` and use the "
-    "`CPoint.match.*` Promises. YOU build ALL the UI and game rules; the server only stores the shared game state, enforces "
-    "whose turn it is, and notifies the opponent. FLOW: (1) LOBBY on boot — `const {matches} = await CPoint.match.list()` "
-    "lists the player's games (each `{id,status,your_turn,opponent,winner}`); show 'your turn' games first + a 'New game' "
-    "button, and any pending invites to accept. (2) CHALLENGE — `const {opponents} = await CPoint.match.opponents()` returns "
-    "`[{handle,name}]` community members; let the user pick one, then `await CPoint.match.create(handle)` (status 'pending' "
-    "until they accept; the opponent is notified). (3) An invited player calls `CPoint.match.accept(id)` or `decline(id)`. "
-    "(4) PLAY — `const m = await CPoint.match.get(id)` -> `{your_seat,your_turn,opponent,status,state,version,winner}`; render "
-    "the board from `m.state` (state is NULL on a brand-new game — draw the starting position). On the user's move, compute the "
-    "NEW full game state and `await CPoint.match.move(id,{move, state:newState, version:m.version, result})` — omit `result` "
-    "for a normal move, or pass 'win'|'lose'|'draw' (from YOUR perspective) to end the game. ALWAYS send the `version` you read; "
-    "if move rejects with 'not_your_turn' or 'stale_version', re-`get(id)` and re-render (the opponent already moved). (5) LIVE "
-    "SYNC — while it's the OPPONENT's turn and the board is open, poll `await CPoint.match.poll(id, lastSeq)` -> "
-    "`{moves,your_turn,status,winner}` every ~2.5s and apply new moves (clear the interval when you leave the board or it becomes "
-    "your turn). Opponents also get a push notification, so async play works across days. `CPoint.match.resign(id)` forfeits. Keep "
-    "`state` compact. DEGRADE: if `hasMultiplayer` is false, offer local hot-seat (both players, one device)."
+    "the user wants two people to play EACH OTHER, feature-detect `if (window.CPoint && window.CPoint.hasTurnBasedGame)` and "
+    "use `CPoint.turnBasedGame(config)` — the platform owns the lobby, invites, accept/decline/cancel, live polling, reconnects "
+    "and seat helpers; YOU supply rules and rendering only: `initialState(match)`, `canMove(state,action,view)`, "
+    "`applyMove(state,action,view)` (returns the COMPLETE compact state), `getResult(state,view,action)` "
+    "('win'|'lose'|'draw'|undefined from the current player's perspective), and `render(root,state,view,actions)` — use "
+    "`view.phase`/`view.canMove` for banners and submit gating, `actions.submitMove(action)` on a legal tap, and "
+    "`actions.refreshLobby()` on a 'Find an opponent'/'New game' button (it opens the HOST's native lobby — NEVER build your "
+    "own opponents/invites UI). The host never calls `render` at idle, so the pre-match screen must be STATIC HTML (title, "
+    "short how-to-play, Find an opponent button) that paints with no CPoint at all. DEGRADE: if `hasTurnBasedGame` is absent, "
+    "run the same rules/render as local hot-seat (both players, one device). The document is the product, not a message: "
+    "never render build commentary, change summaries, or notes to the user inside the app — that belongs in chat."
 )
 
 # The authored guide is the source of truth; the inline string above is the fallback.
@@ -663,13 +658,57 @@ def _now() -> str:
 
 
 def _clean_html(raw: str) -> str:
-    """Strip any stray markdown fence Grok may wrap the document in."""
+    """Normalize model output to just the HTML document.
+
+    Strips any stray markdown fence, then slices to the document itself —
+    first ``<!doctype``/``<html`` through the last ``</html>``. Models
+    (especially on iterations and repairs) like to narrate around the file
+    ("Sure — here's the updated game: <!doctype ...</html> I changed the
+    collision logic..."); browsers happily paint text outside <html> as page
+    content, so that prose used to ship as visible UI text inside the app.
+    Best-effort: with no recognizable document markers the text passes
+    through unchanged (size/emptiness checks downstream handle garbage)."""
     text = (raw or "").strip()
     if text.startswith("```"):
         match = re.search(r"```(?:html)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
         if match:
             text = match.group(1).strip()
-    return text
+    start_m = re.search(r"<!doctype\b", text, re.IGNORECASE) or re.search(r"<html\b", text, re.IGNORECASE)
+    if start_m and start_m.start() > 0:
+        logger.info("builder: discarded %d chars of prose before the document", start_m.start())
+        text = text[start_m.start():]
+    end = text.lower().rfind("</html>")
+    if end != -1:
+        tail = len(text) - (end + len("</html>"))
+        if tail > 0:
+            logger.info("builder: discarded %d chars of prose after the document", tail)
+        text = text[:end + len("</html>")]
+    return text.strip()
+
+
+# Deterministic meta-text lint: phrases that are build commentary, not product
+# copy. Deliberately conservative (tolerated false-negative bias) — a false
+# positive would burn the repair regen on legitimate content, so generic words
+# like "TODO"/"placeholder" are excluded ("TODO list app" is a real product).
+_META_TEXT_MARKERS = (
+    "i've updated", "i have updated", "i've added", "i have added",
+    "i've changed", "i have changed", "in this update", "changes made",
+    "as requested", "per your request", "here's the updated", "here is the updated",
+    "lorem ipsum", "replace this with", "```",
+)
+
+
+def _artifact_meta_lint(html: str) -> List[str]:
+    """Flag build commentary rendered as visible page text. Returns the matched
+    markers (empty when clean). Only VISIBLE text is checked — script/style
+    bodies and tag internals are stripped first, so code comments and JS strings
+    don't trip it."""
+    text = html or ""
+    text = re.sub(r"<script\b[\s\S]*?</script>", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"<style\b[\s\S]*?</style>", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"<!--[\s\S]*?-->", " ", text)
+    text = re.sub(r"<[^>]+>", " ", text).lower()
+    return [m for m in _META_TEXT_MARKERS if m in text]
 
 
 def _derive_title(prompt: str) -> str:
@@ -1092,7 +1131,11 @@ _CONVERSE_JSON = (
     "Reply with ONLY a JSON object, nothing else:\n"
     '{"reply": "<what you say to the user, in their register, formatted with short paragraphs and bullets where useful; if proposing, end with a clear yes/no confirmation question>", '
     '"ready": <true ONLY when you have proposed a concrete plan and are asking to start building; false while still discussing or ideating>, '
-    '"brief": "<when ready=true: a concise but complete build brief, ideally under 3000 characters, capturing only the agreed requirements Steve needs to build from this alone; otherwise empty>"}'
+    '"brief": "<when ready=true: a build specification written as terse third-person product requirements '
+    "('A chess game where…', 'Change the scoring so…') — ideally under 3000 characters, capturing only the agreed "
+    "requirements; never first-person, never addressed to the user, never containing things Steve will say, explain, "
+    "or note (that belongs in reply) — only what the app must BE and DO. If the user asked for visible instructions/"
+    'rules copy, state that as a product requirement; otherwise empty>"}'
 )
 
 
@@ -1279,7 +1322,9 @@ def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperat
             f"{prior_html}\n\n"
             "Apply ONLY the following change and return the COMPLETE updated HTML document "
             "(the full file, not a diff). Preserve everything that already works — do not refactor, "
-            f"rename, restyle, or remove existing features:\n{prompt}"
+            "rename, restyle, or remove existing features. Do not add any visible note, banner, or "
+            "text describing this change — the user is told about changes in chat, never inside "
+            f"the app:\n{prompt}"
         )
     else:
         user_prompt = f"Build this as a single self-contained HTML document:\n{prompt}"
@@ -1343,10 +1388,30 @@ def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperat
             logger.warning("builder: research repair pass failed; shipping original", exc_info=True)
             repaired = ""
         if (repaired and len(repaired.encode("utf-8")) <= MAX_HTML_BYTES
-                and _research_landed(repaired, facts, sources)):
+                and _research_landed(repaired, facts, sources)
+                and not (_has_multiplayer_wiring(html) and not _has_multiplayer_wiring(repaired))):
             html = repaired
         else:
             logger.warning("builder: research repair did not ground the data; shipping best effort")
+
+    # Meta-text lint: build commentary must never render as product UI. One
+    # low-temperature repair; ship best-effort if it misses (a false positive
+    # must degrade gracefully, never fail the build).
+    leaks = _artifact_meta_lint(html)
+    if leaks:
+        logger.info("builder: artifact contains build commentary %s; repairing once", leaks)
+        repaired = _repair_regen(
+            html, model or _MODEL_FAST,
+            "The rendered page contains build commentary / meta-text that players must never see "
+            f"(found: {', '.join(leaks)}). Remove every visible note, banner, change summary, or "
+            "instruction about the build itself from the UI; keep legitimate product copy (titles, "
+            "how-to-play on a start screen, labels). Return the COMPLETE updated HTML; change "
+            "nothing else.",
+        )
+        if repaired and not _artifact_meta_lint(repaired):
+            html = repaired
+        else:
+            logger.warning("builder: meta-text repair did not fully clean the artifact; shipping best effort")
 
     # Phase B render + vision-judge quality pass — async path only, best-effort.
     # Renders the artifact in real Chromium and applies up to a couple of targeted
@@ -1378,11 +1443,119 @@ _MIN_BUDGET_FOR_REGEN = 90
 _MIN_BUDGET_FOR_JUDGE = 25
 
 
+def _has_multiplayer_wiring(html: str) -> bool:
+    """True when the artifact integrates the platform match runtime. The token is
+    the API name itself — a compliant build must call CPoint.turnBasedGame (or at
+    minimum feature-detect it), so its absence after a repair means the repair
+    stripped the match contract."""
+    return "turnBasedGame" in (html or "")
+
+
+_MP_PRESERVE_CLAUSE = (
+    "\n\nIMPORTANT: this app integrates the platform's window.CPoint multiplayer API "
+    "(CPoint.turnBasedGame). The platform injects window.CPoint at runtime, so a missing or "
+    "undefined CPoint is NEVER the bug. Keep the CPoint/turnBasedGame integration exactly as "
+    "it is — do not remove, stub out, or replace it with a local/hot-seat implementation."
+)
+
+# Headless-verify bridge stub. The real window.CPoint is injected by the client
+# play surface (client/src/utils/creationHtml.ts) and never exists in the render
+# worker, so without this a guide-compliant multiplayer build — which gates on
+# window.CPoint.hasTurnBasedGame and mounts through CPoint.turnBasedGame — renders
+# as its idle screen or throws, the pass flags blank/console_errors on a non-bug,
+# and the render-fix regen "repairs" the match wiring out of the artifact. The
+# stub mirrors the client bridge contract (same flags, same turnBasedGame config
+# and view shape) and boots the game into a fake active match so the judge
+# screenshots the real board. Data APIs resolve benign empties.
+_RENDER_CPOINT_STUB = """<script>(function(){
+  if (window.CPoint) return;
+  function ok(v){ return Promise.resolve(v); }
+  window.CPoint = {
+    submitScore:function(){return ok({ok:true});},
+    getLeaderboard:function(){return ok({leaderboard:[]});},
+    rate:function(){return ok({ok:true});},
+    getResults:function(){return ok({results:[]});},
+    save:function(){return ok({ok:true});},
+    load:function(){return ok(null);},
+    images:function(){return ok({images:[]});},
+    data:function(){return ok({data:[],attribution:''});},
+    capsule:function(){return {get:function(){return ok({data:[]});},refresh:function(){return ok({data:[]});}};},
+    sharedState:{get:function(){return ok({value:null,version:0});},update:function(){return ok({ok:true,version:1});}},
+    collection:function(){return {list:function(){return ok({items:[]});},create:function(){return ok({id:1});},update:function(){return ok({id:1});},"delete":function(){return ok({ok:true});}};},
+    forms:{submit:function(){return ok({ok:true});}},
+    gameOver:function(){},
+    match:{opponents:function(){return ok({opponents:[]});},create:function(){return ok({});},list:function(){return ok({matches:[]});},get:function(){return ok({});},poll:function(){return ok({moves:[]});},move:function(){return ok({});},accept:function(){return ok({});},decline:function(){return ok({});},cancel:function(){return ok({});},resign:function(){return ok({});}}
+  };
+  window.CPoint.matchController=function(opts){
+    opts=opts||{};
+    function noop(){ return ok(null); }
+    return {refreshLobby:function(){ try{ if(typeof opts.onLobby==='function') opts.onLobby([]); }catch(_){} return ok([]); },
+            toLobby:noop,open:noop,create:noop,accept:noop,decline:noop,cancel:noop,resign:noop,submitMove:noop,
+            startPolling:function(){},stopPolling:function(){},view:function(){ return {}; }};
+  };
+  window.CPoint.turnBasedGame=function(config){
+    config=config||{};
+    var root=typeof config.root==='string'?document.querySelector(config.root):config.root;
+    if(!root){ root=document.getElementById('app')||document.body; }
+    var match={id:1,status:'active',your_seat:1,your_turn:true,version:0,last_seq:0,opponent:'Opponent',winner:null,
+               phase:'your_turn',isPending:false,isWaitingForAccept:false,isInviteReceived:false,canMove:true,isActive:true,isFinished:false};
+    var state={};
+    try{ if(typeof config.initialState==='function') state=config.initialState(match)||{}; }catch(_){ }
+    function view(){ return {match:match,state:state,phase:'your_turn',yourSeat:1,isWhite:true,isBlack:false,yourTurn:true,
+      canMove:true,isPending:false,isWaitingForAccept:false,isInviteReceived:false,isActive:true,isFinished:false,
+      status:'active',winner:null,lastSeq:0,moves:[],lastMove:null,opponent:'Opponent'}; }
+    var api;
+    function render(){ try{ if(typeof config.render==='function') config.render(root,state,view(),api); }catch(e){ console.error('[cpoint-render-stub] render failed',e); } }
+    api={
+      boot:function(){ render(); return ok(view()); },
+      refreshLobby:function(){ return ok([]); },
+      listOpponents:function(){ return ok({opponents:[]}); },
+      challenge:function(){ return ok(view()); },
+      open:function(){ render(); return ok(view()); },
+      accept:function(){ return ok(view()); },
+      decline:function(){ return ok(view()); },
+      cancel:function(){ return ok(view()); },
+      resign:function(){ return ok(view()); },
+      view:view,
+      submitMove:function(action){ try{ if(typeof config.applyMove==='function') state=config.applyMove(state,action,view())||state; }catch(_){ } render(); return ok(view()); }
+    };
+    setTimeout(function(){ api.boot(); },0);
+    return api;
+  };
+  window.CPoint.hasPersistence=true;
+  window.CPoint.hasData=true;
+  window.CPoint.hasCreationData=true;
+  window.CPoint.hasMultiplayer=true;
+  window.CPoint.hasMatchController=true;
+  window.CPoint.hasTurnBasedGame=true;
+  window.CPoint.hostLobby=false;
+  window.CPoint.startMatchId=null;
+})();</script>"""
+
+
+def _with_render_stub(html: str) -> str:
+    """Inject the CPoint bridge stub into ``html`` for headless verification,
+    mirroring where the client's prepareCreationHtml injects the real bridge
+    (head start, so it runs before any artifact script)."""
+    text = html or ""
+    m = re.search(r"<head[^>]*>", text, re.IGNORECASE)
+    if m:
+        return text[:m.end()] + _RENDER_CPOINT_STUB + text[m.end():]
+    m = re.search(r"<html[^>]*>", text, re.IGNORECASE)
+    if m:
+        return text[:m.end()] + "<head>" + _RENDER_CPOINT_STUB + "</head>" + text[m.end():]
+    return _RENDER_CPOINT_STUB + text
+
+
 def _repair_regen(html: str, model: str, instruction: str,
                   timeout: float = _REGEN_TIMEOUT_SECONDS) -> Optional[str]:
     """One low-temperature, preserve-everything regeneration with a repair
     instruction. ``timeout`` caps the upstream call. Returns the cleaned HTML,
-    or None on failure / size overflow."""
+    or None on failure / size overflow. A repair may never strip the platform
+    multiplayer wiring — a "fixed" artifact that no longer implements the match
+    contract deploys fine and plays solo, but a challenge then never starts."""
+    if _has_multiplayer_wiring(html):
+        instruction += _MP_PRESERVE_CLAUSE
     try:
         out = _clean_html(
             llm.generate_text(
@@ -1399,6 +1572,9 @@ def _repair_regen(html: str, model: str, instruction: str,
         logger.warning("builder: repair regen failed", exc_info=True)
         return None
     if out and len(out.encode("utf-8")) <= MAX_HTML_BYTES:
+        if _has_multiplayer_wiring(html) and not _has_multiplayer_wiring(out):
+            logger.warning("builder: repair regen stripped multiplayer wiring; discarding repair")
+            return None
         return out
     return None
 
@@ -1424,7 +1600,10 @@ def _render_quality_pass(html: str, *, prompt: str, facts: str, sources: List[st
     if budget_left() < _RENDER_TIMEOUT_SECONDS:
         return html
     try:
-        shot = render_service.render(html, read_timeout=min(_RENDER_TIMEOUT_SECONDS, budget_left()))
+        # Render with the CPoint bridge stubbed in — the play surface injects the
+        # real bridge, so judging the bare artifact misreads multiplayer builds.
+        shot = render_service.render(_with_render_stub(html),
+                                     read_timeout=min(_RENDER_TIMEOUT_SECONDS, budget_left()))
     except Exception:
         logger.warning("builder: render quality pass failed to render", exc_info=True)
         return html
@@ -1451,7 +1630,8 @@ def _render_quality_pass(html: str, *, prompt: str, facts: str, sources: List[st
             fixed = True
             if budget_left() > _RENDER_TIMEOUT_SECONDS:
                 try:
-                    shot2 = render_service.render(html, read_timeout=min(_RENDER_TIMEOUT_SECONDS, budget_left()))
+                    shot2 = render_service.render(_with_render_stub(html),
+                                                  read_timeout=min(_RENDER_TIMEOUT_SECONDS, budget_left()))
                     if shot2:
                         shot = shot2
                 except Exception:

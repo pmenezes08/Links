@@ -170,6 +170,12 @@ wrong surface is how counters desync.
 | `SURFACE_WHISPER` | Audio transcription (the Whisper API call itself). **Always** log `duration_seconds`. |
 | `SURFACE_CONTENT_GEN` | Community-pool content generation. Not counted in `STEVE_SURFACES`. |
 | `SURFACE_ONBOARDING_AI` | Onboarding helpers (e.g. `onboarding_compose_bio`, **`onboarding_parse_cv`**) — logs to `ai_usage_log` but **does not** increment `monthly_steve_count` / personal Steve caps (see `STEVE_SURFACES` in `ai_usage.py`). Uses xAI like other onboarding Grok calls; **no** separate `require_steve_access` gate today. |
+| `SURFACE_BUILDER` | One completed build/iteration job (Steve Build). **This** is what the `builder_turns_per_month` cap filters on — exactly one `log_usage` row per job (blocked jobs log via `log_block`). Not in `STEVE_SURFACES`. |
+| `SURFACE_BUILDER_CHAT` | Steve's pre-build design conversation (`builder.converse`). Distinct so chatting never consumes a build turn. Not in `STEVE_SURFACES`. |
+| `SURFACE_BUILDER_PLAN` | The tiny "here's what I'll make" narration call while a build runs. Spend visibility only; never counts against the build cap. Not in `STEVE_SURFACES`. |
+| `SURFACE_BUILDER_JUDGE` | The vision-judge grading a rendered build screenshot (drives render-fix / data verification / design-refine repairs). Spend visibility only; never counts against the build cap. Not in `STEVE_SURFACES`. |
+
+**Builder model routing** is three-tier (`BUILDER_TIERS` in `builder.py`: fast=Grok, balanced=GPT-5.x, best=Claude Opus; env-overridable, users only ever see the Quick/Polished/Showpiece labels) and every tier still routes through `content_generation/llm.py` — never a vendor SDK directly. The build pipeline, verification pass, and artifact-hygiene guards are documented in `docs/STEVE_BUILD.md`; the injected build guide is `backend/services/builder_guide.md` (living doc).
 
 `STEVE_SURFACES = (DM, GROUP, FEED, POST_SUMMARY, VOICE_SUMMARY)` — this
 set is what counts against `steve_uses_per_month` and `ai_daily_limit`.

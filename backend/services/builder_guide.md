@@ -115,25 +115,33 @@ const fresh = await CPoint.capsule('worldcup-fixtures').refresh(); // user-trigg
 Use capsules for sports fixtures/results, city-guide images, weather, facts/news-style data, and similar repeatable needs. Never put raw URLs in capsule params. Use only `engine:"feed"` with vetted connectors or `engine:"images"` with a search query. Public builds can read only recipes with `"public":true`; public refresh may be constrained by the platform. Always display `attribution` / `source` / `lastUpdated` when present.
 
 **Two-player multiplayer:** feature-detect `if (window.CPoint?.hasTurnBasedGame)` for normal turn-based games. Use `CPoint.turnBasedGame(config)` instead of manually wiring lifecycle: the platform owns the lobby, opponents, sent/received invites, cancel/decline/accept, live-feeling polling, reconnect backoff, stale reloads, tab cleanup, seat/colour helpers, and submit gating. YOU supply rules and rendering only: `initialState(match)`, `canMove(state, action, view)`, `applyMove(state, action, view)`, `getResult(state, view, action)`, `render(root, state, view, actions)`, and optionally `onOpponentMove(move, state, view, delta)` for piece/card animations. Use `CPoint.matchController` only as an advanced escape hatch.
-1. **Use multiplayer by default** for classic two-player turn games: chess, checkers, Connect-4, tic-tac-toe, battleship, dominoes, card/word/board games. If `hasMultiplayer` is absent, offer local hot-seat on one device.
-2. **The HOST owns the lobby — do NOT build one.** When `window.CPoint.hostLobby` is true (always, inside C-Point), the platform renders the native lobby (opponents, invites, accept/decline/cancel, your games) and hands your game an active match. Your `render` only ever needs the match screens: waiting-for-accept, play, and finished. Design a beautiful **pre-match/idle screen** (title, how to play, a "Find an opponent" button wired to `actions.refreshLobby()` which opens the host lobby) for when no match is open. Never render your own opponents list or invite rows when `hostLobby` is true.
+1. **Use multiplayer by default** for classic two-player turn games: chess, checkers, Connect-4, tic-tac-toe, battleship, dominoes, card/word/board games. If `hasTurnBasedGame` is absent, offer local hot-seat on one device — the same rules/render functions with a local turn swap; the game must fully work there.
+2. **The HOST owns the lobby — do NOT build one.** When `window.CPoint.hostLobby` is true (always, inside C-Point), the platform renders the native lobby (opponents, invites, accept/decline/cancel, your games) and hands your game an active match. **Your `render()` is only ever called for match screens** (waiting-for-accept, play, finished) — it is never called at idle. Therefore your **pre-match/idle screen** must be **static HTML** that paints on first load with no `CPoint` call at all: title, art, a short 1–3 line "how to play", and a "Find an opponent" button wired to `actions.refreshLobby()` (which opens the host lobby). The document must reach a complete, styled, non-blank resting state before and without any `CPoint` call — the same static screen is what shows anywhere the platform bridge is absent. Never render your own opponents list or invite rows when `hostLobby` is true.
 3. **Runtime architecture (mandatory):** keep only game-specific rules and rendering in your code. Let `turnBasedGame` own `currentMatch`, authoritative reloads, `version`, `lastSeq`, live polling (fast while waiting on the opponent, slower on your own turn so resigns/accepts still surface), retry/backoff so sync never silently dies, and tab cleanup.
 4. **Play contract:** `controller.view()` returns `{match,state,phase,canMove,isPending,isWaitingForAccept,isInviteReceived,isActive,isFinished,yourSeat,isWhite,isBlack,yourTurn,status,winner,lastSeq,moves,lastMove,opponent}`. Use `phase` and `canMove` for banners/buttons. Do **not** render "opponent turn" just because `yourTurn` is false — pending sent means "Waiting for opponent to accept", pending received means "Accept or decline", finished means show results. Use `isWhite`/`isBlack` for board orientation and colour labels — never guess from local variables. On every legal move, call `actions.submitMove(action)`. Your action/move payload should include UI metadata for animation (for board games: `{from,to,piece}`; for card games: `{cardId,fromZone,toZone}`), and `applyMove` must return the **complete compact state**, not just the move. `getResult` returns `'win'`, `'lose'`, `'draw'`, or `undefined` from the current player's perspective.
 5. **Live sync/recovery contract:** the runtime polls about once per second while a sent invite is `pending_sent` and while an active match is `opponent_turn`, and every few seconds on your own turn (so resigns/accepts surface), reloads full authoritative state after poll changes, forwards move deltas to `onOpponentMove`, absorbs `stale_version` and turn conflicts by reloading and retrying the move once, backs off and retries on failures so sync never silently stops, and pauses when hidden. This is what makes seat 1/white automatically become playable after seat 2 accepts and makes both open clients see pieces/cards move shortly after the other player acts. Show reconnect UI only when `count >= 3`, and clear it when `count` returns to 0.
 6. **End and recovery UX:** Finished games show your result (`winner` is `'me'|'them'|'draw'`), the final board, Play again / New game (wired to `actions.refreshLobby()` — it opens the host lobby), and Resign only while active. Never reload the page. Handle network errors by rendering the last known state; the runtime recovers sync itself.
-7. **Minimal turnBasedGame pattern (adapt it to the game):**
+7. **Minimal turnBasedGame pattern (adapt it to the game — copy the GUARD too, a bare `CPoint` reference throws where the bridge is absent):**
 ```js
-const game = CPoint.turnBasedGame({
-  root: '#app',
-  live: true,
-  pollMs: 1000,
-  initialState: () => startingState(),
-  canMove: (state, action, view) => view.canMove && isLegalMove(state, action, view.yourSeat),
-  applyMove: (state, action, view) => applyMove(state, action, view.yourSeat),
-  getResult: (state, view) => winnerFrom(state, view.yourSeat),
-  onOpponentMove: (move, state, view) => animateOpponentMove(move, state, view),
-  render: (root, state, view, actions) => renderScreen(root, state, view, actions)
-});
+let game = null;
+if (window.CPoint && window.CPoint.hasTurnBasedGame) {
+  game = CPoint.turnBasedGame({
+    root: '#match',                    // the match screen container; the static idle screen lives outside it
+    live: true,
+    pollMs: 1000,
+    initialState: () => startingState(),
+    canMove: (state, action, view) => view.canMove && isLegalMove(state, action, view.yourSeat),
+    applyMove: (state, action, view) => applyMove(state, action, view.yourSeat),
+    getResult: (state, view) => winnerFrom(state, view.yourSeat),
+    onOpponentMove: (move, state, view) => animateOpponentMove(move, state, view),
+    render: (root, state, view, actions) => renderScreen(root, state, view, actions)
+  });
+} else {
+  // No platform bridge: the SAME rules/render functions drive a local
+  // hot-seat game (two players, one device, local turn swap).
+  document.getElementById('find-opponent').textContent = 'Two players, one device';
+  startHotSeat();
+}
 // In renderScreen: actions.submitMove(action) on a legal tap; a "Find an
 // opponent" / "New game" button calls actions.refreshLobby() (host lobby).
 ```
@@ -147,6 +155,7 @@ const game = CPoint.turnBasedGame({
 - **Apps** — tools / trackers / generators / quizzes: designed cards, real data, shared state (`CPoint.sharedState`), collections (`CPoint.collection`), persistence (`save`/`load`), clear interactions, animated transitions, and a beautiful result screen.
 - **Public websites/apps** — design as shareable standalone artifacts. Avoid member-private assumptions, secret data, C-Point-only navigation, and fake external hosting instructions. The platform will add the C-Point splash and badge, so leave bottom-corner breathing room and never cover fixed branding.
 - **Games** — full-screen canvas + on-screen touch controls + juice + sound. We build **SIMPLE, fun, single-file games** — lean into a polished **retro / arcade** style (neon or clean-pixel, CRT/scanline touches, chunky readable UI, satisfying chiptune sound). Snake, Pong, Breakout, runners, one-thumb arcade. Make the SIMPLE thing feel GREAT — don't half-build something complex. The GAME owns its end screen + leaderboard (§4) — never expect a host overlay.
+  - **Every game gets a designed START SCREEN** — static HTML that paints on first load: the game's title, 1–3 lines of "how to play" written as product copy, and a Start button (or "Find an opponent" for multiplayer, §4). That screen is the game's poster frame in previews, so make it gorgeous. Player instructions live HERE (or behind a small "?" toggle) — never as mid-gameplay overlays or prose paragraphs below the game.
   - **Multiplayer games** — see §4: use `CPoint.turnBasedGame` so the platform owns lobby → challenge → accept/cancel/decline → play → sync → resume. Persist via match state so both players resume and see past games.
   - **Public domain note:** games are not published to public domains in V1; keep game sharing/community mechanics inside C-Point.
 
@@ -154,7 +163,7 @@ const game = CPoint.turnBasedGame({
 
 **Sound is optional and creation-owned:** add procedural sound only when it genuinely improves the creation (usually games/toys); quizzes, guides, and informational creations should usually be silent. If you add sound, include a small in-creation mute toggle that matches the design.
 
-**Reach for the right library** instead of hand-rolling (load a pinned version from cdnjs.cloudflare.com, cdn.jsdelivr.net or unpkg.com; degrade gracefully if it fails): kaboom.js or Phaser for games, p5.js for generative visuals, three.js for 3D, anime.js for motion, Tone.js for sound, canvas-confetti for celebration.
+**Reach for the right library** instead of hand-rolling (load a pinned version from cdnjs.cloudflare.com, cdn.jsdelivr.net or unpkg.com; degrade gracefully if it fails): kaboom.js or Phaser for games, p5.js for generative visuals, three.js for 3D, anime.js for motion, Tone.js for sound, canvas-confetti for celebration, **chess.js for chess rules/legal moves (never hand-roll chess legality — castling, en passant, promotion, check/checkmate are a minefield)**.
 
 ---
 
@@ -170,6 +179,7 @@ const game = CPoint.turnBasedGame({
    - **5b. No flicker / no infinite loops:** never call `location.reload/replace`; never re-render the whole DOM on a timer; drive animation with a single `requestAnimationFrame` loop (never schedule rAF from inside resize/scroll/ResizeObserver handlers); make layout idempotent; reach a stable resting state and never visibly flash or re-mount.
    - **5c. Never render blank:** show meaningful content on first paint (~1s) without waiting on the network; if a CDN library fails, degrade to a working built-in fallback; never gate the first render on a fetch.
 6. Set a short, catchy, human-friendly `<title>` that NAMES the creation (e.g. "Neon Block Drop", "Which Pizza Are You?") — never "Document", "Untitled", or a copy of the prompt.
+7. **The document is the product, not a message.** Everything you want to *tell the user* — what you changed, why, caveats, tips — belongs in chat; the platform delivers that separately, and your entire response is executed as the app. The rendered UI must contain **ZERO meta-text**: no change summaries ("I've updated…", "In this update…", "Changes made"), no notes to the user or developer, no placeholder instructions ("replace this with…"), no references to the build conversation, prompts, briefs, or to being generated. Instructional copy is allowed **only** where a real product would have it — a game's start-screen "how to play" (§5), a form hint — written as product copy, never as commentary about the build.
 
 ---
 

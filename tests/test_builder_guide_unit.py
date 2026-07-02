@@ -62,6 +62,55 @@ def test_build_guide_teaches_public_publish_scope():
         assert anchor.lower() in guide.lower()
 
 
+def test_build_guide_teaches_static_idle_screen_and_guarded_multiplayer():
+    """The host never calls render() at idle, so the pre-match screen must be
+    static HTML and the turnBasedGame example must demonstrate the feature-detect
+    guard (models copy the example, not the prose)."""
+    guide = builder._SYSTEM_PROMPT
+    for anchor in (
+        "never called at idle",
+        "static html",
+        "non-blank resting state",
+        "if (window.CPoint && window.CPoint.hasTurnBasedGame)",
+        "startHotSeat",
+        "hot-seat",
+    ):
+        assert anchor.lower() in guide.lower(), f"guide missing anchor: {anchor}"
+
+
+def test_build_guide_teaches_chess_library_and_start_screen():
+    guide = builder._SYSTEM_PROMPT
+    for anchor in (
+        "chess.js",
+        "never hand-roll chess legality",
+        "start screen",
+        "poster frame",
+    ):
+        assert anchor.lower() in guide.lower(), f"guide missing anchor: {anchor}"
+
+
+def test_build_guide_forbids_meta_text_in_the_artifact():
+    """§6.7: chat commentary and the artifact are strictly separated — the
+    rendered UI carries zero build commentary."""
+    guide = builder._SYSTEM_PROMPT
+    for anchor in (
+        "the document is the product, not a message",
+        "zero meta-text",
+        "belongs in chat",
+        "change summaries",
+    ):
+        assert anchor.lower() in guide.lower(), f"guide missing anchor: {anchor}"
+
+
+def test_converse_brief_contract_is_third_person_spec():
+    """Chat-Steve's brief becomes the literal build spec — first-person plan
+    prose ('I'll add a how-to-play intro…') renders as UI copy downstream."""
+    spec = builder._CONVERSE_JSON.lower()
+    assert "third-person product requirements" in spec
+    assert "never first-person" in spec
+    assert "what the app must be and do" in spec
+
+
 def test_converse_agent_mode_turns_explicit_fix_into_ready_brief(monkeypatch):
     captured = {}
 

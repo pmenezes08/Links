@@ -176,7 +176,13 @@ export default function MatchLobby({ creationId, title, withContext, contextPayl
           ) : (
             <div>
               <div style={sectionTitle}>Challenge someone</div>
-              {opponents.length === 0 && <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', padding: '4px 2px' }}>No other members to challenge here yet.</div>}
+              {opponents.length === 0 && (
+                <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', padding: '6px 2px', lineHeight: 1.5 }}>
+                  No members to challenge here yet. Multiplayer runs inside a community —
+                  share this build to one of your communities from <strong>My Builds</strong>,
+                  then challenge members where it&rsquo;s shared.
+                </div>
+              )}
               {opponents.map((o) => (
                 <div key={o.handle} style={row}>
                   <div style={{ fontSize: 14, fontWeight: 600 }}>{o.name}</div>
