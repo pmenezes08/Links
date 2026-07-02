@@ -1237,6 +1237,27 @@ def test_route_save_and_load_roundtrip(builder_client, monkeypatch):
     assert body["value"] == {"level": 3}
 
 
+def test_route_data_accessible_in_home_community_context(builder_client, monkeypatch):
+    """Regression (2026-07-02 'pictures not loading' incident): publishing stamps
+    creations.community_id WITHOUT a creation_shares row, and the play surface
+    passes that community explicitly — the resolver must accept the HOME
+    community, not only share rows, or every brokered data call 404s."""
+    _make_user("maker")
+    cid = _make_community()
+    crid = _make_creation("maker", cid, monkeypatch)
+    _login(builder_client, "maker")
+
+    monkeypatch.setattr(builder, "search_images", lambda q, limit=8: [
+        {"url": "https://images.example/x.jpg", "hero": "https://images.example/x-big.jpg",
+         "full": "https://images.example/x-big.jpg", "title": "x", "creator": "c",
+         "license": "Pexels", "provider": "pexels"}])
+    resp = builder_client.get(
+        f"/api/builder/{crid}/data/images?q=bakery&community_id={cid}")
+    body = resp.get_json()
+    assert resp.status_code == 200, body
+    assert body["success"] is True and body["images"], body
+
+
 def test_route_load_defaults_to_save_key(builder_client, monkeypatch):
     _make_user("maker")
     cid = _make_community()

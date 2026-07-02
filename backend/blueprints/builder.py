@@ -539,7 +539,15 @@ def _resolve_accessible_creation(creation_id: int, username: str):
     if requested_community_id is not None:
         if requested_community_id == 0 and creation.get("created_by") == username:
             return creation, 0
-        if (builder_svc.get_creation_share(creation_id=creation_id, community_id=requested_community_id)
+        # The creation's HOME community is as legitimate a context as a share
+        # row: publishing stamps creations.community_id without writing a
+        # creation_shares row, so requiring a share row here 404'd every data
+        # call (images/feed/saves/scores) for creations played in their own
+        # community — the 2026-07-02 "pictures not loading in any app" incident.
+        # The authorization bar is unchanged: requester must access the community.
+        home_community_id = _safe_int(creation.get("community_id"))
+        if ((requested_community_id == home_community_id
+             or builder_svc.get_creation_share(creation_id=creation_id, community_id=requested_community_id))
                 and _can_access_community(username, requested_community_id)):
             return creation, requested_community_id
         return None, None
