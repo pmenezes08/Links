@@ -1,13 +1,14 @@
-import { SteveGlyph } from './SteveMark'
+import cpointMark from '../../assets/cpoint-mark.svg'
 
 /**
- * Steve's one canonical face. Replaces the drifted gradient-"S" discs
- * (the typing indicator used white-on-#26a69a, onboarding used
- * black-on-#2a7a72 — a character with two faces is no character).
+ * Steve's one canonical face: the official C-Point mark (wave over pin) on a
+ * black disc with a thin turquoise ring — founder-ratified 2026-07-02.
  *
- * The glyph is the doorbell, the avatar is who answers: conversational
- * surfaces (chat, onboarding, summary-sheet headers) render this face;
- * inline tap-for-Steve affordances render the bare SteveGlyph.
+ * Convention (keep it, or product chrome and Steve blur together): the BARE
+ * mark (BrandLogo) is the product; the mark IN A RINGED DISC is Steve
+ * speaking. Inline tap-for-Steve affordances at tiny sizes (≤20px) still use
+ * the simplified SteveGlyph from SteveMark.tsx — the full mark doesn't
+ * survive below ~22px.
  */
 export default function SteveAvatar({
   size = 28,
@@ -18,11 +19,16 @@ export default function SteveAvatar({
 }) {
   return (
     <div
-      className={`rounded-full bg-gradient-to-br from-cpoint-turquoise to-[#26a69a] flex items-center justify-center shrink-0 text-white ${className}`}
+      className={`rounded-full bg-black border border-cpoint-turquoise/40 flex items-center justify-center shrink-0 ${className}`}
       style={{ width: size, height: size }}
       aria-hidden="true"
     >
-      <SteveGlyph size={Math.max(12, Math.round(size * 0.62))} strokeWidth={2.4} />
+      <img
+        src={cpointMark}
+        alt=""
+        draggable={false}
+        style={{ width: '70%', height: '70%', objectFit: 'contain' }}
+      />
     </div>
   )
 }

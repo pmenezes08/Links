@@ -85,9 +85,13 @@ Prefer `navigate(-1)` for back; fall back to a tab root only on deep links with 
 
 ## Logo
 
-- App / UI: `/api/public/logo` (see [`client/index.html`](../client/index.html))
-- Do not distort the wave/point relationship
-- Monochrome variants on dark backgrounds for in-app chrome
+- **Assets:** bundled `client/src/assets/cpoint-logo.png` rendered via `BrandLogo.tsx` (the in-app source of truth — the `/api/public/logo` endpoint exists for invites/external surfaces, not the SPA), and `client/src/assets/cpoint-mark.svg` — the production vector export (founder-supplied 2026-07-02).
+- Do not distort the wave/point relationship; never recolor the mark.
+- **One mark, two treatments** (ratified 2026-07-02, replaces the old "company lockup vs Steve glyph" separation):
+  - **Bare mark = the product.** Headers, onboarding gates, splash — `BrandLogo`, no container.
+  - **Mark on a black disc with a 1px `cpoint-turquoise/40` ring = Steve speaking.** All conversational Steve surfaces — `components/steve/SteveAvatar.tsx` (the single swap point). The disc answers "who's talking"; product chrome never wears it, and no system-message row may wear it either.
+  - At tiny sizes (≤20px inline affordances, e.g. feed action rows) the full mark doesn't survive — keep the simplified `SteveGlyph` from `SteveMark.tsx`.
+- Steve's server-side avatar (DM/feed rows) is the `steve` user's profile picture in prod — keep it the rasterized disc treatment (`steve-avatar-512.png`) so client and server faces match.
 
 ## Related docs
 
