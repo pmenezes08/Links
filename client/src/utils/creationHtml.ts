@@ -95,8 +95,9 @@ function dataBridgeScript(startMatchId?: number | null, hostLobby?: boolean): st
     // these to persist progress/state/preferences. value is any JSON.
     save:function(key,value){return call('save',{key:key||'save',value:value});},
     load:function(key){return call('load',{key:key||'save'});},
-    // Real, freely-licensed web photos for a query -> {images:[{url,full,title}]}.
-    // Use 'url' directly as an <img> src. Fetch at runtime; don't hard-code URLs.
+    // Real, freely-licensed web photos for a query -> {images:[{url,hero,full,title}]}.
+    // 'url' (~940px) for cards, 'hero' (larger) for full-bleed. Fetch at runtime;
+    // don't hard-code URLs.
     images:function(query,opts){return call('images',{q:query,limit:(opts&&opts.limit)||8});},
     // Recent public data via vetted host-side connectors -> {data, attribution}.
     data:function(connector,params,opts){return call('feed',{connector:connector,params:params||{},refresh:!!(opts&&opts.refresh)});},

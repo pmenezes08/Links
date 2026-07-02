@@ -126,7 +126,7 @@ Supported capabilities:
 - `CPoint.getResults()` - read aggregate ratings/results.
 - `CPoint.save(key, value)` - save per-player progress/state/preferences (`value` is any JSON).
 - `CPoint.load(key)` - load per-player saved state; resolves to `{value}` (`value` is `null` when nothing is saved).
-- `CPoint.images(query, opts)` - fetch real freely licensed web photos.
+- `CPoint.images(query, opts)` - fetch real freely licensed web photos. Provider chain (server-side, `builder.search_images`): **Pexels primary** when `PEXELS_API_KEY` is configured (curated photography; hotlink-friendly CDN; items carry `url` ~940px for cards and `hero` ~1880px for full-bleed sections), **Openverse fallback** (keyless). Capsule image attribution follows the provider that actually served the batch.
 - `CPoint.data(connector, params, opts)` - fetch recent public data from vetted host-side connectors; `opts.refresh=true` bypasses the fresh cache while still respecting route throttles, provider budgets, and circuit breakers.
 - `CPoint.capsule(name).get()` / `.refresh()` - read a named, backend-validated data recipe stored with the creation. Capsules execute through approved engines only (`feed` via `builder_feeds`, `images` via brokered image search) and return provenance fields such as `attribution`, `source`, and `lastUpdated`.
 - `CPoint.sharedState.get(key)` / `CPoint.sharedState.update(key, value, opts)` - one shared JSON document per creation/key for lightweight community app state.

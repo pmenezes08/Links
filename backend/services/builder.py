@@ -183,7 +183,8 @@ _SYSTEM_PROMPT_FALLBACK = (
     "`await CPoint.save('slot-1', state);`. Use short, stable keys — valid examples: `slot-1`, `slot-2`, `settings` "
     "(letters, digits, `-`, `_`; one key per save slot, max ~20 slots). Wrap save/load in try/catch and never block gameplay on them. "
     "FOR REAL PHOTOS from the web (places, food, recommendations, etc.), call `CPoint.images(query)` -> "
-    "`{images:[{url, full, title}]}` and set an `<img>` src to `url` (display-ready, real freely-licensed photos). "
+    "`{images:[{url, hero, full, title}]}` and set an `<img>` src to `url` for cards or `hero` (larger; fall back "
+    "to `url`) for full-bleed sections (display-ready, real freely-licensed photos). "
     "Fetch at RUNTIME; show a graceful placeholder while loading and if none return; NEVER hard-code image URLs from "
     "memory (they 404). Always feature-detect (`if (window.CPoint)`), never block gameplay on it, and wrap calls in try/catch. "
     "REAL-TIME / RECENT PUBLIC DATA: if the user's idea needs public facts, weather, fixtures/results, recipes, cocktails, "
@@ -3100,17 +3101,62 @@ def load_record(creation_id: int, *, community_id: Optional[int] = None, usernam
 
 
 _OPENVERSE_URL = "https://api.openverse.org/v1/images/"
+_PEXELS_URL = "https://api.pexels.com/v1/search"
 
 
-def search_images(query: str, *, limit: int = 8) -> List[Dict[str, Any]]:
-    """Real, freely-licensed photos for a query (keyless Openverse). Lets a
-    creation pull actual web images (places, recommendations, etc.). Best-effort
-    — returns [] on any failure; the route caches results to limit outbound calls.
-    Returns [{url (display-ready thumbnail), full, title, creator, license}]."""
-    q = re.sub(r"\s+", " ", (query or "").strip())[:120]
-    if not q:
+def _pexels_key() -> str:
+    return (os.getenv("PEXELS_API_KEY") or "").strip()
+
+
+def image_provider() -> str:
+    """Active primary image provider — Pexels (curated, hero-resolution CDN)
+    when a key is configured, else keyless Openverse."""
+    return "pexels" if _pexels_key() else "openverse"
+
+
+def _search_images_pexels(q: str, n: int) -> List[Dict[str, Any]]:
+    """Curated marketing-grade photos from the Pexels API. Their CDN is
+    explicitly hotlink-friendly and serves size variants per photo, so builds
+    get a real full-bleed hero instead of a ~600px thumbnail."""
+    key = _pexels_key()
+    if not key:
         return []
-    n = max(1, min(int(limit or 8), 20))
+    try:
+        import requests
+        resp = requests.get(
+            _PEXELS_URL,
+            params={"query": q, "per_page": n},
+            headers={"Authorization": key,
+                     "User-Agent": "C-Point-Builder/1.0 (+https://c-point.co)"},
+            timeout=8,
+        )
+        if resp.status_code != 200:
+            logger.warning("builder: pexels image search -> HTTP %s", resp.status_code)
+            return []
+        data = resp.json()
+    except Exception:
+        logger.warning("builder: pexels image search failed", exc_info=True)
+        return []
+    out: List[Dict[str, Any]] = []
+    for r in (data.get("photos") or [])[:n]:
+        src = r.get("src") or {}
+        url = src.get("large") or src.get("medium") or src.get("original")
+        if not url:
+            continue
+        out.append({
+            "url": url,                                        # ~940px, compressed — cards/sections
+            "hero": src.get("large2x") or src.get("original") or url,  # ~1880px — full-bleed heroes
+            "full": src.get("original") or url,
+            "title": (r.get("alt") or "")[:140],
+            "creator": (r.get("photographer") or "")[:80],
+            "license": "Pexels",
+            "provider": "pexels",
+        })
+    return out
+
+
+def _search_images_openverse(q: str, n: int) -> List[Dict[str, Any]]:
+    """Keyless Openverse (freely-licensed aggregate) — the fallback provider."""
     try:
         import requests
         resp = requests.get(
@@ -3123,21 +3169,42 @@ def search_images(query: str, *, limit: int = 8) -> List[Dict[str, Any]]:
             return []
         data = resp.json()
     except Exception:
-        logger.warning("builder: image search failed", exc_info=True)
+        logger.warning("builder: openverse image search failed", exc_info=True)
         return []
     out: List[Dict[str, Any]] = []
     for r in (data.get("results") or [])[:n]:
         thumb = r.get("thumbnail") or r.get("url")
         if not thumb:
             continue
+        full = r.get("url") or thumb
         out.append({
             "url": thumb,                       # display-ready (Openverse thumbnail proxy; hotlinkable)
-            "full": r.get("url") or thumb,
+            "hero": full,                       # best available — origin full-size (may be slow/fragile)
+            "full": full,
             "title": (r.get("title") or "")[:140],
             "creator": (r.get("creator") or "")[:80],
             "license": r.get("license") or "",
+            "provider": "openverse",
         })
     return out
+
+
+def search_images(query: str, *, limit: int = 8) -> List[Dict[str, Any]]:
+    """Real photos for a query. Provider chain: Pexels first when configured
+    (curated quality + real hero resolutions), Openverse fallback (keyless) —
+    so every build automatically gets the best available source. Best-effort:
+    returns [] on any failure; the routes cache results to limit outbound
+    calls. Items: {url, hero, full, title, creator, license, provider}."""
+    q = re.sub(r"\s+", " ", (query or "").strip())[:120]
+    if not q:
+        return []
+    n = max(1, min(int(limit or 8), 20))
+    if _pexels_key():
+        out = _search_images_pexels(q, n)
+        if out:
+            return out
+        logger.info("builder: pexels had no results for %r; falling back to openverse", q)
+    return _search_images_openverse(q, n)
 
 
 def get_leaderboard(creation_id: int, *, community_id: Optional[int] = None, key: str = "highscore", limit: int = 10,

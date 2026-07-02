@@ -237,14 +237,15 @@ def execute_recipe(recipe: Recipe, *, refresh: bool = False) -> Dict[str, Any]:
         from backend.services import builder as builder_svc
 
         images = builder_svc.search_images(str(recipe.get("query") or ""), limit=int(recipe.get("limit") or 8))
+        provider = (images[0].get("provider") if images else builder_svc.image_provider()) or "openverse"
         return {
             "success": True,
             "capsule": recipe.get("name"),
             "engine": "images",
             "images": images,
             "data": {"images": images},
-            "attribution": "Images by Openverse",
-            "source": "openverse",
+            "attribution": "Photos provided by Pexels" if provider == "pexels" else "Images by Openverse",
+            "source": provider,
             "cached": False,
             "stale": False,
             "lastUpdated": now,
