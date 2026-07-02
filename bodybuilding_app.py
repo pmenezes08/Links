@@ -847,6 +847,14 @@ def _block_unverified_users():
         # so a session gate here turns every delivery into a 401 retry-storm.
         if path.startswith('/api/internal/'):
             return None
+        # Published public web builds (builds.c-point.co worker proxy): these
+        # routes are deliberately unauthenticated — slug-scoped public data
+        # only, per-build/IP rate-limited in their handlers, non-enumerating
+        # 404s, no session features. A session gate here breaks every image/
+        # data/capsule call on every published public site (anonymous
+        # visitors never have a cookie).
+        if path.startswith('/api/builder/public/'):
+            return None
         # Session required, but must run even if email not verified (logout cleanup)
         session_auth_unverified_ok = (
             '/api/push/unregister_fcm',
