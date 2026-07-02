@@ -344,6 +344,73 @@ def test_report_progress_is_monotonic_and_scoped_to_the_worker():
         builder._progress_job.reset(token)
 
 
+def test_cancel_build_job_is_terminal_and_unblocks_the_user():
+    """Owner cancel flips queued/running → cancelled, frees the one-build
+    guard immediately, and a later worker delivery loses the claim."""
+    _make_user("maker")
+    _make_user("other")
+    cid = _make_community()
+    job_id = int(builder.create_build_job(
+        username="maker", community_id=cid, prompt="a game", tier="balanced")["id"])
+    assert builder.user_has_active_job("maker") is True
+
+    # Only the owner can cancel.
+    assert builder.cancel_build_job(job_id, "other") is None
+
+    cancelled = builder.cancel_build_job(job_id, "maker")
+    assert cancelled["status"] == "cancelled"
+    assert cancelled["error"] == "cancelled_by_user"
+    assert builder.user_has_active_job("maker") is False
+
+    # A queued Cloud Tasks delivery arriving later must not resurrect it.
+    out = builder.run_build_job(job_id)
+    assert out.get("success") is False
+    assert out.get("transient") is False
+    assert builder.get_build_job(job_id)["status"] == "cancelled"
+
+    # Cancelling again is a no-op that returns the job as it ended.
+    again = builder.cancel_build_job(job_id, "maker")
+    assert again["status"] == "cancelled"
+
+
+def test_running_build_unwinds_at_next_checkpoint_after_cancel(monkeypatch, notify_recorder):
+    """Cancel mid-generation: the worker stops at its next progress checkpoint
+    with NO side effects — no creation, no usage row, no notification."""
+    _make_user("maker")
+    cid = _make_community()
+    job_id = int(builder.create_build_job(
+        username="maker", community_id=cid, prompt="a game", tier="balanced")["id"])
+
+    def cancel_mid_codegen(*_a, **_k):
+        # The user taps Stop while the model call is in flight.
+        builder.cancel_build_job(job_id, "maker")
+        return _FAKE_HTML
+
+    monkeypatch.setattr(builder.llm, "generate_text", cancel_mid_codegen)
+    out = builder.run_build_job(job_id)
+    assert out.get("cancelled") is True
+    assert builder.get_build_job(job_id)["status"] == "cancelled"
+    assert _count_usage_rows("maker", success=True) == 0
+    assert _count_usage_rows("maker", success=False) == 0
+    assert len(notify_recorder) == 0
+
+
+def test_blueprint_cancel_route_is_owner_only(builder_client):
+    _make_user("maker")
+    _make_user("intruder")
+    cid = _make_community()
+    job_id = int(builder.create_build_job(
+        username="maker", community_id=cid, prompt="a quiz", tier="balanced")["id"])
+
+    _login(builder_client, "intruder")
+    assert builder_client.post(f"/api/builder/jobs/{job_id}/cancel").status_code == 404
+
+    _login(builder_client, "maker")
+    resp = builder_client.post(f"/api/builder/jobs/{job_id}/cancel")
+    assert resp.status_code == 200
+    assert resp.get_json()["job"]["status"] == "cancelled"
+
+
 def test_gate_allows_free_quota_then_blocks_at_cap():
     _make_user("capped")  # free tier → free builder quota
     allowed, reason, ent = gate_builder_or_reason("capped", enforce_override=True)

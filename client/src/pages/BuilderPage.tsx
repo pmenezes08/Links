@@ -238,7 +238,7 @@ export default function BuilderPage() {
   const {
     creation, messages, loading, building, busy, activeJob, error, limit,
     tier, setTier, mode, setMode, agentMode, setAgentMode, proposal,
-    chat, build, confirmBuild, retry, stop, publish, publishWeb, unpublishWeb, loadCreation, watchJob,
+    chat, build, confirmBuild, retry, stop, cancelBuild, publish, publishWeb, unpublishWeb, loadCreation, watchJob,
   } = useBuilder(cid)
   const [input, setInput] = useState('')
   const [publishing, setPublishing] = useState(false)
@@ -478,6 +478,12 @@ export default function BuilderPage() {
               <div style={{ fontSize: 13, lineHeight: 1.45, color: '#8a8a8a' }}>
                 Steve is building on the server. You can leave this screen, lock your phone, or use other apps — you'll get a notification when it's ready to test.
                 {activeJob?.id ? <span style={{ display: 'block', marginTop: 3 }}>Build #{activeJob.id} · {activeJob.status}</span> : null}
+                {activeJob?.id ? (
+                  <button onClick={() => { void cancelBuild() }}
+                    style={{ display: 'block', marginTop: 8, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 14, padding: '6px 14px', color: '#f1f1f1', fontSize: 13, cursor: 'pointer' }}>
+                    Stop build
+                  </button>
+                ) : null}
               </div>
             </div>
           </>

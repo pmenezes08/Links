@@ -272,6 +272,21 @@ def builder_job_get(job_id: int):
     return jsonify({"success": True, "job": _job_payload(job), "creation": creation})
 
 
+@builder_bp.route("/api/builder/jobs/<int:job_id>/cancel", methods=["POST"])
+def builder_job_cancel(job_id: int):
+    """Owner-requested cancel of an in-flight build. Terminal + side-effect
+    free: the worker unwinds at its next progress checkpoint, no usage row is
+    logged, and no notification is sent. Cancelling an already-finished job is
+    a no-op that returns the job as it ended."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    job = builder_svc.cancel_build_job(job_id, username)
+    if not job:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    return jsonify({"success": True, "job": _job_payload(job)})
+
+
 @builder_bp.route("/api/internal/builder/jobs/<int:job_id>/run", methods=["POST"])
 def builder_job_run_internal(job_id: int):
     # Cloud Tasks worker callback — shared-secret auth, not a session.

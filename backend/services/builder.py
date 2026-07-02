@@ -1512,6 +1512,8 @@ def _generate_with_fallback(prompt: str, *, prior_html: Optional[str] = None,
     try:
         return generate_artifact(prompt, prior_html=prior_html, temperature=temperature, model=model,
                                  verify=verify, username=username, community_id=community_id), model
+    except BuildCancelled:
+        raise  # user cancel is not a model failure — never burn a fallback call
     except Exception:
         if model != _MODEL_FAST:
             logger.warning("builder: model %s failed; falling back to %s", model, _MODEL_FAST)
@@ -1797,19 +1799,31 @@ _PROGRESS_STAGES = ("starting", "research", "coding", "reviewing", "testing",
                     "polishing", "saving", "done")
 
 
+class BuildCancelled(Exception):
+    """The user cancelled this job mid-build. Raised from progress checkpoints
+    so the worker unwinds cleanly: no creation write past the checkpoint, no
+    usage row, no failure notification, and a 200 to Cloud Tasks (terminal)."""
+
+
 def report_progress(pct: int, stage: str) -> None:
-    """Best-effort 0-100 progress checkpoint for the job this worker is running.
+    """0-100 progress checkpoint for the job this worker is running — and the
+    cancellation point.
 
     Monotonic: a later, smaller value never rewinds the bar (repair loops and
     retries would otherwise make progress jump backwards). No-op outside a job
-    (sync/local paths) and never raises — progress must not fail a build. Also
-    bumps ``updated_at``, which doubles as the liveness signal the stale-job
-    reaper keys on, so a long build that reports progress is never reclaimed as
-    abandoned mid-run.
+    (sync/local paths). Also bumps ``updated_at``, which doubles as the
+    liveness signal the stale-job reaper keys on, so a long build that reports
+    progress is never reclaimed as abandoned mid-run.
+
+    The UPDATE is guarded on ``status='running'``: if the row is no longer
+    running because the user cancelled, this raises ``BuildCancelled`` so the
+    pipeline stops at the next checkpoint instead of burning the full model
+    call. DB blips stay swallowed — progress must not fail a build.
     """
     job_id = _progress_job.get()
     if not job_id:
         return
+    status = None
     try:
         pct = max(0, min(100, int(pct)))
         ph = get_sql_placeholder()
@@ -1819,12 +1833,51 @@ def report_progress(pct: int, stage: str) -> None:
                 f"""UPDATE builder_jobs
                     SET progress = CASE WHEN progress < {ph} THEN {ph} ELSE progress END,
                         progress_stage = {ph}, updated_at = {ph}
-                    WHERE id = {ph}""",
+                    WHERE id = {ph} AND status = 'running'""",
                 (pct, pct, (stage or "")[:32], _now(), job_id),
             )
+            if c.rowcount == 0:
+                c.execute(f"SELECT status FROM builder_jobs WHERE id = {ph}", (job_id,))
+                row = c.fetchone()
+                status = (row["status"] if hasattr(row, "keys") else row[0]) if row else None
             conn.commit()
     except Exception:
         logger.debug("builder: progress update failed for job %s", job_id, exc_info=True)
+        return
+    if status == "cancelled":
+        raise BuildCancelled(f"job {job_id} cancelled by user")
+
+
+def cancel_build_job(job_id: int, username: str) -> Optional[Dict[str, Any]]:
+    """User-requested cancel of an in-flight build. Terminal and side-effect free.
+
+    Conditional UPDATE: only the owner's ``queued``/``running`` job flips to
+    ``cancelled`` (a job that already finished stays as it ended). The running
+    worker notices at its next progress checkpoint and unwinds via
+    ``BuildCancelled`` — no usage row, no notification. A still-queued Cloud
+    Tasks delivery later loses the claim (``cancelled`` is not claimable) and
+    no-ops. Returns the fresh job row, or None if it doesn't belong to the user.
+    """
+    job = get_build_job(job_id)
+    if not job or job.get("username") != username:
+        return None
+    ph = get_sql_placeholder()
+    now = _now()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""UPDATE builder_jobs
+                SET status='cancelled', error='cancelled_by_user',
+                    worker_token=NULL, lease_expires_at=NULL,
+                    finished_at={ph}, updated_at={ph}
+                WHERE id={ph} AND username={ph} AND status IN ('queued','running')""",
+            (now, now, job_id, username),
+        )
+        cancelled = c.rowcount == 1
+        conn.commit()
+    if cancelled:
+        logger.info("builder: job %s cancelled by %s", job_id, username)
+    return get_build_job(job_id)
 
 
 def claim_build_job(job_id: int, worker_token: str, lease_seconds: int = _LEASE_SECONDS) -> bool:
@@ -1985,6 +2038,12 @@ def run_build_job(job_id: int) -> Dict[str, Any]:
                 title=creation.get("title") or "your build",
             )
         return {"success": True, "creation": creation, "job": get_build_job(job_id_int)}
+    except BuildCancelled:
+        # User cancelled mid-build: terminal, deliberately side-effect free
+        # (no usage row — the user didn't get a build; no notification — they
+        # cancelled it themselves). Status is already 'cancelled'.
+        logger.info("builder: job %s stopped at a checkpoint after user cancel", job_id_int)
+        return {"success": True, "cancelled": True, "job": get_build_job(job_id_int)}
     except Exception as exc:
         if _is_transient_error(exc):
             fresh = get_build_job(job_id_int) or job

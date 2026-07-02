@@ -45,6 +45,7 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/builder/plan` | POST | `builder_plan` | `backend/blueprints/builder.py:191` | builder plan | *(no exact string match — may use helpers)* |
 | `/api/builder/<int:creation_id>/iterate` | POST | `builder_iterate` | `backend/blueprints/builder.py:210` | builder iterate | *(no exact string match — may use helpers)* |
 | `/api/builder/jobs/<int:job_id>` | GET | `builder_job_get` | `backend/blueprints/builder.py:252` | builder job get | *(no exact string match — may use helpers)* |
+| `/api/builder/jobs/<int:job_id>/cancel` | POST | `builder_job_cancel` | `backend/blueprints/builder.py` | builder job cancel (owner-only, terminal) | *(no exact string match — may use helpers)* |
 | `/api/internal/builder/jobs/<int:job_id>/run` | POST | `builder_job_run_internal` | `backend/blueprints/builder.py:271` | builder job run internal | *(no exact string match — may use helpers)* |
 | `/api/cron/builder/sweep` | POST | `builder_sweep_cron` | `backend/blueprints/builder.py:284` | builder sweep cron | *(no exact string match — may use helpers)* |
 | `/api/builder/<int:creation_id>/publish` | POST | `builder_publish` | `backend/blueprints/builder.py:293` | builder publish | *(no exact string match — may use helpers)* |

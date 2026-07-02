@@ -28,7 +28,8 @@ Backend routes:
 - `POST /api/builder/chat` - Steve conversation and proposal flow.
 - `POST /api/builder/create` - enqueue a first build.
 - `POST /api/builder/<id>/iterate` - enqueue an iteration.
-- `GET /api/builder/jobs/<id>` - poll async job status.
+- `GET /api/builder/jobs/<id>` - poll async job status (includes `progress` 0-100 + `progress_stage`).
+- `POST /api/builder/jobs/<id>/cancel` - owner-only cancel of an in-flight build (terminal, side-effect free: the worker unwinds at its next progress checkpoint, no usage row, no notification).
 - `POST /api/internal/builder/jobs/<id>/run` - protected Cloud Tasks worker entry point (shared-secret auth via `cron_auth.cron_authed`, accepting `X-Cron-Secret` or `X-Builder-Job-Secret`).
 - `POST /api/cron/builder/sweep` - Cloud Scheduler reaper for orphaned jobs.
 - `GET /api/builder/<id>` - load a creation for owner/playback.
@@ -80,6 +81,7 @@ Cloud Tasks delivers at-least-once, so the worker is built to be idempotent:
 - **Exactly-one side effects.** The creation write, the single `ai_usage.log_usage` row, and the notification all hang off the winning claim. `notified_at` is stamped once (`_mark_notified`) so retries never re-notify.
 - **Terminal vs transient.** Generation/validation errors are terminal: the job goes `failed`, logs one `success=0` row, and the worker route returns `200` so Cloud Tasks stops retrying. Only genuine infra blips (`_is_transient_error`) requeue and return `500` to request a retry, bounded by `attempts < max_attempts`.
 - **Reaper.** `/api/cron/builder/sweep` (`sweep_build_jobs`) requeues `running` jobs whose lease expired (crashed worker / recycled instance) and terminally fails those past `max_attempts`, with one block row + one notification.
+- **User cancel.** `cancel_build_job` flips the owner's `queued`/`running` job to `cancelled` (terminal — not claimable, frees the one-build-at-a-time guard immediately). A running worker notices at its next `report_progress` checkpoint (the UPDATE is guarded on `status='running'`; a zero-row update re-reads the status and raises `BuildCancelled`) and unwinds with zero side effects: no creation write past the checkpoint, no usage row, no notification. The client's Stop button (composer square while busy, plus "Stop build" under the progress row) calls `POST /api/builder/jobs/<id>/cancel`.
 
 Production durability uses Cloud Tasks with:
 

@@ -32,7 +32,7 @@ export type BuilderMessage = { role: 'user' | 'steve'; text: string; creation?: 
 export type BuilderLimit = { cap: number | null; message: string }
 export type BuilderJob = {
   id: number
-  status: 'queued' | 'running' | 'succeeded' | 'failed'
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
   kind?: 'create' | 'iterate'
   community_id?: number
   creation_id?: number | null
@@ -148,6 +148,10 @@ export function useBuilder(communityId: string) {
         }])
         setBuilding(false)
         clearActiveJob()
+      } else if (data.job.status === 'cancelled') {
+        setMessages((m) => [...m, { role: 'steve', text: 'Okay — I stopped that build. Tell me what you want and we can go again.' }])
+        setBuilding(false)
+        clearActiveJob()
       } else if (data.job.status === 'failed') {
         setError('Steve could not finish this one. Try again when you are ready.')
         setBuilding(false)
@@ -169,7 +173,7 @@ export function useBuilder(communityId: string) {
   const activeJobId = activeJob?.id ?? 0
   const activeJobStatus = activeJob?.status
   useEffect(() => {
-    if (!activeJobId || activeJobStatus === 'succeeded' || activeJobStatus === 'failed') return
+    if (!activeJobId || activeJobStatus === 'succeeded' || activeJobStatus === 'failed' || activeJobStatus === 'cancelled') return
     setBuilding(true)
     const id = window.setInterval(() => { pollJob(activeJobId).catch(() => { /* keep waiting */ }) }, 3000)
     pollJob(activeJobId).catch(() => { /* keep waiting */ })
@@ -263,19 +267,34 @@ export function useBuilder(communityId: string) {
     if (lastBriefRef.current && !loading && !building) build(lastBriefRef.current)
   }, [loading, building, build])
 
+  // Cancel the server-side build job. Terminal and side-effect free on the
+  // backend (the worker unwinds at its next checkpoint; no usage, no notify).
+  const cancelBuild = useCallback(async () => {
+    const jobId = activeJob?.id
+    if (!jobId) return
+    try {
+      const res = await fetch(`/api/builder/jobs/${jobId}/cancel`, { method: 'POST', credentials: 'include' })
+      const data = (await res.json().catch(() => null)) as ApiResult | null
+      if (res.ok && data?.success) {
+        setBuilding(false)
+        clearActiveJob()
+        setMessages((m) => [...m, { role: 'steve', text: 'Okay — I stopped that build. Tell me what you want and we can go again.' }])
+        return
+      }
+    } catch { /* fall through to the error below */ }
+    setError('Could not stop the build — it may have just finished. Give it a second.')
+  }, [activeJob?.id, clearActiveJob])
+
   // Stop whatever's in flight so the user can rectify or add input.
   const stop = useCallback(() => {
     abortRef.current?.abort()
     abortRef.current = null
     if (activeJob) {
-      setMessages((m) => [...m, {
-        role: 'steve',
-        text: "I'm still building on the server. You can leave this screen — I'll notify you when it's ready.",
-      }])
+      void cancelBuild()
       return
     }
     setLoading(false); setBuilding(false)
-  }, [activeJob])
+  }, [activeJob, cancelBuild])
 
   const publish = useCallback(async (caption?: string, targetCommunityId?: number): Promise<number | null> => {
     if (!creation) return null
@@ -396,6 +415,6 @@ export function useBuilder(communityId: string) {
   return {
     creation, messages, loading, building, busy, activeJob, error, limit, rev,
     tier, setTier, mode, setMode, agentMode, setAgentMode, proposal,
-    chat, build, confirmBuild, retry, stop, publish, publishWeb, unpublishWeb, loadCreation, watchJob,
+    chat, build, confirmBuild, retry, stop, cancelBuild, publish, publishWeb, unpublishWeb, loadCreation, watchJob,
   }
 }
