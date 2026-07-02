@@ -16,6 +16,7 @@ cookies / storage), which is the staging-safe equivalent of the dedicated
 from __future__ import annotations
 
 import contextvars
+from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
 import os
@@ -60,6 +61,7 @@ _GAME_KIND_HINTS = {
     "game", "chess", "checkers", "connect-4", "connect four", "tic-tac-toe",
     "tictactoe", "snake", "pong", "breakout", "runner", "arcade", "platformer",
     "battleship", "dominoes", "cards", "card game", "word game",
+    "sudoku", "wordle", "minesweeper", "memory match", "tetris", "2048", "trivia",
 }
 _APP_KIND_HINTS = {
     "app", "tool", "tracker", "dashboard", "calculator", "planner", "rsvp",
@@ -148,7 +150,8 @@ _SYSTEM_PROMPT_FALLBACK = (
     "container, and on `focus` call `el.scrollIntoView({block:'center'})` so it stays visible. Inputs MUST use font-size 16px "
     "or larger (smaller sizes trigger an iOS zoom). Never pin an input to the very bottom with a fixed position that the "
     "keyboard would cover.\n"
-    "5) Dark background; no analytics, ads, tracking, or login; keep the document under 400KB.\n"
+    "5) Full-bleed canvas (dark default; a public WEBSITE may use a light/warm canvas when it fits the "
+    "subject); no analytics, ads, tracking, or login; keep the document under 400KB.\n"
     "5b) NO FLICKER / NO INFINITE LOOPS: never call location.reload/replace; never re-render the whole DOM on a timer; "
     "drive animation with a single requestAnimationFrame loop (never schedule rAF from inside resize/scroll/ResizeObserver "
     "handlers); make layout idempotent so it doesn't thrash; the page must reach a stable resting state and never visibly "
@@ -1307,14 +1310,17 @@ def _research_landed(html: str, facts: str, sources: List[str]) -> bool:
 
 def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperature: float = 0.8,
                      model: Optional[str] = None, verify: bool = False,
-                     username: Optional[str] = None, community_id: Optional[int] = None) -> str:
+                     username: Optional[str] = None, community_id: Optional[int] = None,
+                     kind: str = "") -> str:
     """Generate (or revise) a self-contained HTML artifact via Steve/Grok.
 
     ``caps`` is deliberately not passed to ``llm.generate_text`` — the small
     chat per-turn token ceilings would truncate the document. Builder cost is
     governed by the monthly turn cap, not per-turn tokens. First builds use a
     higher temperature for flair; iteration passes a low temperature to
-    preserve what already works.
+    preserve what already works. ``kind`` (website/app/game, best-effort) steers
+    the verify pass — desktop render + rubric; a multiplayer artifact overrides
+    it to game deterministically.
     """
     if prior_html:
         user_prompt = (
@@ -1363,7 +1369,9 @@ def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperat
     # Verify the researched data actually landed; one targeted repair if not. The
     # model is only ASKED to use the facts — under a long prompt it can summarize,
     # approximate, or omit them, and success vs silent-failure look identical.
-    if facts and not _research_landed(html, facts, sources):
+    # Gated on the build-global deadline: pre-pass repairs must not stack onto a
+    # slow codegen past the request timeout.
+    if facts and not _research_landed(html, facts, sources) and _job_time_left() > _REGEN_TIMEOUT_SECONDS:
         logger.info("builder: researched data not grounded in artifact; repairing once")
         try:
             repaired = _clean_html(
@@ -1382,6 +1390,7 @@ def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperat
                     temperature=0.2,
                     caps=None,
                     model=model or _MODEL_FAST,
+                    timeout=_REGEN_TIMEOUT_SECONDS,
                 )
             )
         except Exception:
@@ -1397,7 +1406,7 @@ def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperat
     # Meta-text lint: build commentary must never render as product UI. One
     # low-temperature repair; ship best-effort if it misses (a false positive
     # must degrade gracefully, never fail the build).
-    leaks = _artifact_meta_lint(html)
+    leaks = _artifact_meta_lint(html) if _job_time_left() > _REGEN_TIMEOUT_SECONDS else []
     if leaks:
         logger.info("builder: artifact contains build commentary %s; repairing once", leaks)
         repaired = _repair_regen(
@@ -1418,22 +1427,46 @@ def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperat
     # repairs (render-fix, web-data verification, design-refine). No-ops when the
     # render service isn't configured, so sync/local/test paths are unaffected.
     if verify:
+        # Artifact-signal override: a turnBasedGame integration IS a game,
+        # whatever the prompt heuristic guessed (chess judged as a "website"
+        # was the worst misclassification).
+        effective_kind = "game" if _has_multiplayer_wiring(html) else _public_kind(kind) if kind else ""
         html = _render_quality_pass(
             html, prompt=prompt, facts=facts, sources=sources,
             model=model or _MODEL_FAST, username=username, community_id=community_id,
+            kind=effective_kind,
         )
     return html
 
 
-_DESIGN_REFINE_THRESHOLD = 70  # below "polished" on the judge's 0-100 craft scale
+# Per-tier design-refine thresholds on the judge's 0-100 craft scale. Refine
+# runs on the balanced (default) and best tiers; Quick stays refine-free so it
+# stays quick. Env-overridable pipeline constants — NOT user-facing caps
+# (pricing/caps live in the KB). Balanced ships at 65 (founder decision
+# 2026-07-02): catch clearly sub-par builds first, tune after a week of
+# builder_judge_verdict telemetry.
+_DESIGN_REFINE_THRESHOLD = int(os.getenv("STEVE_BUILDER_REFINE_THRESHOLD_BEST", "70"))
+_DESIGN_REFINE_THRESHOLD_BALANCED = int(os.getenv("STEVE_BUILDER_REFINE_THRESHOLD_BALANCED", "65"))
 
-# The render/judge/repair pass runs on the SYNCHRONOUS build path, so it must be
-# strictly time-bounded — a build that overruns Cloud Run's request timeout (600s)
-# / job lease gets killed mid-flight and orphaned (the "endless loop" incident).
-# We cap the whole pass to a wall-clock budget, allow AT MOST ONE repair regen,
-# and give every upstream call a tight timeout. Worst realistic case:
-# render(45) + judge(60) + one regen(150) + re-render(45) ~= 300s, well under 600s.
-_QUALITY_BUDGET_SECONDS = 180
+
+def _refine_threshold(model: str) -> Optional[int]:
+    if model == _MODEL_BEST:
+        return _DESIGN_REFINE_THRESHOLD
+    if model == _MODEL_MID:
+        return _DESIGN_REFINE_THRESHOLD_BALANCED
+    return None  # fast tier: no refine
+
+
+# The render/judge/repair pass must be strictly time-bounded — a build that
+# overruns Cloud Run's request timeout (600s) / job lease gets killed mid-flight
+# and orphaned (the "endless loop" incident). Two mechanisms compose:
+# - a per-pass budget (below): render(~45) + judge(60) + one regen(150) +
+#   acceptance re-render(45) — the pass stops STARTING steps as it runs down,
+#   so the hard ceiling is ~budget + one started regen;
+# - a build-global deadline (_job_deadline, set by run_build_job): the pass and
+#   the pre-pass repairs can never stack onto a slow codegen past the request
+#   timeout, however much per-pass budget is nominally left.
+_QUALITY_BUDGET_SECONDS = 240
 _RENDER_TIMEOUT_SECONDS = 45
 _JUDGE_TIMEOUT_SECONDS = 60
 _REGEN_TIMEOUT_SECONDS = 150
@@ -1441,6 +1474,18 @@ _REGEN_TIMEOUT_SECONDS = 150
 # allowed to finish, but its own timeout caps the overrun).
 _MIN_BUDGET_FOR_REGEN = 90
 _MIN_BUDGET_FOR_JUDGE = 25
+
+# Safety margin under Cloud Run's 600s request timeout.
+_JOB_DEADLINE_SECONDS = 520
+_job_deadline: contextvars.ContextVar[Optional[float]] = contextvars.ContextVar(
+    "builder_job_deadline", default=None)
+
+
+def _job_time_left() -> float:
+    """Seconds until the build-global deadline; +inf outside a job (sync/test
+    paths, which skip verify anyway)."""
+    dl = _job_deadline.get()
+    return float("inf") if dl is None else dl - time.monotonic()
 
 
 def _has_multiplayer_wiring(html: str) -> bool:
@@ -1581,32 +1626,80 @@ def _repair_regen(html: str, model: str, instruction: str,
 
 def _render_quality_pass(html: str, *, prompt: str, facts: str, sources: List[str],
                         model: str, username: Optional[str],
-                        community_id: Optional[int]) -> str:
+                        community_id: Optional[int], kind: str = "") -> str:
     """Render the artifact, judge it, and apply AT MOST ONE targeted repair, all
-    within a hard wall-clock budget. Entirely best-effort: any failure (service
-    down, render/judge error, low budget) returns the artifact unchanged, and the
-    whole pass can never push the build past its request/lease timeout."""
+    within a hard wall-clock budget (further capped by the build-global
+    ``_job_deadline``). Entirely best-effort: any failure (service down,
+    render/judge error, low budget) returns the artifact unchanged, and the
+    whole pass can never push the build past its request/lease timeout.
+
+    Kind-aware fidelity: websites/apps are rendered at BOTH ~420px mobile and
+    1280px desktop (public builds are opened on laptops), plus a height-capped
+    full-page mobile shot so the judge can actually read below the fold — all
+    images go to the judge in ONE call."""
     from backend.services import render_service, vision_judge  # lazy: optional infra
 
     if not render_service.is_configured():
         return html
 
     report_progress(70, "testing")
-    deadline = time.monotonic() + _QUALITY_BUDGET_SECONDS
+    deadline = time.monotonic() + min(_QUALITY_BUDGET_SECONDS, max(0.0, _job_time_left()))
 
     def budget_left() -> float:
         return deadline - time.monotonic()
 
     if budget_left() < _RENDER_TIMEOUT_SECONDS:
         return html
+
+    desktop_worthy = _public_kind(kind) in {"website", "app"} if kind else False
+
+    def _render_shots(doc: str) -> Dict[str, Optional[Dict[str, Any]]]:
+        """Screenshot set for the judge, in parallel (worker is stateless; wall
+        clock ≈ one render). 'primary' is the height-capped full-page mobile
+        shot at dsf 1 — uncapped dsf-2 full-page shots reach the vision model
+        as unreadably narrow strips after provider downscaling."""
+        stubbed = _with_render_stub(doc)
+        timeout = min(_RENDER_TIMEOUT_SECONDS, max(10.0, budget_left()))
+        calls: Dict[str, Any] = {
+            "primary": lambda: render_service.render(
+                stubbed, read_timeout=timeout, scale=1, max_full_page_height=5000),
+        }
+        if desktop_worthy:
+            calls["fold"] = lambda: render_service.render(
+                stubbed, read_timeout=timeout, full_page=False)
+            calls["desktop"] = lambda: render_service.render(
+                stubbed, width=1280, height=800, full_page=False, scale=1, read_timeout=timeout)
+        results: Dict[str, Optional[Dict[str, Any]]] = {}
+        with ThreadPoolExecutor(max_workers=len(calls)) as pool:
+            futures = {name: pool.submit(fn) for name, fn in calls.items()}
+            for name, fut in futures.items():
+                try:
+                    results[name] = fut.result()
+                except Exception:
+                    logger.warning("builder: %s render failed", name, exc_info=True)
+                    results[name] = None
+        return results
+
+    def _judge_images(shots: Dict[str, Optional[Dict[str, Any]]]) -> List[Dict[str, str]]:
+        images: List[Dict[str, str]] = []
+        fold = shots.get("fold")
+        if fold and fold.get("screenshot"):
+            images.append({"label": "mobile viewport, top fold (~420px)", "b64": fold["screenshot"]})
+        primary = shots.get("primary")
+        if primary and primary.get("screenshot"):
+            images.append({"label": "full scrolled page (mobile, ~420px)", "b64": primary["screenshot"]})
+        desktop = shots.get("desktop")
+        if desktop and desktop.get("screenshot"):
+            images.append({"label": "desktop viewport (1280px) — websites/apps must hold up at both widths",
+                           "b64": desktop["screenshot"]})
+        return images
+
     try:
-        # Render with the CPoint bridge stubbed in — the play surface injects the
-        # real bridge, so judging the bare artifact misreads multiplayer builds.
-        shot = render_service.render(_with_render_stub(html),
-                                     read_timeout=min(_RENDER_TIMEOUT_SECONDS, budget_left()))
+        shots = _render_shots(html)
     except Exception:
         logger.warning("builder: render quality pass failed to render", exc_info=True)
         return html
+    shot = shots.get("primary")
     if not shot:
         return html
 
@@ -1630,19 +1723,21 @@ def _render_quality_pass(html: str, *, prompt: str, facts: str, sources: List[st
             fixed = True
             if budget_left() > _RENDER_TIMEOUT_SECONDS:
                 try:
-                    shot2 = render_service.render(_with_render_stub(html),
-                                                  read_timeout=min(_RENDER_TIMEOUT_SECONDS, budget_left()))
-                    if shot2:
-                        shot = shot2
+                    shots2 = _render_shots(html)
+                    if shots2.get("primary"):
+                        shots = shots2
+                        shot = shots2["primary"]
                 except Exception:
                     pass
 
-    # 2) Vision-judge the screenshot: data accuracy + design craft.
+    # 2) Vision-judge the screenshots: data accuracy + design craft.
     if budget_left() < _MIN_BUDGET_FOR_JUDGE:
         return html
     verdict = vision_judge.judge(
-        shot.get("screenshot", ""), username=username or "", brief=prompt, facts=facts,
+        _judge_images(shots) or shot.get("screenshot", ""),
+        username=username or "", brief=prompt, facts=facts,
         console_errors=shot.get("console_errors") or [], community_id=community_id,
+        kind=_public_kind(kind) if kind else "",
         timeout=min(_JUDGE_TIMEOUT_SECONDS, budget_left()),
     )
     if not verdict:
@@ -1666,32 +1761,64 @@ def _render_quality_pass(html: str, *, prompt: str, facts: str, sources: List[st
             html = repaired
             fixed = True
 
-    # 2b) Design-refine: only the 'best' tier, only when clearly below the bar.
-    if (not fixed and model == _MODEL_BEST and budget_left() > _MIN_BUDGET_FOR_REGEN
-            and verdict.get("design_score", 100) < _DESIGN_REFINE_THRESHOLD):
-        critique = verdict.get("critique") or []
+    # 2b) Design-refine: balanced + best tiers, when below the per-tier bar.
+    refine_triggered = False
+    refine_accepted = False
+    threshold = _refine_threshold(model)
+    if (not fixed and threshold is not None and budget_left() > _MIN_BUDGET_FOR_REGEN
+            and verdict.get("design_score", 100) < threshold):
+        critique = list(verdict.get("critique") or [])
+        if desktop_worthy and verdict.get("responsive_ok") is False:
+            critique.append(
+                "Fix the desktop (1280px) layout: reflow to multi-column grids, contain content "
+                "in a centered max-width column, scale display type with clamp() — never a "
+                "stretched phone column between empty gutters."
+            )
         if critique:
+            refine_triggered = True
             instruction = (
                 "Raise the visual craft of this app. Apply these specific improvements while preserving "
                 "ALL functionality and content. Return the COMPLETE updated HTML:\n- " + "\n- ".join(critique)
             )
             repaired = _repair_regen(html, model, instruction, timeout=min(_REGEN_TIMEOUT_SECONDS, budget_left()))
             if repaired:
-                html = repaired
-                fixed = True
+                # Acceptance gate: a design refine must never ship functionally
+                # broken. Cheap render-only check (no AI spend); on any doubt,
+                # ship the pre-refine artifact.
+                prior_errs = set(shot.get("console_errors") or [])
+                try:
+                    check = render_service.render(
+                        _with_render_stub(repaired), scale=1, max_full_page_height=5000,
+                        read_timeout=min(_RENDER_TIMEOUT_SECONDS, max(30.0, budget_left())))
+                except Exception:
+                    check = None
+                new_errs = [e for e in ((check or {}).get("console_errors") or []) if e not in prior_errs]
+                if check and not check.get("blank") and not new_errs:
+                    html = repaired
+                    fixed = True
+                    refine_accepted = True
+                else:
+                    logger.warning("builder: design refine failed acceptance re-render; shipping original")
 
+    logger.info(
+        "builder_judge_verdict kind=%s model=%s score=%s data=%s responsive=%s refine_triggered=%s refine_accepted=%s",
+        _public_kind(kind) if kind else "unknown", model, verdict.get("design_score"),
+        verdict.get("data_verified"), verdict.get("responsive_ok"), refine_triggered, refine_accepted,
+    )
     return html
 
 
 def _generate_with_fallback(prompt: str, *, prior_html: Optional[str] = None,
                            temperature: float, model: str, verify: bool = False,
-                           username: Optional[str] = None, community_id: Optional[int] = None) -> tuple:
+                           username: Optional[str] = None, community_id: Optional[int] = None,
+                           kind: str = "") -> tuple:
     """Generate via ``model``; if a non-fast model (e.g. OpenAI 'best') errors,
     fall back to the fast model so a build never hard-fails. Returns
     ``(html, model_actually_used)``."""
     try:
         return generate_artifact(prompt, prior_html=prior_html, temperature=temperature, model=model,
-                                 verify=verify, username=username, community_id=community_id), model
+                                 verify=verify, username=username, community_id=community_id,
+                                 kind=kind), model
     except BuildCancelled:
         raise  # user cancel is not a model failure — never burn a fallback call
     except Exception:
@@ -1699,7 +1826,7 @@ def _generate_with_fallback(prompt: str, *, prior_html: Optional[str] = None,
             logger.warning("builder: model %s failed; falling back to %s", model, _MODEL_FAST)
             return (generate_artifact(prompt, prior_html=prior_html, temperature=temperature,
                                       model=_MODEL_FAST, verify=verify, username=username,
-                                      community_id=community_id),
+                                      community_id=community_id, kind=kind),
                     _MODEL_FAST)
         raise
 
@@ -1708,12 +1835,16 @@ def create_creation(*, username: str, community_id: Optional[int], prompt: str,
                     title: Optional[str] = None, tier: str = "fast",
                     verify: bool = False) -> Dict[str, Any]:
     """Generate a first artifact from ``prompt`` and persist it as a draft."""
+    # Kind is inferred BEFORE codegen (prompt carries the signal; the title
+    # doesn't exist yet) so the verify pass can pick per-kind renders/rubric,
+    # then upgraded by the artifact signal so pipeline and stored kind agree.
+    build_kind = _public_kind(infer_creation_kind(prompt, title))
     html, model_used = _generate_with_fallback(
         prompt, temperature=0.8, model=resolve_model(tier),
-        verify=verify, username=username, community_id=community_id)
+        verify=verify, username=username, community_id=community_id, kind=build_kind)
     report_progress(92, "saving")
     resolved_title = (title or _extract_title(html, prompt))[:200]
-    creation_kind = infer_creation_kind(prompt, resolved_title)
+    creation_kind = "game" if _has_multiplayer_wiring(html) else build_kind
     history = _append_history(None, prompt)
     capsule_recipes_json = _capsule_recipes_json_from_html(html)
     now = _now()
@@ -1787,9 +1918,12 @@ def iterate_creation(*, creation_id: int, username: str, message: str, tier: str
     row = get_creation(creation_id)
     if not row or row.get("created_by") != username:
         raise PermissionError("creation not found")
+    prior = row.get("html_content") or ""
+    iterate_kind = "game" if _has_multiplayer_wiring(prior) else _public_kind(row.get("kind"))
     html, model_used = _generate_with_fallback(
-        message, prior_html=row.get("html_content"), temperature=0.2, model=resolve_model(tier),
-        verify=verify, username=username, community_id=row.get("community_id"))
+        message, prior_html=prior, temperature=0.2, model=resolve_model(tier),
+        verify=verify, username=username, community_id=row.get("community_id"),
+        kind=iterate_kind)
     report_progress(92, "saving")
     history = _append_history(row.get("prompt_history"), message)
     now = _now()
@@ -2185,6 +2319,9 @@ def run_build_job(job_id: int) -> Dict[str, Any]:
     request_type = "builder_iterate" if kind == "iterate" else "builder_create"
 
     progress_token = _progress_job.set(job_id_int)
+    # Build-global deadline: the quality pass and pre-pass repairs key off this
+    # so they can never stack onto a slow codegen past Cloud Run's 600s timeout.
+    deadline_token = _job_deadline.set(time.monotonic() + _JOB_DEADLINE_SECONDS)
     try:
         report_progress(5, "starting")
         if kind == "iterate":
@@ -2262,6 +2399,7 @@ def run_build_job(job_id: int) -> Dict[str, Any]:
                 "job": get_build_job(job_id_int)}
     finally:
         _progress_job.reset(progress_token)
+        _job_deadline.reset(deadline_token)
 
 
 def _cloud_tasks_config() -> Dict[str, str]:

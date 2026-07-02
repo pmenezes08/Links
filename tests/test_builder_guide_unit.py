@@ -102,6 +102,38 @@ def test_build_guide_forbids_meta_text_in_the_artifact():
         assert anchor.lower() in guide.lower(), f"guide missing anchor: {anchor}"
 
 
+def test_build_guide_teaches_canvas_by_kind_and_archetypes():
+    """The dark-canvas MUST is scoped: websites choose the canvas that fits the
+    subject, committed through named art-direction archetypes."""
+    guide = builder._SYSTEM_PROMPT
+    for anchor in (
+        "canvas by kind",
+        "light editorial or warm canvas",
+        "dark default; websites may go light",
+        "Product / startup landing",
+        "Editorial / magazine",
+        "Portfolio / photo-forward",
+        "Local business / warm service",
+        "do not default every website to dark-tech",
+        "a real footer",
+    ):
+        assert anchor.lower() in guide.lower(), f"guide missing anchor: {anchor}"
+
+
+def test_build_guide_teaches_app_shell_and_desktop():
+    guide = builder._SYSTEM_PROMPT
+    for anchor in (
+        "App shell",
+        "inline validation",
+        "empty state",
+        "never six equal tiles",
+        "max-width: 1140px",
+        "stretched single phone column",
+        "websites stay composed",  # juice scoped by kind
+    ):
+        assert anchor.lower() in guide.lower(), f"guide missing anchor: {anchor}"
+
+
 def test_converse_brief_contract_is_third_person_spec():
     """Chat-Steve's brief becomes the literal build spec — first-person plan
     prose ('I'll add a how-to-play intro…') renders as UI copy downstream."""

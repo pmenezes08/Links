@@ -64,10 +64,14 @@ def _id_token(audience: str) -> Optional[str]:
 
 
 def render(html: str, *, width: int = 420, height: int = 760,
-           full_page: bool = True, read_timeout: float = _DEFAULT_READ_TIMEOUT) -> Optional[Dict[str, Any]]:
+           full_page: bool = True, scale: int = 2, max_full_page_height: int = 0,
+           read_timeout: float = _DEFAULT_READ_TIMEOUT) -> Optional[Dict[str, Any]]:
     """Render ``html`` and return ``{screenshot, console_errors, dimensions,
     blank, overflow}`` — or ``None`` on any failure (degrade gracefully).
-    ``read_timeout`` caps the wait so a slow render can't overrun the caller's budget."""
+    ``read_timeout`` caps the wait so a slow render can't overrun the caller's
+    budget. ``scale`` is the device pixel ratio (1 keeps tall/wide shots readable
+    after the vision provider's downscale); ``max_full_page_height`` clips a
+    full-page shot at that many CSS px (0 = no clip)."""
     url = _service_url()
     if not url or not html:
         return None
@@ -80,10 +84,14 @@ def render(html: str, *, width: int = 420, height: int = 760,
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
+    payload: Dict[str, Any] = {"html": html, "width": width, "height": height,
+                               "full_page": full_page, "scale": scale}
+    if max_full_page_height:
+        payload["max_full_page_height"] = max_full_page_height
     try:
         resp = requests.post(
             f"{url}/render",
-            json={"html": html, "width": width, "height": height, "full_page": full_page},
+            json=payload,
             headers=headers,
             timeout=(_CONNECT_TIMEOUT, max(10.0, float(read_timeout))),
         )

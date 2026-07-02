@@ -1,10 +1,15 @@
 """cpoint-render — an isolated headless-Chromium render worker.
 
-`POST /render { html, width?, height?, full_page? }` renders a self-contained
-HTML document and returns a PNG screenshot plus render diagnostics (console
-errors, scroll dimensions, blank/overflow flags). Consumed by the Steve Builder
-pipeline in the main app (cpoint-app) to screenshot generated artifacts for the
-vision-judge and to detect render failures.
+`POST /render { html, width?, height?, full_page?, scale?, max_full_page_height? }`
+renders a self-contained HTML document and returns a PNG screenshot plus render
+diagnostics (console errors, scroll dimensions, blank/overflow flags). Consumed
+by the Steve Builder pipeline in the main app (cpoint-app) to screenshot
+generated artifacts for the vision-judge and to detect render failures.
+
+`scale` (1 or 2, default 2) is the device pixel ratio; `max_full_page_height`
+(CSS px) clips a full-page shot — vision providers downscale very tall images
+to a fixed long edge, so an uncapped dsf-2 full-page landing page reaches the
+judge as an unreadably narrow strip.
 
 Design notes:
 - **Private service** — every request must carry the shared secret (mirrors the
@@ -66,6 +71,15 @@ def render():
     except (TypeError, ValueError):
         width, height = _DEFAULT_W, _DEFAULT_H
     full_page = bool(body.get("full_page", True))
+    try:
+        scale = 1 if int(body.get("scale") or 2) == 1 else 2
+    except (TypeError, ValueError):
+        scale = 2
+    try:
+        max_fp_height = int(body.get("max_full_page_height") or 0)
+        max_fp_height = max(1000, min(16000, max_fp_height)) if max_fp_height else 0
+    except (TypeError, ValueError):
+        max_fp_height = 0
 
     console_errors: list[str] = []
 
@@ -81,7 +95,7 @@ def render():
             try:
                 page = browser.new_page(
                     viewport={"width": width, "height": height},
-                    device_scale_factor=2,
+                    device_scale_factor=scale,
                 )
                 page.on("console", _on_console)
                 page.on("pageerror", lambda e: console_errors.append(f"pageerror: {e}"[:300]))
@@ -97,7 +111,18 @@ def render():
                     " text: (document.body ? document.body.innerText : '').trim().length,"
                     " nodes: document.querySelectorAll('body *').length })"
                 )
-                shot = page.screenshot(full_page=full_page, type="png")
+                if full_page and max_fp_height and metrics.get("sh", 0) > max_fp_height:
+                    # Clip a too-tall page so the judge receives a readable image
+                    # (Playwright's clip captures beyond the viewport).
+                    try:
+                        shot = page.screenshot(
+                            type="png",
+                            clip={"x": 0, "y": 0, "width": width, "height": max_fp_height},
+                        )
+                    except Exception:
+                        shot = page.screenshot(full_page=True, type="png")
+                else:
+                    shot = page.screenshot(full_page=full_page, type="png")
             finally:
                 browser.close()
     except Exception as e:  # never raise to the caller

@@ -175,6 +175,148 @@ def test_iteration_prompt_forbids_visible_change_notes(monkeypatch):
     assert "told about changes in chat" in seen["user"]
 
 
+_GOOD_SHOT = {"screenshot": "img", "console_errors": [], "blank": False,
+              "overflow": False, "dimensions": {}}
+_GOOD_VERDICT = {"render_ok": True, "design_score": 90, "data_verified": "na",
+                 "data_issues": [], "critique": [], "responsive_ok": True}
+
+
+def _quality_pass(monkeypatch, *, model, kind="", score=90, critique=None,
+                  responsive_ok=True, repaired="", accept_shot=None):
+    """Run _render_quality_pass with everything faked; returns (out, spies)."""
+    from backend.services import render_service, vision_judge
+    spies = {"renders": [], "judge_kind": None, "regens": 0}
+    monkeypatch.setattr(render_service, "is_configured", lambda: True)
+
+    # The pass injects the CPoint stub into what it renders, so match the
+    # repaired artifact by its body content, not the whole string.
+    marker = ""
+    if repaired and "<body>" in repaired:
+        marker = repaired.split("<body>", 1)[1].split("</body>", 1)[0]
+
+    def fake_render(html, **k):
+        spies["renders"].append({"width": k.get("width", 420), "html": html})
+        if accept_shot is not None and marker and marker in html:
+            return accept_shot
+        return dict(_GOOD_SHOT)
+
+    monkeypatch.setattr(render_service, "render", fake_render)
+
+    def fake_judge(images, **k):
+        spies["judge_kind"] = k.get("kind")
+        return {**_GOOD_VERDICT, "design_score": score,
+                "critique": list(critique or []), "responsive_ok": responsive_ok}
+
+    monkeypatch.setattr(vision_judge, "judge", fake_judge)
+    monkeypatch.setattr(builder, "_repair_regen", lambda h, m, i, timeout=None: (
+        spies.__setitem__("regens", spies["regens"] + 1) or (repaired or None)))
+    out = builder._render_quality_pass(
+        "<!doctype html><html><body>original</body></html>",
+        prompt="x", facts="", sources=[], model=model, username="u",
+        community_id=1, kind=kind)
+    return out, spies
+
+
+def test_balanced_tier_refines_below_threshold(monkeypatch):
+    fixed_html = "<!doctype html><html><body>refined</body></html>"
+    out, spies = _quality_pass(monkeypatch, model=builder._MODEL_MID, kind="app",
+                               score=60, critique=["tighten spacing"], repaired=fixed_html)
+    assert spies["regens"] == 1
+    assert out == fixed_html  # acceptance re-render was clean → accepted
+
+
+def test_balanced_tier_does_not_refine_at_or_above_threshold(monkeypatch):
+    out, spies = _quality_pass(monkeypatch, model=builder._MODEL_MID, kind="app",
+                               score=builder._DESIGN_REFINE_THRESHOLD_BALANCED,
+                               critique=["nit"], repaired="<html><body>r</body></html>")
+    assert spies["regens"] == 0
+    assert "original" in out
+
+
+def test_fast_tier_never_refines(monkeypatch):
+    out, spies = _quality_pass(monkeypatch, model=builder._MODEL_FAST, kind="app",
+                               score=10, critique=["everything"], repaired="<html><body>r</body></html>")
+    assert spies["regens"] == 0
+    assert "original" in out
+
+
+def test_refine_discarded_when_acceptance_render_breaks(monkeypatch):
+    broken = "<!doctype html><html><body>refined-broken</body></html>"
+    blank_shot = {"screenshot": "img", "console_errors": ["pageerror: boom"],
+                  "blank": True, "overflow": False, "dimensions": {}}
+    out, spies = _quality_pass(monkeypatch, model=builder._MODEL_BEST, kind="website",
+                               score=50, critique=["fix hero"], repaired=broken,
+                               accept_shot=blank_shot)
+    assert spies["regens"] == 1
+    assert "original" in out  # broken refine never ships
+
+
+def test_desktop_render_only_for_websites_and_apps(monkeypatch):
+    _, spies = _quality_pass(monkeypatch, model=builder._MODEL_FAST, kind="website")
+    assert any(r["width"] == 1280 for r in spies["renders"])
+    assert spies["judge_kind"] == "website"
+    _, spies = _quality_pass(monkeypatch, model=builder._MODEL_FAST, kind="game")
+    assert all(r["width"] != 1280 for r in spies["renders"])
+    assert spies["judge_kind"] == "game"
+
+
+def test_responsive_failure_feeds_desktop_fix_into_refine(monkeypatch):
+    captured = {}
+
+    def fake_regen(h, m, i, timeout=None):
+        captured["instruction"] = i
+        return None  # regen fails → original ships; we only inspect the prompt
+
+    from backend.services import render_service, vision_judge
+    monkeypatch.setattr(render_service, "is_configured", lambda: True)
+    monkeypatch.setattr(render_service, "render", lambda html, **k: dict(_GOOD_SHOT))
+    monkeypatch.setattr(vision_judge, "judge", lambda images, **k: {
+        **_GOOD_VERDICT, "design_score": 55, "critique": ["weak hero"], "responsive_ok": False})
+    monkeypatch.setattr(builder, "_repair_regen", fake_regen)
+    builder._render_quality_pass("<!doctype html><html><body>o</body></html>",
+                                 prompt="x", facts="", sources=[], model=builder._MODEL_MID,
+                                 username="u", community_id=1, kind="website")
+    assert "desktop (1280px) layout" in captured["instruction"]
+
+
+def test_quality_pass_respects_job_deadline(monkeypatch):
+    from backend.services import render_service
+    import time as _time
+    monkeypatch.setattr(render_service, "is_configured", lambda: True)
+    calls = {"n": 0}
+    monkeypatch.setattr(render_service, "render",
+                        lambda html, **k: calls.__setitem__("n", calls["n"] + 1) or dict(_GOOD_SHOT))
+    token = builder._job_deadline.set(_time.monotonic() - 1)  # already expired
+    try:
+        html = "<!doctype html><html><body>keep</body></html>"
+        out = builder._render_quality_pass(html, prompt="x", facts="", sources=[],
+                                           model=builder._MODEL_BEST, username="u",
+                                           community_id=1, kind="website")
+    finally:
+        builder._job_deadline.reset(token)
+    assert out == html
+    assert calls["n"] == 0
+
+
+def test_generate_artifact_overrides_kind_to_game_for_multiplayer(monkeypatch):
+    monkeypatch.setattr(builder.llm, "web_search_text", lambda *a, **k: "NONE")
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _MP_HTML)
+    seen = {}
+
+    def fake_pass(html, **k):
+        seen["kind"] = k.get("kind")
+        return html
+
+    monkeypatch.setattr(builder, "_render_quality_pass", fake_pass)
+    builder.generate_artifact("a members directory website", verify=True, kind="website")
+    assert seen["kind"] == "game"  # turnBasedGame in the artifact wins
+
+
+def test_infer_kind_hints_cover_common_games():
+    for prompt in ("a sudoku puzzle", "wordle clone", "tetris for the club", "2048 board"):
+        assert builder.infer_creation_kind(prompt) == "game", prompt
+
+
 def test_research_repair_never_strips_multiplayer_wiring(monkeypatch):
     """The research-grounding repair regenerates the whole document too — if its
     output drops the match wiring, ship the original best-effort instead."""

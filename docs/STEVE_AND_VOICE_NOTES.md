@@ -173,7 +173,7 @@ wrong surface is how counters desync.
 | `SURFACE_BUILDER` | One completed build/iteration job (Steve Build). **This** is what the `builder_turns_per_month` cap filters on — exactly one `log_usage` row per job (blocked jobs log via `log_block`). Not in `STEVE_SURFACES`. |
 | `SURFACE_BUILDER_CHAT` | Steve's pre-build design conversation (`builder.converse`). Distinct so chatting never consumes a build turn. Not in `STEVE_SURFACES`. |
 | `SURFACE_BUILDER_PLAN` | The tiny "here's what I'll make" narration call while a build runs. Spend visibility only; never counts against the build cap. Not in `STEVE_SURFACES`. |
-| `SURFACE_BUILDER_JUDGE` | The vision-judge grading a rendered build screenshot (drives render-fix / data verification / design-refine repairs). Spend visibility only; never counts against the build cap. Not in `STEVE_SURFACES`. |
+| `SURFACE_BUILDER_JUDGE` | The vision-judge grading a rendered build (drives render-fix / data verification / design-refine repairs). One row per judge call — a single call may now carry 2–3 labeled screenshots (mobile fold, full page, desktop) for websites/apps. Spend visibility only; never counts against the build cap. Not in `STEVE_SURFACES`. |
 
 **Builder model routing** is three-tier (`BUILDER_TIERS` in `builder.py`: fast=Grok, balanced=GPT-5.x, best=Claude Opus; env-overridable, users only ever see the Quick/Polished/Showpiece labels) and every tier still routes through `content_generation/llm.py` — never a vendor SDK directly. The build pipeline, verification pass, and artifact-hygiene guards are documented in `docs/STEVE_BUILD.md`; the injected build guide is `backend/services/builder_guide.md` (living doc).
 
