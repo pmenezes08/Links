@@ -841,6 +841,12 @@ def _block_unverified_users():
         # Cloud Scheduler cannot send cookies, so they must bypass this gate.
         if path.startswith('/api/cron/'):
             return None
+        # Internal service-to-service endpoints (e.g. the Cloud Tasks builder
+        # worker /api/internal/builder/jobs/<id>/run) authenticate via shared
+        # secret headers in their handlers — Cloud Tasks cannot send cookies,
+        # so a session gate here turns every delivery into a 401 retry-storm.
+        if path.startswith('/api/internal/'):
+            return None
         # Session required, but must run even if email not verified (logout cleanup)
         session_auth_unverified_ok = (
             '/api/push/unregister_fcm',
