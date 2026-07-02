@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useBuilder, type Creation, type BuilderTier, type BuilderMode, type BuilderAgentMode } from '../hooks/useBuilder'
+import { useBuilder, type Creation, type BuilderTier, type BuilderMode, type BuilderAgentMode, type BuilderJob } from '../hooks/useBuilder'
 import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
 import PlayableCreation from '../components/builder/PlayableCreation'
 import CreationPreview from '../components/builder/CreationPreview'
@@ -101,18 +101,57 @@ function Meter({ level, accent }: { level: number; accent: string }) {
   )
 }
 
-function BuildingRow() {
+// Server checkpoint stage keys → user-facing copy (see builder.report_progress).
+const STAGE_COPY: Record<string, string> = {
+  starting: "Steve's on it",
+  research: 'Researching real facts',
+  coding: 'Writing the code',
+  reviewing: 'Checking the details',
+  testing: 'Testing in a real browser',
+  polishing: 'Polishing the design',
+  saving: 'Saving your build',
+  done: 'Done',
+}
+
+function BuildingRow({ job }: { job?: BuilderJob | null }) {
   const [secs, setSecs] = useState(0)
+  // Displayed percent: catches up quickly to the server's honest checkpoints
+  // and creeps gently between them so the bar never looks frozen — but is
+  // capped just above the last real checkpoint so it can't overpromise.
+  const [disp, setDisp] = useState(0)
+  const server = Math.max(0, Math.min(100, job?.progress ?? 0))
+  const serverRef = useRef(server)
+  serverRef.current = server
   useEffect(() => {
-    const id = window.setInterval(() => setSecs((s) => s + 1), 1000)
+    const id = window.setInterval(() => {
+      setSecs((s) => s + 1)
+      setDisp((d) => {
+        const sv = serverRef.current
+        if (d < sv) return Math.min(sv, d + Math.max(2, (sv - d) / 3))
+        const cap = sv >= 100 ? 100 : Math.min(sv + 12, 95)
+        return Math.min(cap, d + 0.3)
+      })
+    }, 1000)
     return () => window.clearInterval(id)
   }, [])
-  const label = secs < 4 ? STAGES[0] : secs < 12 ? STAGES[1] : secs < 25 ? STAGES[2] : STAGES[3]
+  const pct = Math.round(disp)
+  const stageLabel = STAGE_COPY[job?.progress_stage || '']
+  const label = stageLabel
+    || (job?.status === 'queued' ? 'Getting a builder ready'
+      : secs < 4 ? STAGES[0] : secs < 12 ? STAGES[1] : secs < 25 ? STAGES[2] : STAGES[3])
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '14px 0' }}>
-      <Avatar />
-      <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid rgba(0,206,200,0.25)', borderTopColor: '#00CEC8', animation: 'cp-spin 0.8s linear infinite' }} />
-      <span style={{ fontSize: 13, color: '#8a8a8a' }}>{label} · {secs}s</span>
+    <div style={{ margin: '14px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <Avatar />
+        <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid rgba(0,206,200,0.25)', borderTopColor: '#00CEC8', animation: 'cp-spin 0.8s linear infinite' }} />
+        <span style={{ fontSize: 13, color: '#8a8a8a' }}>{label} · {pct}% · {secs}s</span>
+      </div>
+      <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+        <span style={{ width: 22, flex: '0 0 auto' }} />
+        <div style={{ flex: 1, height: 5, borderRadius: 3, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+          <div style={{ width: `${pct}%`, height: '100%', borderRadius: 3, background: 'linear-gradient(90deg, #00CEC8, #4ADEDB)', transition: 'width 0.9s ease' }} />
+        </div>
+      </div>
     </div>
   )
 }
@@ -433,7 +472,7 @@ export default function BuilderPage() {
         {loading && <TypingRow />}
         {building && (
           <>
-            <BuildingRow />
+            <BuildingRow job={activeJob} />
             <div style={{ display: 'flex', gap: 10, margin: '2px 0 14px' }}>
               <span style={{ width: 22, flex: '0 0 auto' }} />
               <div style={{ fontSize: 13, lineHeight: 1.45, color: '#8a8a8a' }}>

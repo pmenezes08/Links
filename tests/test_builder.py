@@ -294,6 +294,56 @@ def test_reclaim_leaves_other_users_and_fresh_jobs_untouched():
     assert builder.get_build_job(int(peer["id"]))["status"] == "queued"
 
 
+def test_run_build_job_reports_progress_checkpoints(monkeypatch):
+    """The worker writes honest 0-100 checkpoints while it builds; a finished
+    job reads 100/'done' so the client can render a real progress bar."""
+    _make_user("maker")
+    cid = _make_community()
+    seen = []
+
+    def fake_generate(*_a, **_k):
+        # Mid-codegen the job must already show the 'coding' checkpoint —
+        # the whole point is feedback DURING the long model call.
+        job = builder.get_build_job(job_id)
+        seen.append((int(job["progress"] or 0), job["progress_stage"]))
+        return _FAKE_HTML
+
+    monkeypatch.setattr(builder.llm, "generate_text", fake_generate)
+    job_id = int(builder.create_build_job(
+        username="maker", community_id=cid, prompt="a game", tier="balanced")["id"])
+    assert int(builder.get_build_job(job_id)["progress"] or 0) == 0
+
+    result = builder.run_build_job(job_id)
+    assert result["success"] is True
+    done = builder.get_build_job(job_id)
+    assert int(done["progress"]) == 100
+    assert done["progress_stage"] == "done"
+    assert seen and seen[0][0] >= 20 and seen[0][1] == "coding"
+
+
+def test_report_progress_is_monotonic_and_scoped_to_the_worker():
+    """Progress never rewinds (repair loops re-enter earlier phases) and is a
+    no-op outside a job context (sync/local builds)."""
+    _make_user("maker")
+    cid = _make_community()
+    job_id = int(builder.create_build_job(
+        username="maker", community_id=cid, prompt="a game", tier="balanced")["id"])
+
+    # No active job in this context → no-op.
+    builder.report_progress(50, "coding")
+    assert int(builder.get_build_job(job_id)["progress"] or 0) == 0
+
+    token = builder._progress_job.set(job_id)
+    try:
+        builder.report_progress(60, "reviewing")
+        builder.report_progress(20, "coding")  # later, smaller → bar must not rewind
+        job = builder.get_build_job(job_id)
+        assert int(job["progress"]) == 60
+        assert job["progress_stage"] == "coding"
+    finally:
+        builder._progress_job.reset(token)
+
+
 def test_gate_allows_free_quota_then_blocks_at_cap():
     _make_user("capped")  # free tier → free builder quota
     allowed, reason, ent = gate_builder_or_reason("capped", enforce_override=True)

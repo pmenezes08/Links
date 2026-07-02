@@ -38,6 +38,10 @@ export type BuilderJob = {
   creation_id?: number | null
   result_creation_id?: number | null
   error?: string | null
+  /** Honest worker checkpoints, 0-100. */
+  progress?: number
+  /** Stage key ('research' | 'coding' | 'testing' | …) mapped to copy client-side. */
+  progress_stage?: string | null
 }
 
 type PublicPublishResult = {

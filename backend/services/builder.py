@@ -15,6 +15,7 @@ cookies / storage), which is the staging-safe equivalent of the dedicated
 
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import os
@@ -263,7 +264,7 @@ _JOB_COLS = [
     "id", "username", "community_id", "creation_id", "kind", "prompt", "tier",
     "status", "result_creation_id", "error", "attempts", "max_attempts",
     "worker_token", "lease_expires_at", "notified_at", "created_at",
-    "updated_at", "started_at", "finished_at",
+    "updated_at", "started_at", "finished_at", "progress", "progress_stage",
 ]
 
 
@@ -642,6 +643,9 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
             f"ALTER TABLE builder_jobs ADD COLUMN worker_token {_txt} NULL",
             f"ALTER TABLE builder_jobs ADD COLUMN lease_expires_at {_dt} NULL",
             f"ALTER TABLE builder_jobs ADD COLUMN notified_at {_dt} NULL",
+            # Live progress feedback (0-100 + a stage key the client maps to copy).
+            f"ALTER TABLE builder_jobs ADD COLUMN progress {_int} NOT NULL DEFAULT 0",
+            f"ALTER TABLE builder_jobs ADD COLUMN progress_stage {_txt} NULL",
         ):
             try:
                 cursor.execute(stmt)
@@ -1282,6 +1286,7 @@ def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperat
 
     # Build-time web research: if the creation needs current real-world info,
     # fetch it now and bake it in statically (the running app stays offline).
+    report_progress(10, "research")
     facts, sources = research_for_build(prompt)
     if facts:
         user_prompt = (
@@ -1291,6 +1296,9 @@ def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperat
             f"{facts}\n\n"
         ) + user_prompt
 
+    # Codegen is the single longest phase (tens of seconds up to a couple of
+    # minutes); the client interpolates between this checkpoint and the next.
+    report_progress(20, "coding")
     html = _clean_html(
         llm.generate_text(
             _SYSTEM_PROMPT,
@@ -1305,6 +1313,7 @@ def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperat
         raise ValueError("Steve returned an empty artifact")
     if len(html.encode("utf-8")) > MAX_HTML_BYTES:
         raise ValueError("Generated artifact exceeds size limit")
+    report_progress(60, "reviewing")
 
     # Verify the researched data actually landed; one targeted repair if not. The
     # model is only ASKED to use the facts — under a long prompt it can summarize,
@@ -1406,6 +1415,7 @@ def _render_quality_pass(html: str, *, prompt: str, facts: str, sources: List[st
     if not render_service.is_configured():
         return html
 
+    report_progress(70, "testing")
     deadline = time.monotonic() + _QUALITY_BUDGET_SECONDS
 
     def budget_left() -> float:
@@ -1457,6 +1467,7 @@ def _render_quality_pass(html: str, *, prompt: str, facts: str, sources: List[st
     )
     if not verdict:
         return html
+    report_progress(82, "polishing")
 
     # 2a) Web-data verification: on-screen values must match the researched data.
     if (not fixed and facts and verdict.get("data_verified") == "no"
@@ -1518,6 +1529,7 @@ def create_creation(*, username: str, community_id: Optional[int], prompt: str,
     html, model_used = _generate_with_fallback(
         prompt, temperature=0.8, model=resolve_model(tier),
         verify=verify, username=username, community_id=community_id)
+    report_progress(92, "saving")
     resolved_title = (title or _extract_title(html, prompt))[:200]
     creation_kind = infer_creation_kind(prompt, resolved_title)
     history = _append_history(None, prompt)
@@ -1596,6 +1608,7 @@ def iterate_creation(*, creation_id: int, username: str, message: str, tier: str
     html, model_used = _generate_with_fallback(
         message, prior_html=row.get("html_content"), temperature=0.2, model=resolve_model(tier),
         verify=verify, username=username, community_id=row.get("community_id"))
+    report_progress(92, "saving")
     history = _append_history(row.get("prompt_history"), message)
     now = _now()
     ph = get_sql_placeholder()
@@ -1661,7 +1674,8 @@ def get_build_job(job_id: int) -> Optional[Dict[str, Any]]:
         c.execute(
             f"""SELECT id, username, community_id, creation_id, kind, prompt, tier, status,
                        result_creation_id, error, attempts, max_attempts, worker_token,
-                       lease_expires_at, notified_at, created_at, updated_at, started_at, finished_at
+                       lease_expires_at, notified_at, created_at, updated_at, started_at, finished_at,
+                       progress, progress_stage
                 FROM builder_jobs WHERE id = {ph}""",
             (job_id,),
         )
@@ -1767,6 +1781,50 @@ def _set_job_status(job_id: int, status: str, *, result_creation_id: Optional[in
         c = conn.cursor()
         c.execute(sql, tuple(params))
         conn.commit()
+
+
+# The async job (if any) the CURRENT worker is building, so deep generation code
+# (research, codegen, render/judge passes) can report progress without threading
+# a job id through every signature. Set by run_build_job inside the worker
+# thread / Cloud Tasks request handler; contextvars keep concurrent jobs on the
+# same instance isolated.
+_progress_job: contextvars.ContextVar[Optional[int]] = contextvars.ContextVar(
+    "builder_progress_job", default=None)
+
+# Honest checkpoint stages, in pipeline order. Stored as a stage KEY; the client
+# maps keys to user-facing copy (keeps the API i18n-friendly).
+_PROGRESS_STAGES = ("starting", "research", "coding", "reviewing", "testing",
+                    "polishing", "saving", "done")
+
+
+def report_progress(pct: int, stage: str) -> None:
+    """Best-effort 0-100 progress checkpoint for the job this worker is running.
+
+    Monotonic: a later, smaller value never rewinds the bar (repair loops and
+    retries would otherwise make progress jump backwards). No-op outside a job
+    (sync/local paths) and never raises — progress must not fail a build. Also
+    bumps ``updated_at``, which doubles as the liveness signal the stale-job
+    reaper keys on, so a long build that reports progress is never reclaimed as
+    abandoned mid-run.
+    """
+    job_id = _progress_job.get()
+    if not job_id:
+        return
+    try:
+        pct = max(0, min(100, int(pct)))
+        ph = get_sql_placeholder()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"""UPDATE builder_jobs
+                    SET progress = CASE WHEN progress < {ph} THEN {ph} ELSE progress END,
+                        progress_stage = {ph}, updated_at = {ph}
+                    WHERE id = {ph}""",
+                (pct, pct, (stage or "")[:32], _now(), job_id),
+            )
+            conn.commit()
+    except Exception:
+        logger.debug("builder: progress update failed for job %s", job_id, exc_info=True)
 
 
 def claim_build_job(job_id: int, worker_token: str, lease_seconds: int = _LEASE_SECONDS) -> bool:
@@ -1893,7 +1951,9 @@ def run_build_job(job_id: int) -> Dict[str, Any]:
     creation_id = job.get("creation_id")
     request_type = "builder_iterate" if kind == "iterate" else "builder_create"
 
+    progress_token = _progress_job.set(job_id_int)
     try:
+        report_progress(5, "starting")
         if kind == "iterate":
             creation = iterate_creation(
                 creation_id=int(creation_id), username=username, message=prompt, tier=tier,
@@ -1905,6 +1965,7 @@ def run_build_job(job_id: int) -> Dict[str, Any]:
                 verify=True,
             )
         result_id = int(creation["id"])
+        report_progress(100, "done")
         _set_job_status(job_id_int, "succeeded", result_creation_id=result_id,
                         finished=True, clear_worker=True)
         try:
@@ -1960,6 +2021,8 @@ def run_build_job(job_id: int) -> Dict[str, Any]:
             )
         return {"success": False, "error": str(exc)[:255], "transient": False,
                 "job": get_build_job(job_id_int)}
+    finally:
+        _progress_job.reset(progress_token)
 
 
 def _cloud_tasks_config() -> Dict[str, str]:

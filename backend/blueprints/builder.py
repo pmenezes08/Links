@@ -112,6 +112,10 @@ def _job_payload(job):
         "creation_id": job.get("creation_id"),
         "result_creation_id": job.get("result_creation_id"),
         "error": job.get("error"),
+        # Live build progress: honest worker checkpoints (0-100) + a stage key
+        # the client maps to user-facing copy.
+        "progress": _safe_int(job.get("progress")) or 0,
+        "progress_stage": job.get("progress_stage"),
     }
 
 

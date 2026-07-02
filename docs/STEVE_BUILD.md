@@ -89,7 +89,11 @@ Production durability uses Cloud Tasks with:
 - `PUBLIC_BASE_URL`
 - `BUILDER_JOB_SECRET` or `CRON_SHARED_SECRET`
 
-Without full Cloud Tasks config the code falls back to a non-durable in-process thread for local/staging convenience; `builder_async_health` logs which path is active at startup so prod never degrades silently.
+Without full Cloud Tasks config the code falls back to a non-durable in-process thread for local convenience; `builder_async_health` logs which path is active at startup so prod never degrades silently. **Staging is configured** (queue `builder-jobs-staging`, europe-west1) so staging builds survive deploys — a mid-build deploy just means the Cloud Tasks retry lands on the new revision and re-claims the job.
+
+### Progress feedback (0-100)
+
+The worker writes honest checkpoints to `builder_jobs.progress` (0-100) + `progress_stage` (a stage key: `starting` → `research` → `coding` → `reviewing` → `testing` → `polishing` → `saving` → `done`) via `report_progress`, which deep pipeline code calls without signature-threading (the active job id rides a `contextvars.ContextVar` set by `run_build_job`). Progress is monotonic (repair loops never rewind the bar) and each write bumps `updated_at`, which doubles as the liveness signal for the stale-job reaper — a long build that reports progress is never reclaimed as abandoned. `GET /api/builder/jobs/<id>` returns both fields; `BuildingRow` in `BuilderPage` renders a progress bar that catches up fast to server checkpoints and creeps gently between them (capped at checkpoint+12, never past 95 until the job really finishes) so the bar moves but can't overpromise.
 
 ## Sandbox And Runtime
 
