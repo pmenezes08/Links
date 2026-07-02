@@ -58,8 +58,8 @@ describe('MyBuilds', () => {
     vi.stubGlobal('fetch', mockFetchOnce({ success: true, creations: [] }))
     const { getByText } = render(<MyBuilds />)
     await waitFor(() => expect(getByText('Create your first build')).toBeTruthy())
-    fireEvent.click(getByText('Choose a community'))
-    expect(navigate).toHaveBeenCalledWith('/premium_dashboard')
+    fireEvent.click(getByText('Start building with Steve'))
+    expect(navigate).toHaveBeenCalledWith('/builder')
   })
 
   it('shows an error state with retry when the request fails', async () => {
@@ -89,20 +89,22 @@ describe('MyBuilds', () => {
         json: async () => ({ success: true }),
       } as Response)
     vi.stubGlobal('fetch', fetchMock)
-    vi.stubGlobal('confirm', vi.fn(() => true))
     vi.stubGlobal('alert', vi.fn())
 
     const { getByText, getByLabelText, queryByText } = render(<MyBuilds />)
     await waitFor(() => expect(getByText('Lisbon Quiz')).toBeTruthy())
     fireEvent.click(getByLabelText('Open options for Lisbon Quiz'))
     await waitFor(() => expect(getByText('Delete build')).toBeTruthy())
+    // Two-tap confirm: first tap arms, second tap deletes.
     fireEvent.click(getByText('Delete build'))
+    await waitFor(() => expect(getByText('Tap again to delete')).toBeTruthy())
+    fireEvent.click(getByText('Tap again to delete'))
 
     await waitFor(() => expect(queryByText('Lisbon Quiz')).toBeNull())
     expect(fetchMock).toHaveBeenLastCalledWith('/api/builder/7', expect.objectContaining({ method: 'DELETE' }))
   })
 
-  it('does not call delete when confirmation is cancelled', async () => {
+  it('does not call delete on a single un-confirmed tap', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -116,15 +118,67 @@ describe('MyBuilds', () => {
       json: async () => ({ success: true, communities: [] }),
     } as Response)
     vi.stubGlobal('fetch', fetchMock)
-    vi.stubGlobal('confirm', vi.fn(() => false))
 
     const { getByText, getByLabelText } = render(<MyBuilds />)
     await waitFor(() => expect(getByText('WIP Game')).toBeTruthy())
     fireEvent.click(getByLabelText('Open options for WIP Game'))
     await waitFor(() => expect(getByText('Delete build')).toBeTruthy())
     fireEvent.click(getByText('Delete build'))
+    // Armed, but never confirmed with a second tap.
+    expect(getByText('Tap again to delete')).toBeTruthy()
 
     expect(fetchMock).not.toHaveBeenCalledWith('/api/builder/5', expect.objectContaining({ method: 'DELETE' }))
+  })
+
+  it('opens the share sheet pre-expanded from the per-card Share button', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          creations: [
+            { id: 4, title: 'Club Trivia', kind: 'quiz', status: 'draft', community_id: null, published_post_id: null, updated_at: null, plays: 0 },
+          ],
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, communities: [{ id: 30, name: 'Padel Club', children: [] }] }),
+      } as Response)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { getByText } = render(<MyBuilds />)
+    await waitFor(() => expect(getByText('Club Trivia')).toBeTruthy())
+    fireEvent.click(getByText('Share'))
+    // Sheet opens with the share section already expanded → picker loads roots.
+    await waitFor(() => expect(getByText('Padel Club')).toBeTruthy())
+  })
+
+  it('opens the share sheet directly from a ?share deep link', async () => {
+    window.history.replaceState(null, '', '/builds?share=6')
+    Element.prototype.scrollIntoView = vi.fn()
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          creations: [
+            { id: 6, title: 'Padel Pong', kind: 'game', status: 'draft', community_id: null, published_post_id: null, updated_at: null, plays: 0 },
+          ],
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, communities: [{ id: 30, name: 'Padel Club', children: [] }] }),
+      } as Response)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { getByText } = render(<MyBuilds />)
+    await waitFor(() => expect(getByText('Build options')).toBeTruthy())
+    await waitFor(() => expect(getByText('Padel Club')).toBeTruthy())
+    // Param is consumed so a reload doesn't re-open the sheet.
+    expect(window.location.search).toBe('')
+    window.history.replaceState(null, '', '/')
   })
 
   it('copies an existing public build link', async () => {

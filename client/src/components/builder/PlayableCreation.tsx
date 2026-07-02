@@ -17,8 +17,6 @@ type Props = {
   creationId?: number
   communityId?: number | string | null
   onRuntimeError?: (msg: string) => void
-  onShare?: () => void
-  shared?: boolean
   startMatchId?: number | null
 }
 

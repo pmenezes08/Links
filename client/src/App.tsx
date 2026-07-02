@@ -914,8 +914,13 @@ function AppRoutes(){
   // scrollable overflow — enough for iOS to elastically rubber-band the WHOLE
   // page (the fixed header included) on a pull-down. Suppress it like chat does.
   const isSelfManagedScrollPage = currentPathName.startsWith('/post/')
+  // Builder is a self-contained full-height chat page (normal-flow 100dvh root,
+  // portaled composer, own keyboard lift via useFixedComposerKeyboard) — the
+  // global keyboard pad would double-count the inset.
+  const isBuilderPage = currentPathName === '/builder' ||
+    (currentPathName.startsWith('/community/') && currentPathName.endsWith('/builder'))
   const suppressGlobalKeyboardPad =
-    isChatRoute || isSelfManagedScrollPage || isOnboardingFullscreenOverlayActive()
+    isChatRoute || isSelfManagedScrollPage || isBuilderPage || isOnboardingFullscreenOverlayActive()
   const mainPaddingBottom = suppressGlobalKeyboardPad
     ? '0px'
     : hasBottomChrome

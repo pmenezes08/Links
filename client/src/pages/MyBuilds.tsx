@@ -97,6 +97,10 @@ export default function MyBuilds() {
   const [galleryIds, setGalleryIds] = useState<Set<number>>(() => new Set())
   const [copiedId, setCopiedId] = useState<number | null>(null)
   const [actionCreationId, setActionCreationId] = useState<number | null>(null)
+  // True when the actions sheet should open with the Share section expanded
+  // (per-card Share button, or the /builds?share=<id> deep link from Steve).
+  const [sheetShareOpen, setSheetShareOpen] = useState(false)
+  const [highlightId, setHighlightId] = useState<number | null>(null)
   const activeCreation = actionCreationId == null ? null : creations.find(item => item.id === actionCreationId) || null
 
   useEffect(() => {
@@ -127,13 +131,33 @@ export default function MyBuilds() {
     void load()
   }, [load])
 
+  // Deep links from the builder: ?highlight=<id> rings the fresh build so the
+  // list isn't undifferentiated; ?share=<id> opens its share sheet directly
+  // (Steve's play-close nudge — chat → share sheet in one tap).
+  useEffect(() => {
+    if (state !== 'ready') return
+    const params = new URLSearchParams(window.location.search || '')
+    const highlight = Number(params.get('highlight') || 0)
+    const share = Number(params.get('share') || 0)
+    if (!highlight && !share) return
+    window.history.replaceState(null, '', window.location.pathname)
+    const target = share || highlight
+    if (!creations.some(item => item.id === target)) return
+    setHighlightId(target)
+    requestAnimationFrame(() => {
+      document.getElementById(`build-${target}`)?.scrollIntoView({ block: 'center' })
+    })
+    window.setTimeout(() => setHighlightId(current => (current === target ? null : current)), 1800)
+    if (share) {
+      setSheetShareOpen(true)
+      setActionCreationId(share)
+    }
+  }, [state, creations])
+
+  // Confirmation is the sheet's two-tap arm (CreationActionsSheet) — by the
+  // time this runs the user has already confirmed.
   const deleteBuild = useCallback(async (creation: Creation) => {
     if (deletingIds.has(creation.id)) return
-    const title = creation.title?.trim() || 'Untitled build'
-    const ok = window.confirm(
-      `Delete "${title}"? This removes the build, its public web link, all saves, scores, ratings, and the community post if published. This cannot be undone.`,
-    )
-    if (!ok) return
     setDeletingIds(prev => new Set(prev).add(creation.id))
     try {
       const r = await fetch(`/api/builder/${creation.id}`, {
@@ -211,8 +235,6 @@ export default function MyBuilds() {
 
   const unpublishWeb = useCallback(async (creation: Creation) => {
     if (publishingIds.has(creation.id)) return
-    const ok = window.confirm('Unpublish this public web link? The build will still stay inside C-Point.')
-    if (!ok) return
     setPublishingIds(prev => new Set(prev).add(creation.id))
     try {
       const r = await fetch(`/api/builder/${creation.id}/publish-web`, {
@@ -237,12 +259,10 @@ export default function MyBuilds() {
     }
   }, [publishingIds])
 
+  // No confirm needed: the sheet's Explore section already states the listing
+  // is anonymous, and unlisting is always one tap away.
   const updateGallery = useCallback(async (creation: Creation, action: 'request' | 'unlist') => {
     if (galleryIds.has(creation.id)) return
-    if (action === 'request') {
-      const ok = window.confirm('Allow this creation to appear in Explore Creations inside C-Point. Your name, profile, and community will not be shown.')
-      if (!ok) return
-    }
     setGalleryIds(prev => new Set(prev).add(creation.id))
     try {
       const r = await fetch(`/api/builder/${creation.id}/gallery`, {
@@ -329,10 +349,10 @@ export default function MyBuilds() {
             </p>
             <button
               type="button"
-              onClick={() => navigate('/premium_dashboard')}
+              onClick={() => navigate('/builder')}
               className="mt-4 rounded-xl bg-cpoint-turquoise px-4 py-2 text-sm font-semibold text-black transition hover:brightness-110"
             >
-              Choose a community
+              Start building with Steve
             </button>
           </div>
         )}
@@ -342,7 +362,8 @@ export default function MyBuilds() {
             {creations.map((c) => (
               <li
                 key={c.id}
-                className="rounded-2xl border border-c-border bg-c-bg-elevated p-4 shadow-c-card"
+                id={`build-${c.id}`}
+                className={`rounded-2xl border border-c-border bg-c-bg-elevated p-4 shadow-c-card transition-shadow ${highlightId === c.id ? 'ring-2 ring-cpoint-turquoise/60' : ''}`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -383,7 +404,7 @@ export default function MyBuilds() {
                   </div>
                 </div>
 
-                <div className="mt-3 grid grid-cols-[1fr_1fr_auto] gap-2">
+                <div className="mt-3 grid grid-cols-[1fr_1fr_auto_auto] gap-2">
                   <button
                     type="button"
                     onClick={() => navigate(c.community_id != null ? `/community/${c.community_id}/creation/${c.id}` : `/creation/${c.id}`)}
@@ -400,7 +421,14 @@ export default function MyBuilds() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setActionCreationId(c.id)}
+                    onClick={() => { setSheetShareOpen(true); setActionCreationId(c.id) }}
+                    className="rounded-xl border border-cpoint-turquoise/50 px-3 py-2 text-xs font-semibold text-cpoint-turquoise transition hover:bg-cpoint-turquoise/10"
+                  >
+                    Share
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setSheetShareOpen(false); setActionCreationId(c.id) }}
                     aria-label={`Open options for ${c.title?.trim() || 'build'}`}
                     className="flex h-9 w-9 items-center justify-center rounded-xl border border-c-border bg-c-hover-bg text-c-text-tertiary transition hover:border-cpoint-turquoise/40 hover:text-c-text-primary"
                   >
@@ -413,6 +441,7 @@ export default function MyBuilds() {
         )}
         <CreationActionsSheet
           creation={activeCreation}
+          initialShareOpen={sheetShareOpen}
           copied={activeCreation ? copiedId === activeCreation.id : false}
           deleting={activeCreation ? deletingIds.has(activeCreation.id) : false}
           galleryWorking={activeCreation ? galleryIds.has(activeCreation.id) : false}

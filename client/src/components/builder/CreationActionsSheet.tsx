@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import CommunitySharePicker from './CommunitySharePicker'
 
@@ -33,6 +33,8 @@ type Props = {
   onPublishWeb: (creation: SheetCreation) => Promise<void>
   onShared: (creationId: number, communityId: number, response: { post_id?: number; community_id?: number; already_published?: boolean }) => void
   onUnpublishWeb: (creation: SheetCreation) => Promise<void>
+  /** Open with the Share section already expanded (deep links, Share buttons). */
+  initialShareOpen?: boolean
 }
 
 function titleFor(creation: SheetCreation): string {
@@ -54,8 +56,22 @@ export default function CreationActionsSheet({
   onPublishWeb,
   onShared,
   onUnpublishWeb,
+  initialShareOpen = false,
 }: Props) {
-  const [shareOpen, setShareOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(initialShareOpen)
+  // Destructive actions confirm in-sheet (two taps), never via window.confirm.
+  const [armed, setArmed] = useState<'delete' | 'unpublish' | null>(null)
+  const creationId = creation?.id ?? null
+  useEffect(() => {
+    // Re-arm defaults each time the sheet opens for a (different) creation.
+    setShareOpen(creationId != null ? initialShareOpen : false)
+    setArmed(null)
+  }, [creationId, initialShareOpen])
+  useEffect(() => {
+    if (!armed) return
+    const t = window.setTimeout(() => setArmed(null), 3500)
+    return () => window.clearTimeout(t)
+  }, [armed])
   if (!creation || typeof document === 'undefined') return null
   const isListed = creation.gallery_status === 'pending' || creation.gallery_status === 'approved'
   const isPublic = creation.public_status === 'published' && !!creation.public_url
@@ -151,11 +167,15 @@ export default function CreationActionsSheet({
                   </button>
                   <button
                     type="button"
-                    onClick={() => { void onUnpublishWeb(creation) }}
+                    onClick={() => {
+                      if (armed !== 'unpublish') { setArmed('unpublish'); return }
+                      setArmed(null)
+                      void onUnpublishWeb(creation)
+                    }}
                     disabled={publishing}
-                    className="rounded-xl border border-c-border bg-c-bg-elevated px-3 py-2 text-sm font-medium text-c-text-secondary transition hover:text-c-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                    className={`rounded-xl border px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${armed === 'unpublish' ? 'border-amber-400/40 bg-amber-500/10 text-amber-200' : 'border-c-border bg-c-bg-elevated text-c-text-secondary hover:text-c-text-primary'}`}
                   >
-                    {publishing ? 'Working...' : 'Unpublish web'}
+                    {publishing ? 'Working...' : armed === 'unpublish' ? 'Tap again to unpublish' : 'Unpublish web'}
                   </button>
                 </div>
               ) : (
@@ -188,13 +208,22 @@ export default function CreationActionsSheet({
               )}
               <button
                 type="button"
-                onClick={() => { void onDelete(creation) }}
+                onClick={() => {
+                  if (armed !== 'delete') { setArmed('delete'); return }
+                  setArmed(null)
+                  void onDelete(creation)
+                }}
                 disabled={deleting}
-                className="rounded-xl border border-red-400/25 bg-red-500/10 px-3 py-2 text-left text-sm font-semibold text-red-200 transition hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                className={`rounded-xl border px-3 py-2 text-left text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${armed === 'delete' ? 'border-red-400/60 bg-red-500/25 text-red-100' : 'border-red-400/25 bg-red-500/10 text-red-200 hover:bg-red-500/15'}`}
               >
-                {deleting ? 'Deleting...' : 'Delete build'}
+                {deleting ? 'Deleting...' : armed === 'delete' ? 'Tap again to delete' : 'Delete build'}
               </button>
             </div>
+            {armed === 'delete' && (
+              <p className="mt-2 text-xs text-c-text-tertiary">
+                Removes the build, its public web link, all saves, scores, ratings, and the community post if published. This cannot be undone.
+              </p>
+            )}
           </section>
         </div>
       </div>

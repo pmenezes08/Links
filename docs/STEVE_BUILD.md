@@ -185,6 +185,16 @@ Authorization model:
 
 Backend routes live under `/api/builder/<id>/match/*`; the route inventory is regenerated in `docs/BACKEND_ROUTES.md`.
 
+### Build verification & artifact hygiene
+
+The async build path runs a best-effort render + vision-judge quality pass (`builder._render_quality_pass`) against the `cpoint-render` headless-Chromium worker, with at most ONE repair regen per build inside a hard wall-clock budget.
+
+- **The verify render is stubbed, not bare.** The real `window.CPoint` bridge is injected by the client play surface only, so the pass injects `builder._RENDER_CPOINT_STUB` (mirroring the client bridge contract: same feature flags, `turnBasedGame` config/view shape, data APIs resolving benign empties) before posting HTML to the worker. The stub boots turn-based games into a fake active match so the judge screenshots the real board. Without it, guide-compliant multiplayer builds rendered blank and the render-fix regen "repaired" the match wiring out — the historic "game deploys, plays solo, but a challenge never starts" bug.
+- **Repairs can never strip multiplayer wiring.** When the artifact contains `turnBasedGame`, every repair prompt carries a preserve clause, and a repair whose output drops the wiring is discarded (original ships instead). Applies to render-fix, data-fix, design-refine, and the research-grounding repair.
+- **Artifact/chat separation is enforced.** `_clean_html` slices model output to the document (first `<!doctype`/`<html` through last `</html>`) so narration around the file never ships as visible page text, and `_artifact_meta_lint` flags build commentary rendered as UI ("I've updated…", "as requested", stray fences) and triggers one cleanup regen, shipping best-effort if it misses. The guide (§6.7) and the iteration prompt both forbid meta-text in the document; chat feedback is delivered separately.
+
+Unit coverage: `tests/test_builder_verify_unit.py` (no DB needed; in the CI list) plus guide anchors in `tests/test_builder_guide_unit.py`.
+
 ### Public data connectors
 
 `CPoint.data(connector, params, opts)` calls `GET /api/builder/<id>/data/feed`. The sandbox passes a connector ID and typed params; the backend constructs every upstream URL server-side. Raw URLs are never accepted. For user-facing "Refresh data" buttons, generated apps may pass `{refresh:true}` as the third argument; this skips the fresh cache but still uses route throttles, provider budget windows, and circuit breakers.
@@ -257,9 +267,15 @@ Explore Creations is an anonymous, opt-in gallery for creations inside C-Point:
 
 ### My Builds page
 
-`/builds` (under `DashboardLayout`) lists the signed-in user's creations from `GET /api/builder/mine` so they can find, play/preview, or continue building without remembering which community they used. Reachable from a dashboard shortcut and the native sidebar.
+`/builds` (under `DashboardLayout`) lists the signed-in user's creations from `GET /api/builder/mine` so they can find, play/preview, or continue building without remembering which community they used. Reachable from a dashboard shortcut, the native sidebar, and the builder header.
+
+**My Builds is the single share/distribution destination** (founder decision 2026-07-02): community sharing (`CommunitySharePicker`), public web publish, and Explore listing all live in `CreationActionsSheet` here — the in-chat build card on the builder page is play-only (`BuildResultCard`: preview + title + play + a "View in My Builds" link). Each card row also has a visible Share button that opens the sheet with the share section pre-expanded. Deep links: `/builds?highlight=<id>` scrolls to and rings the build; `/builds?share=<id>` opens its share sheet directly — this is the target of Steve's play-close nudge in the builder chat (fires once per build when the user closes the play overlay for the latest build). Destructive actions (delete, unpublish) confirm with an in-sheet two-tap arm, not `window.confirm`.
 
 Owners can permanently delete their builds from this page. The delete action calls `DELETE /api/builder/<id>` and removes the artifact row, `creation_data` rows (saves, scores, ratings), related `builder_jobs`, and the published community post if one exists. Deletion is owner-only and returns non-enumerating errors for non-owners.
+
+### Builder page (Build with Steve)
+
+`/builder` and `/community/<id>/builder` render `BuilderPage` — a first-class chat surface reusing the chat kernel's presentational layer only (`chat-thread-bg`, `liquid-glass-bubble--sent` for the user's messages, `ChatComposerPortal`/`ChatComposerCard`, design tokens, Font Awesome). It is a normal-flow `100dvh` page (no `position:fixed` root); both routes are in `App.tsx`'s `suppressGlobalKeyboardPad` set because the portaled composer manages its own keyboard lift (`useFixedComposerKeyboard`). Extracted pieces live in `client/src/components/builder/`: `BuildResultCard`, `BuildProgressRow`, `BuilderEmptyState`, `BuilderSheet` (portaled options/settings sheets), `SteveRichText` (builder markdown-lite). Steve's avatar is the shared `SteveAvatar` (canonical C-Point mark on a ringed disc).
 
 ### On-screen keyboard
 
