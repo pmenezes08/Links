@@ -2548,10 +2548,28 @@ def add_missing_tables():
                              created_at TEXT NOT NULL,
                              updated_at TEXT NOT NULL)''')
 
-            # Ensure helpful indexes
+            # Ensure helpful indexes. MySQL has no CREATE INDEX IF NOT
+            # EXISTS (the old form warned on every boot and the indexes were
+            # never created) — probe information_schema first. SQLite keeps
+            # the IF NOT EXISTS form, which it supports natively.
             try:
-                c.execute("CREATE INDEX IF NOT EXISTS idx_replies_post ON replies(post_id)")
-                c.execute("CREATE INDEX IF NOT EXISTS idx_replies_parent ON replies(parent_reply_id)")
+                if USE_MYSQL:
+                    for _idx_name, _idx_ddl in (
+                        ("idx_replies_post", "CREATE INDEX idx_replies_post ON replies(post_id)"),
+                        ("idx_replies_parent", "CREATE INDEX idx_replies_parent ON replies(parent_reply_id)"),
+                    ):
+                        c.execute(
+                            "SELECT 1 FROM information_schema.STATISTICS"
+                            " WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'replies'"
+                            f" AND INDEX_NAME = '{_idx_name}' LIMIT 1"
+                        )
+                        if c.fetchone() is None:
+                            c.execute(_idx_ddl)
+                            conn.commit()
+                            logger.info(f"Created missing replies index {_idx_name}")
+                else:
+                    c.execute("CREATE INDEX IF NOT EXISTS idx_replies_post ON replies(post_id)")
+                    c.execute("CREATE INDEX IF NOT EXISTS idx_replies_parent ON replies(parent_reply_id)")
             except Exception as e:
                 logger.warning(f"Could not create replies indexes: {e}")
 
