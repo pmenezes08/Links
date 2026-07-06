@@ -67,7 +67,20 @@ def _fetch_events(username: str):
     return out
 
 
+def _purge_events(username: str) -> None:
+    """Idempotency guard: the SQLite fallback persists rows across pytest
+    runs (file-backed DB, no per-test TRUNCATE), so persistence tests clean
+    their own usernames first."""
+    networking_events.ensure_events_table()
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"DELETE FROM networking_events WHERE username = {ph}", (username,))
+        conn.commit()
+
+
 def test_record_event_persists_row():
+    _purge_events("evt_alice")
     assert networking_events.record_event(
         "evt_alice",
         event_type="message_tap",
@@ -80,6 +93,7 @@ def test_record_event_persists_row():
 
 
 def test_record_event_drops_bad_input_without_raising():
+    _purge_events("evt_carol")
     assert networking_events.record_event("", event_type="page_view", source="direct") is False
     assert networking_events.record_event("evt_carol", event_type="bogus", source="direct") is False
     assert _fetch_events("evt_carol") == []
@@ -101,6 +115,7 @@ def test_event_route_requires_login():
 
 
 def test_event_route_records_for_logged_in_user():
+    _purge_events("evt_route_user")
     client = _client()
     with client.session_transaction() as sess:
         sess["username"] = "evt_route_user"
