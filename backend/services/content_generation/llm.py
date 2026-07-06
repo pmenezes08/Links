@@ -2,16 +2,95 @@
 
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import os
 import re
+from contextlib import contextmanager
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
 from urllib.parse import urlparse
 
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
+
+# ── Usage metering ───────────────────────────────────────────────────────
+#
+# These helpers are shared by content generation AND the Steve Builder. The
+# builder logs its own ai_usage rows, so logging unconditionally here would
+# double-count. Instead, metering is CONTEXT-GATED: a caller that owns the
+# spend (content-gen's execute_job) wraps its work in ``usage_context(...)``
+# and every paid call inside logs one real-token row to ai_usage_log. No
+# context → no row here. This closes the gap that let ~4.6k web-search grok
+# calls burn credits invisibly (July 2026 xAI credit exhaustion).
+
+_USAGE_CTX: contextvars.ContextVar[Optional[Dict[str, Any]]] = contextvars.ContextVar(
+    "content_gen_usage_ctx", default=None
+)
+
+
+@contextmanager
+def usage_context(*, username: str, request_type: str, community_id: Optional[int] = None):
+    """Attribute all paid LLM calls inside this block to one actor/job."""
+    token = _USAGE_CTX.set(
+        {
+            "username": username,
+            "request_type": request_type,
+            "community_id": community_id,
+        }
+    )
+    try:
+        yield
+    finally:
+        _USAGE_CTX.reset(token)
+
+
+def _usage_tokens(usage: Any) -> tuple:
+    """Extract (tokens_in, tokens_out) from any provider usage shape."""
+    if usage is None:
+        return None, None
+
+    def _get(*names):
+        for name in names:
+            val = getattr(usage, name, None)
+            if val is None and isinstance(usage, dict):
+                val = usage.get(name)
+            if val is not None:
+                try:
+                    return int(val)
+                except Exception:
+                    return None
+        return None
+
+    return (
+        _get("input_tokens", "prompt_tokens"),
+        _get("output_tokens", "completion_tokens"),
+    )
+
+
+def _log_llm_usage(response: Any, *, model: str, tools_web_search: bool = False) -> None:
+    """Log one ai_usage row for a completed upstream call — only when a
+    usage context is active. Never raises."""
+    ctx = _USAGE_CTX.get()
+    if not ctx:
+        return
+    try:
+        from backend.services import ai_usage
+
+        tokens_in, tokens_out = _usage_tokens(getattr(response, "usage", None))
+        ai_usage.log_usage(
+            ctx["username"],
+            surface=ai_usage.SURFACE_CONTENT_GEN,
+            request_type=ctx["request_type"],
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            community_id=ctx.get("community_id"),
+            model=model,
+            tools_web_search=tools_web_search,
+        )
+    except Exception:
+        logger.warning("content-gen usage logging failed", exc_info=True)
 
 XAI_API_KEY = os.getenv("XAI_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
@@ -286,6 +365,7 @@ def generate_json(
         max_tokens=effective_max,
         response_format={"type": "json_object"},
     )
+    _log_llm_usage(completion, model=GROK_MODEL_FAST)
     content = completion.choices[0].message.content if completion.choices else ""
     return _extract_json(content or "")
 
@@ -310,6 +390,7 @@ def generate_web_search_json(
         max_output_tokens=effective_max,
         temperature=temperature,
     )
+    _log_llm_usage(response, model=GROK_MODEL_FAST, tools_web_search=True)
     raw = (response.output_text or "").strip() if hasattr(response, "output_text") else ""
     if not raw:
         logger.warning("generate_web_search_json: empty output_text from responses API")
@@ -349,6 +430,7 @@ def web_search_json(system_prompt: str, user_prompt: str, *, max_output_tokens: 
     for tool_type in ("web_search", "web_search_preview"):  # tool name varies by SDK/model
         try:
             response = oai.responses.create(tools=[{"type": tool_type}], **base)
+            _log_llm_usage(response, model=_RESEARCH_MODEL, tools_web_search=True)
             raw = (response.output_text or "").strip() if hasattr(response, "output_text") else ""
             if raw:
                 break
@@ -380,6 +462,7 @@ def web_search_text(system_prompt: str, user_prompt: str, *, max_output_tokens: 
         tools=[{"type": "web_search"}],
         max_output_tokens=max_output_tokens,
     )
+    _log_llm_usage(response, model=GROK_MODEL_FAST, tools_web_search=True)
     return (response.output_text or "").strip() if hasattr(response, "output_text") else ""
 
 
@@ -418,6 +501,7 @@ def vision_json(
         messages=[{"role": "user", "content": content}],
         timeout=timeout,
     )
+    _log_llm_usage(msg, model=model)
     text = next((b.text for b in msg.content if getattr(b, "type", None) == "text"), "")
     return _extract_json(text)
 
@@ -464,6 +548,7 @@ def generate_text(
             messages=[{"role": "user", "content": user_prompt}],
             timeout=timeout if timeout is not None else 600,
         )
+        _log_llm_usage(msg, model=mdl)
         return next((b.text for b in msg.content if getattr(b, "type", None) == "text"), "")
     if _is_openai_model(mdl):
         # OpenAI GPT-5.x runs through the Responses API with max_output_tokens
@@ -478,6 +563,7 @@ def generate_text(
             max_output_tokens=effective_max,
             timeout=timeout,
         )
+        _log_llm_usage(response, model=mdl)
         if hasattr(response, "output_text") and response.output_text:
             return response.output_text
         return ""
@@ -489,6 +575,7 @@ def generate_text(
         max_tokens=effective_max,
         timeout=timeout,
     )
+    _log_llm_usage(completion, model=mdl)
     if not completion.choices:
         return ""
     return completion.choices[0].message.content or ""

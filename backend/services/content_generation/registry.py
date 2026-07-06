@@ -48,7 +48,28 @@ def execute_job(job: Dict[str, Any], *, triggered_by_username: str) -> Dict[str,
 
     run_id = create_run(job, triggered_by_username)
     try:
-        result: IdeaExecutionResult = entry["execute"](job)
+        # Meter every paid LLM call this idea makes: attribute to the job's
+        # owner (spend belongs to whoever scheduled it, not the cron actor)
+        # under surface=content_gen so background jobs can never burn
+        # invisibly again.
+        from backend.services.content_generation import llm as _llm
+
+        _usage_owner = (
+            str(job.get("actor_username") or "").strip()
+            or triggered_by_username
+            or "system-cron"
+        )
+        _community_id = None
+        try:
+            _community_id = int(job["community_id"]) if job.get("community_id") else None
+        except Exception:
+            pass
+        with _llm.usage_context(
+            username=_usage_owner,
+            request_type=f"content_{job['idea_id']}",
+            community_id=_community_id,
+        ):
+            result: IdeaExecutionResult = entry["execute"](job)
         output_post_id = None
         output_message_id = None
         if result.delivery_channel == "feed_post":
