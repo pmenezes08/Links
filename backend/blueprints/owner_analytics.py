@@ -101,6 +101,28 @@ def analytics_overview(community_id: int):
     return jsonify(payload), 200
 
 
+@owner_analytics_bp.route(
+    "/api/community/<int:community_id>/analytics/pending-invites", methods=["GET"]
+)
+def analytics_pending_invites(community_id: int):
+    """Invitees who haven't answered — the drill-in behind Steve's invite
+    action. OWNER-ONLY (exposes invitee emails): delegated admins get the same
+    non-enumerating 404 as outsiders, matching the action row they never see.
+    Not cached — the owner opens this right after sending invites and stale
+    rows would look broken."""
+    username = session.get("username")
+    if not username:
+        return api_errors.auth_required()
+
+    if not _viewer_is_owner(username, community_id):
+        return api_errors.not_found()
+
+    from backend.services.community_analytics import list_pending_invitees
+
+    scope = "network" if request.args.get("scope", "network") == "network" else "self"
+    return jsonify(list_pending_invitees(community_id, scope=scope)), 200
+
+
 @owner_analytics_bp.route("/api/owner/communities", methods=["GET"])
 def owner_communities():
     """Communities the caller owns or manages, with tier — for the dashboard's

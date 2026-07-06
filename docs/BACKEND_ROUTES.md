@@ -348,8 +348,9 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/onboarding/social_links` | POST | `onboarding_save_social_links` | `backend/blueprints/onboarding.py:1540` | onboarding save social links | `client/src/pages/OnboardingChat.tsx` (1) |
 | `/api/onboarding/complete` | POST | `onboarding_complete` | `backend/blueprints/onboarding.py:1557` | onboarding complete | `client/src/pages/OnboardingChat.tsx` (1) |
 | `/api/community/<int:community_id>/analytics/overview` | GET | `analytics_overview` | `backend/blueprints/owner_analytics.py:70` | analytics overview | *(no exact string match — may use helpers)* |
-| `/api/owner/communities` | GET | `owner_communities` | `backend/blueprints/owner_analytics.py:104` | owner communities | `client/src/pages/OwnerDashboard.tsx` (1) |
-| `/api/community/<int:community_id>/analytics/spaces` | GET | `analytics_spaces` | `backend/blueprints/owner_analytics.py:118` | analytics spaces | *(no exact string match — may use helpers)* |
+| `/api/community/<int:community_id>/analytics/pending-invites` | GET | `analytics_pending_invites` | `backend/blueprints/owner_analytics.py:104` | analytics pending invites | *(no exact string match — may use helpers)* |
+| `/api/owner/communities` | GET | `owner_communities` | `backend/blueprints/owner_analytics.py:126` | owner communities | `client/src/pages/OwnerDashboard.tsx` (1) |
+| `/api/community/<int:community_id>/analytics/spaces` | GET | `analytics_spaces` | `backend/blueprints/owner_analytics.py:140` | analytics spaces | *(no exact string match — may use helpers)* |
 | `/api/community/<int:community_id>/reports` | GET | `community_reports` | `backend/blueprints/owner_moderation.py:30` | community reports | *(no exact string match — may use helpers)* |
 | `/api/community/<int:community_id>/reports/review` | POST | `community_report_review` | `backend/blueprints/owner_moderation.py:45` | community report review | *(no exact string match — may use helpers)* |
 | `/api/community/<int:community_id>/reports/remove` | POST | `community_report_remove` | `backend/blueprints/owner_moderation.py:61` | community report remove | *(no exact string match — may use helpers)* |

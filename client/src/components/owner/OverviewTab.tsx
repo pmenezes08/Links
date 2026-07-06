@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import OwnerSteveMark from './OwnerSteveMark'
 import MetricCard from './MetricCard'
+import PendingInvitesSheet from './PendingInvitesSheet'
 import { STEVE_BRAND } from '../../brand/steveBrand'
-import type { OwnerOverview } from './types'
+import type { OwnerOverview, OwnerSteveAction } from './types'
 
 /**
  * The Overview tab. Everything below the Steve hero is rendered declaratively
@@ -20,6 +22,15 @@ export default function OverviewTab({ data, onUpgrade, isOwner = false, communit
   const navigate = useNavigate()
   const { steve, metrics, community } = data
   const actions = steve.actions ?? []
+  const [invitesOpen, setInvitesOpen] = useState(false)
+
+  // Steve actions with a behavior id are tappable drill-ins.
+  const actionHandler = (a: OwnerSteveAction): (() => void) | null => {
+    if (a.action === 'pending_invites' && isOwner && communityId != null) {
+      return () => setInvitesOpen(true)
+    }
+    return null
+  }
 
   const stats = metrics.filter(m => !m.locked && m.format === 'stat')
   const activity = metrics.filter(m => !m.locked && m.format === 'activity')
@@ -49,12 +60,30 @@ export default function OverviewTab({ data, onUpgrade, isOwner = false, communit
       </div>
       {actions.length > 0 && (
         <div className="mt-2.5 space-y-1.5 border-t border-cpoint-turquoise/15 pt-2.5">
-          {actions.map(a => (
-            <div key={a.key} className="flex items-start gap-1.5 text-[12px] leading-relaxed text-c-text-primary/90">
-              <i className="fa-solid fa-arrow-right mt-0.5 text-[9px] text-cpoint-turquoise" aria-hidden="true" />
-              <span>{t(a.key, a.params)}</span>
-            </div>
-          ))}
+          {actions.map(a => {
+            const onTap = actionHandler(a)
+            const row = (
+              <>
+                <i className="fa-solid fa-arrow-right mt-0.5 text-[9px] text-cpoint-turquoise" aria-hidden="true" />
+                <span className="min-w-0 flex-1">{t(a.key, a.params)}</span>
+                {onTap && <i className="fa-solid fa-chevron-right mt-0.5 shrink-0 text-[9px] text-c-text-tertiary" aria-hidden="true" />}
+              </>
+            )
+            return onTap ? (
+              <button
+                key={a.key}
+                type="button"
+                onClick={onTap}
+                className="flex w-full items-start gap-1.5 text-left text-[12px] leading-relaxed text-c-text-primary/90"
+              >
+                {row}
+              </button>
+            ) : (
+              <div key={a.key} className="flex items-start gap-1.5 text-[12px] leading-relaxed text-c-text-primary/90">
+                {row}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
@@ -98,6 +127,15 @@ export default function OverviewTab({ data, onUpgrade, isOwner = false, communit
         {wide.map(m => <MetricCard key={m.id} metric={m} onUpgrade={onUpgrade} isOwner={isOwner} communityId={communityId} />)}
         {locked.map(m => <MetricCard key={m.id} metric={m} onUpgrade={onUpgrade} isOwner={isOwner} communityId={communityId} />)}
       </div>
+
+      {communityId != null && (
+        <PendingInvitesSheet
+          open={invitesOpen}
+          communityId={communityId}
+          scope={data.scope}
+          onClose={() => setInvitesOpen(false)}
+        />
+      )}
     </div>
   )
 }

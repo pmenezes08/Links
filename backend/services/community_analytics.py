@@ -370,6 +370,69 @@ def _invites_activated(cursor, ph: str, ids: List[int]) -> int:
     return _scalar(cursor, sql, params)
 
 
+def list_pending_invitees(community_id: int, scope: str = "network") -> Dict[str, Any]:
+    """Who hasn't answered their invite — the drill-in behind Steve's
+    "N invites haven't been answered" action. OWNER-ONLY at the route (this
+    exposes invitee emails); same scope resolution as the overview so the list
+    matches the funnel's numbers. A person with several invite rows counts
+    once, and anyone who accepted via ANY row is excluded."""
+    scope = "network" if str(scope or "").strip().lower() == "network" else "self"
+    tier_info = _resolve_tier(community_id)
+    invitees: List[Dict[str, Any]] = []
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            ids = [community_id]
+            if scope == "network" and tier_info.get("is_paid"):
+                from backend.services.community import get_descendant_community_ids
+
+                try:
+                    ids = [int(cid) for cid in get_descendant_community_ids(c, community_id)] or [community_id]
+                except Exception:
+                    ids = [community_id]
+            n = _in_clause(ph, len(ids))
+
+            c.execute(
+                f"""
+                SELECT invited_username, invited_email, invited_at
+                FROM community_invitations
+                WHERE community_id IN {n}
+                  AND LOWER(COALESCE(status, 'pending')) <> 'accepted'
+                  AND NOT (invited_username IS NULL AND invited_email LIKE {ph})
+                  AND COALESCE(LOWER(invited_username), LOWER(invited_email)) <> 'admin'
+                  AND COALESCE(LOWER(invited_username), LOWER(invited_email)) NOT IN (
+                    SELECT COALESCE(LOWER(invited_username), LOWER(invited_email))
+                    FROM community_invitations
+                    WHERE community_id IN {n} AND LOWER(status) = 'accepted'
+                      AND NOT (invited_username IS NULL AND invited_email LIKE {ph})
+                  )
+                ORDER BY invited_at DESC
+                """,
+                tuple(ids) + (_QR_INVITE_EMAIL_PATTERN,) + tuple(ids) + (_QR_INVITE_EMAIL_PATTERN,),
+            )
+            seen: set = set()
+            for r in c.fetchall() or []:
+                username = r["invited_username"] if hasattr(r, "keys") else r[0]
+                email = r["invited_email"] if hasattr(r, "keys") else r[1]
+                invited_at = r["invited_at"] if hasattr(r, "keys") else r[2]
+                identity = (username or email or "").strip().lower()
+                if not identity or identity in seen:
+                    continue
+                seen.add(identity)
+                invitees.append({
+                    "display": username or email,
+                    "type": "username" if username else "email",
+                    "invited_at": invited_at.isoformat() if hasattr(invited_at, "isoformat") else invited_at,
+                })
+                if len(invitees) >= 200:
+                    break
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("list_pending_invitees failed for %s: %s", community_id, exc)
+    return {"success": True, "invitees": invitees, "count": len(invitees)}
+
+
 def _last_activity_days(cursor, ph: str, ids: List[int], now: datetime) -> Optional[int]:
     """Whole days since the most recent activity in the scope, or None if never
     active (drives the per-sub 'dormancy clock')."""
@@ -764,7 +827,10 @@ def _steve_actions(*, cap_warning: bool, member_cap: Any, members: int,
                         "params": {"count": members, "cap": int(member_cap or 0)}})
     pending = max(0, invites_sent - invites_accepted)
     if pending >= 3:
-        actions.append({"key": "owner.steve.action_invite", "params": {"n": pending}})
+        # "action" is a client behavior id: tapping this row opens the
+        # pending-invitees drill-in (owner-only, like the row itself).
+        actions.append({"key": "owner.steve.action_invite", "params": {"n": pending},
+                        "action": "pending_invites"})
     if activation and activation.get("joiners", 0) >= 3:
         joiners = activation["joiners"]
         activated = activation.get("activated", 0)

@@ -18,6 +18,14 @@ export type OwnerMetric = {
 export type OwnerSteveAction = {
   key: string
   params: Record<string, number | string>
+  // client behavior id — e.g. 'pending_invites' opens the invitee drill-in
+  action?: string
+}
+
+export type OwnerPendingInvitee = {
+  display: string
+  type: 'username' | 'email'
+  invited_at?: string | null
 }
 
 export type OwnerSteve = {

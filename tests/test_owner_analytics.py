@@ -964,3 +964,80 @@ def test_steve_actions_priority_and_admin_exclusion(mysql_dsn, monkeypatch):
     _login(client, "modA")
     steve_admin = _overview(client, a).get_json()["steve"]
     assert (steve_admin.get("actions") or []) == []
+
+
+# ---------------------------------------------------------------------------
+# Pending-invites drill-in (behind Steve's invite action) — OWNER-ONLY
+# ---------------------------------------------------------------------------
+
+def test_pending_invites_owner_only_and_deduped(mysql_dsn):
+    """The drill-in lists distinct unanswered invitees (emails included), so it
+    is owner-only: delegated admins and outsiders get the non-enumerating 404.
+    Accepted-elsewhere, QR placeholders, and 'admin' never appear."""
+    import bodybuilding_app
+
+    make_user("ownerA")
+    make_user("modA")
+    make_user("stranger")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")
+    _add_member("modA", a, role="admin")
+
+    _seed_invitations(a, [
+        ("kim", None, "pending"),
+        ("kim", "kim@x.com", "pending"),           # same person twice → once
+        (None, "lee@x.com", "pending"),
+        ("mia", None, "pending"),
+        ("mia", None, "accepted"),                  # accepted elsewhere → excluded
+        (None, "qr-invite-1@placeholder.local", "pending"),   # QR → excluded
+        ("admin", None, "pending"),                 # platform admin → excluded
+    ])
+
+    _login(client, "ownerA")
+    resp = client.get(f"/api/community/{a}/analytics/pending-invites")
+    assert resp.status_code == 200
+    invitees = resp.get_json()["invitees"]
+    displays = sorted(i["display"] for i in invitees)
+    assert displays == ["kim", "lee@x.com"]
+    types = {i["display"]: i["type"] for i in invitees}
+    assert types["kim"] == "username"
+    assert types["lee@x.com"] == "email"
+
+    # Delegated admin: same closed door as an outsider (emails are owner data).
+    _login(client, "modA")
+    assert client.get(f"/api/community/{a}/analytics/pending-invites").status_code == 404
+    _login(client, "stranger")
+    assert client.get(f"/api/community/{a}/analytics/pending-invites").status_code == 404
+
+
+def test_steve_invite_action_carries_drilldown_id(mysql_dsn):
+    """The invite action row advertises the pending_invites behavior so the
+    client can open the drill-in."""
+    import bodybuilding_app
+
+    make_user("ownerA")
+    make_user("m1")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")
+    _add_member("m1", a)
+    _seed_invitations(a, [
+        (None, "p1@x.com", "pending"),
+        (None, "p2@x.com", "pending"),
+        (None, "p3@x.com", "pending"),
+    ])
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"INSERT INTO posts (community_id, username, content) VALUES ({ph}, {ph}, {ph})",
+            (a, "m1", "activity so low_data is off"),
+        )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+    _login(client, "ownerA")
+    steve = _overview(client, a).get_json()["steve"]
+    invite_actions = [x for x in (steve.get("actions") or []) if x["key"] == "owner.steve.action_invite"]
+    assert invite_actions and invite_actions[0].get("action") == "pending_invites"
