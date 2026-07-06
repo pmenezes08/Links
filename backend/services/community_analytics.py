@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.onboarding_session import (
@@ -313,7 +313,9 @@ def _activity_band(active_7d: int, members: int) -> str:
     Four bands so there's a middle ground between thriving and dormant."""
     if active_7d <= 0:
         return "dormant"
-    ratio = active_7d / members if members > 0 else 1.0
+    # Clamp: group activity under a sub can count people who aren't formal
+    # sub members, so the raw ratio can exceed 1.0 for group-heavy subs.
+    ratio = min(1.0, active_7d / members) if members > 0 else 1.0
     if ratio >= 0.33:
         return "thriving"   # ~1 in 3 members active this week
     if ratio >= 0.10:

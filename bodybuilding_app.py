@@ -19075,78 +19075,17 @@ def delete_post():
             if not has_post_delete_permission(username, post['username'], post['community_id']):
                 return jsonify({'success': False, 'error': 'Post not found or unauthorized!'}), 403
 
-            # Steve welcome posts are locked from delete for the first 7 days
-            # so brand-new owners can't accidentally erase the community
-            # manual before they've had a chance to read it.
-            try:
-                from backend.services.steve_community_welcome import is_within_delete_lock
-                post_dict = dict(post) if hasattr(post, 'keys') else {}
-                if is_within_delete_lock(post_dict):
-                    return jsonify({
-                        'success': False,
-                        'error': "Steve's welcome post is locked from delete for the first 7 days. You can delete it after that if you'd rather.",
-                    }), 403
-            except Exception as lock_err:
-                logger.warning("delete_post: welcome lock check failed (non-fatal): %s", lock_err)
-            
-            # Get community_id for cache invalidation before deleting
-            post_community_id = post['community_id'] if post else None
-            
-            # Cancel any pending imagine jobs for this post
-            try:
-                ph = get_sql_placeholder()
-                c.execute(f"""
-                    UPDATE imagine_jobs 
-                    SET status = {ph}
-                    WHERE target_type = {ph} AND target_id = {ph} AND status IN ({ph}, {ph})
-                """, (IMAGINE_STATUS_ERROR, 'post', post_id, IMAGINE_STATUS_PENDING, IMAGINE_STATUS_PROCESSING))
-                conn.commit()
-            except Exception as e:
-                logger.warning(f"Could not cancel imagine jobs for post {post_id}: {e}")
-            
-            # Delete image file if it exists
-            if post['image_path']:
-                try:
-                    image_file_path = os.path.join('static', post['image_path'])
-                    if os.path.exists(image_file_path):
-                        os.remove(image_file_path)
-                except Exception as e:
-                    logger.warning(f"Could not delete image file {post['image_path']}: {e}")
-            # Delete video file if it exists (skip if pending)
-            video_path_val = None
-            try:
-                video_path_val = post['video_path']
-            except Exception:
-                try:
-                    video_path_val = post[2]
-                except Exception:
-                    video_path_val = None
-            if video_path_val and video_path_val != 'pending':
-                try:
-                    video_file_path = os.path.join('static', video_path_val)
-                    if os.path.exists(video_file_path):
-                        os.remove(video_file_path)
-                except Exception as e:
-                    logger.warning(f"Could not delete video file {video_path_val}: {e}")
-            
-            c.execute("DELETE FROM replies WHERE post_id= ?", (post_id,))
-            c.execute("DELETE FROM post_views WHERE post_id = ?", (post_id,))
-            c.execute("DELETE FROM posts WHERE id= ?", (post_id,))
-            conn.commit()
-        
-        # Invalidate community feed cache so deleted post disappears immediately
-        if post_community_id:
-            try:
-                invalidate_community_cache(post_community_id)
-                logger.info(f"Invalidated cache for community {post_community_id} after post deletion")
-            except Exception as cache_err:
-                logger.warning(f"Failed to invalidate cache after delete for community {post_community_id}: {cache_err}")
-        try:
-            from backend.services.post_detail_cache import invalidate_post_detail
-            invalidate_post_detail(post_id, scope="community")
-        except Exception as cache_err:
-            logger.warning(f"Post detail cache invalidate after delete failed: {cache_err}")
-        
+        # Full cleanup (welcome lock, imagine jobs, media incl. R2, replies,
+        # views, caches) is shared with the moderation/admin delete paths.
+        from backend.services.post_deletion import delete_post_cascade
+        payload, status = delete_post_cascade(post_id, actor=username)
+        if not payload.get('success'):
+            if status == 403:
+                return jsonify({'success': False, 'error': payload.get('message') or 'Post is locked.'}), 403
+            if status == 404:
+                return jsonify({'success': False, 'error': 'Post not found!'}), 404
+            return jsonify({'success': False, 'error': 'Failed to delete post'}), status
+
         logger.info(f"Post {post_id} deleted successfully by {username}")
         return jsonify(_api_errors.success_payload('feed.post_deleted')), 200
     except Exception as e:
@@ -19491,45 +19430,21 @@ def admin_delete_reported_post():
         return jsonify({'success': False, 'error': 'Post ID is required'}), 400
     
     try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            
-            # Get post info for cache invalidation
-            c.execute(f"SELECT community_id FROM posts WHERE id = {ph}", (post_id,))
-            post = c.fetchone()
-            community_id = post['community_id'] if post and hasattr(post, 'keys') else (post[0] if post else None)
-            
-            # Mark all reports for this post as reviewed
-            if USE_MYSQL:
-                c.execute(f"""
-                    UPDATE post_reports 
-                    SET status = 'reviewed', reviewed_by = {ph}, reviewed_at = NOW()
-                    WHERE post_id = {ph}
-                """, (username, post_id))
-            else:
-                c.execute(f"""
-                    UPDATE post_reports 
-                    SET status = 'reviewed', reviewed_by = {ph}, reviewed_at = datetime('now')
-                    WHERE post_id = {ph}
-                """, (username, post_id))
-            
-            # Delete the post (this will cascade to delete related data)
-            c.execute(f"DELETE FROM replies WHERE post_id = {ph}", (post_id,))
-            c.execute(f"DELETE FROM posts WHERE id = {ph}", (post_id,))
-            
-            conn.commit()
-            
-            # Invalidate cache
-            if community_id:
-                try:
-                    invalidate_community_cache(community_id)
-                except Exception as cache_err:
-                    logger.warning(f"Failed to invalidate cache: {cache_err}")
-            
-            logger.info(f"Reported post {post_id} deleted by admin {username}")
-            return jsonify(_api_errors.success_payload('feed.post_deleted'))
-    
+        # Shared cascade: resolves the post's reports, then cleans up replies,
+        # views, imagine jobs, media (incl. R2), and both caches. App admins
+        # bypass the welcome lock (global moderation tooling).
+        from backend.services.post_deletion import delete_post_cascade
+        payload, status = delete_post_cascade(
+            post_id, actor=username, resolve_reports=True, enforce_welcome_lock=False,
+        )
+        if not payload.get('success'):
+            if status == 404:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            return jsonify({'success': False, 'error': 'Failed to delete post'}), status
+
+        logger.info(f"Reported post {post_id} deleted by admin {username}")
+        return jsonify(_api_errors.success_payload('feed.post_deleted'))
+
     except Exception as e:
         logger.error(f"Error deleting reported post: {e}")
         return jsonify({'success': False, 'error': 'Failed to delete post'}), 500

@@ -127,8 +127,10 @@ def review_report(community_id: int, report_id: Any, action: str, reviewer: str)
 
 
 def remove_reported_post(community_id: int, post_id: Any, reviewer: str) -> Tuple[Dict[str, Any], int]:
-    """Delete a reported post (and its replies) and resolve its reports — only
-    if the post belongs to this community."""
+    """Delete a reported post and resolve its reports — only if the post
+    belongs to this community. The deletion itself runs through the shared
+    :func:`post_deletion.delete_post_cascade` so moderation removals clean up
+    everything a normal delete does (views, imagine jobs, media, caches)."""
     if not post_id:
         return {"success": False, "error": "post_id required"}, 400
     try:
@@ -142,28 +144,18 @@ def remove_reported_post(community_id: int, post_id: Any, reviewer: str) -> Tupl
             post_cid = row["community_id"] if hasattr(row, "keys") else row[0]
             if post_cid is None or int(post_cid) != int(community_id):
                 return {"success": False, "error": "not_found"}, 404
-
-            c.execute(
-                f"""
-                UPDATE post_reports
-                SET status = 'reviewed', reviewed_by = {ph}, reviewed_at = {ph}
-                WHERE post_id = {ph}
-                """,
-                (reviewer, _now(), post_id),
-            )
-            c.execute(f"DELETE FROM replies WHERE post_id = {ph}", (post_id,))
-            c.execute(f"DELETE FROM posts WHERE id = {ph}", (post_id,))
-            conn.commit()
     except Exception as exc:
-        logger.error("remove_reported_post failed: %s", exc)
+        logger.error("remove_reported_post scope check failed: %s", exc)
         return {"success": False, "error": "failed"}, 500
 
-    # Best-effort feed-cache invalidation so the post disappears promptly; the
-    # cache TTL covers us if the helper isn't importable.
-    try:
-        from bodybuilding_app import invalidate_community_cache
-        invalidate_community_cache(community_id)
-    except Exception:
-        pass
+    from backend.services.post_deletion import delete_post_cascade
 
+    payload, status = delete_post_cascade(int(post_id), actor=reviewer, resolve_reports=True)
+    if not payload.get("success"):
+        # Non-enumerating: whatever the cascade hit (lock, race-deleted), the
+        # moderator just sees the action fail; the welcome-lock message is
+        # safe to surface since the viewer already manages this community.
+        if status == 403:
+            return {"success": False, "error": payload.get("message") or "locked"}, 403
+        return {"success": False, "error": "not_found" if status == 404 else "failed"}, status
     return {"success": True}, 200
