@@ -396,6 +396,7 @@
     "steve": {
       "greeting": "Here's how {{community}} is doing — I've been keeping an eye on it.",
       "read_default": "You're up {{delta}} this week — {{wau}} active in the last 7 days, {{mau}} over the month, and {{communicating}} have messaged another member. {{complete}} of {{total}} have filled in their profile.",
+      "read_default_admin": "You're up {{delta}} this week — {{wau}} active in the last 7 days and {{mau}} over the month.",
       "read_empty": "Your community is just getting started. Invite a few people and post a welcome to get things going."
     }
   },

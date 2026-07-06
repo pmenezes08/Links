@@ -754,3 +754,86 @@ def test_top_active_names_contributors_not_lurkers(mysql_dsn):
     assert "m_post" in names
     assert "m_lurk" not in names        # reading a lot never ranks anyone
     assert active["dau"] >= 2           # ...but visits still count in aggregates
+
+
+# ---------------------------------------------------------------------------
+# owner_only enforcement + privacy regression + cache keys
+# ---------------------------------------------------------------------------
+
+def test_delegated_admin_never_receives_owner_only_metrics(mysql_dsn):
+    """owner_only is a server-side gate, not a label: delegated admins get
+    neither the descriptors nor their numbers via Steve's read."""
+    import bodybuilding_app
+
+    _ensure_profile_columns()
+    make_user("ownerA")
+    make_user("modA")
+    make_user("m1")
+    client = bodybuilding_app.app.test_client()
+    A = make_community("Dash A", creator_username="ownerA")
+    _add_member("modA", A, role="admin")
+    _add_member("m1", A)
+
+    # Owner sees the full payload.
+    _login(client, "ownerA")
+    owner_metrics = _by_id(_overview(client, A).get_json())
+    assert "profile_completion" in owner_metrics
+    assert "communicating" in owner_metrics
+
+    # Delegated admin: descriptors omitted, Steve read reduced.
+    _login(client, "modA")
+    body = _overview(client, A).get_json()
+    admin_metrics = _by_id(body)
+    assert "profile_completion" not in admin_metrics
+    assert "communicating" not in admin_metrics
+    assert body["steve"]["read_key"] == "owner.steve.read_default_admin"
+    assert "communicating" not in body["steve"]["read_params"]
+    assert "complete" not in body["steve"]["read_params"]
+
+
+def test_aggregate_payloads_never_name_members(mysql_dsn):
+    """Privacy regression: profile completion, communicating, and per-sub
+    bands are counts-only — no member username may appear anywhere in those
+    payload fragments. Leaderboards/most-active are the ONLY naming surfaces."""
+    import json
+
+    import bodybuilding_app
+
+    _ensure_profile_columns()
+    _ensure_activity_tables()
+    make_user("ownerA")
+    members = ["priv_alice", "priv_bob", "priv_carol"]
+    for u in members:
+        make_user(u)
+    client = bodybuilding_app.app.test_client()
+    A = make_community("Dash A", creator_username="ownerA")
+    sub = make_community("Dash Sub", creator_username="ownerA", parent_community_id=A)
+    for u in members:
+        _add_member(u, A)
+        _add_member(u, sub)
+    _set_professional("priv_alice")
+
+    _login(client, "ownerA")
+    body = _overview(client, A).get_json()
+    metrics = _by_id(body)
+    for metric_id in ("profile_completion", "communicating"):
+        blob = json.dumps(metrics[metric_id])
+        for u in members:
+            assert u not in blob, f"{metric_id} leaked {u}"
+
+    spaces = client.get(f"/api/community/{A}/analytics/spaces").get_json()
+    blob = json.dumps(spaces["subcommunities"])
+    for u in members:
+        assert u not in blob, f"spaces breakdown leaked {u}"
+
+
+def test_overview_cache_key_varies_by_viewer_role():
+    """Unit: the cache key must differ owner vs delegated admin — a shared key
+    would serve owner-only aggregates to admins for the TTL window."""
+    from backend.blueprints.owner_analytics import _overview_cache_key
+
+    owner_key = _overview_cache_key(7, "network", True)
+    admin_key = _overview_cache_key(7, "network", False)
+    assert owner_key != admin_key
+    assert _overview_cache_key(7, "self", True) != owner_key      # scope in key
+    assert _overview_cache_key(8, "network", True) != owner_key   # community in key

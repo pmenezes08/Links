@@ -396,6 +396,7 @@
     "steve": {
       "greeting": "Eis como vai {{community}} — tenho estado de olho.",
       "read_default": "Estás a crescer +{{delta}} esta semana — {{wau}} ativos nos últimos 7 dias, {{mau}} no último mês, e {{communicating}} já falaram com outro membro. {{complete}} de {{total}} preencheram o perfil.",
+      "read_default_admin": "Estás a crescer +{{delta}} esta semana — {{wau}} ativos nos últimos 7 dias e {{mau}} no último mês.",
       "read_empty": "A tua comunidade está mesmo a começar. Convida algumas pessoas e publica umas boas-vindas para arrancar."
     }
   },

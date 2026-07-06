@@ -396,6 +396,7 @@
     "steve": {
       "greeting": "So läuft es bei {{community}} — ich hab's im Blick.",
       "read_default": "Du bist um {{delta}} gestiegen — {{wau}} aktiv in den letzten 7 Tagen, {{mau}} im Monatsverlauf, und {{communicating}} haben einem anderen Mitglied geschrieben. {{complete}} von {{total}} haben ihr Profil ausgefüllt.",
+      "read_default_admin": "Du bist um {{delta}} gestiegen — {{wau}} aktiv in den letzten 7 Tagen und {{mau}} im Monatsverlauf.",
       "read_empty": "Deine Community steckt noch in den Kinderschuhen. Lade ein paar Leute ein und poste eine Begrüßung, um loszulegen."
     }
   },

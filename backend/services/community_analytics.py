@@ -358,6 +358,83 @@ def _last_activity_days(cursor, ph: str, ids: List[int], now: datetime) -> Optio
         return None
 
 
+def _days_since(last_t: Any, now: datetime) -> Optional[int]:
+    """Whole days since ``last_t`` (DB datetime or string), or None."""
+    if not last_t:
+        return None
+    try:
+        if isinstance(last_t, str):
+            last_t = datetime.fromisoformat(last_t.replace(" ", "T").split(".")[0])
+        if last_t.tzinfo is None:
+            last_t = last_t.replace(tzinfo=timezone.utc)
+        return max(0, (now - last_t).days)
+    except Exception:  # pragma: no cover - defensive
+        return None
+
+
+def _active_users_by_community(cursor, ph: str, ids: List[int], cutoff: str) -> Dict[int, int]:
+    """Distinct active users PER community since ``cutoff`` — one grouped query
+    for the whole Spaces tab instead of a 5-way union per sub (the N+1)."""
+    if not ids:
+        return {}
+    n = _in_clause(ph, len(ids))
+    sql = f"""
+        SELECT ev.community_id AS community_id, COUNT(DISTINCT ev.username) AS count FROM (
+            SELECT community_id, username FROM community_visit_history WHERE community_id IN {n} AND visit_time >= {ph}
+            UNION ALL SELECT community_id, username FROM posts WHERE community_id IN {n} AND timestamp >= {ph}
+            UNION ALL SELECT community_id, username FROM replies WHERE community_id IN {n} AND timestamp >= {ph}
+            UNION ALL SELECT g.community_id, gp.username FROM group_posts gp JOIN `groups` g ON gp.group_id = g.id
+                WHERE g.community_id IN {n} AND gp.created_at >= {ph}
+            UNION ALL SELECT g.community_id, grp.username FROM group_replies grp
+                JOIN group_posts gp ON grp.group_post_id = gp.id
+                JOIN `groups` g ON gp.group_id = g.id
+                WHERE g.community_id IN {n} AND grp.created_at >= {ph}
+        ) AS ev
+        WHERE LOWER(ev.username) <> 'admin'
+        GROUP BY ev.community_id
+    """
+    out: Dict[int, int] = {}
+    try:
+        cursor.execute(sql, (tuple(ids) + (cutoff,)) * 5)
+        for r in cursor.fetchall() or []:
+            cid = int(r["community_id"] if hasattr(r, "keys") else r[0])
+            out[cid] = int((r["count"] if hasattr(r, "keys") else r[1]) or 0)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("_active_users_by_community failed: %s", exc)
+    return out
+
+
+def _last_activity_by_community(cursor, ph: str, ids: List[int], now: datetime) -> Dict[int, Optional[int]]:
+    """Dormancy clock PER community (days since last activity), one grouped
+    query for all subs."""
+    if not ids:
+        return {}
+    n = _in_clause(ph, len(ids))
+    sql = f"""
+        SELECT m.community_id AS community_id, MAX(m.t) AS last_t FROM (
+            SELECT community_id, MAX(visit_time) AS t FROM community_visit_history WHERE community_id IN {n} GROUP BY community_id
+            UNION ALL SELECT community_id, MAX(timestamp) FROM posts WHERE community_id IN {n} GROUP BY community_id
+            UNION ALL SELECT community_id, MAX(timestamp) FROM replies WHERE community_id IN {n} GROUP BY community_id
+            UNION ALL SELECT g.community_id, MAX(gp.created_at) FROM group_posts gp JOIN `groups` g ON gp.group_id = g.id
+                WHERE g.community_id IN {n} GROUP BY g.community_id
+            UNION ALL SELECT g.community_id, MAX(grp.created_at) FROM group_replies grp
+                JOIN group_posts gp ON grp.group_post_id = gp.id
+                JOIN `groups` g ON gp.group_id = g.id
+                WHERE g.community_id IN {n} GROUP BY g.community_id
+        ) AS m
+        GROUP BY m.community_id
+    """
+    out: Dict[int, Optional[int]] = {}
+    try:
+        cursor.execute(sql, tuple(ids) * 5)
+        for r in cursor.fetchall() or []:
+            cid = int(r["community_id"] if hasattr(r, "keys") else r[0])
+            out[cid] = _days_since(r["last_t"] if hasattr(r, "keys") else r[1], now)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("_last_activity_by_community failed: %s", exc)
+    return out
+
+
 def _activity_band(active_7d: int, members: int) -> str:
     """Per-sub health band from the *share* of members active this week (not a
     raw count — 5 active in a 30-member sub is ~17%, which is not 'thriving').
@@ -413,7 +490,9 @@ def _profile_completion(cursor, ph: str, ids: List[int]) -> Dict[str, int]:
     return {"complete": complete, "partial": partial, "none": none}
 
 
-def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[str, Any]]:
+def build_overview(
+    community_id: int, scope: str = "network", *, viewer_is_owner: bool = True
+) -> Optional[Dict[str, Any]]:
     """Build the Owner Dashboard overview payload, or ``None`` if the community
     does not exist. Does NOT authorize — the route authorizes the apex first.
 
@@ -421,6 +500,11 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
     or "self" (this community only). Network rollup is a paid feature: on a free
     community that has sub-communities a network request falls back to self and
     is returned ``locked`` with a subtree member teaser (the upsell hook).
+
+    ``viewer_is_owner=False`` (a delegated admin, not the owner/app-admin):
+    owner-only metrics (profile completion, members communicating) are OMITTED
+    entirely — not nulled — and Steve's read switches to a template that never
+    interpolates their numbers. The "Only you can see this" label must be true.
     """
     scope = "network" if str(scope or "").strip().lower() == "network" else "self"
     tier_info = _resolve_tier(community_id)
@@ -460,7 +544,7 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
         dau = _active_users(c, ph, ids, (now - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"))
         wau = _active_users(c, ph, ids, cutoff)
         mau = _active_users(c, ph, ids, mau_cut)
-        communicating = _communicating_members(c, ph, ids, mau_cut)
+        communicating = _communicating_members(c, ph, ids, mau_cut) if viewer_is_owner else 0
         top_posters = _top_contributors(c, ph, ids, "posters", cutoff=mau_cut)
         top_repliers = _top_contributors(c, ph, ids, "repliers", cutoff=mau_cut)
         top_reactors = _top_contributors(c, ph, ids, "reactors")
@@ -504,7 +588,9 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
             tuple(ids) + (_QR_INVITE_EMAIL_PATTERN,),
         )
 
-        completion = _profile_completion(c, ph, ids)
+        # Owner-only inputs are not even computed for delegated admins — the
+        # numbers never exist in the payload path at all.
+        completion = _profile_completion(c, ph, ids) if viewer_is_owner else {}
         has_posts = _scalar(
             c, f"SELECT COUNT(*) AS count FROM posts WHERE community_id IN {in_ids}",
             tuple(ids),
@@ -571,9 +657,15 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
         ),
     })
 
+    # Delegated admins never receive owner-only descriptors (filter on the
+    # flag so any future owner_only metric inherits the enforcement).
+    if not viewer_is_owner:
+        metrics = [m for m in metrics if not m.get("owner_only")]
+
     steve = _steve_block(low_data=low_data, net_new_7d=net_new_7d,
                          completion=completion, members=members,
-                         wau=wau, mau=mau, communicating=communicating)
+                         wau=wau, mau=mau, communicating=communicating,
+                         viewer_is_owner=viewer_is_owner)
 
     return {
         "success": True,
@@ -592,14 +684,26 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
 
 
 def _steve_block(*, low_data: bool, net_new_7d: int, completion: Dict[str, int],
-                 members: int, wau: int, mau: int, communicating: int) -> Dict[str, Any]:
+                 members: int, wau: int, mau: int, communicating: int,
+                 viewer_is_owner: bool = True) -> Dict[str, Any]:
     """Pick Steve's narration template + params. Copy lives in the i18n
     catalogs; this only chooses which line and supplies the numbers (zero AI
     cost, payoff-first, never deficit-framed). The default read spans growth,
-    weekly + monthly activity, and connection so it isn't one-dimensional."""
+    weekly + monthly activity, and connection so it isn't one-dimensional.
+
+    Delegated admins get a reduced read: the default template interpolates
+    owner-only numbers (communicating, profile completion), so handing it the
+    full param set would leak them through Steve's sentence."""
     if low_data:
         return {"greeting_key": "owner.steve.greeting",
                 "read_key": "owner.steve.read_empty", "read_params": {}, "low_data": True}
+    if not viewer_is_owner:
+        return {
+            "greeting_key": "owner.steve.greeting",
+            "read_key": "owner.steve.read_default_admin",
+            "read_params": {"delta": net_new_7d, "wau": wau, "mau": mau},
+            "low_data": False,
+        }
     return {
         "greeting_key": "owner.steve.greeting",
         "read_key": "owner.steve.read_default",
@@ -750,12 +854,16 @@ def list_spaces(community_id: int) -> Dict[str, Any]:
                 # Per-sub breakdown: active-this-week + a dormancy clock + a
                 # thriving/quiet/dormant band, so the owner can see where the life
                 # is and which rooms need a nudge. Counts only — never names.
+                # Two grouped queries for ALL subs (was 2 unions per sub — N+1).
                 now = datetime.now(timezone.utc)
                 wau_cut = (now - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+                sub_ids = [s["id"] for s in subcommunities]
+                active_by_cid = _active_users_by_community(c, ph, sub_ids, wau_cut)
+                last_by_cid = _last_activity_by_community(c, ph, sub_ids, now)
                 for sub in subcommunities:
-                    active_7d = _active_users(c, ph, [sub["id"]], wau_cut)
+                    active_7d = active_by_cid.get(sub["id"], 0)
                     sub["active_7d"] = active_7d
-                    sub["last_activity_days"] = _last_activity_days(c, ph, [sub["id"]], now)
+                    sub["last_activity_days"] = last_by_cid.get(sub["id"])
                     sub["status"] = _activity_band(active_7d, sub.get("member_count") or 0)
                 subcommunities.sort(key=lambda s: (-s["active_7d"], -(s.get("member_count") or 0)))
             except Exception as exc:  # pragma: no cover - defensive
