@@ -132,6 +132,7 @@ Also: **`groups`** (optional **`steve_agent_enabled`**, **`steve_agent_preset`**
 |-------|------|
 | `steve_chat_sessions`, `steve_chat_messages` | Networking / Steve session history in SQL. |
 | `steve_recommendation_feedback` | Feedback on recommendations. |
+| `networking_events` | Networking attribution events (`networking_events.py`): `page_view`/`message_tap` with closed source set (`welcome_cue`, `steve_match`, …) — funnel sink for the proactive-concierge work. Append-only, no PII beyond usernames. |
 | `steve_reminder_vault`, `steve_reminder_draft` | Reminder vault (`steve_reminder_vault.py`). |
 | `steve_feedback_items`, `steve_feedback_events` | Feedback queue (`steve_feedback.py`). |
 | `imagine_jobs` | Image/gen jobs. |

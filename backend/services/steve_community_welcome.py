@@ -214,6 +214,7 @@ def render_rolling_welcome_post(
     community_name: str,
     member_names: list[str],
     locale: str = "en",
+    networking_cue_community_id: Optional[int] = None,
 ) -> str:
     name = (community_name or "").strip() or i18n.t(
         "steve_welcome.rolling.community_fallback", locale,
@@ -242,13 +243,25 @@ def render_rolling_welcome_post(
     joined = i18n.t("steve_welcome.rolling.joined_line", locale, names=names_text)
     new_members = i18n.t("steve_welcome.rolling.new_members", locale)
     existing = i18n.t("steve_welcome.rolling.existing_members", locale)
-    return (
+    body = (
         f"{header}\n"
         f"{i18n.t('steve_welcome.posted_by', locale)}\n\n"
         f"{joined}\n\n"
         f"{new_members}\n\n"
         f"{existing}"
     )
+    # Size-gated networking cue (Increment 0 of the concierge plan): the
+    # dispatcher only passes a community id when the KB toggle is on, the
+    # community clears the member threshold, and the networking gate allows
+    # access — so the renderer stays pure.
+    if networking_cue_community_id is not None:
+        cue = i18n.t(
+            "steve_welcome.rolling.networking_cue",
+            locale,
+            community_id=int(networking_cue_community_id),
+        )
+        body = f"{body}\n\n{cue}"
+    return body
 
 
 # ---------------------------------------------------------------------------
@@ -833,6 +846,37 @@ def ensure_rolling_welcome_tables(cursor) -> None:
             pass
 
 
+def _networking_cue_allowed(cursor, community_id: int, ph: str) -> bool:
+    """True when the rolling-welcome post may carry the networking cue link.
+
+    Three gates, all fail-quiet (any error → no cue): the KB toggle, the
+    member-count threshold, and the networking package gate (never tease a
+    community whose members would land on a paywall). Called with
+    ``username=None`` so admin/Special exemptions don't leak the cue into
+    unpaid communities.
+    """
+    try:
+        from backend.services.networking_ai_config import get_networking_ai_config
+        from backend.services.networking_billing import networking_gate_decision
+
+        config = get_networking_ai_config()
+        if not getattr(config, "welcome_cue_enabled", False):
+            return False
+        cursor.execute(
+            f"SELECT COUNT(*) AS cnt FROM user_communities WHERE community_id = {ph}",
+            (community_id,),
+        )
+        row = cursor.fetchone()
+        count = int(row["cnt"] if hasattr(row, "keys") else row[0]) if row else 0
+        if count < int(getattr(config, "welcome_cue_min_members", 15) or 15):
+            return False
+        decision = networking_gate_decision(None, community_id, config)
+        return (decision or {}).get("mode") != "no_package"
+    except Exception:
+        logger.debug("networking cue gate failed for community %s", community_id, exc_info=True)
+        return False
+
+
 def dispatch_rolling_welcome_summaries(
     *,
     window_days: int = 7,
@@ -917,10 +961,12 @@ def dispatch_rolling_welcome_summaries(
                     summary["skipped"] += 1
                     continue
                 owner_locale = _owner_locale(community.get("creator_username"))
+                cue_allowed = _networking_cue_allowed(cursor, community_id, ph)
                 content = render_rolling_welcome_post(
                     community_name=community.get("community_name") or "",
                     member_names=members,
                     locale=owner_locale,
+                    networking_cue_community_id=community_id if cue_allowed else None,
                 )
                 if dry_run:
                     summary["items"].append(
