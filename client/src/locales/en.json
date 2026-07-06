@@ -358,6 +358,12 @@
     "most_active_note": "By contributions — posts and replies — over the last 30 days. Just reading doesn't rank anyone.",
     "leaderboard_windows": "Posts and replies count the last 30 days; reactions are all-time.",
     "ratio_of": "{{count}} of {{total}} new members",
+    "members_cap_warning": "{{count}} of {{cap}} — your community is nearly full",
+    "upgrade_cta": "Make room for more members",
+    "invites_activated": "{{n}} of them are already active",
+    "invite_more": "Invite more people",
+    "thank_champion": "Send {{username}} a thank-you",
+    "nudge_sub": "Post something to wake this space up",
     "activation_window_note": "New members who did something in their first {{days}} days — the earliest sign your community is landing.",
     "status_thriving": "Thriving",
     "status_active": "Active",
@@ -397,6 +403,10 @@
       "greeting": "Here's how {{community}} is doing — I've been keeping an eye on it.",
       "read_default": "You're up {{delta}} this week — {{wau}} active in the last 7 days, {{mau}} over the month, and {{communicating}} have messaged another member. {{complete}} of {{total}} have filled in their profile.",
       "read_default_admin": "You're up {{delta}} this week — {{wau}} active in the last 7 days and {{mau}} over the month.",
+      "action_cap": "You're at {{count}} of {{cap}} members — a bigger plan keeps the door open for the next person.",
+      "action_invite": "{{n}} invites haven't been answered yet — a personal nudge from you usually does it.",
+      "action_activation": "{{count}} of {{total}} new members have jumped in so far — a welcome post greeting the newcomers usually brings more along.",
+      "action_celebrate": "{{wau}} members active this week, {{delta}} more than last — whatever you're doing, keep doing it.",
       "read_empty": "Your community is just getting started. Invite a few people and post a welcome to get things going."
     }
   },

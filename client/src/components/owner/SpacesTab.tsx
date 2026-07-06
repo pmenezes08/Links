@@ -27,35 +27,48 @@ function Row({ name, meta, onClick }: { name: string; meta?: string; onClick: ()
   )
 }
 
-function SubCard({ sub, onClick }: { sub: OwnerSubcommunity; onClick: () => void }) {
+function SubCard({ sub, onClick, onNudge }: { sub: OwnerSubcommunity; onClick: () => void; onNudge: () => void }) {
   const { t } = useTranslation()
   const status = sub.status ?? 'dormant'
   const days = sub.last_activity_days
+  const needsNudge = status === 'dormant' || status === 'quiet'
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center justify-between rounded-xl border border-c-border bg-c-bg-elevated px-4 py-3 text-left transition-colors hover:bg-c-hover-bg"
-    >
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-c-text-primary">{sub.name}</div>
-        <div className="mt-0.5 text-[11px] text-c-text-tertiary">
-          {t('owner.spaces_members', { n: sub.member_count })}
-          {typeof sub.active_7d === 'number' ? ` · ${t('owner.sub_active', { n: sub.active_7d })}` : ''}
+    <div className="rounded-xl border border-c-border bg-c-bg-elevated">
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-c-hover-bg"
+      >
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-c-text-primary">{sub.name}</div>
+          <div className="mt-0.5 text-[11px] text-c-text-tertiary">
+            {t('owner.spaces_members', { n: sub.member_count })}
+            {typeof sub.active_7d === 'number' ? ` · ${t('owner.sub_active', { n: sub.active_7d })}` : ''}
+          </div>
         </div>
-      </div>
-      <div className="ml-2 flex shrink-0 items-center gap-2">
-        <div className="flex flex-col items-end">
-          <span className={`text-[10px] ${status === 'thriving' || status === 'active' ? 'text-cpoint-turquoise' : 'text-c-text-tertiary'}`}>
-            {t(`owner.status_${status}`)}
-          </span>
-          {status !== 'thriving' && typeof days === 'number' && days >= 1 && (
-            <span className="text-[10px] text-c-text-tertiary">{t('owner.sub_quiet_days', { n: days })}</span>
-          )}
+        <div className="ml-2 flex shrink-0 items-center gap-2">
+          <div className="flex flex-col items-end">
+            <span className={`text-[10px] ${status === 'thriving' || status === 'active' ? 'text-cpoint-turquoise' : 'text-c-text-tertiary'}`}>
+              {t(`owner.status_${status}`)}
+            </span>
+            {status !== 'thriving' && typeof days === 'number' && days >= 1 && (
+              <span className="text-[10px] text-c-text-tertiary">{t('owner.sub_quiet_days', { n: days })}</span>
+            )}
+          </div>
+          <i className="fa-solid fa-chevron-right text-xs text-c-text-tertiary" />
         </div>
-        <i className="fa-solid fa-chevron-right text-xs text-c-text-tertiary" />
-      </div>
-    </button>
+      </button>
+      {needsNudge && (
+        <button
+          type="button"
+          onClick={onNudge}
+          className="flex w-full items-center gap-1.5 border-t border-c-border px-4 py-2 text-left text-[11px] font-medium text-cpoint-turquoise"
+        >
+          <i className="fa-regular fa-pen-to-square text-[10px]" aria-hidden="true" />
+          {t('owner.nudge_sub')}
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -95,7 +108,12 @@ export default function SpacesTab({ communityId }: { communityId: number }) {
           <SectionLabel>{t('owner.spaces_subcommunities')}</SectionLabel>
           <div className="space-y-1.5">
             {subs.map(s => (
-              <SubCard key={s.id} sub={s} onClick={() => navigate(`/community/${s.id}/owner`)} />
+              <SubCard
+                key={s.id}
+                sub={s}
+                onClick={() => navigate(`/community/${s.id}/owner`)}
+                onNudge={() => navigate(`/compose?community_id=${s.id}`)}
+              />
             ))}
           </div>
           <p className="mt-2 px-1 text-[10px] leading-relaxed text-c-text-tertiary">{t('owner.spaces_legend')}</p>

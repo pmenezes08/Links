@@ -358,6 +358,12 @@
     "most_active_note": "Por contribuições — publicações e comentários — nos últimos 30 dias. Só ler não coloca ninguém no ranking.",
     "leaderboard_windows": "Publicações e comentários contam os últimos 30 dias; as reações contam desde sempre.",
     "ratio_of": "{{count}} de {{total}} novos membros",
+    "members_cap_warning": "{{count}} de {{cap}} — a tua comunidade está quase cheia",
+    "upgrade_cta": "Abre espaço para mais membros",
+    "invites_activated": "{{n}} deles já estão ativos",
+    "invite_more": "Convida mais pessoas",
+    "thank_champion": "Envia um obrigado a {{username}}",
+    "nudge_sub": "Publica algo para animar este espaço",
     "activation_window_note": "Novos membros que fizeram algo nos primeiros {{days}} dias — o primeiro sinal de que a tua comunidade está a funcionar.",
     "status_thriving": "Animado",
     "status_active": "Ativo",
@@ -397,6 +403,10 @@
       "greeting": "Eis como vai {{community}} — tenho estado de olho.",
       "read_default": "Estás a crescer +{{delta}} esta semana — {{wau}} ativos nos últimos 7 dias, {{mau}} no último mês, e {{communicating}} já falaram com outro membro. {{complete}} de {{total}} preencheram o perfil.",
       "read_default_admin": "Estás a crescer +{{delta}} esta semana — {{wau}} ativos nos últimos 7 dias e {{mau}} no último mês.",
+      "action_cap": "Estás com {{count}} de {{cap}} membros — um plano maior mantém a porta aberta para o próximo.",
+      "action_invite": "{{n}} convites ainda estão sem resposta — um toque pessoal teu costuma resolver.",
+      "action_activation": "{{count}} de {{total}} novos membros já participaram — uma publicação a dar as boas-vindas aos recém-chegados costuma trazer mais.",
+      "action_celebrate": "{{wau}} membros ativos esta semana, mais {{delta}} do que na anterior — continua assim.",
       "read_empty": "A tua comunidade está mesmo a começar. Convida algumas pessoas e publica umas boas-vindas para arrancar."
     }
   },

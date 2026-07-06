@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { OwnerMetric } from './types'
 
@@ -34,13 +35,46 @@ function SegRow({ color, label, value }: { color: string; label: string; value: 
   )
 }
 
+function ChampionName({ username, onThank }: { username: string; onThank: boolean }) {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => navigate(`/profile/${username}`)}
+        className="min-w-0 truncate text-left text-c-text-primary underline-offset-2 hover:underline"
+      >
+        {username}
+      </button>
+      {onThank && (
+        <button
+          type="button"
+          onClick={() => navigate(`/user_chat/chat/${username}`)}
+          aria-label={t('owner.thank_champion', { username })}
+          title={t('owner.thank_champion', { username })}
+          className="shrink-0 text-[10px] text-cpoint-turquoise"
+        >
+          <i className="fa-regular fa-hand-peace" aria-hidden="true" />
+        </button>
+      )}
+    </span>
+  )
+}
+
 /**
  * Renders one metric descriptor. The vocabulary of `format`s is fixed; adding a
  * metric of an existing format is purely a backend change (it appears here with
  * no edit). Locked (paid-on-free) metrics render the upgrade teaser shell.
  */
-export default function MetricCard({ metric, onUpgrade }: { metric: OwnerMetric; onUpgrade: () => void }) {
+export default function MetricCard({ metric, onUpgrade, isOwner = false, communityId = null }: {
+  metric: OwnerMetric
+  onUpgrade: () => void
+  isOwner?: boolean
+  communityId?: number | null
+}) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const label = t(metric.label_key)
   const v = metric.value
 
@@ -71,6 +105,7 @@ export default function MetricCard({ metric, onUpgrade }: { metric: OwnerMetric;
     const count = num(v, 'count')
     const delta = num(v, 'delta_7d')
     const cap = v?.cap ?? null
+    const capWarning = v?.cap_warning === true
     return (
       <Card>
         <div className="text-xs text-c-text-secondary">{label}</div>
@@ -81,9 +116,27 @@ export default function MetricCard({ metric, onUpgrade }: { metric: OwnerMetric;
         {typeof cap === 'number' && cap > 0 && (
           <>
             <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-c-active-bg">
-              <div className="h-full" style={{ width: `${Math.min(100, Math.round((count / cap) * 100))}%`, background: TURQUOISE }} />
+              <div
+                className="h-full"
+                style={{
+                  width: `${Math.min(100, Math.round((count / cap) * 100))}%`,
+                  background: capWarning ? '#E8A33D' : TURQUOISE,
+                }}
+              />
             </div>
-            <div className="mt-1 text-[10px] text-c-text-tertiary">{t('owner.members_cap', { count, cap })}</div>
+            <div className={`mt-1 text-[10px] ${capWarning ? 'text-[#E8A33D]' : 'text-c-text-tertiary'}`}>
+              {capWarning ? t('owner.members_cap_warning', { count, cap }) : t('owner.members_cap', { count, cap })}
+            </div>
+            {capWarning && isOwner && (
+              <button
+                type="button"
+                onClick={onUpgrade}
+                className="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-cpoint-turquoise"
+              >
+                {t('owner.upgrade_cta')}
+                <i className="fa-solid fa-chevron-right text-[9px]" aria-hidden="true" />
+              </button>
+            )}
           </>
         )}
       </Card>
@@ -119,7 +172,10 @@ export default function MetricCard({ metric, onUpgrade }: { metric: OwnerMetric;
             <div className="mb-1.5 text-[10px] uppercase tracking-[0.14em] text-cpoint-turquoise">{t('owner.most_active')}</div>
             <div className="flex flex-wrap gap-x-3 gap-y-1">
               {(v.top_active as LeaderRow[]).map((u, i) => (
-                <span key={u.username} className="text-[12px] text-c-text-primary">{i + 1}. {u.username}</span>
+                <span key={u.username} className="inline-flex items-center gap-1 text-[12px]">
+                  <span className="text-c-text-tertiary">{i + 1}.</span>
+                  <ChampionName username={u.username} onThank={false} />
+                </span>
               ))}
             </div>
             <p className="mt-1.5 text-[10px] leading-relaxed text-c-text-tertiary">{t('owner.most_active_note')}</p>
@@ -166,7 +222,10 @@ export default function MetricCard({ metric, onUpgrade }: { metric: OwnerMetric;
                 <div className="space-y-1">
                   {g.rows.map((r, i) => (
                     <div key={r.username} className="flex items-center justify-between text-[12px]">
-                      <span className="min-w-0 truncate text-c-text-primary">{i + 1}. {r.username}</span>
+                      <span className="inline-flex min-w-0 items-center gap-1">
+                        <span className="text-c-text-tertiary">{i + 1}.</span>
+                        <ChampionName username={r.username} onThank={isOwner} />
+                      </span>
                       <span className="ml-2 shrink-0 text-c-text-tertiary">{r.count}</span>
                     </div>
                   ))}
@@ -181,6 +240,7 @@ export default function MetricCard({ metric, onUpgrade }: { metric: OwnerMetric;
   }
 
   if (metric.format === 'funnel') {
+    const hasActivated = typeof v?.activated === 'number'
     return (
       <Card>
         <div className="text-xs text-c-text-secondary">{label}</div>
@@ -190,6 +250,21 @@ export default function MetricCard({ metric, onUpgrade }: { metric: OwnerMetric;
             {t('owner.invites_value', { accepted: num(v, 'accepted'), sent: num(v, 'sent') })}
           </span>
         </div>
+        {hasActivated && (
+          <div className="mt-1 text-[11px] text-c-text-tertiary">
+            {t('owner.invites_activated', { n: num(v, 'activated') })}
+          </div>
+        )}
+        {communityId != null && (
+          <button
+            type="button"
+            onClick={() => navigate(`/community/${communityId}/members`)}
+            className="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-cpoint-turquoise"
+          >
+            {t('owner.invite_more')}
+            <i className="fa-solid fa-chevron-right text-[9px]" aria-hidden="true" />
+          </button>
+        )}
       </Card>
     )
   }

@@ -116,8 +116,10 @@ def _distinct_members(cursor, ph: str, ids: List[int], cutoff: Optional[str] = N
     return _scalar(cursor, sql, params)
 
 
-def _active_users(cursor, ph: str, ids: List[int], cutoff: str) -> int:
-    """Distinct users active in the scope's communities since ``cutoff``.
+def _active_users(cursor, ph: str, ids: List[int], cutoff: str,
+                  until: Optional[str] = None) -> int:
+    """Distinct users active in the scope's communities since ``cutoff``
+    (optionally bounded ``< until`` for prior-window comparisons).
 
     Active = visited the feed (community_visit_history) OR posted/replied in the
     community feed OR posted/replied in a group under it. Group chats are NOT
@@ -128,25 +130,31 @@ def _active_users(cursor, ph: str, ids: List[int], cutoff: str) -> int:
     if not ids:
         return 0
     n = _in_clause(ph, len(ids))
+    upper = f"AND {{col}} < {ph}" if until else ""
+
+    def w(col: str) -> str:
+        return upper.format(col=col)
+
     sql = f"""
         SELECT COUNT(DISTINCT active.username) AS count FROM (
-            SELECT username FROM community_visit_history WHERE community_id IN {n} AND visit_time >= {ph}
+            SELECT username FROM community_visit_history WHERE community_id IN {n} AND visit_time >= {ph} {w('visit_time')}
             UNION
-            SELECT username FROM posts WHERE community_id IN {n} AND timestamp >= {ph}
+            SELECT username FROM posts WHERE community_id IN {n} AND timestamp >= {ph} {w('timestamp')}
             UNION
-            SELECT username FROM replies WHERE community_id IN {n} AND timestamp >= {ph}
+            SELECT username FROM replies WHERE community_id IN {n} AND timestamp >= {ph} {w('timestamp')}
             UNION
             SELECT gp.username FROM group_posts gp JOIN `groups` g ON gp.group_id = g.id
-                WHERE g.community_id IN {n} AND gp.created_at >= {ph}
+                WHERE g.community_id IN {n} AND gp.created_at >= {ph} {w('gp.created_at')}
             UNION
             SELECT grp.username FROM group_replies grp
                 JOIN group_posts gp ON grp.group_post_id = gp.id
                 JOIN `groups` g ON gp.group_id = g.id
-                WHERE g.community_id IN {n} AND grp.created_at >= {ph}
+                WHERE g.community_id IN {n} AND grp.created_at >= {ph} {w('grp.created_at')}
         ) AS active
         WHERE LOWER(active.username) <> 'admin'
     """
-    params = (tuple(ids) + (cutoff,)) * 5
+    arm = (tuple(ids) + (cutoff,) + ((until,) if until else ()))
+    params = arm * 5
     return _scalar(cursor, sql, params)
 
 
@@ -166,9 +174,11 @@ def _scope_member_usernames(cursor, ph: str, ids: List[int]) -> List[str]:
         return []
 
 
-def _communicating_members(cursor, ph: str, ids: List[int], cutoff: str) -> int:
-    """Distinct members who messaged ANOTHER member since ``cutoff`` — via a DM
-    to a fellow member, or a group chat that has >=2 members of this scope.
+def _communicating_members(cursor, ph: str, ids: List[int], cutoff: str,
+                           until: Optional[str] = None) -> int:
+    """Distinct members who messaged ANOTHER member since ``cutoff`` (optionally
+    bounded ``< until``) — via a DM to a fellow member, or a group chat that has
+    >=2 members of this scope.
 
     Chats/DMs aren't community-scoped, so we attribute by MEMBERSHIP OVERLAP.
     Aggregate count only — never who-talked-to-whom, never content (privacy)."""
@@ -176,20 +186,23 @@ def _communicating_members(cursor, ph: str, ids: List[int], cutoff: str) -> int:
     if not members:
         return 0
     m = _in_clause(ph, len(members))
+    dm_upper = f"AND msg.timestamp < {ph}" if until else ""
+    gc_upper = f"AND gcm.created_at < {ph}" if until else ""
     sql = f"""
         SELECT COUNT(DISTINCT comm.username) AS count FROM (
             SELECT msg.sender AS username FROM messages msg
-                WHERE msg.timestamp >= {ph} AND msg.sender IN {m} AND msg.receiver IN {m}
+                WHERE msg.timestamp >= {ph} {dm_upper} AND msg.sender IN {m} AND msg.receiver IN {m}
             UNION
             SELECT gcm.sender_username AS username FROM group_chat_messages gcm
-                WHERE gcm.created_at >= {ph} AND gcm.sender_username IN {m}
+                WHERE gcm.created_at >= {ph} {gc_upper} AND gcm.sender_username IN {m}
                   AND gcm.group_id IN (
                     SELECT group_id FROM group_chat_members WHERE username IN {m}
                     GROUP BY group_id HAVING COUNT(*) >= 2)
         ) AS comm
     """
     mt = tuple(members)
-    params = (cutoff,) + mt + mt + (cutoff,) + mt + mt
+    ub = (until,) if until else ()
+    params = (cutoff,) + ub + mt + mt + (cutoff,) + ub + mt + mt
     return _scalar(cursor, sql, params)
 
 
@@ -271,36 +284,22 @@ def _top_active_users(cursor, ph: str, ids: List[int], cutoff: str, limit: int =
     return out
 
 
-def _activation(cursor, ph: str, ids: List[int], now: datetime) -> Dict[str, int]:
-    """New-member activation: of the people who joined the scope in the last
-    ``ACTIVATION_JOIN_WINDOW_DAYS``, how many had any activity event (visit,
-    post, reply, group post/reply) within ``ACTIVATION_WINDOW_DAYS`` of their
-    OWN join date. Aggregate counts only. 'admin' excluded.
+def _activated_within_window_sql(ph: str, n: str) -> str:
+    """SQL fragment: TRUE when ``u``/``uc`` (users + user_communities aliases in
+    the outer query) had any activity event within ``ACTIVATION_WINDOW_DAYS`` of
+    their own join date. Shared by activation and the invite-funnel stage 3.
 
-    The per-joiner window needs date arithmetic, which is dialect-specific;
-    on SQLite dev environments the _scalar guard degrades this to 0 rather
-    than erroring (MySQL everywhere real: CI, staging, prod).
+    Per-joiner date arithmetic is dialect-specific; on SQLite dev environments
+    the _scalar guard degrades callers to 0 rather than erroring (MySQL
+    everywhere real: CI, staging, prod).
     """
-    if not ids:
-        return {"activated": 0, "joiners": 0}
     from backend.services.database import USE_MYSQL
 
-    join_cutoff = (now - timedelta(days=ACTIVATION_JOIN_WINDOW_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
-    joiners = _distinct_members(cursor, ph, ids, cutoff=join_cutoff)
-    if joiners == 0:
-        return {"activated": 0, "joiners": 0}
-
-    n = _in_clause(ph, len(ids))
     if USE_MYSQL:
         window_end = f"DATE_ADD(uc.joined_at, INTERVAL {int(ACTIVATION_WINDOW_DAYS)} DAY)"
     else:  # pragma: no cover - sqlite dev fallback
         window_end = f"datetime(uc.joined_at, '+{int(ACTIVATION_WINDOW_DAYS)} days')"
-    sql = f"""
-        SELECT COUNT(DISTINCT uc.user_id) AS count
-        FROM user_communities uc JOIN users u ON uc.user_id = u.id
-        WHERE uc.community_id IN {n} AND uc.joined_at >= {ph}
-          AND LOWER(u.username) <> 'admin'
-          AND (
+    return f"""(
             EXISTS (SELECT 1 FROM community_visit_history v
                     WHERE v.username = u.username AND v.community_id IN {n}
                       AND v.visit_time >= uc.joined_at AND v.visit_time < {window_end})
@@ -318,11 +317,57 @@ def _activation(cursor, ph: str, ids: List[int], now: datetime) -> Dict[str, int
                     JOIN `groups` g2 ON gp2.group_id = g2.id
                     WHERE grp.username = u.username AND g2.community_id IN {n}
                       AND grp.created_at >= uc.joined_at AND grp.created_at < {window_end})
-          )
+          )"""
+
+
+def _activation(cursor, ph: str, ids: List[int], now: datetime) -> Dict[str, int]:
+    """New-member activation: of the people who joined the scope in the last
+    ``ACTIVATION_JOIN_WINDOW_DAYS``, how many had any activity event (visit,
+    post, reply, group post/reply) within ``ACTIVATION_WINDOW_DAYS`` of their
+    OWN join date. Aggregate counts only. 'admin' excluded."""
+    if not ids:
+        return {"activated": 0, "joiners": 0}
+    join_cutoff = (now - timedelta(days=ACTIVATION_JOIN_WINDOW_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+    joiners = _distinct_members(cursor, ph, ids, cutoff=join_cutoff)
+    if joiners == 0:
+        return {"activated": 0, "joiners": 0}
+
+    n = _in_clause(ph, len(ids))
+    sql = f"""
+        SELECT COUNT(DISTINCT uc.user_id) AS count
+        FROM user_communities uc JOIN users u ON uc.user_id = u.id
+        WHERE uc.community_id IN {n} AND uc.joined_at >= {ph}
+          AND LOWER(u.username) <> 'admin'
+          AND {_activated_within_window_sql(ph, n)}
     """
     params = tuple(ids) + (join_cutoff,) + tuple(ids) * 5
     activated = _scalar(cursor, sql, params)
     return {"activated": activated, "joiners": joiners}
+
+
+def _invites_activated(cursor, ph: str, ids: List[int]) -> int:
+    """Invite funnel stage 3: distinct ACCEPTED invitees who joined and had any
+    activity within ``ACTIVATION_WINDOW_DAYS`` of their join date. Only
+    username-linked invites can be traced to an account (email-only invitees
+    are excluded until email↔account reconciliation exists), so this is a
+    floor, not a ceiling. 'admin' excluded."""
+    if not ids:
+        return 0
+    n = _in_clause(ph, len(ids))
+    sql = f"""
+        SELECT COUNT(DISTINCT uc.user_id) AS count
+        FROM user_communities uc JOIN users u ON uc.user_id = u.id
+        WHERE uc.community_id IN {n}
+          AND LOWER(u.username) <> 'admin'
+          AND LOWER(u.username) IN (
+            SELECT DISTINCT LOWER(invited_username) FROM community_invitations
+            WHERE community_id IN {n} AND LOWER(status) = 'accepted'
+              AND invited_username IS NOT NULL
+          )
+          AND {_activated_within_window_sql(ph, n)}
+    """
+    params = tuple(ids) * 7
+    return _scalar(cursor, sql, params)
 
 
 def _last_activity_days(cursor, ph: str, ids: List[int], now: datetime) -> Optional[int]:
@@ -544,7 +589,17 @@ def build_overview(
         dau = _active_users(c, ph, ids, (now - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"))
         wau = _active_users(c, ph, ids, cutoff)
         mau = _active_users(c, ph, ids, mau_cut)
+        # Prior windows for week-over-week reads (7-14d ago; 30-60d ago).
+        wau_prev = _active_users(
+            c, ph, ids, (now - timedelta(days=14)).strftime("%Y-%m-%d %H:%M:%S"), until=cutoff
+        )
         communicating = _communicating_members(c, ph, ids, mau_cut) if viewer_is_owner else 0
+        communicating_prev = (
+            _communicating_members(
+                c, ph, ids, (now - timedelta(days=60)).strftime("%Y-%m-%d %H:%M:%S"), until=mau_cut
+            )
+            if viewer_is_owner else 0
+        )
         top_posters = _top_contributors(c, ph, ids, "posters", cutoff=mau_cut)
         top_repliers = _top_contributors(c, ph, ids, "repliers", cutoff=mau_cut)
         top_reactors = _top_contributors(c, ph, ids, "reactors")
@@ -598,21 +653,30 @@ def build_overview(
         # Only computed for paid communities — free tier keeps the locked
         # teaser with value None (never computed behind the lock).
         activation = _activation(c, ph, ids, now) if is_paid else None
+        invites_activated = _invites_activated(c, ph, ids)
 
     low_data = members <= LOW_DATA_MEMBER_THRESHOLD and has_posts == 0
+
+    # Cap-approach warning is a SERVER decision (>= 80% of the member cap) so
+    # the client stays dumb and the threshold can move without an app release.
+    member_cap = tier_info.get("member_cap")
+    cap_warning = bool(
+        isinstance(member_cap, (int, float)) and member_cap > 0
+        and members >= 0.8 * float(member_cap)
+    )
 
     metrics: List[Dict[str, Any]] = [
         {
             "id": "members", "group": "overview", "format": "stat", "tier": "free",
             "label_key": "owner.metric.members", "locked": False,
             "value": {"count": members, "delta_7d": net_new_7d,
-                      "cap": tier_info.get("member_cap")},
+                      "cap": member_cap, "cap_warning": cap_warning},
         },
         {
             "id": "active", "group": "overview", "format": "activity", "tier": "free",
             "label_key": "owner.metric.active", "locked": False,
-            "value": {"dau": dau, "wau": wau, "mau": mau, "members": members,
-                      "top_active": top_active},
+            "value": {"dau": dau, "wau": wau, "mau": mau, "wau_prev": wau_prev,
+                      "members": members, "top_active": top_active},
         },
         {
             "id": "spaces", "group": "overview", "format": "stat", "tier": "free",
@@ -622,7 +686,8 @@ def build_overview(
         {
             "id": "invites", "group": "overview", "format": "funnel", "tier": "free",
             "label_key": "owner.metric.invites", "locked": False,
-            "value": {"sent": invites_sent, "accepted": invites_accepted},
+            "value": {"sent": invites_sent, "accepted": invites_accepted,
+                      "activated": invites_activated},
         },
         {
             "id": "profile_completion", "group": "overview", "format": "segments",
@@ -633,7 +698,7 @@ def build_overview(
         {
             "id": "communicating", "group": "overview", "format": "comm", "tier": "free",
             "label_key": "owner.metric.communicating", "owner_only": True, "locked": False,
-            "value": {"count": communicating, "total": members},
+            "value": {"count": communicating, "prev": communicating_prev, "total": members},
         },
         {
             "id": "leaderboards", "group": "overview", "format": "leaderboards", "tier": "free",
@@ -665,7 +730,10 @@ def build_overview(
     steve = _steve_block(low_data=low_data, net_new_7d=net_new_7d,
                          completion=completion, members=members,
                          wau=wau, mau=mau, communicating=communicating,
-                         viewer_is_owner=viewer_is_owner)
+                         viewer_is_owner=viewer_is_owner,
+                         cap_warning=cap_warning, member_cap=member_cap,
+                         invites_sent=invites_sent, invites_accepted=invites_accepted,
+                         activation=activation, wau_prev=wau_prev)
 
     return {
         "success": True,
@@ -683,25 +751,65 @@ def build_overview(
     }
 
 
+def _steve_actions(*, cap_warning: bool, member_cap: Any, members: int,
+                   invites_sent: int, invites_accepted: int,
+                   activation: Optional[Dict[str, int]], wau: int, wau_prev: int) -> List[Dict[str, Any]]:
+    """At most two one-line actions for Steve to suggest, priority-ordered:
+    cap (revenue moment) > invite nudge > low activation > celebrate. Copy is
+    payoff-first and aimed at what the OWNER can do — never at what members
+    failed to do."""
+    actions: List[Dict[str, Any]] = []
+    if cap_warning:
+        actions.append({"key": "owner.steve.action_cap",
+                        "params": {"count": members, "cap": int(member_cap or 0)}})
+    pending = max(0, invites_sent - invites_accepted)
+    if pending >= 3:
+        actions.append({"key": "owner.steve.action_invite", "params": {"n": pending}})
+    if activation and activation.get("joiners", 0) >= 3:
+        joiners = activation["joiners"]
+        activated = activation.get("activated", 0)
+        if activated / joiners < 0.3:
+            actions.append({"key": "owner.steve.action_activation",
+                            "params": {"count": activated, "total": joiners}})
+    if wau > wau_prev > 0:
+        actions.append({"key": "owner.steve.action_celebrate",
+                        "params": {"wau": wau, "delta": wau - wau_prev}})
+    return actions[:2]
+
+
 def _steve_block(*, low_data: bool, net_new_7d: int, completion: Dict[str, int],
                  members: int, wau: int, mau: int, communicating: int,
-                 viewer_is_owner: bool = True) -> Dict[str, Any]:
+                 viewer_is_owner: bool = True,
+                 cap_warning: bool = False, member_cap: Any = None,
+                 invites_sent: int = 0, invites_accepted: int = 0,
+                 activation: Optional[Dict[str, int]] = None,
+                 wau_prev: int = 0) -> Dict[str, Any]:
     """Pick Steve's narration template + params. Copy lives in the i18n
     catalogs; this only chooses which line and supplies the numbers (zero AI
     cost, payoff-first, never deficit-framed). The default read spans growth,
     weekly + monthly activity, and connection so it isn't one-dimensional.
+    ``actions`` are the "one thing you can do this week" rows under the read.
 
     Delegated admins get a reduced read: the default template interpolates
     owner-only numbers (communicating, profile completion), so handing it the
     full param set would leak them through Steve's sentence."""
     if low_data:
         return {"greeting_key": "owner.steve.greeting",
-                "read_key": "owner.steve.read_empty", "read_params": {}, "low_data": True}
+                "read_key": "owner.steve.read_empty", "read_params": {},
+                "actions": [], "low_data": True}
+    actions = _steve_actions(
+        cap_warning=cap_warning, member_cap=member_cap, members=members,
+        invites_sent=invites_sent, invites_accepted=invites_accepted,
+        activation=activation, wau=wau, wau_prev=wau_prev,
+    )
     if not viewer_is_owner:
+        # Admins get the read but no actions — cap/upgrade and invite nudges
+        # are owner moves (billing is owner-only).
         return {
             "greeting_key": "owner.steve.greeting",
             "read_key": "owner.steve.read_default_admin",
             "read_params": {"delta": net_new_7d, "wau": wau, "mau": mau},
+            "actions": [],
             "low_data": False,
         }
     return {
@@ -712,6 +820,7 @@ def _steve_block(*, low_data: bool, net_new_7d: int, completion: Dict[str, int],
             "communicating": communicating,
             "complete": completion.get("complete", 0), "total": members,
         },
+        "actions": actions,
         "low_data": False,
     }
 

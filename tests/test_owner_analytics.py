@@ -837,3 +837,130 @@ def test_overview_cache_key_varies_by_viewer_role():
     assert owner_key != admin_key
     assert _overview_cache_key(7, "self", True) != owner_key      # scope in key
     assert _overview_cache_key(8, "network", True) != owner_key   # community in key
+
+
+# ---------------------------------------------------------------------------
+# Cap-hit warning + WoW deltas + invite stage 3 + Steve actions
+# ---------------------------------------------------------------------------
+
+def test_cap_warning_threshold(mysql_dsn, monkeypatch):
+    """cap_warning flips at >=80% of member_cap, server-side."""
+    import bodybuilding_app
+    from backend.services import community_analytics
+
+    make_user("ownerA")
+    for i in range(8):
+        make_user(f"cap_m{i}")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")
+    for i in range(8):
+        _add_member(f"cap_m{i}", a)
+
+    def fake_tier(_cid):
+        return {"tier": "free", "is_paid": False, "member_cap": 10}
+
+    monkeypatch.setattr(community_analytics, "_resolve_tier", fake_tier)
+    _login(client, "ownerA")
+    members = _by_id(_overview(client, a).get_json())["members"]["value"]
+    assert members["count"] == 8
+    assert members["cap_warning"] is True   # 8 >= 0.8 * 10
+
+    def fake_tier_big(_cid):
+        return {"tier": "free", "is_paid": False, "member_cap": 100}
+
+    monkeypatch.setattr(community_analytics, "_resolve_tier", fake_tier_big)
+    members = _by_id(_overview(client, a).get_json())["members"]["value"]
+    assert members["cap_warning"] is False  # 8 < 80
+
+    def fake_tier_nocap(_cid):
+        return {"tier": "free", "is_paid": False, "member_cap": None}
+
+    monkeypatch.setattr(community_analytics, "_resolve_tier", fake_tier_nocap)
+    members = _by_id(_overview(client, a).get_json())["members"]["value"]
+    assert members["cap_warning"] is False  # no cap → never warns
+
+
+def test_wow_deltas_and_invite_stage3(mysql_dsn):
+    """wau_prev covers the 7-14d window; invite funnel carries 'activated'
+    (accepted invitees active within 14d of joining)."""
+    import bodybuilding_app
+
+    _ensure_activity_tables()
+    make_user("ownerA")
+    make_user("inv_kim")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")
+    _add_member("inv_kim", a)
+
+    # Accepted username invite for kim (fresh invitations table), who joined
+    # now and posts now → activated.
+    _seed_invitations(a, [("inv_kim", None, "accepted")])
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        # Activity 10 days ago → prior week's WAU, not this week's.
+        c.execute(
+            f"INSERT INTO posts (community_id, username, content, timestamp) "
+            f"VALUES ({ph}, {ph}, {ph}, DATE_SUB(NOW(), INTERVAL 10 DAY))",
+            (a, "inv_kim", "old post"),
+        )
+        c.execute(
+            f"INSERT INTO posts (community_id, username, content) VALUES ({ph}, {ph}, {ph})",
+            (a, "inv_kim", "fresh post"),
+        )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+    _login(client, "ownerA")
+    metrics = _by_id(_overview(client, a).get_json())
+    active = metrics["active"]["value"]
+    assert active["wau_prev"] >= 1          # the 10-day-old post
+    invites = metrics["invites"]["value"]
+    assert invites["activated"] == 1        # kim: accepted + active within 14d of join
+
+
+def test_steve_actions_priority_and_admin_exclusion(mysql_dsn, monkeypatch):
+    """Cap action outranks celebrate; max 2 actions; delegated admins get none
+    (billing/invite moves are the owner's)."""
+    import bodybuilding_app
+    from backend.services import community_analytics
+
+    _ensure_activity_tables()
+    make_user("ownerA")
+    make_user("modA")
+    for i in range(4):
+        make_user(f"act_m{i}")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")
+    _add_member("modA", a, role="admin")
+    for i in range(4):
+        _add_member(f"act_m{i}", a)
+
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"INSERT INTO posts (community_id, username, content) VALUES ({ph}, {ph}, {ph})",
+            (a, "act_m0", "this week"),
+        )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+    def fake_tier(_cid):
+        return {"tier": "free", "is_paid": False, "member_cap": 6}   # 5 members incl. modA ≥ 80%? 5>=4.8 yes
+
+    monkeypatch.setattr(community_analytics, "_resolve_tier", fake_tier)
+
+    _login(client, "ownerA")
+    steve = _overview(client, a).get_json()["steve"]
+    actions = steve.get("actions") or []
+    assert len(actions) <= 2
+    assert actions and actions[0]["key"] == "owner.steve.action_cap"   # cap wins priority
+
+    _login(client, "modA")
+    steve_admin = _overview(client, a).get_json()["steve"]
+    assert (steve_admin.get("actions") or []) == []

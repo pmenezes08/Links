@@ -15,10 +15,16 @@ export type OwnerMetric = {
   value: Record<string, unknown> | null
 }
 
+export type OwnerSteveAction = {
+  key: string
+  params: Record<string, number | string>
+}
+
 export type OwnerSteve = {
   greeting_key: string
   read_key: string
   read_params: Record<string, number | string>
+  actions?: OwnerSteveAction[]
   low_data: boolean
 }
 

@@ -5,6 +5,7 @@ import OverviewTab from '../components/owner/OverviewTab'
 import SpacesTab from '../components/owner/SpacesTab'
 import ReportsTab from '../components/owner/ReportsTab'
 import CommunitySwitcher from '../components/owner/CommunitySwitcher'
+import ManageMembershipModal from '../components/membership/ManageMembershipModal'
 import type { OwnerOverview, OwnerManagedCommunity, OwnerScope } from '../components/owner/types'
 
 type Tab = 'overview' | 'reports' | 'spaces'
@@ -80,6 +81,10 @@ export default function OwnerDashboard() {
   const [scope, setScope] = useState<OwnerScope>('network')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [membershipOpen, setMembershipOpen] = useState(false)
+
+  // Owner vs delegated admin — billing/upgrade moves are owner-only.
+  const isOwner = managed.find(c => c.id === communityId)?.is_owner ?? false
 
   useEffect(() => {
     let mounted = true
@@ -115,7 +120,9 @@ export default function OwnerDashboard() {
     setSearchParams(sp, { replace: true })
   }
 
-  const onUpgrade = () => navigate('/subscription_plans')
+  // Upgrade opens the canonical plan/billing modal in place (no page swap);
+  // it reads live billing state itself — never hardcode tiers/prices here.
+  const onUpgrade = () => setMembershipOpen(true)
 
   return (
     <div className="min-h-screen bg-c-bg-app text-c-text-primary">
@@ -167,7 +174,7 @@ export default function OwnerDashboard() {
                 {data.network?.locked && scope === 'network' && (
                   <NetworkLockedCard teaser={data.network.teaser_members} onUpgrade={onUpgrade} />
                 )}
-                <OverviewTab data={data} onUpgrade={onUpgrade} />
+                <OverviewTab data={data} onUpgrade={onUpgrade} isOwner={isOwner} communityId={communityId} />
               </>
             )}
             {tab === 'reports' && communityId != null && <ReportsTab communityId={communityId} />}
@@ -175,6 +182,8 @@ export default function OwnerDashboard() {
           </>
         )}
       </div>
+
+      <ManageMembershipModal open={membershipOpen} onClose={() => setMembershipOpen(false)} initialTab="plan" />
     </div>
   )
 }
