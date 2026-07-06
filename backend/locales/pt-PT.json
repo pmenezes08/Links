@@ -348,7 +348,8 @@
       "names_and_last": "{prefix} e {last}",
       "joined_line": "Algumas pessoas juntaram-se esta semana: {names}.",
       "new_members": "Se acabaste de chegar, deixa uma nota no tópico **Apresenta-te** quando quiseres. Nome, motivo para te juntares e uma coisa que procuras chegam.",
-      "existing_members": "Se já estás cá há algum tempo, diz olá. Os bons espaços constroem-se em pequenas respostas."
+      "existing_members": "Se já estás cá há algum tempo, diz olá. Os bons espaços constroem-se em pequenas respostas.",
+      "networking_cue": "Queres saber quem vale a pena conhecer por aqui? [Pede apresentações ao Steve](/networking?community={community_id}&source=welcome_cue)."
     }
   },
   "feed": {

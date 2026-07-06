@@ -348,7 +348,8 @@
       "names_and_last": "{prefix}, and {last}",
       "joined_line": "A few people joined this week: {names}.",
       "new_members": "If you are new, drop a note in the **Introduce Yourself** thread when you are ready. Name, reason you joined, and one thing you are looking for is plenty.",
-      "existing_members": "If you have been here a while, say hello. Good spaces get built in small replies."
+      "existing_members": "If you have been here a while, say hello. Good spaces get built in small replies.",
+      "networking_cue": "Curious who here is worth meeting? [Ask Steve for introductions](/networking?community={community_id}&source=welcome_cue)."
     }
   },
   "feed": {

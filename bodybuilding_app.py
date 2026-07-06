@@ -273,8 +273,23 @@ try:
         # Migrate new columns for contextual feedback (safe for existing DBs)
         try:
             if USE_MYSQL:
-                _scc.execute("ALTER TABLE steve_recommendation_feedback ADD COLUMN IF NOT EXISTS reasoning_text TEXT NULL")
-                _scc.execute("ALTER TABLE steve_recommendation_feedback ADD COLUMN IF NOT EXISTS query_context TEXT NULL")
+                # MySQL 8 has no ADD COLUMN IF NOT EXISTS (MariaDB-only), so
+                # check information_schema first — mirrors the SQLite PRAGMA
+                # branch below and stops the startup false-alarm warning.
+                _scc.execute(
+                    "SELECT COLUMN_NAME FROM information_schema.COLUMNS"
+                    " WHERE TABLE_SCHEMA = DATABASE()"
+                    " AND TABLE_NAME = 'steve_recommendation_feedback'"
+                    " AND COLUMN_NAME IN ('reasoning_text','query_context')"
+                )
+                _existing_cols = {
+                    str(row['COLUMN_NAME'] if hasattr(row, 'keys') else row[0]).lower()
+                    for row in _scc.fetchall()
+                }
+                if 'reasoning_text' not in _existing_cols:
+                    _scc.execute("ALTER TABLE steve_recommendation_feedback ADD COLUMN reasoning_text TEXT NULL")
+                if 'query_context' not in _existing_cols:
+                    _scc.execute("ALTER TABLE steve_recommendation_feedback ADD COLUMN query_context TEXT NULL")
             else:
                 # SQLite doesn't support IF NOT EXISTS on ALTER, so check first
                 _scc.execute("PRAGMA table_info(steve_recommendation_feedback)")

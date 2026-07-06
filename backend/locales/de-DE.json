@@ -348,7 +348,8 @@
       "names_and_last": "{prefix} und {last}",
       "joined_line": "Diese Woche sind ein paar Leute dazugekommen: {names}.",
       "new_members": "Wenn du neu bist, hinterlass ein paar Zeilen im **Stell dich vor**-Thread, sobald du so weit bist. Name, warum du beigetreten bist, und eine Sache, die du suchst, reichen völlig.",
-      "existing_members": "Wenn du schon eine Weile dabei bist, sag Hallo. Gute Bereiche entstehen aus kleinen Antworten."
+      "existing_members": "Wenn du schon eine Weile dabei bist, sag Hallo. Gute Bereiche entstehen aus kleinen Antworten.",
+      "networking_cue": "Neugierig, wen du hier kennenlernen solltest? [Bitte Steve um Vorstellungen](/networking?community={community_id}&source=welcome_cue)."
     }
   },
   "feed": {
