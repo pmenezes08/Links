@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import OwnerSteveMark from './OwnerSteveMark'
+import ConfirmRemoveSheet from './ConfirmRemoveSheet'
+import { SkeletonFeedCard } from '../SkeletonRow'
 import type { OwnerReport } from './types'
 
 type Filter = 'pending' | 'reviewed' | 'dismissed'
@@ -89,8 +91,9 @@ export default function ReportsTab({ communityId }: { communityId: number }) {
 
   useEffect(() => { load(filter) }, [filter, load])
 
+  const [confirming, setConfirming] = useState<OwnerReport | null>(null)
+
   const remove = async (rep: OwnerReport) => {
-    if (!window.confirm(t('owner.reports_confirm_body'))) return
     setBusy(rep.report_id)
     try {
       await fetch(`/api/community/${communityId}/reports/remove`, {
@@ -102,6 +105,7 @@ export default function ReportsTab({ communityId }: { communityId: number }) {
       setReports(prev => prev.filter(r => r.post_id !== rep.post_id))
     } finally {
       setBusy(null)
+      setConfirming(null)
     }
   }
 
@@ -123,7 +127,7 @@ export default function ReportsTab({ communityId }: { communityId: number }) {
   return (
     <div>
       <div className="mb-3.5 flex items-start gap-3 rounded-2xl border border-cpoint-turquoise/25 bg-cpoint-turquoise/[0.06] p-3.5">
-        <OwnerSteveMark size={30} />
+        <OwnerSteveMark size={28} />
         <div className="text-[13px] leading-relaxed text-c-text-primary/90">{t('owner.reports_intro')}</div>
       </div>
 
@@ -134,7 +138,7 @@ export default function ReportsTab({ communityId }: { communityId: number }) {
             type="button"
             onClick={() => setFilter(f)}
             className={`rounded-full px-3 py-1 text-[11px] ${
-              filter === f ? 'bg-cpoint-turquoise text-[#063b39]' : 'border border-c-border text-c-text-secondary'
+              filter === f ? 'bg-cpoint-turquoise text-c-text-on-accent' : 'border border-c-border text-c-text-secondary'
             }`}
           >
             {t(`owner.reports_filter_${f}`)}
@@ -143,7 +147,10 @@ export default function ReportsTab({ communityId }: { communityId: number }) {
       </div>
 
       {loading ? (
-        <div className="py-10 text-center text-sm text-c-text-tertiary">…</div>
+        <div className="space-y-3">
+          <SkeletonFeedCard />
+          <SkeletonFeedCard />
+        </div>
       ) : reports.length === 0 ? (
         <div className="py-12 text-center">
           <div className="text-base font-medium text-c-text-primary">{t('owner.reports_soon_title')}</div>
@@ -157,12 +164,19 @@ export default function ReportsTab({ communityId }: { communityId: number }) {
               rep={rep}
               filter={filter}
               busy={busy === rep.report_id}
-              onRemove={() => remove(rep)}
+              onRemove={() => setConfirming(rep)}
               onKeep={() => keep(rep)}
             />
           ))}
         </div>
       )}
+
+      <ConfirmRemoveSheet
+        open={confirming != null}
+        busy={confirming != null && busy === confirming.report_id}
+        onCancel={() => setConfirming(null)}
+        onConfirm={() => { if (confirming) void remove(confirming) }}
+      />
     </div>
   )
 }

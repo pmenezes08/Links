@@ -364,6 +364,8 @@
     "invite_more": "Convida mais pessoas",
     "thank_champion": "Envia um obrigado a {{username}}",
     "nudge_sub": "Publica algo para animar este espaço",
+    "invite_first": "Convida os teus primeiros membros",
+    "reports_remove_title": "Remover esta publicação?",
     "activation_window_note": "Novos membros que fizeram algo nos primeiros {{days}} dias — o primeiro sinal de que a tua comunidade está a funcionar.",
     "status_thriving": "Animado",
     "status_active": "Ativo",
@@ -407,6 +409,7 @@
       "action_invite": "{{n}} convites ainda estão sem resposta — um toque pessoal teu costuma resolver.",
       "action_activation": "{{count}} de {{total}} novos membros já participaram — uma publicação a dar as boas-vindas aos recém-chegados costuma trazer mais.",
       "action_celebrate": "{{wau}} membros ativos esta semana, mais {{delta}} do que na anterior — continua assim.",
+      "spaces_read": "{{n}} dos teus espaços podiam usar uma faísca — uma publicação tua costuma acordá-los.",
       "read_empty": "A tua comunidade está mesmo a começar. Convida algumas pessoas e publica umas boas-vindas para arrancar."
     }
   },

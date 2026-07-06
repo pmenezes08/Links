@@ -3,7 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { OwnerMetric } from './types'
 
-const TURQUOISE = '#00CEC8'
+// Accent via the shared CSS var so a future brand flip catches these bars
+// (raw hexes are invisible to the token sweep).
+const TURQUOISE = 'rgba(var(--cpoint-accent-rgb), 1)'
+const TURQUOISE_40 = 'rgba(var(--cpoint-accent-rgb), 0.4)'
 
 function Card({ children }: { children: ReactNode }) {
   return <div className="rounded-2xl border border-c-border bg-c-bg-elevated p-3.5">{children}</div>
@@ -304,12 +307,12 @@ export default function MetricCard({ metric, onUpgrade, isOwner = false, communi
         </div>
         <div className="mt-2.5 flex h-2 w-full gap-0.5 overflow-hidden rounded-full">
           <div className="h-full" style={{ width: `${pct(complete)}%`, background: TURQUOISE }} />
-          <div className="h-full" style={{ width: `${pct(partial)}%`, background: 'rgba(0,206,200,0.4)' }} />
+          <div className="h-full" style={{ width: `${pct(partial)}%`, background: TURQUOISE_40 }} />
           <div className="h-full" style={{ width: `${pct(none)}%`, background: 'rgba(255,255,255,0.12)' }} />
         </div>
         <div className="mt-2.5 space-y-1 text-[11px]">
           <SegRow color={TURQUOISE} label={t('owner.completion_full')} value={complete} />
-          <SegRow color="rgba(0,206,200,0.4)" label={t('owner.completion_partial')} value={partial} />
+          <SegRow color={TURQUOISE_40} label={t('owner.completion_partial')} value={partial} />
           <SegRow color="rgba(255,255,255,0.18)" label={t('owner.completion_none')} value={none} />
         </div>
       </Card>

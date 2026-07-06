@@ -364,6 +364,8 @@
     "invite_more": "Invite more people",
     "thank_champion": "Send {{username}} a thank-you",
     "nudge_sub": "Post something to wake this space up",
+    "invite_first": "Invite your first members",
+    "reports_remove_title": "Remove this post?",
     "activation_window_note": "New members who did something in their first {{days}} days — the earliest sign your community is landing.",
     "status_thriving": "Thriving",
     "status_active": "Active",
@@ -407,6 +409,7 @@
       "action_invite": "{{n}} invites haven't been answered yet — a personal nudge from you usually does it.",
       "action_activation": "{{count}} of {{total}} new members have jumped in so far — a welcome post greeting the newcomers usually brings more along.",
       "action_celebrate": "{{wau}} members active this week, {{delta}} more than last — whatever you're doing, keep doing it.",
+      "spaces_read": "{{n}} of your spaces could use a spark — a post from you usually wakes them up.",
       "read_empty": "Your community is just getting started. Invite a few people and post a welcome to get things going."
     }
   },

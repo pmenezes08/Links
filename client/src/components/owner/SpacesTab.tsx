@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import OwnerSteveMark from './OwnerSteveMark'
+import { SkeletonSettingsList } from '../SkeletonRow'
+import { STEVE_BRAND } from '../../brand/steveBrand'
 import type { OwnerSpaces, OwnerSubcommunity } from './types'
 
 function SectionLabel({ children }: { children: string }) {
@@ -93,7 +96,7 @@ export default function SpacesTab({ communityId }: { communityId: number }) {
     return () => { mounted = false }
   }, [communityId])
 
-  if (loading) return <div className="py-10 text-center text-sm text-c-text-tertiary">…</div>
+  if (loading) return <SkeletonSettingsList count={5} />
 
   const subs = data?.subcommunities ?? []
   const groups = data?.groups ?? []
@@ -101,8 +104,21 @@ export default function SpacesTab({ communityId }: { communityId: number }) {
     return <div className="py-10 text-center text-sm text-c-text-tertiary">{t('owner.spaces_empty')}</div>
   }
 
+  const quietCount = subs.filter(s => s.status === 'dormant' || s.status === 'quiet').length
+
   return (
     <div className="space-y-5">
+      {subs.length > 0 && quietCount > 0 && (
+        <div className="flex items-start gap-3 rounded-2xl border border-cpoint-turquoise/25 bg-cpoint-turquoise/[0.06] p-3.5">
+          <OwnerSteveMark size={28} />
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cpoint-turquoise">{STEVE_BRAND.name}</div>
+            <div className="mt-1 text-[13px] leading-relaxed text-c-text-primary/90">
+              {t('owner.steve.spaces_read', { n: quietCount })}
+            </div>
+          </div>
+        </div>
+      )}
       {subs.length > 0 && (
         <div>
           <SectionLabel>{t('owner.spaces_subcommunities')}</SectionLabel>

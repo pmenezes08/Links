@@ -364,6 +364,8 @@
     "invite_more": "Mehr Leute einladen",
     "thank_champion": "{{username}} ein Dankeschön schicken",
     "nudge_sub": "Poste etwas, um diesen Space aufzuwecken",
+    "invite_first": "Lade deine ersten Mitglieder ein",
+    "reports_remove_title": "Diesen Beitrag entfernen?",
     "activation_window_note": "Neue Mitglieder, die in ihren ersten {{days}} Tagen aktiv wurden — das früheste Zeichen, dass deine Community ankommt.",
     "status_thriving": "Florierend",
     "status_active": "Aktiv",
@@ -407,6 +409,7 @@
       "action_invite": "{{n}} Einladungen sind noch unbeantwortet — ein persönlicher Anstoß von dir wirkt meist.",
       "action_activation": "{{count}} von {{total}} neuen Mitgliedern sind schon dabei — ein Willkommens-Post für die Neuen bringt meist mehr dazu.",
       "action_celebrate": "{{wau}} Mitglieder diese Woche aktiv, {{delta}} mehr als letzte — weiter so.",
+      "spaces_read": "{{n}} deiner Spaces könnten einen Funken gebrauchen — ein Post von dir weckt sie meist auf.",
       "read_empty": "Deine Community steckt noch in den Kinderschuhen. Lade ein paar Leute ein und poste eine Begrüßung, um loszulegen."
     }
   },
