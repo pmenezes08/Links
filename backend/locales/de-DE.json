@@ -162,6 +162,16 @@
     }
   },
   "notifications": {
+    "owner_pulse": {
+      "title": "Steves Wochenpuls",
+      "body": "{wau} Mitglieder waren diese Woche in {community} aktiv. Hier ist dein Dashboard.",
+      "message": "Wochenpuls: {wau} Mitglieder diese Woche in {community} aktiv"
+    },
+    "owner_pulse_up": {
+      "title": "Steves Wochenpuls",
+      "body": "{wau} Mitglieder diese Woche in {community} aktiv — {delta} mehr als letzte Woche. Stark.",
+      "message": "Wochenpuls: {wau} aktiv in {community}, {delta} mehr als letzte Woche"
+    },
     "group_feed_post": {
       "title": "Neuer Gruppenbeitrag",
       "body": "{author}: {preview}",

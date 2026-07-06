@@ -162,6 +162,16 @@
     }
   },
   "notifications": {
+    "owner_pulse": {
+      "title": "O pulso semanal do Steve",
+      "body": "{wau} membros estiveram ativos em {community} esta semana. Aqui tens o teu painel.",
+      "message": "Pulso semanal: {wau} membros ativos em {community} esta semana"
+    },
+    "owner_pulse_up": {
+      "title": "O pulso semanal do Steve",
+      "body": "{wau} membros ativos em {community} esta semana — mais {delta} do que na anterior. Boa.",
+      "message": "Pulso semanal: {wau} ativos em {community}, mais {delta} do que na semana passada"
+    },
     "group_feed_post": {
       "title": "Nova publicação no grupo",
       "body": "{author}: {preview}",

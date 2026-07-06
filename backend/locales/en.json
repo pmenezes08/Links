@@ -162,6 +162,16 @@
     }
   },
   "notifications": {
+    "owner_pulse": {
+      "title": "Steve's weekly pulse",
+      "body": "{wau} members were active in {community} this week. Here's your dashboard.",
+      "message": "Weekly pulse: {wau} members active in {community} this week"
+    },
+    "owner_pulse_up": {
+      "title": "Steve's weekly pulse",
+      "body": "{wau} members active in {community} this week — {delta} more than last week. Nice.",
+      "message": "Weekly pulse: {wau} active in {community}, {delta} more than last week"
+    },
     "group_feed_post": {
       "title": "New group post",
       "body": "{author}: {preview}",

@@ -1333,3 +1333,28 @@ def api_cron_steve_reminder_vault_dispatch():
     except Exception as exc:
         current_app.logger.exception("reminder vault dispatch: %s", exc)
         return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@notifications_bp.route(
+    "/api/cron/owner-weekly-pulse",
+    methods=["POST"],
+    endpoint="api_cron_owner_weekly_pulse",
+)
+def api_cron_owner_weekly_pulse():
+    """Weekly Steve pulse to community owners (Cloud Scheduler, X-Cron-Secret).
+
+    One templated push + in-app row per owner per ISO week, recipient-locale,
+    deep-linking to /community/<id>/owner. ``dry_run=1`` lists candidates
+    without sending; real sends additionally require OWNER_PULSE_ENABLED.
+    """
+    if not _cron_authed():
+        return jsonify({"success": False, "error": "forbidden"}), 403
+    try:
+        from backend.services.owner_pulse import run_weekly_pulse
+
+        out = run_weekly_pulse(dry_run=_bool_arg("dry_run"))
+        status = 200 if out.get("success") else 409
+        return jsonify(out), status
+    except Exception as exc:
+        current_app.logger.exception("owner weekly pulse: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500

@@ -103,6 +103,7 @@ Also: **`groups`** (optional **`steve_agent_enabled`**, **`steve_agent_preset`**
 |-------|------|
 | `notifications` | In-app rows. |
 | `fcm_tokens`, `native_push_tokens`, `push_subscriptions`, `push_send_log` | FCM / web push / delivery logs. |
+| `owner_pulse_sends` | Dedup log for the weekly owner pulse (`/api/cron/owner-weekly-pulse`). INSERT-first reservation, `UNIQUE(username, week_key)` (ISO year-week) so Scheduler retries never double-push an owner. Lazily created by `backend/services/owner_pulse.py`. |
 | `remember_tokens` | Long-lived login (`remember_tokens.py`). |
 
 ### Community extras

@@ -403,3 +403,31 @@ Source-of-truth doc for the pivot, runtime rules, host controls, sound philosoph
 7. **Privacy / access** — create reads and play views authorize via owner access, gallery-approved in-platform access, or `community_access.can_view_community_content` against the active share context. Game invite opponents are only members of the active community and are exposed as opaque handles. Public web visitors are anonymous and receive only public-safe `CPoint` capabilities (public data/image connectors; no session saves, shared collections/forms, scores, ratings, or multiplayer).
 
 Phase-1 scope is front-end only (no user backends). Remix (copy a creation + `parent_creation_id`) and richer community picker UI for sharing are follow-ups.
+
+## 15. Owner Dashboard: analytics, moderation, and the weekly pulse
+
+Owner/delegated-admin surface at `/community/:id/owner` (Overview · Reports ·
+Spaces), served by `backend/blueprints/owner_analytics.py` +
+`owner_moderation.py` over `backend/services/community_analytics.py` /
+`community_moderation.py`. Metrics are a backend registry of descriptors the
+client renders declaratively; adding a metric is backend-only. Authorization
+is server-side and non-enumerating on the apex community; network (subtree)
+rollup is the paid unlock. Owner-only metrics (members-communicating, profile
+completion) are enforced server-side — delegated admins never receive them,
+and Steve's read switches to a reduced template. Responses are Redis-cached
+5 min with the viewer ROLE in the key.
+
+**Moderation remove** routes through the shared cascade
+(`backend/services/post_deletion.delete_post_cascade`) — the same cleanup as
+author/app-admin deletes (replies, post_views, imagine_jobs, media incl. R2,
+report resolution, feed + post-detail cache invalidation).
+
+**Weekly pulse (the return loop):** Cloud Scheduler hits
+`POST /api/cron/owner-weekly-pulse` (X-Cron-Secret, Monday 08:00 UTC,
+`docs/cloud-scheduler-cron.md` §11). One templated push + in-app row per
+owner per ISO week (dedup table `owner_pulse_sends`), recipient-locale copy
+via `notification_copy` (`notifications.owner_pulse*` keys), deep link to the
+dashboard (handled in `PushInit.tsx`). Quiet weeks are skipped; multi-network
+owners get one pulse for their largest network; kill-switch
+`OWNER_PULSE_ENABLED`. Zero AI cost — Steve's voice is i18n templates over
+numbers computed at send time.

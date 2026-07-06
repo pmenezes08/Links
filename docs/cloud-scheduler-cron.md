@@ -503,3 +503,39 @@ gcloud scheduler jobs create http refresh-embedding-index \
 
 The snapshot is an accelerator, not a source of truth: if it is missing or
 corrupt, networking falls back to the legacy Firestore stream on first use.
+
+## 11. Owner weekly pulse (Steve's dashboard digest)
+
+| Field | Value |
+|-------|--------|
+| **URI** | `{BASE}/api/cron/owner-weekly-pulse` |
+| **Method** | `POST` |
+| **Header** | `X-Cron-Secret` = same `CRON_SHARED_SECRET` as other crons |
+| **Suggested schedule** | **Weekly, Monday 08:00 UTC** (`0 8 * * 1`) — one templated push + in-app row per community owner per ISO week, deep-linking to `/community/{id}/owner`. |
+| **Query** | `dry_run=1` — lists candidate owners + this-week/prior-week active counts without reserving or sending. |
+| **Kill switch** | env `OWNER_PULSE_ENABLED` must be truthy on the service for real sends (dry-run works regardless; a real run with the switch off returns 409). |
+
+Idempotent by design: sends are reserved INSERT-first in `owner_pulse_sends`
+(`UNIQUE(username, week_key)`), so Scheduler retries never double-push.
+Quiet communities (zero active members this week) are skipped, owners with
+several root networks get one pulse for their largest network, and copy is
+resolved in the **recipient's** locale via `notification_copy`.
+
+```bash
+BASE=https://cpoint-app-staging-739552904126.europe-west1.run.app
+SECRET=$(gcloud secrets versions access latest --secret=cron-shared-secret-staging)
+
+# Smoke-test first:
+curl -X POST "$BASE/api/cron/owner-weekly-pulse?dry_run=1" -H "X-Cron-Secret: $SECRET"
+
+gcloud scheduler jobs create http owner-weekly-pulse \
+  --location=europe-west1 \
+  --schedule="0 8 * * 1" \
+  --time-zone=UTC \
+  --uri="$BASE/api/cron/owner-weekly-pulse" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=300s
+```
+
+Add `owner-weekly-pulse` to the bulk-pause list in §6 when you register the job in GCP.
