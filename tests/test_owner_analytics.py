@@ -638,3 +638,119 @@ def test_members_communicating_counts_member_to_member(mysql_dsn):
     comm = _by_id(_overview(client, a).get_json())["communicating"]["value"]
     assert comm["count"] == 2   # alice + bob; carol messaged a non-member → excluded
     assert comm["total"] == 3
+
+
+# ---------------------------------------------------------------------------
+# New-member activation (the paid unlock) + named-ranking hygiene
+# ---------------------------------------------------------------------------
+
+def _set_joined_days_ago(username: str, community_id: int, days: int) -> None:
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"UPDATE user_communities SET joined_at = DATE_SUB(NOW(), INTERVAL {int(days)} DAY) "
+            f"WHERE community_id = {ph} AND user_id = (SELECT id FROM users WHERE username = {ph})",
+            (community_id, username),
+        )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+
+def test_activation_unlocks_with_real_value_when_paid(mysql_dsn):
+    """Paying must UNLOCK a real activation number — the card may never
+    silently vanish on upgrade (the vanishing-teaser bug)."""
+    import bodybuilding_app
+
+    _ensure_activity_tables()
+    make_user("ownerA")
+    make_user("m_fast")   # joined now, active immediately → activated
+    make_user("m_slow")   # joined 20d ago, never active → joiner, not activated
+    make_user("m_old")    # joined 70d ago → outside the join window entirely
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")
+    _set_paid(a)
+    for u in ("m_fast", "m_slow", "m_old"):
+        _add_member(u, a)
+    _set_joined_days_ago("m_slow", a, 20)
+    _set_joined_days_ago("m_old", a, 70)
+
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        # m_fast posts on join day; m_old posts recently (must not count — not a joiner)
+        for u in ("m_fast", "m_old"):
+            c.execute(
+                f"INSERT INTO posts (community_id, username, content) VALUES ({ph}, {ph}, {ph})",
+                (a, u, "hello"),
+            )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+    _login(client, "ownerA")
+    body = _overview(client, a).get_json()
+    metrics = _by_id(body)
+    act = metrics["activation"]
+    assert act["locked"] is False
+    assert act["format"] == "ratio"
+    assert act["value"]["total"] == 2      # m_fast + m_slow (m_old outside 60d)
+    assert act["value"]["count"] == 1      # only m_fast did something within 14d of joining
+    assert act["value"]["window_days"] == 14
+
+
+def test_free_tier_keeps_activation_teaser_and_sticking_is_gone(mysql_dsn):
+    import bodybuilding_app
+
+    make_user("ownerA")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")   # free
+
+    _login(client, "ownerA")
+    metrics = _by_id(_overview(client, a).get_json())
+    assert metrics["activation"]["locked"] is True
+    assert metrics["activation"]["value"] is None
+    assert "sticking" not in metrics   # removed until actually built
+
+
+def test_top_active_names_contributors_not_lurkers(mysql_dsn):
+    """Named rankings are contributions-only: a visits-only member never
+    appears in the top-active list, but still counts toward DAU/WAU/MAU."""
+    import bodybuilding_app
+
+    _ensure_activity_tables()
+    make_user("ownerA")
+    make_user("m_post")
+    make_user("m_lurk")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")
+    _add_member("m_post", a)
+    _add_member("m_lurk", a)
+
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"INSERT INTO posts (community_id, username, content) VALUES ({ph}, {ph}, {ph})",
+            (a, "m_post", "content"),
+        )
+        for _ in range(5):
+            c.execute(
+                f"INSERT INTO community_visit_history (username, community_id, visit_time) "
+                f"VALUES ({ph}, {ph}, NOW())",
+                ("m_lurk", a),
+            )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+    _login(client, "ownerA")
+    active = _by_id(_overview(client, a).get_json())["active"]["value"]
+    names = [u["username"] for u in active["top_active"]]
+    assert "m_post" in names
+    assert "m_lurk" not in names        # reading a lot never ranks anyone
+    assert active["dau"] >= 2           # ...but visits still count in aggregates

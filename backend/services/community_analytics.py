@@ -49,15 +49,12 @@ LOW_DATA_MEMBER_THRESHOLD = 5
 _NOT_ADMIN_MEMBER = "uc.user_id NOT IN (SELECT id FROM users WHERE LOWER(username) = 'admin')"
 _QR_INVITE_EMAIL_PATTERN = "qr-invite-%@placeholder.local"
 
-# Paid teaser metrics shown locked-but-visible on the free tier. These are
-# *built* in a later phase; here they only carry their shell so the client can
-# render the blurred upgrade teaser. Add/rename freely — additive.
-PAID_TEASERS = (
-    {"id": "activation", "format": "locked", "label_key": "owner.metric.activation",
-     "hint_key": "owner.metric.activation_hint"},
-    {"id": "sticking", "format": "locked", "label_key": "owner.metric.sticking",
-     "hint_key": "owner.metric.sticking_hint"},
-)
+# New-member activation: a joiner counts as activated if they have any
+# activity event within this many days of their own join date. Joiners are
+# considered over the trailing join window so the rate reflects recent
+# onboarding, not ancient history.
+ACTIVATION_WINDOW_DAYS = 14
+ACTIVATION_JOIN_WINDOW_DAYS = 60
 
 
 def _scalar(cursor, sql: str, params: tuple) -> int:
@@ -237,18 +234,18 @@ def _top_contributors(cursor, ph: str, ids: List[int], kind: str,
 
 
 def _top_active_users(cursor, ph: str, ids: List[int], cutoff: str, limit: int = 5) -> List[Dict[str, Any]]:
-    """Top members by total activity *footprint* since ``cutoff`` — the people
-    composing DAU/WAU/MAU. Counts every activity event (visit + post + reply +
-    group post/reply), so it's broader than the per-type leaderboards. 'admin'
-    excluded. Names people (celebratory)."""
+    """Top members by *contribution* footprint since ``cutoff`` (posts, replies,
+    group posts/replies). Visits are deliberately excluded from this NAMED list
+    — publicly ranking someone for reading a lot is surveillance, not
+    celebration; visits still count toward the aggregate DAU/WAU/MAU. 'admin'
+    excluded."""
     if not ids:
         return []
     n = _in_clause(ph, len(ids))
     lim = max(1, min(20, int(limit)))
     sql = f"""
         SELECT ev.username AS username, COUNT(*) AS count FROM (
-            SELECT username FROM community_visit_history WHERE community_id IN {n} AND visit_time >= {ph}
-            UNION ALL SELECT username FROM posts WHERE community_id IN {n} AND timestamp >= {ph}
+            SELECT username FROM posts WHERE community_id IN {n} AND timestamp >= {ph}
             UNION ALL SELECT username FROM replies WHERE community_id IN {n} AND timestamp >= {ph}
             UNION ALL SELECT gp.username FROM group_posts gp JOIN `groups` g ON gp.group_id = g.id
                 WHERE g.community_id IN {n} AND gp.created_at >= {ph}
@@ -260,7 +257,7 @@ def _top_active_users(cursor, ph: str, ids: List[int], cutoff: str, limit: int =
         WHERE LOWER(ev.username) <> 'admin'
         GROUP BY ev.username ORDER BY count DESC LIMIT {lim}
     """
-    params = (tuple(ids) + (cutoff,)) * 5
+    params = (tuple(ids) + (cutoff,)) * 4
     out: List[Dict[str, Any]] = []
     try:
         cursor.execute(sql, params)
@@ -272,6 +269,60 @@ def _top_active_users(cursor, ph: str, ids: List[int], cutoff: str, limit: int =
     except Exception as exc:  # pragma: no cover - defensive
         logger.debug("_top_active_users failed: %s", exc)
     return out
+
+
+def _activation(cursor, ph: str, ids: List[int], now: datetime) -> Dict[str, int]:
+    """New-member activation: of the people who joined the scope in the last
+    ``ACTIVATION_JOIN_WINDOW_DAYS``, how many had any activity event (visit,
+    post, reply, group post/reply) within ``ACTIVATION_WINDOW_DAYS`` of their
+    OWN join date. Aggregate counts only. 'admin' excluded.
+
+    The per-joiner window needs date arithmetic, which is dialect-specific;
+    on SQLite dev environments the _scalar guard degrades this to 0 rather
+    than erroring (MySQL everywhere real: CI, staging, prod).
+    """
+    if not ids:
+        return {"activated": 0, "joiners": 0}
+    from backend.services.database import USE_MYSQL
+
+    join_cutoff = (now - timedelta(days=ACTIVATION_JOIN_WINDOW_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+    joiners = _distinct_members(cursor, ph, ids, cutoff=join_cutoff)
+    if joiners == 0:
+        return {"activated": 0, "joiners": 0}
+
+    n = _in_clause(ph, len(ids))
+    if USE_MYSQL:
+        window_end = f"DATE_ADD(uc.joined_at, INTERVAL {int(ACTIVATION_WINDOW_DAYS)} DAY)"
+    else:  # pragma: no cover - sqlite dev fallback
+        window_end = f"datetime(uc.joined_at, '+{int(ACTIVATION_WINDOW_DAYS)} days')"
+    sql = f"""
+        SELECT COUNT(DISTINCT uc.user_id) AS count
+        FROM user_communities uc JOIN users u ON uc.user_id = u.id
+        WHERE uc.community_id IN {n} AND uc.joined_at >= {ph}
+          AND LOWER(u.username) <> 'admin'
+          AND (
+            EXISTS (SELECT 1 FROM community_visit_history v
+                    WHERE v.username = u.username AND v.community_id IN {n}
+                      AND v.visit_time >= uc.joined_at AND v.visit_time < {window_end})
+            OR EXISTS (SELECT 1 FROM posts p
+                    WHERE p.username = u.username AND p.community_id IN {n}
+                      AND p.timestamp >= uc.joined_at AND p.timestamp < {window_end})
+            OR EXISTS (SELECT 1 FROM replies r
+                    WHERE r.username = u.username AND r.community_id IN {n}
+                      AND r.timestamp >= uc.joined_at AND r.timestamp < {window_end})
+            OR EXISTS (SELECT 1 FROM group_posts gp JOIN `groups` g ON gp.group_id = g.id
+                    WHERE gp.username = u.username AND g.community_id IN {n}
+                      AND gp.created_at >= uc.joined_at AND gp.created_at < {window_end})
+            OR EXISTS (SELECT 1 FROM group_replies grp
+                    JOIN group_posts gp2 ON grp.group_post_id = gp2.id
+                    JOIN `groups` g2 ON gp2.group_id = g2.id
+                    WHERE grp.username = u.username AND g2.community_id IN {n}
+                      AND grp.created_at >= uc.joined_at AND grp.created_at < {window_end})
+          )
+    """
+    params = tuple(ids) + (join_cutoff,) + tuple(ids) * 5
+    activated = _scalar(cursor, sql, params)
+    return {"activated": activated, "joiners": joiners}
 
 
 def _last_activity_days(cursor, ph: str, ids: List[int], now: datetime) -> Optional[int]:
@@ -458,6 +509,9 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
             c, f"SELECT COUNT(*) AS count FROM posts WHERE community_id IN {in_ids}",
             tuple(ids),
         )
+        # Only computed for paid communities — free tier keeps the locked
+        # teaser with value None (never computed behind the lock).
+        activation = _activation(c, ph, ids, now) if is_paid else None
 
     low_data = members <= LOW_DATA_MEMBER_THRESHOLD and has_posts == 0
 
@@ -502,15 +556,20 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
         },
     ]
 
-    # Paid teasers: locked-but-visible on free; the value stays None (never
-    # computed) until the paid suite lands and the community is paid.
-    for teaser in PAID_TEASERS:
-        metrics.append({
-            "id": teaser["id"], "group": "overview", "format": teaser["format"],
-            "tier": "paid", "label_key": teaser["label_key"],
-            "hint_key": teaser.get("hint_key"),
-            "locked": not is_paid, "value": None,
-        })
+    # Activation is the paid unlock: locked-but-visible teaser on free
+    # (value None, never computed), a real ratio once the community pays.
+    metrics.append({
+        "id": "activation", "group": "overview", "format": "ratio", "tier": "paid",
+        "label_key": "owner.metric.activation",
+        "hint_key": "owner.metric.activation_hint",
+        "locked": not is_paid,
+        "value": (
+            {"count": activation["activated"], "total": activation["joiners"],
+             "window_days": ACTIVATION_WINDOW_DAYS,
+             "join_window_days": ACTIVATION_JOIN_WINDOW_DAYS}
+            if is_paid and activation is not None else None
+        ),
+    })
 
     steve = _steve_block(low_data=low_data, net_new_7d=net_new_7d,
                          completion=completion, members=members,

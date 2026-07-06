@@ -175,6 +175,7 @@ export default function MetricCard({ metric, onUpgrade }: { metric: OwnerMetric;
             </div>
           ))}
         </div>
+        <p className="mt-2 text-[10px] leading-relaxed text-c-text-tertiary">{t('owner.leaderboard_windows')}</p>
       </Card>
     )
   }
@@ -189,6 +190,27 @@ export default function MetricCard({ metric, onUpgrade }: { metric: OwnerMetric;
             {t('owner.invites_value', { accepted: num(v, 'accepted'), sent: num(v, 'sent') })}
           </span>
         </div>
+      </Card>
+    )
+  }
+
+  if (metric.format === 'ratio') {
+    const count = num(v, 'count')
+    const total = num(v, 'total')
+    const pct = total > 0 ? Math.round((count / total) * 100) : 0
+    const windowDays = num(v, 'window_days')
+    return (
+      <Card>
+        <div className="text-xs text-c-text-secondary">{label}</div>
+        <div className="mt-1 flex items-baseline gap-1.5">
+          <span className="text-2xl font-semibold text-c-text-primary">{total > 0 ? `${pct}%` : '—'}</span>
+          {total > 0 && <span className="text-[12px] text-c-text-tertiary">{t('owner.ratio_of', { count, total })}</span>}
+        </div>
+        {windowDays > 0 && (
+          <p className="mt-1.5 text-[10px] leading-relaxed text-c-text-tertiary">
+            {t('owner.activation_window_note', { days: windowDays })}
+          </p>
+        )}
       </Card>
     )
   }
@@ -219,5 +241,13 @@ export default function MetricCard({ metric, onUpgrade }: { metric: OwnerMetric;
     )
   }
 
-  return null
+  // Unknown format: degrade VISIBLY (label + em-dash), never vanish. A
+  // backend-only metric addition with a new format must show up as a stub —
+  // a silently dropped card looks like a paid feature that doesn't exist.
+  return (
+    <Card>
+      <div className="text-xs text-c-text-secondary">{label}</div>
+      <div className="mt-1 text-2xl font-semibold text-c-text-tertiary">—</div>
+    </Card>
+  )
 }
