@@ -370,6 +370,7 @@
     "pending_invites_body": "Diese Einladungen wurden noch nicht angenommen. Ein persönliches Wort von dir wirkt meist mehr als eine Erinnerungs-Mail.",
     "pending_invites_empty": "Alles erledigt — jede Einladung wurde beantwortet.",
     "invited_on": "eingeladen am {{date}}",
+    "revoke_invite": "Einladung für {{name}} entfernen",
     "activation_window_note": "Neue Mitglieder, die in ihren ersten {{days}} Tagen aktiv wurden — das früheste Zeichen, dass deine Community ankommt.",
     "status_thriving": "Florierend",
     "status_active": "Aktiv",

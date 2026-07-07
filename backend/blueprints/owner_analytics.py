@@ -123,6 +123,41 @@ def analytics_pending_invites(community_id: int):
     return jsonify(list_pending_invitees(community_id, scope=scope)), 200
 
 
+@owner_analytics_bp.route(
+    "/api/community/<int:community_id>/analytics/pending-invites/revoke", methods=["POST"]
+)
+def analytics_revoke_pending_invite(community_id: int):
+    """Revoke all unanswered invites for one invitee (the trash icon on a
+    pending-invites row). OWNER-ONLY, same closed door as the listing."""
+    username = session.get("username")
+    if not username:
+        return api_errors.auth_required()
+
+    if not _viewer_is_owner(username, community_id):
+        return api_errors.not_found()
+
+    from backend.services.community_analytics import revoke_pending_invitee
+
+    data = request.get_json(silent=True) or {}
+    identity = (data.get("identity") or "").strip()
+    if not identity:
+        return jsonify({"success": False, "error": "identity required"}), 400
+    scope = "network" if (data.get("scope") or "network") == "network" else "self"
+    payload = revoke_pending_invitee(community_id, identity, scope=scope)
+    if payload.get("success") and payload.get("revoked"):
+        # The funnel's sent count and Steve's invite action just changed —
+        # drop this community's cached overviews (all scope/role combos).
+        try:
+            from redis_cache import cache
+
+            for s in ("network", "self"):
+                for role in (True, False):
+                    cache.delete(_overview_cache_key(community_id, s, role))
+        except Exception:  # pragma: no cover - cache is best-effort
+            pass
+    return jsonify(payload), 200 if payload.get("success") else 500
+
+
 @owner_analytics_bp.route("/api/owner/communities", methods=["GET"])
 def owner_communities():
     """Communities the caller owns or manages, with tier — for the dashboard's

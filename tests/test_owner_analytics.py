@@ -1041,3 +1041,52 @@ def test_steve_invite_action_carries_drilldown_id(mysql_dsn):
     steve = _overview(client, a).get_json()["steve"]
     invite_actions = [x for x in (steve.get("actions") or []) if x["key"] == "owner.steve.action_invite"]
     assert invite_actions and invite_actions[0].get("action") == "pending_invites"
+
+
+def test_revoke_pending_invite_owner_only(mysql_dsn):
+    """The trash icon: revokes ALL unanswered rows for one invitee identity,
+    never touches accepted rows, and is owner-only (admin/outsider → 404)."""
+    import bodybuilding_app
+
+    make_user("ownerA")
+    make_user("modA")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")
+    _add_member("modA", a, role="admin")
+
+    _seed_invitations(a, [
+        ("kim", None, "pending"),
+        ("kim", "kim@x.com", "pending"),   # same identity, second row
+        (None, "lee@x.com", "pending"),
+        ("mia", None, "accepted"),          # accepted history — untouchable
+    ])
+
+    # Delegated admin and missing identity are both rejected.
+    _login(client, "modA")
+    assert client.post(
+        f"/api/community/{a}/analytics/pending-invites/revoke", json={"identity": "kim"},
+    ).status_code == 404
+    _login(client, "ownerA")
+    assert client.post(
+        f"/api/community/{a}/analytics/pending-invites/revoke", json={},
+    ).status_code == 400
+
+    resp = client.post(
+        f"/api/community/{a}/analytics/pending-invites/revoke", json={"identity": "kim"},
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["revoked"] == 2   # both of kim's pending rows
+
+    # kim gone from the drill-in; lee remains; mia's accepted row survives.
+    invitees = client.get(f"/api/community/{a}/analytics/pending-invites").get_json()["invitees"]
+    assert sorted(i["display"] for i in invitees) == ["lee@x.com"]
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"SELECT COUNT(*) AS n FROM community_invitations WHERE community_id = {ph} AND LOWER(status) = 'accepted'",
+            (a,),
+        )
+        row = c.fetchone()
+        n = row["n"] if hasattr(row, "keys") else row[0]
+    assert int(n) == 1

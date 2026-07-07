@@ -433,6 +433,53 @@ def list_pending_invitees(community_id: int, scope: str = "network") -> Dict[str
     return {"success": True, "invitees": invitees, "count": len(invitees)}
 
 
+def revoke_pending_invitee(community_id: int, identity: str, scope: str = "network") -> Dict[str, Any]:
+    """Revoke every UNANSWERED invite for one invitee — the delete action on a
+    pending-invites drill-in row. OWNER-ONLY at the route. ``identity`` is the
+    row's display value (username or email); we match it the same way the list
+    dedups (COALESCE(username, email), case-insensitive) and the same scope
+    resolution, so the delete removes exactly what the row represented.
+    Accepted rows are never touched (they're membership history, not an
+    invitation any more). Deleting the row also invalidates its token — the
+    accept flow requires a live row."""
+    identity = (identity or "").strip().lower()
+    if not identity:
+        return {"success": False, "error": "identity required", "revoked": 0}
+    scope = "network" if str(scope or "").strip().lower() == "network" else "self"
+    tier_info = _resolve_tier(community_id)
+    revoked = 0
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            ids = [community_id]
+            if scope == "network" and tier_info.get("is_paid"):
+                from backend.services.community import get_descendant_community_ids
+
+                try:
+                    ids = [int(cid) for cid in get_descendant_community_ids(c, community_id)] or [community_id]
+                except Exception:
+                    ids = [community_id]
+            n = _in_clause(ph, len(ids))
+
+            c.execute(
+                f"""
+                DELETE FROM community_invitations
+                WHERE community_id IN {n}
+                  AND LOWER(COALESCE(status, 'pending')) <> 'accepted'
+                  AND COALESCE(LOWER(invited_username), LOWER(invited_email)) = {ph}
+                """,
+                tuple(ids) + (identity,),
+            )
+            revoked = c.rowcount if c.rowcount and c.rowcount > 0 else 0
+            conn.commit()
+    except Exception as exc:
+        logger.error("revoke_pending_invitee failed for %s: %s", community_id, exc)
+        return {"success": False, "error": "failed", "revoked": 0}
+    return {"success": True, "revoked": revoked}
+
+
 def _last_activity_days(cursor, ph: str, ids: List[int], now: datetime) -> Optional[int]:
     """Whole days since the most recent activity in the scope, or None if never
     active (drives the per-sub 'dormancy clock')."""

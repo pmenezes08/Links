@@ -21,6 +21,28 @@ export default function PendingInvitesSheet({ open, communityId, scope, onClose 
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [invitees, setInvitees] = useState<OwnerPendingInvitee[] | null>(null)
+  const [revoking, setRevoking] = useState<string | null>(null)
+
+  const revoke = async (inv: OwnerPendingInvitee) => {
+    void triggerHaptic('warning')
+    setRevoking(inv.display)
+    try {
+      const resp = await fetch(`/api/community/${communityId}/analytics/pending-invites/revoke`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identity: inv.display, scope }),
+      })
+      const j = await resp.json().catch(() => null)
+      if (j?.success) {
+        setInvitees(prev => (prev ?? []).filter(p => p.display !== inv.display))
+      }
+    } catch {
+      // row stays; the owner can retry
+    } finally {
+      setRevoking(null)
+    }
+  }
 
   useEffect(() => {
     if (!open) {
@@ -77,6 +99,7 @@ export default function PendingInvitesSheet({ open, communityId, scope, onClose 
             <div className="space-y-1">
               {invitees.map(inv => {
                 const date = fmtDate(inv.invited_at)
+                const busy = revoking === inv.display
                 return (
                   <div key={`${inv.type}:${inv.display}`} className="flex items-center gap-3 rounded-xl px-3 py-2.5">
                     <i
@@ -85,6 +108,16 @@ export default function PendingInvitesSheet({ open, communityId, scope, onClose 
                     />
                     <span className="min-w-0 flex-1 truncate text-[14px] text-c-text-primary">{inv.display}</span>
                     {date && <span className="shrink-0 text-[11px] text-c-text-tertiary">{t('owner.invited_on', { date })}</span>}
+                    <button
+                      type="button"
+                      disabled={busy || revoking != null}
+                      onClick={() => void revoke(inv)}
+                      aria-label={t('owner.revoke_invite', { name: inv.display })}
+                      title={t('owner.revoke_invite', { name: inv.display })}
+                      className="shrink-0 rounded-lg p-1.5 text-[13px] text-c-text-tertiary transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+                    >
+                      <i className={`fa-regular ${busy ? 'fa-hourglass-half' : 'fa-trash-can'}`} aria-hidden="true" />
+                    </button>
                   </div>
                 )
               })}

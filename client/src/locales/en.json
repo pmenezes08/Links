@@ -370,6 +370,7 @@
     "pending_invites_body": "These invites haven't been accepted yet. A personal note from you usually does more than a reminder email.",
     "pending_invites_empty": "All caught up — every invite has been answered.",
     "invited_on": "invited {{date}}",
+    "revoke_invite": "Remove the invite for {{name}}",
     "activation_window_note": "New members who did something in their first {{days}} days — the earliest sign your community is landing.",
     "status_thriving": "Thriving",
     "status_active": "Active",

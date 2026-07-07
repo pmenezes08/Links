@@ -370,6 +370,7 @@
     "pending_invites_body": "Estes convites ainda não foram aceites. Uma palavra pessoal tua costuma valer mais do que um email de lembrete.",
     "pending_invites_empty": "Tudo em dia — todos os convites foram respondidos.",
     "invited_on": "convidado a {{date}}",
+    "revoke_invite": "Remover o convite de {{name}}",
     "activation_window_note": "Novos membros que fizeram algo nos primeiros {{days}} dias — o primeiro sinal de que a tua comunidade está a funcionar.",
     "status_thriving": "Animado",
     "status_active": "Ativo",
