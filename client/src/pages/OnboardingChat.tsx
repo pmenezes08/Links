@@ -14,6 +14,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
 import { detectOffScript, looksLikeMeaninglessInput } from '../components/onboarding/onboardingInputGuards'
+import { onboardingProgress } from '../components/onboarding/onboardingProgress'
 import {
   b2bNetworkSizeLabel,
   b2bNetworkSizeOptions,
@@ -91,7 +92,7 @@ type WorkHistoryRow = {
 interface ChatMessage {
   from: 'steve' | 'user'
   text: string
-  options?: { label: string; value: string; icon?: string }[]
+  options?: { label: string; value: string; primary?: boolean }[]
   cards?: EnrichmentCard[]
   photoUpload?: boolean
   cvUpload?: boolean
@@ -193,56 +194,7 @@ interface OnboardingChatProps {
   onExit: () => void
 }
 
-const USER_FACING_STEPS = 8
 const SALES_EMAIL = 'sales@c-point.co'
-
-function stageProgress(stage: Stage): number {
-  const stepMap: Record<Stage, number> = {
-    intent_fork: 0,
-    b2b_value: 0,
-    b2b_network_size: 0,
-    b2b_tier_guidance: 0,
-    b2b_org_type: 0,
-    b2b_parent_name: 0,
-    b2b_sub_names: 0,
-    welcome: 0,
-    profile_builder_summary: 0,
-    pb_confirm_field: 0,
-    pb_edit_field: 0,
-    name: 1,
-    location: 2,
-    location_confirm: 2,
-    location_city: 2,
-    photo: 3,
-    section_picker: 3,
-    personal_section_intro: 3,
-    talk_all_day: 4,
-    reach_out: 4,
-    journey: 5,
-    recommend: 5,
-    optional_social: 5,
-    personal_bio_review: 6,
-    professional_section_intro: 6,
-    cv_upload: 6,
-    cv_review: 6,
-    professional: 6,
-    professional_confirm: 6,
-    fix_role: 6,
-    fix_company: 6,
-    professional_associations: 7,
-    professional_strengths: 7,
-    linkedin: 7,
-    professional_bio_review: 8,
-    profile_review: 8,
-    manual_bio_edit: 8,
-    gibberish_check: 0,
-    enriching: 8,
-    review: 8,
-    complete: 8,
-  }
-  const step = stepMap[stage] ?? 0
-  return Math.round((step / USER_FACING_STEPS) * 100)
-}
 
 function firstUnansweredStageForSection(section: ProfileSection, c: Collected): Stage {
   if (section === 'personal') {
@@ -398,6 +350,7 @@ export default function OnboardingChat({
     activeProfileSection: undefined,
     profileSectionOrder: [],
   })
+  const progress = onboardingProgress(stage, collected)
   const [isTyping, setIsTyping] = useState(false)
   const [picFile, setPicFile] = useState<File | null>(null)
   const [cvFile, setCvFile] = useState<File | null>(null)
@@ -530,7 +483,7 @@ export default function OnboardingChat({
     } catch {}
   }, [isSectionOnly, sectionOnlyTarget])
 
-  // â”€â”€ Initialize: load saved state or start fresh â”€â”€
+  // ── Initialize: load saved state or start fresh ──
   useEffect(() => {
     if (initialized) return
     setInitialized(true)
@@ -729,7 +682,7 @@ export default function OnboardingChat({
         }
         const welcomeOpts: ChatMessage['options'] =
           mode === 'profile_builder' || communityName
-            ? [ocOpt(t, 'lets_go', 'start', 'ðŸš€')]
+            ? [ocOpt(t, 'lets_go', 'start')]
             : [ocOpt(t, 'lets_go', 'start'), ocOpt(t, 'finish_later', 'open_defer_modal')]
         addSteveMessage(welcomeText, { options: welcomeOpts })
         break
@@ -737,7 +690,7 @@ export default function OnboardingChat({
       case 'profile_builder_summary': {
         const summary = profileSummaryBlock(t, data)
         addSteveMessage(oc(t, 'messages.pb_summary', { summary }), {
-          options: [ocOpt(t, 'pb_continue', 'pb_summary_continue', 'âž¡ï¸')],
+          options: [ocOpt(t, 'pb_continue', 'pb_summary_continue')],
         })
         break
       }
@@ -751,8 +704,8 @@ export default function OnboardingChat({
         const raw = (data[field] || '').trim()
         addSteveMessage(oc(t, 'messages.pb_confirm', { field: pbFieldLabel(t, field), value: raw }), {
           options: [
-            ocOpt(t, 'yes', 'pb_confirm_yes', 'âœ…'),
-            ocOpt(t, 'update', 'pb_confirm_update', 'âœï¸'),
+            ocOpt(t, 'yes', 'pb_confirm_yes'),
+            ocOpt(t, 'update', 'pb_confirm_update'),
           ],
         })
         break
@@ -776,8 +729,8 @@ export default function OnboardingChat({
             oc(t, 'messages.name_confirm', { firstName: data.firstName, lastName: data.lastName }),
             {
               options: [
-                ocOpt(t, 'thats_correct', 'confirm_name', 'âœ…'),
-                ocOpt(t, 'let_me_fix', 'edit_name', 'âœï¸'),
+                ocOpt(t, 'thats_correct', 'confirm_name'),
+                ocOpt(t, 'let_me_fix', 'edit_name'),
               ],
             },
           )
@@ -804,9 +757,8 @@ export default function OnboardingChat({
               {
                 label: oc(t, 'options.yes_location', { city, country }),
                 value: 'confirm_location',
-                icon: 'âœ…',
               },
-              ocOpt(t, 'no_correct_location', 'edit_location', 'âœï¸'),
+              ocOpt(t, 'no_correct_location', 'edit_location'),
             ],
           })
         } else {
@@ -823,7 +775,7 @@ export default function OnboardingChat({
         addSteveMessage(oc(t, 'messages.location_city', { country }), {
           inputType: 'text',
           inputPlaceholder: oc(t, 'placeholders.city_example'),
-          options: [ocOpt(t, 'skip_city', 'skip_city', 'â­ï¸')],
+          options: [ocOpt(t, 'skip_city', 'skip_city')],
         })
         break
       }
@@ -870,21 +822,21 @@ export default function OnboardingChat({
         addSteveMessage(oc(t, 'messages.talk_all_day'), {
           inputType: 'text',
           inputPlaceholder: oc(t, 'placeholders.type_answer'),
-          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back', 'â†©ï¸')] : undefined,
+          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back')] : undefined,
         })
         break
       case 'reach_out':
         addSteveMessage(oc(t, 'messages.reach_out'), {
           inputType: 'text',
           inputPlaceholder: oc(t, 'placeholders.type_answer'),
-          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back', 'â†©ï¸')] : undefined,
+          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back')] : undefined,
         })
         break
       case 'professional':
         addSteveMessage(oc(t, 'messages.professional_ask'), {
           inputType: 'text',
           inputPlaceholder: oc(t, 'placeholders.professional'),
-          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back', 'â†©ï¸')] : undefined,
+          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back')] : undefined,
         })
         break
       case 'professional_confirm': {
@@ -893,18 +845,18 @@ export default function OnboardingChat({
         if (role && company) {
           addSteveMessage(oc(t, 'messages.professional_confirm_both', { role, company }), {
             options: [
-              ocOpt(t, 'yes_professional_correct', 'confirm_professional', 'âœ…'),
-              ocOpt(t, 'fix_role', 'edit_role_only', 'âœï¸'),
-              ocOpt(t, 'fix_company', 'edit_company_only', 'âœï¸'),
-              ocOpt(t, 'fix_both', 'edit_professional', 'âœï¸'),
+              ocOpt(t, 'yes_professional_correct', 'confirm_professional'),
+              ocOpt(t, 'fix_role', 'edit_role_only'),
+              ocOpt(t, 'fix_company', 'edit_company_only'),
+              ocOpt(t, 'fix_both', 'edit_professional'),
             ],
           })
         } else if (role) {
           addSteveMessage(oc(t, 'messages.professional_confirm_role', { role }), {
             options: [
-              ocOpt(t, 'yes_professional_correct', 'confirm_professional', 'âœ…'),
-              ocOpt(t, 'add_company', 'edit_company_only', 'âœï¸'),
-              ocOpt(t, 'fix_role', 'edit_role_only', 'âœï¸'),
+              ocOpt(t, 'yes_professional_correct', 'confirm_professional'),
+              ocOpt(t, 'add_company', 'edit_company_only'),
+              ocOpt(t, 'fix_role', 'edit_role_only'),
             ],
           })
         } else {
@@ -924,7 +876,7 @@ export default function OnboardingChat({
             steps: professionalSectionSteps,
           },
           options: [
-            ocOpt(t, 'import_cv', 'start_cv_upload', 'ðŸ“„'),
+            ocOpt(t, 'import_cv', 'start_cv_upload'),
             ocOpt(t, 'start_professional_section', 'start_professional_section'),
             ocOpt(t, 'finish_later', 'open_defer_modal'),
           ],
@@ -934,8 +886,8 @@ export default function OnboardingChat({
         addSteveMessage(oc(t, 'messages.cv_upload'), {
           cvUpload: true,
           options: [
-            ocOpt(t, 'type_manually', 'cv_skip_to_manual', 'âœï¸'),
-            ocOpt(t, 'go_back', 'go_back', 'â†©ï¸'),
+            ocOpt(t, 'type_manually', 'cv_skip_to_manual'),
+            ocOpt(t, 'go_back', 'go_back'),
           ],
         })
         break
@@ -947,8 +899,8 @@ export default function OnboardingChat({
         // the state save), but never into MySQL columns. Skipping jumps both,
         // straight to LinkedIn, so the professional section is two real
         // interactions.
-        const assocOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_professional_associations', 'â­ï¸')]
-        if (stageHistory.current.length > 1) assocOpts.push(ocOpt(t, 'go_back', 'go_back', 'â†©ï¸'))
+        const assocOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_professional_associations')]
+        if (stageHistory.current.length > 1) assocOpts.push(ocOpt(t, 'go_back', 'go_back'))
         addSteveMessage(oc(t, 'messages.professional_associations'), {
           inputType: 'text',
           inputPlaceholder: oc(t, 'placeholders.associations'),
@@ -957,8 +909,8 @@ export default function OnboardingChat({
         break
       }
       case 'professional_strengths': {
-        const strengthOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_professional_strengths', 'â­ï¸')]
-        if (stageHistory.current.length > 1) strengthOpts.push(ocOpt(t, 'go_back', 'go_back', 'â†©ï¸'))
+        const strengthOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_professional_strengths')]
+        if (stageHistory.current.length > 1) strengthOpts.push(ocOpt(t, 'go_back', 'go_back'))
         addSteveMessage(oc(t, 'messages.professional_strengths'), {
           inputType: 'text',
           inputPlaceholder: oc(t, 'placeholders.strengths'),
@@ -967,8 +919,8 @@ export default function OnboardingChat({
         break
       }
       case 'linkedin': {
-        const lnOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_linkedin', 'â­ï¸')]
-        if (stageHistory.current.length > 1) lnOpts.push(ocOpt(t, 'go_back', 'go_back', 'â†©ï¸'))
+        const lnOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_linkedin')]
+        if (stageHistory.current.length > 1) lnOpts.push(ocOpt(t, 'go_back', 'go_back'))
         addSteveMessage(oc(t, 'messages.linkedin_ask'), {
           inputType: 'url',
           inputPlaceholder: oc(t, 'placeholders.linkedin'),
@@ -977,8 +929,8 @@ export default function OnboardingChat({
         break
       }
       case 'recommend': {
-        const recOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_recommend', 'â­ï¸')]
-        if (stageHistory.current.length > 1) recOpts.push(ocOpt(t, 'go_back', 'go_back', 'â†©ï¸'))
+        const recOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_recommend')]
+        if (stageHistory.current.length > 1) recOpts.push(ocOpt(t, 'go_back', 'go_back'))
         addSteveMessage(oc(t, 'messages.recommend'), {
           inputType: 'text',
           inputPlaceholder: oc(t, 'placeholders.recommend'),
@@ -987,8 +939,8 @@ export default function OnboardingChat({
         break
       }
       case 'optional_social': {
-        const soOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_optional_social', 'â­ï¸')]
-        if (stageHistory.current.length > 1) soOpts.push(ocOpt(t, 'go_back', 'go_back', 'â†©ï¸'))
+        const soOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_optional_social')]
+        if (stageHistory.current.length > 1) soOpts.push(ocOpt(t, 'go_back', 'go_back'))
         addSteveMessage(oc(t, 'messages.optional_social'), {
           inputType: 'textarea',
           inputPlaceholder: oc(t, 'placeholders.social_urls'),
@@ -1001,8 +953,8 @@ export default function OnboardingChat({
           inputType: 'textarea',
           inputPlaceholder: oc(t, 'placeholders.journey'),
           options: (() => {
-            const opts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_journey', 'â­ï¸')]
-            if (stageHistory.current.length > 1) opts.push(ocOpt(t, 'go_back', 'go_back', 'â†©ï¸'))
+            const opts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_journey')]
+            if (stageHistory.current.length > 1) opts.push(ocOpt(t, 'go_back', 'go_back'))
             return opts
           })(),
         })
@@ -1131,9 +1083,9 @@ export default function OnboardingChat({
     }
     addSteveMessage(oc(t, 'messages.complete'), {
       options: [
-        ocOpt(t, 'add_edit_profile', 'edit_profile'),
+        { ...ocOpt(t, 'go_dashboard', 'go_feed'), primary: true },
         ocOpt(t, 'show_me_around', 'start_tour'),
-        ocOpt(t, 'go_dashboard', 'go_feed'),
+        ocOpt(t, 'add_edit_profile', 'edit_profile'),
         ocOpt(t, 'create_community', 'create_community'),
       ],
     })
@@ -1581,16 +1533,16 @@ export default function OnboardingChat({
             } else {
               addSteveMessage((j?.error as string) || oc(t, 'errors.cv_save'), {
                 options: [
-                  ocOpt(t, 'try_again', 'confirm_cv_import', 'â†»'),
-                  ocOpt(t, 'type_manually_short', 'reject_cv_import', 'âœï¸'),
+                  ocOpt(t, 'try_again', 'confirm_cv_import'),
+                  ocOpt(t, 'type_manually_short', 'reject_cv_import'),
                 ],
               })
             }
           } catch {
             addSteveMessage(oc(t, 'errors.cv_save_network'), {
               options: [
-                ocOpt(t, 'try_again', 'confirm_cv_import', 'â†»'),
-                ocOpt(t, 'type_manually_short', 'reject_cv_import', 'âœï¸'),
+                ocOpt(t, 'try_again', 'confirm_cv_import'),
+                ocOpt(t, 'type_manually_short', 'reject_cv_import'),
               ],
             })
           }
@@ -1622,8 +1574,8 @@ export default function OnboardingChat({
         addSteveMessage(oc(t, 'messages.cv_upload'), {
           cvUpload: true,
           options: [
-            ocOpt(t, 'type_manually', 'cv_skip_to_manual', 'âœï¸'),
-            ocOpt(t, 'go_back', 'go_back', 'â†©ï¸'),
+            ocOpt(t, 'type_manually', 'cv_skip_to_manual'),
+            ocOpt(t, 'go_back', 'go_back'),
           ],
         })
         break
@@ -1802,8 +1754,8 @@ export default function OnboardingChat({
       gibberishReturnStage.current = stage
       addSteveMessage(oc(t, 'messages.gibberish'), {
         options: [
-          ocOpt(t, 'yes_skip', 'gibberish_skip', 'â­ï¸'),
-          ocOpt(t, 'no_try_again', 'gibberish_retry', 'âœï¸'),
+          ocOpt(t, 'yes_skip', 'gibberish_skip'),
+          ocOpt(t, 'no_try_again', 'gibberish_retry'),
         ],
       })
       return
@@ -1965,7 +1917,7 @@ export default function OnboardingChat({
           addSteveMessage(parsed.error || oc(t, 'validation.linkedin_fallback'), {
             inputType: 'url',
             inputPlaceholder: oc(t, 'placeholders.linkedin'),
-            options: [ocOpt(t, 'skip', 'skip_linkedin', 'â­ï¸')],
+            options: [ocOpt(t, 'skip', 'skip_linkedin')],
           })
           return
         }
@@ -2122,13 +2074,13 @@ export default function OnboardingChat({
       } else {
         addSteveMessage(j?.error || oc(t, 'errors.photo_upload'), {
           photoUpload: true,
-          options: [ocOpt(t, 'skip_photo', 'skip_photo', 'â­ï¸')],
+          options: [ocOpt(t, 'skip_photo', 'skip_photo')],
         })
       }
     } catch {
       addSteveMessage(oc(t, 'errors.photo_network'), {
         photoUpload: true,
-        options: [ocOpt(t, 'skip_photo', 'skip_photo', 'â­ï¸')],
+        options: [ocOpt(t, 'skip_photo', 'skip_photo')],
       })
     } finally {
       setUploadingPic(false)
@@ -2204,8 +2156,8 @@ export default function OnboardingChat({
           }),
           {
             options: [
-              ocOpt(t, 'confirm_cv', 'confirm_cv_import', 'âœ…'),
-              ocOpt(t, 'type_instead', 'reject_cv_import', 'âœï¸'),
+              ocOpt(t, 'confirm_cv', 'confirm_cv_import'),
+              ocOpt(t, 'type_instead', 'reject_cv_import'),
             ],
           },
         )
@@ -2216,9 +2168,9 @@ export default function OnboardingChat({
         addSteveMessage(err, {
           cvUpload: true,
           options: [
-            ocOpt(t, 'try_another_file', 'cv_retry_pick', 'â†»'),
-            ocOpt(t, 'type_manually', 'cv_skip_to_manual', 'âœï¸'),
-            ocOpt(t, 'go_back', 'go_back', 'â†©ï¸'),
+            ocOpt(t, 'try_another_file', 'cv_retry_pick'),
+            ocOpt(t, 'type_manually', 'cv_skip_to_manual'),
+            ocOpt(t, 'go_back', 'go_back'),
           ],
         })
       }
@@ -2227,8 +2179,8 @@ export default function OnboardingChat({
       addSteveMessage(oc(t, 'errors.cv_network'), {
         cvUpload: true,
         options: [
-          ocOpt(t, 'try_again', 'cv_retry_pick', 'â†»'),
-          ocOpt(t, 'type_manually_short', 'cv_skip_to_manual', 'âœï¸'),
+          ocOpt(t, 'try_again', 'cv_retry_pick'),
+          ocOpt(t, 'type_manually_short', 'cv_skip_to_manual'),
         ],
       })
     } finally {
@@ -2308,26 +2260,31 @@ export default function OnboardingChat({
               {oc(t, 'ui.exit_for_now')}
             </button>
             <div className="text-[10px] text-c-text-tertiary">
-              {oc(t, 'ui.step_of', {
-                // Never show "Step 0 of 8" — welcome/intent stages count as step 1.
-                current: Math.max(1, Math.min(Math.ceil(stageProgress(stage) / (100 / USER_FACING_STEPS)), USER_FACING_STEPS)),
-                total: USER_FACING_STEPS,
-              })}
+              {progress.track === 'b2b'
+                ? `${oc(t, 'ui.progress_network_label')} · ${oc(t, 'ui.step_of', { current: progress.current, total: progress.total })}`
+                : oc(t, 'ui.step_of', { current: progress.current, total: progress.total })}
             </div>
           </div>
         </div>
         {/* Progress bar */}
-        <div className="h-0.5 bg-c-hover-bg">
+        <div
+          className="h-0.5 bg-c-hover-bg"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={progress.total}
+          aria-valuenow={progress.current}
+          aria-label={oc(t, 'ui.step_of', { current: progress.current, total: progress.total })}
+        >
           <div
             className="h-full bg-cpoint-turquoise transition-all duration-700 ease-out"
-            style={{ width: `${stageProgress(stage)}%` }}
+            style={{ width: `${Math.round((progress.current / progress.total) * 100)}%` }}
           />
         </div>
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4" style={{ paddingBottom: listPaddingBottom }}>
-        <div className="max-w-lg mx-auto space-y-3">
+        <div className="max-w-lg mx-auto space-y-3" role="log" aria-live="polite">
           {messages.map((msg, i) => (
             <div key={i}>
               {msg.from === 'steve' ? (
@@ -2393,21 +2350,25 @@ export default function OnboardingChat({
                           <button
                             key={opt.value}
                             onClick={() => handleOptionClick(opt.value)}
-                            className="rounded-xl border border-cpoint-turquoise/35 bg-c-hover-bg px-4 py-2.5 text-left text-[12px] font-semibold text-c-accent-ink transition-colors hover:bg-cpoint-turquoise/10"
+                            className={opt.primary
+                              ? 'rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-left text-[12px] font-semibold text-c-text-on-accent transition hover:brightness-110'
+                              : 'rounded-xl border border-cpoint-turquoise/35 bg-c-hover-bg px-4 py-2.5 text-left text-[12px] font-semibold text-c-accent-ink transition-colors hover:bg-cpoint-turquoise/10'}
                           >
                             {opt.label}
                           </button>
                         ))}
                       </div>
                     )}
-                    {/* Complete stage options persist */}
+                    {/* Complete stage options persist — one primary action, the rest quiet */}
                     {msg.options && stage === 'complete' && i === messages.length - 1 && (
                       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                         {msg.options.map(opt => (
                           <button
                             key={opt.value}
                             onClick={() => handleOptionClick(opt.value)}
-                            className="rounded-xl border border-cpoint-turquoise/35 bg-c-hover-bg px-4 py-2.5 text-left text-[12px] font-semibold text-c-accent-ink transition-colors hover:bg-cpoint-turquoise/10"
+                            className={opt.primary
+                              ? 'rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-left text-[12px] font-semibold text-c-text-on-accent transition hover:brightness-110'
+                              : 'rounded-xl border border-c-border bg-c-hover-bg px-4 py-2.5 text-left text-[12px] font-medium text-c-text-secondary transition-colors hover:bg-c-active-bg'}
                           >
                             {opt.label}
                           </button>
@@ -2507,18 +2468,18 @@ export default function OnboardingChat({
                                   onClick={() => handleCardAction(card.id, 'accepted')}
                                   className="px-3 py-1.5 rounded-lg bg-cpoint-turquoise/15 border border-cpoint-turquoise/30 text-[11px] font-medium text-cpoint-turquoise"
                                 >
-                                  âœ… {oc(t, 'options.accept')}
+                                  <i className="fa-solid fa-check mr-1" aria-hidden="true" />{oc(t, 'options.accept')}
                                 </button>
                                 <button
                                   onClick={() => handleCardAction(card.id, 'dismissed')}
                                   className="px-3 py-1.5 rounded-lg bg-c-hover-bg border border-c-border text-[11px] font-medium text-c-text-tertiary"
                                 >
-                                  âŒ {oc(t, 'options.dismiss')}
+                                  <i className="fa-solid fa-xmark mr-1" aria-hidden="true" />{oc(t, 'options.dismiss')}
                                 </button>
                               </div>
                             )}
                             {card.status === 'accepted' && (
-                              <div className="text-[10px] text-cpoint-turquoise/70 mt-1.5">âœ… {oc(t, 'ui.added_to_profile')}</div>
+                              <div className="text-[10px] text-cpoint-turquoise/70 mt-1.5"><i className="fa-solid fa-check mr-1" aria-hidden="true" />{oc(t, 'ui.added_to_profile')}</div>
                             )}
                             {card.status === 'dismissed' && (
                               <div className="text-[10px] text-c-text-tertiary mt-1.5">{oc(t, 'ui.dismissed')}</div>
@@ -2528,7 +2489,7 @@ export default function OnboardingChat({
                         {allCardsReviewed() && (
                           <button
                             onClick={handleFinishReview}
-                            className="w-full mt-2 px-4 py-3 rounded-xl bg-cpoint-turquoise text-black text-sm font-semibold hover:brightness-110 transition"
+                            className="w-full mt-2 px-4 py-3 rounded-xl bg-cpoint-turquoise text-c-text-on-accent text-sm font-semibold hover:brightness-110 transition"
                           >
                             {oc(t, 'ui.continue_btn')}
                           </button>
@@ -2562,11 +2523,12 @@ export default function OnboardingChat({
                     })}
                   </div>
                 )}
-                <div className="flex gap-1">
+                <div className="flex gap-1" aria-hidden="true">
                   <div className="w-2 h-2 rounded-full bg-c-text-tertiary animate-bounce" style={{ animationDelay: '0ms' }} />
                   <div className="w-2 h-2 rounded-full bg-c-text-tertiary animate-bounce" style={{ animationDelay: '150ms' }} />
                   <div className="w-2 h-2 rounded-full bg-c-text-tertiary animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
+                <span className="sr-only">{oc(t, 'ui.steve_typing')}</span>
               </div>
               {/* enriching indicator hidden as feature is now admin-only */}
             </div>
@@ -2620,7 +2582,7 @@ export default function OnboardingChat({
                       <button
                         onClick={handlePhotoUpload}
                         disabled={uploadingPic}
-                        className="px-4 py-2.5 rounded-xl bg-cpoint-turquoise text-black text-sm font-semibold hover:brightness-110 transition w-full disabled:opacity-50"
+                        className="px-4 py-2.5 rounded-xl bg-cpoint-turquoise text-c-text-on-accent text-sm font-semibold hover:brightness-110 transition w-full disabled:opacity-50"
                       >
                         {uploadingPic ? oc(t, 'ui.uploading') : oc(t, 'ui.upload_photo')}
                       </button>
@@ -2665,7 +2627,7 @@ export default function OnboardingChat({
                         type="button"
                         onClick={handleCvParseUpload}
                         disabled={cvUploading}
-                        className="px-4 py-2.5 rounded-xl bg-cpoint-turquoise text-black text-sm font-semibold hover:brightness-110 transition w-full disabled:opacity-50"
+                        className="px-4 py-2.5 rounded-xl bg-cpoint-turquoise text-c-text-on-accent text-sm font-semibold hover:brightness-110 transition w-full disabled:opacity-50"
                       >
                         {cvUploading ? oc(t, 'ui.reading_cv') : oc(t, 'ui.upload_extract')}
                       </button>
@@ -2712,9 +2674,10 @@ export default function OnboardingChat({
                 <button
                   onClick={handleSubmit}
                   disabled={!inputValue.trim()}
-                  className="px-4 py-2.5 rounded-xl bg-cpoint-turquoise text-black font-semibold text-sm hover:brightness-110 transition disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                  aria-label={oc(t, 'ui.send_message')}
+                  className="px-4 py-2.5 rounded-xl bg-cpoint-turquoise text-c-text-on-accent font-semibold text-sm hover:brightness-110 transition disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
                 >
-                  <i className="fa-solid fa-paper-plane" />
+                  <i className="fa-solid fa-paper-plane" aria-hidden="true" />
                 </button>
               </div>
             )}
@@ -2724,8 +2687,13 @@ export default function OnboardingChat({
 
       {showDeferConfirm && (
         <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-c-bg-overlay px-4 backdrop-blur-sm" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-          <div className="w-full max-w-sm rounded-3xl border border-cpoint-turquoise/25 bg-c-bg-elevated p-5 shadow-[0_24px_80px_rgba(0,206,200,0.16)]">
-            <div className="text-lg font-semibold text-c-text-primary">{oc(t, 'ui.need_more_time')}</div>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="onboarding-defer-title"
+            className="w-full max-w-sm rounded-3xl border border-cpoint-turquoise/25 bg-c-bg-elevated p-5 shadow-[0_24px_80px_rgba(0,206,200,0.16)]"
+          >
+            <h2 id="onboarding-defer-title" className="text-lg font-semibold text-c-text-primary">{oc(t, 'ui.need_more_time')}</h2>
             <div className="mt-3 text-sm leading-relaxed text-c-text-secondary">{oc(t, 'ui.defer_body')}</div>
             <div className="mt-5 flex flex-col gap-2 sm:flex-row">
               <button
@@ -2748,7 +2716,7 @@ export default function OnboardingChat({
               </button>
             </div>
             {deferError && (
-              <div className="mt-3 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs leading-relaxed text-red-100">
+              <div role="alert" className="mt-3 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs leading-relaxed text-red-100">
                 {deferError}
               </div>
             )}
@@ -2759,16 +2727,22 @@ export default function OnboardingChat({
       {/* Platform tour modal */}
       {tourStep !== null && (
         <div className="fixed inset-0 z-[60] bg-c-bg-overlay backdrop-blur-sm flex items-center justify-center px-4" onClick={() => setTourStep(null)}>
-          <div className="w-full max-w-sm bg-c-bg-surface border border-c-border rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="onboarding-tour-title"
+            className="w-full max-w-sm bg-c-bg-surface border border-c-border rounded-2xl overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="px-6 pt-6 pb-4 flex flex-col items-center text-center">
               <div className="w-16 h-16 rounded-2xl bg-cpoint-turquoise/10 border border-cpoint-turquoise/20 flex items-center justify-center mb-4">
-                <i className={`${tourSteps[tourStep].icon} text-2xl text-cpoint-turquoise`} />
+                <i className={`${tourSteps[tourStep].icon} text-2xl text-cpoint-turquoise`} aria-hidden="true" />
               </div>
-              <div className="text-base font-semibold text-c-text-primary mb-1.5">{tourSteps[tourStep].title}</div>
+              <h2 id="onboarding-tour-title" className="text-base font-semibold text-c-text-primary mb-1.5">{tourSteps[tourStep].title}</h2>
               <div className="text-sm text-c-text-tertiary leading-relaxed">{tourSteps[tourStep].description}</div>
             </div>
             {/* Dot indicators */}
-            <div className="flex justify-center gap-1.5 pb-3">
+            <div className="flex justify-center gap-1.5 pb-3" aria-hidden="true">
               {tourSteps.map((_, i) => (
                 <div
                   key={i}
@@ -2797,7 +2771,7 @@ export default function OnboardingChat({
                     onComplete()
                   }
                 }}
-                className="px-4 py-2 rounded-lg bg-cpoint-turquoise text-black text-xs font-semibold hover:brightness-110 transition"
+                className="px-4 py-2 rounded-lg bg-cpoint-turquoise text-c-text-on-accent text-xs font-semibold hover:brightness-110 transition"
               >
                 {tourStep < tourSteps.length - 1 ? oc(t, 'ui.tour_next') : oc(t, 'ui.tour_done')}
               </button>

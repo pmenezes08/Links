@@ -18,6 +18,9 @@ export const CPOINT_EASE_OUT = 'cubic-bezier(0.32, 0.72, 0, 1)'
 /** Reduced-motion fallback: quick opacity fade instead of slide. */
 export const REDUCED_MOTION_FADE_MS = 80
 
+/** Pre-login welcome carousel slide duration. */
+export const WELCOME_CAROUSEL_SLIDE_MS = 500
+
 /**
  * Steve onboarding reply pacing — length-scaled typing delay.
  * delay = clamp(BASE + chars*PER_CHAR, MIN, MAX) * (burst ? DISCOUNT : 1) + jitter

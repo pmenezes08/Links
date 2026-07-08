@@ -36,8 +36,8 @@ export function oc(t: TFunction, key: string, opts?: Record<string, unknown>): s
   return String(t(`onboarding_chat.${key}`, opts as never))
 }
 
-export function ocOpt(t: TFunction, key: string, value: string, icon?: string) {
-  return { label: oc(t, `options.${key}`), value, icon }
+export function ocOpt(t: TFunction, key: string, value: string) {
+  return { label: oc(t, `options.${key}`), value }
 }
 
 export function tierHintsFromState(hints?: OnboardingTierHints | null): Record<OnboardingChatTierCode, CommunityTierHint> {
@@ -203,9 +203,9 @@ export function sectionOnlyCompleteMessage(t: TFunction, target: 'personal' | 'p
   return oc(t, 'messages.section_only_complete', { section })
 }
 
-export function sectionOnlyCompleteOptions(t: TFunction): { label: string; value: string }[] {
+export function sectionOnlyCompleteOptions(t: TFunction): { label: string; value: string; primary?: boolean }[] {
   return [
-    { label: oc(t, 'options.back_to_community'), value: 'go_feed' },
+    { label: oc(t, 'options.back_to_community'), value: 'go_feed', primary: true },
     { label: oc(t, 'options.edit_full_profile'), value: 'edit_profile' },
   ]
 }

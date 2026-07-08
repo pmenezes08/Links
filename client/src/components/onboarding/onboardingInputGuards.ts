@@ -57,7 +57,8 @@ export function looksLikeMeaninglessInput(val: string): boolean {
   // The vowel/consonant heuristics below assume English orthography — skip
   // them for input containing any non-ASCII letter ("Geschäftsführer",
   // "São João", 日本語) rather than misclassifying it as gibberish.
-  if (/[^\x00-\x7F]/.test(trimmed)) return false
+  const hasNonAscii = trimmed.split('').some(ch => ch.charCodeAt(0) > 127)
+  if (hasNonAscii) return false
   const words = trimmed.split(/\s+/)
   const hasVowelWord = words.some(w => /[aeiouAEIOU]/.test(w) && w.length > 1)
   if (!hasVowelWord && trimmed.length < 8) return true
