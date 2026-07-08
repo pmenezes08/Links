@@ -543,6 +543,33 @@ def daily_any_count(username: str) -> int:
         )
 
 
+def daily_request_type_count(username: str, surface: str, request_type: str) -> int:
+    """Successful calls in the last 24 rolling hours for one request_type.
+
+    Powers internal per-route soft caps (e.g. the onboarding redirect
+    ceiling). Fails open — returns 0 on any DB error — so a transient DB
+    issue can never block the calling flow.
+    """
+    if not username or not surface or not request_type:
+        return 0
+    ensure_tables()
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        return _fetch_count(
+            c,
+            f"""
+            SELECT COUNT(*) AS cnt FROM ai_usage_log
+            WHERE username = {ph}
+              AND surface = {ph}
+              AND request_type = {ph}
+              AND success = 1
+              AND created_at >= {ph}
+            """,
+            (username, surface, request_type, _twenty_four_hours_ago()),
+        )
+
+
 def monthly_steve_credits_used(username: str) -> float:
     """Personal Steve credits debited this calendar month (raw float sum)."""
     if not username:

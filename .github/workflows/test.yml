@@ -109,6 +109,9 @@ jobs:
             tests/test_community_handles.py \
             tests/test_community_join_requests.py \
             tests/test_onboarding_session.py \
+            tests/test_onboarding_llm.py \
+            tests/test_onboarding_ai_metering.py \
+            tests/test_onboarding_events.py \
             tests/test_spotlight_kb.py \
             tests/test_redis_cache_resilience.py \
             tests/test_dm_unread_counts.py \

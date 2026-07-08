@@ -16,6 +16,13 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 XAI_CHAT_BASE = "https://api.x.ai/v1"
 ONBOARDING_OPENAI_FALLBACK_MODEL = "gpt-4o"
 
+# Internal abuse ceiling for the off-script redirect route — the only
+# onboarding LLM call a user can trigger an unbounded number of times per
+# session. Like entitlements_gate's monthly spend ceiling, this is an
+# operational guard, NOT a user-facing entitlement, so it does not live in
+# the Knowledge Base. When hit, the route degrades to its canned reply.
+ONBOARDING_REDIRECT_DAILY_CAP = int(os.environ.get("ONBOARDING_REDIRECT_DAILY_CAP") or "20")
+
 
 def extract_json_object_from_llm_text(raw: str) -> dict[str, Any]:
     """Parse JSON from model output; tolerate markdown fences and extra text."""

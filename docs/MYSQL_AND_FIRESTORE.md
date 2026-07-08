@@ -89,6 +89,7 @@ Also: **`groups`** (optional **`steve_agent_enabled`**, **`steve_agent_preset`**
 | Table | Role |
 |-------|------|
 | **`ai_usage_log`** | **Required** for every AI/Whisper call — `ai_usage.ensure_tables()`. Columns include `credits_debited` (weighted Steve allowance) and `credits_meta` (JSON breakdown). |
+| `onboarding_events` | Server-side onboarding funnel events (`onboarding_events.py`): `stage` (deduped per transition), `completed`, `deferred`, `bootstrap_communities`, `resume_required`. Abandon is derived (stale latest `stage` row, no terminal event); invite-accept→feed-view derived from `community_invitations` × `community_visit_history`. |
 | `special_access_log` | Overrides (`special_access.py`). |
 
 ### Knowledge base (admin)
