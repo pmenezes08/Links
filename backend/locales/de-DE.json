@@ -137,6 +137,12 @@
     },
     "hints": {
       "tier_load_failed": "Stufen-Hinweise können gerade nicht geladen werden."
+    },
+    "redirect": {
+      "fallback": "Gute Frage! Lassen Sie uns zuerst Ihr Profil fertigstellen, danach helfe ich Ihnen gern damit.",
+      "keep_going": "Machen wir weiter!",
+      "come_back": "Interessant! Darauf kommen wir später zurück. Lassen Sie uns zuerst Ihre Einrichtung abschließen.",
+      "error": "Guter Gedanke! Lassen Sie uns zuerst Ihr Profil fertigstellen, danach können wir über alles reden."
     }
   },
   "email": {

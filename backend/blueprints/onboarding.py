@@ -665,8 +665,13 @@ def onboarding_bootstrap_communities():
 @_login_required
 def onboarding_redirect_message():
     """Handle off-script user messages during onboarding. Returns a natural Steve redirect."""
+    from backend.services.i18n import t as i18n_t
+    from backend.services.user_locale import resolve_request_locale
+
+    locale = resolve_request_locale(request, session.get("username"))
+
     if not ONBOARDING_XAI_API_KEY and not ONBOARDING_OPENAI_API_KEY:
-        return jsonify({"success": True, "message": "That's a great question! Let's finish setting up your profile first, then I can help with that."})
+        return jsonify({"success": True, "message": i18n_t("onboarding.redirect.fallback", locale)})
 
     username = session["username"]
     data = request.get_json(silent=True) or {}
@@ -675,10 +680,11 @@ def onboarding_redirect_message():
     question = data.get("currentQuestion", "")
 
     if not user_message:
-        return jsonify({"success": True, "message": "Let's keep going!"})
+        return jsonify({"success": True, "message": i18n_t("onboarding.redirect.keep_going", locale)})
 
     from backend.services import ai_usage
     from backend.services.onboarding_company_intel import usage_from_chat_completion
+    from backend.services.onboarding_llm import prompt_language_instruction
 
     if (
         ai_usage.daily_request_type_count(
@@ -691,18 +697,19 @@ def onboarding_redirect_message():
             surface=ai_usage.SURFACE_ONBOARDING_AI,
             reason="onboarding_redirect_daily_cap",
         )
-        return jsonify({"success": True, "message": "That's a great question! Let's finish setting up your profile first, then I can help with that."})
+        return jsonify({"success": True, "message": i18n_t("onboarding.redirect.fallback", locale)})
 
     try:
         rt_t0 = time.perf_counter()
         response, model_used = run_onboarding_chat_completion(
             [
                 {"role": "system", "content": (
-                    "You are Steve, a friendly AI assistant helping a new user set up their CPoint profile. "
+                    "You are Steve, a friendly AI assistant helping a new user set up their C-Point profile. "
                     f'The user is currently on the "{stage}" step where you asked: "{question}". '
                     "They said something off-topic. Respond naturally in 1-2 sentences, acknowledge what they said, "
                     "then gently steer them back to the question. Be warm and conversational, not robotic. "
                     "Do NOT answer the off-topic question in detail — just redirect."
+                    + prompt_language_instruction(locale)
                 )},
                 {"role": "user", "content": user_message},
             ],
@@ -724,7 +731,7 @@ def onboarding_redirect_message():
             model=model_used,
         )
         if not msg:
-            msg = "Interesting! Let's come back to that later. For now, let's finish getting you set up."
+            msg = i18n_t("onboarding.redirect.come_back", locale)
         return jsonify({"success": True, "message": msg})
     except Exception as e:
         logger.warning(f"Onboarding redirect LLM error: {e}")
@@ -739,7 +746,7 @@ def onboarding_redirect_message():
             )
         except Exception:
             pass
-        return jsonify({"success": True, "message": "Great thought! Let's finish setting up your profile first, then we can chat about anything."})
+        return jsonify({"success": True, "message": i18n_t("onboarding.redirect.error", locale)})
 
 
 @onboarding_bp.route("/api/onboarding/resolve_role", methods=["POST"])
@@ -773,6 +780,8 @@ def onboarding_resolve_role():
                     "- 'Program Manager @ Google' -> {\"role\": \"Program Manager\", \"company\": \"Google\"}\n"
                     "- 'Software Engineer - Meta' -> {\"role\": \"Software Engineer\", \"company\": \"Meta\"}\n"
                     "- 'I work in consulting' -> {\"role\": \"Consultant\", \"company\": \"\"}\n"
+                    "The description may be written in any language (e.g. Portuguese or German). "
+                    "Keep the role title in the user's own language and wording; extract the company name verbatim. "
                     "Return ONLY the JSON, nothing else."
                 )},
                 {"role": "user", "content": text},
@@ -885,6 +894,8 @@ def onboarding_resolve_location():
                     "If the input is clearly a country (e.g. 'Germany', 'Brazil'), return type='country_only' with empty city. "
                     "If the input is a recognizable city, return type='city_and_country' with the city and its country. "
                     "If the input is gibberish or not a real place, return type='unrecognized'. "
+                    "The input may be written in any language (e.g. 'Alemanha', 'Lissabon'); resolve to the "
+                    "official ENGLISH names of the city and country. "
                     f"Known countries for validation: {country_hint}"
                     "\nReturn ONLY the JSON, nothing else."
                 )},
@@ -1015,6 +1026,14 @@ def onboarding_compose_bio():
     try:
         from backend.services import ai_usage
         from backend.services import onboarding_company_intel as onboarding_ci
+        from backend.services.onboarding_llm import prompt_language_instruction
+        from backend.services.user_locale import resolve_request_locale
+
+        # The bio persists into the user's profile, so it must be written in
+        # their locale (formal register for pt/de per the onboarding split).
+        language_instruction = prompt_language_instruction(
+            resolve_request_locale(request, username)
+        )
 
         location = f"{city}, {country}".strip(', ') if city else ""
         professional = ""
@@ -1064,6 +1083,7 @@ def onboarding_compose_bio():
                 "Preserve at least one concrete phrase from the user's inputs when possible. "
                 "Avoid generic phrases such as 'passionate about', 'driven by', 'meaningful connections', and 'leveraging'. "
                 "Keep it useful and human, not corporate. Do NOT use hashtags, emojis, or buzzwords. Return ONLY the bio text."
+                + language_instruction
             )
             user_prompt = (
                 revision_block
@@ -1092,6 +1112,7 @@ def onboarding_compose_bio():
                 "Write in first person. Be authentic and human, not corporate or generic. "
                 "Avoid generic phrases such as 'passionate about', 'driven by', 'meaningful connections', and 'leveraging'. "
                 "Do NOT use hashtags, emojis, or buzzwords. Return ONLY the bio text."
+                + language_instruction
             )
             user_prompt = (
                 revision_block

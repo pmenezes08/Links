@@ -137,6 +137,12 @@
     },
     "hints": {
       "tier_load_failed": "Unable to load tier hints right now."
+    },
+    "redirect": {
+      "fallback": "That's a great question! Let's finish setting up your profile first, then I can help with that.",
+      "keep_going": "Let's keep going!",
+      "come_back": "Interesting! Let's come back to that later. For now, let's finish getting you set up.",
+      "error": "Great thought! Let's finish setting up your profile first, then we can chat about anything."
     }
   },
   "email": {

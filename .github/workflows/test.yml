@@ -113,6 +113,8 @@ jobs:
             tests/test_onboarding_ai_metering.py \
             tests/test_onboarding_events.py \
             tests/test_onboarding_reminders.py \
+            tests/test_onboarding_locale_prompts.py \
+            tests/test_firestore_onboarding_identity.py \
             tests/test_notification_copy.py \
             tests/test_invitee_joined_notification.py \
             tests/test_spotlight_kb.py \

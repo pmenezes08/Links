@@ -13,6 +13,7 @@ import {
 } from '../design/motion'
 import { useTranslation } from 'react-i18next'
 import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
+import { detectOffScript, looksLikeMeaninglessInput } from '../components/onboarding/onboardingInputGuards'
 import {
   b2bNetworkSizeLabel,
   b2bNetworkSizeOptions,
@@ -27,6 +28,8 @@ import {
   pbFieldLabel,
   profileSummaryBlock,
   reactionMessage,
+  sectionOnlyCompleteMessage,
+  sectionOnlyCompleteOptions,
   validateLinkedInProfileUrl,
 } from '../i18n/onboardingChatHelpers'
 
@@ -349,19 +352,6 @@ function parseSocialUrlsFromInput(raw: string): { platform: string; url: string 
     }
   }
   return out
-}
-
-function looksLikeMeaninglessInput(val: string): boolean {
-  const trimmed = val.trim()
-  if (trimmed.length < 3) return true
-  if (/^(.)\1{2,}$/i.test(trimmed)) return true
-  const words = trimmed.split(/\s+/)
-  const hasVowelWord = words.some(w => /[aeiouAEIOU]/.test(w) && w.length > 1)
-  if (!hasVowelWord && trimmed.length < 8) return true
-  if (/^[^a-zA-Z0-9\s]*$/.test(trimmed)) return true
-  const consonantRun = trimmed.replace(/[^a-zA-Z]/g, '')
-  if (consonantRun.length >= 4 && !/[aeiouAEIOU]/.test(consonantRun)) return true
-  return false
 }
 
 export default function OnboardingChat({
@@ -952,9 +942,11 @@ export default function OnboardingChat({
       case 'cv_review':
         break
       case 'professional_associations': {
-        // Express path: associations + strengths are compose-time seasoning
-        // (never persisted anywhere) - skipping jumps both, straight to
-        // LinkedIn, so the professional section is two real interactions.
+        // Express path: associations + strengths season the composed bio and
+        // persist verbatim into steve_user_profiles.onboardingIdentity (via
+        // the state save), but never into MySQL columns. Skipping jumps both,
+        // straight to LinkedIn, so the professional section is two real
+        // interactions.
         const assocOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_professional_associations', 'â­ï¸')]
         if (stageHistory.current.length > 1) assocOpts.push(ocOpt(t, 'go_back', 'go_back', 'â†©ï¸'))
         addSteveMessage(oc(t, 'messages.professional_associations'), {
@@ -1132,12 +1124,8 @@ export default function OnboardingChat({
 
   function showCompleteMsg() {
     if (isSectionOnly) {
-      const sectionLabel = sectionOnlyTarget === 'professional' ? 'professional background' : 'personal background'
-      addSteveMessage(`Your ${sectionLabel} is ready. You can head back to the community whenever you are ready.`, {
-        options: [
-          { label: 'Back to community', value: 'go_feed' },
-          { label: 'Edit full profile', value: 'edit_profile' },
-        ],
+      addSteveMessage(sectionOnlyCompleteMessage(t, sectionOnlyTarget === 'professional' ? 'professional' : 'personal'), {
+        options: sectionOnlyCompleteOptions(t),
       })
       return
     }
@@ -2072,31 +2060,6 @@ export default function OnboardingChat({
       default:
         break
     }
-  }
-
-  function detectOffScript(currentStage: Stage, input: string): boolean {
-    if (currentStage === 'b2b_network_size' || currentStage === 'b2b_tier_guidance' || currentStage === 'b2b_org_type' || currentStage === 'b2b_parent_name' || currentStage === 'b2b_sub_names' || currentStage === 'manual_bio_edit') {
-      return false
-    }
-    const lower = input.toLowerCase()
-    if (currentStage === 'name') {
-      return lower.length > 60 || lower.includes('?') || /^(hey|hi|hello|what|how|can|tell|who)/.test(lower)
-    }
-    if (currentStage === 'professional') {
-      return lower.length > 150 || (lower.includes('?') && !lower.includes('at'))
-    }
-    if (currentStage === 'location') {
-      return lower.length > 80 || (/^(hey|what|how|can|tell|who)/.test(lower) && lower.includes('?'))
-    }
-    if (currentStage === 'linkedin') {
-      if (lower.includes('linkedin.com') || lower.includes('skip')) return false
-      return lower.includes('?') || /^(hey|what|how|can|tell)/.test(lower)
-    }
-    if (currentStage === 'optional_social') {
-      if (/instagram\.|tiktok\.|snapchat\.|facebook\.|fb\.com/i.test(lower) || lower.includes('skip')) return false
-      return lower.includes('?') || /^(hey|what|how|can|tell)/.test(lower)
-    }
-    return false
   }
 
   async function handleOffScript(userMsg: string) {

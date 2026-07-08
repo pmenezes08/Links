@@ -24,6 +24,23 @@ ONBOARDING_OPENAI_FALLBACK_MODEL = "gpt-4o"
 ONBOARDING_REDIRECT_DAILY_CAP = int(os.environ.get("ONBOARDING_REDIRECT_DAILY_CAP") or "20")
 
 
+# Register choices mirror the catalog split in docs/I18N_ROADMAP.md: the
+# onboarding chat speaks the FORMAL register in pt/de, so AI-composed prose
+# (bios, redirects) must match it.
+_PROMPT_LANGUAGES = {
+    "pt-PT": "European Portuguese (Portugal), in the formal register (você, never tu)",
+    "de-DE": "German, in the formal register (Sie, never du)",
+}
+
+
+def prompt_language_instruction(locale: str) -> str:
+    """One sentence to append to a system prompt so AI prose matches the
+    user's locale. Empty for English/unknown — the prompts are already
+    English."""
+    lang = _PROMPT_LANGUAGES.get(locale or "")
+    return f" Write your entire response in {lang}." if lang else ""
+
+
 def extract_json_object_from_llm_text(raw: str) -> dict[str, Any]:
     """Parse JSON from model output; tolerate markdown fences and extra text."""
     text = (raw or "").strip()

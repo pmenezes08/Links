@@ -137,6 +137,12 @@
     },
     "hints": {
       "tier_load_failed": "Não foi possível carregar as sugestões de plano."
+    },
+    "redirect": {
+      "fallback": "Boa pergunta! Vamos primeiro terminar o seu perfil e depois posso ajudar com isso.",
+      "keep_going": "Vamos continuar!",
+      "come_back": "Interessante! Voltamos a isso mais tarde. Para já, vamos terminar a sua configuração.",
+      "error": "Boa ideia! Vamos primeiro terminar o seu perfil e depois falamos sobre o que quiser."
     }
   },
   "email": {

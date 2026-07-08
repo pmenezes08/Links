@@ -198,6 +198,18 @@ export function onboardingGreeting(t: TFunction, firstName?: string): string {
     : oc(t, 'messages.greeting_generic')
 }
 
+export function sectionOnlyCompleteMessage(t: TFunction, target: 'personal' | 'professional'): string {
+  const section = oc(t, target === 'professional' ? 'ui.section_label_professional' : 'ui.section_label_personal')
+  return oc(t, 'messages.section_only_complete', { section })
+}
+
+export function sectionOnlyCompleteOptions(t: TFunction): { label: string; value: string }[] {
+  return [
+    { label: oc(t, 'options.back_to_community'), value: 'go_feed' },
+    { label: oc(t, 'options.edit_full_profile'), value: 'edit_profile' },
+  ]
+}
+
 export function reactionMessage(t: TFunction): string {
   const keys = ['messages.reaction_1', 'messages.reaction_2', 'messages.reaction_3', 'messages.reaction_4'] as const
   const key = keys[Math.floor(Math.random() * keys.length)]

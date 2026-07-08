@@ -9,8 +9,23 @@ import pytest
 from backend.services.onboarding_llm import (
     ONBOARDING_OPENAI_FALLBACK_MODEL,
     extract_json_object_from_llm_text,
+    prompt_language_instruction,
     run_onboarding_chat_completion,
 )
+
+
+def test_prompt_language_instruction_english_is_empty() -> None:
+    assert prompt_language_instruction("en") == ""
+    assert prompt_language_instruction("") == ""
+    assert prompt_language_instruction(None) == ""  # type: ignore[arg-type]
+    assert prompt_language_instruction("fr-FR") == ""
+
+
+def test_prompt_language_instruction_formal_registers() -> None:
+    pt = prompt_language_instruction("pt-PT")
+    assert "European Portuguese" in pt and "você" in pt
+    de = prompt_language_instruction("de-DE")
+    assert "German" in de and "Sie" in de
 
 
 def test_extract_json_object_from_llm_text_fenced_block() -> None:
