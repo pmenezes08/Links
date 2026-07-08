@@ -455,6 +455,18 @@ export default function PremiumDashboard() {
     } catch {}
   }, [])
 
+  // Onboarding exits should land in the user's community, not the dashboard
+  // shell: invite context first, then a fresh join, then the only community
+  // they have. Multi-community users (no invite context) keep the dashboard.
+  // Deliberately no ?joined=1 — the invite-accept flow owns that welcome UI.
+  const resolveOnboardingExitUrl = () => {
+    const targetId =
+      pendingInviteTarget?.communityId
+      ?? joinedCommunityId
+      ?? (communitiesLoaded && communities.length === 1 ? communities[0]?.id : null)
+    return targetId ? `/community_feed_react/${targetId}` : '/premium_dashboard'
+  }
+
   const handleGoToCommunity = () => {
     try { localStorage.setItem(doneKey, '1') } catch {}
     const fallbackCommunityId = communities[0]?.id
@@ -1404,6 +1416,7 @@ export default function PremiumDashboard() {
                 setOnboardingLaunching(true)
                 setShowOnboarding(true)
               }}
+              exitUrl={resolveOnboardingExitUrl()}
             />
           )}
           {/* The hard "finish your profile" wall is gone for good: the rich
@@ -1433,7 +1446,7 @@ export default function PremiumDashboard() {
                 setShowOnboardingWelcome(false)
                 setOnboardingLaunching(false)
                             onboardingTriggeredRef.current = false
-                window.location.href = '/premium_dashboard'
+                window.location.href = resolveOnboardingExitUrl()
               }}
               onCreateCommunity={() => {
                 setShowOnboarding(false)

@@ -13,6 +13,9 @@ import BrandLogo from '../BrandLogo'
 
 type OnboardingIntroGateProps = {
   onStart: () => void
+  /** Where "Enter C-Point" lands — the parent resolves the user's community
+      feed when there is one; defaults to the dashboard shell. */
+  exitUrl?: string
 }
 
 type IntroPage = 0 | 1 | 2 | 3 | 4
@@ -92,7 +95,7 @@ function buildProgressPages(skipLanguageStep: boolean, skipAgeStep: boolean): In
   return steps
 }
 
-export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProps) {
+export default function OnboardingIntroGate({ onStart, exitUrl }: OnboardingIntroGateProps) {
   const { t } = useTranslation()
   const { locale, supported, saving, setLocale } = useLocale()
   const { preference, setPreference } = useTheme()
@@ -265,8 +268,8 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
         }),
       })
     } catch {}
-    window.location.replace('/premium_dashboard')
-  }, [basicForm, exiting])
+    window.location.replace(exitUrl || '/premium_dashboard')
+  }, [basicForm, exiting, exitUrl])
 
   const handleStartWithSteve = useCallback(async () => {
     // Keep anything already typed: persist the basics silently when valid,

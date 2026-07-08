@@ -296,6 +296,11 @@
       "title": "Do Steve",
       "body": "Já sei o que fazes. Gostava de saber quem és.",
       "message": "Já sei o que fazes. Gostava de saber quem és."
+    },
+    "invitee_joined": {
+      "title": "O teu convite resultou",
+      "body": "{username} acabou de entrar em {community} — veio pelo teu convite.",
+      "message": "{username} aceitou o teu convite e entrou em {community}."
     }
   },
   "communities": {

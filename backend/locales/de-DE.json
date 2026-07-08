@@ -296,6 +296,11 @@
       "title": "Von Steve",
       "body": "Ich weiß, was du machst. Jetzt würde ich gern wissen, wer du bist.",
       "message": "Ich weiß, was du machst. Jetzt würde ich gern wissen, wer du bist."
+    },
+    "invitee_joined": {
+      "title": "Deine Einladung hat funktioniert",
+      "body": "{username} ist gerade {community} beigetreten — dank deiner Einladung.",
+      "message": "{username} hat deine Einladung angenommen und ist {community} beigetreten."
     }
   },
   "communities": {

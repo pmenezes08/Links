@@ -296,6 +296,11 @@
       "title": "From Steve",
       "body": "I know what you do. I'd like to know who you are.",
       "message": "I know what you do. I'd like to know who you are."
+    },
+    "invitee_joined": {
+      "title": "Your invite worked",
+      "body": "{username} just joined {community} — you brought them in.",
+      "message": "{username} accepted your invite and joined {community}."
     }
   },
   "communities": {

@@ -112,6 +112,9 @@ jobs:
             tests/test_onboarding_llm.py \
             tests/test_onboarding_ai_metering.py \
             tests/test_onboarding_events.py \
+            tests/test_onboarding_reminders.py \
+            tests/test_notification_copy.py \
+            tests/test_invitee_joined_notification.py \
             tests/test_spotlight_kb.py \
             tests/test_redis_cache_resilience.py \
             tests/test_dm_unread_counts.py \
