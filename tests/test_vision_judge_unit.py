@@ -37,7 +37,14 @@ def test_coerce_verdict_defaults_responsive_ok_safely():
 
 
 def test_judge_multi_image_is_one_call_and_one_usage_row(monkeypatch):
-    calls = {"vision": 0, "usage": 0, "images": None, "prompt": ""}
+    """One paid call → one metered row.
+
+    Success rows are now emitted by ``llm.usage_context`` around the real
+    upstream call (real tokens + cost), so with ``vision_json`` mocked we
+    assert the context is entered exactly once with the judge surface and
+    that the legacy manual ``log_usage`` no longer fires on success.
+    """
+    calls = {"vision": 0, "usage": 0, "ctx": [], "images": None, "prompt": ""}
 
     def fake_vision(system, user, images, **k):
         calls["vision"] += 1
@@ -46,7 +53,15 @@ def test_judge_multi_image_is_one_call_and_one_usage_row(monkeypatch):
         return {"render_ok": True, "design_score": 72, "data_verified": "na",
                 "data_issues": [], "critique": [], "responsive_ok": False}
 
+    from contextlib import contextmanager
+
+    @contextmanager
+    def fake_ctx(**kwargs):
+        calls["ctx"].append(kwargs)
+        yield
+
     monkeypatch.setattr(vision_judge.llm, "vision_json", fake_vision)
+    monkeypatch.setattr(vision_judge.llm, "usage_context", fake_ctx)
     monkeypatch.setattr(vision_judge.ai_usage, "log_usage",
                         lambda *a, **k: calls.__setitem__("usage", calls["usage"] + 1))
     verdict = vision_judge.judge(
@@ -55,10 +70,29 @@ def test_judge_multi_image_is_one_call_and_one_usage_row(monkeypatch):
          {"label": "desktop viewport (1280px)", "b64": "CCC"}],
         username="u", brief="a café website", kind="website",
     )
-    assert calls["vision"] == 1 and calls["usage"] == 1      # one paid call, one row
+    assert calls["vision"] == 1                              # one paid call
+    assert len(calls["ctx"]) == 1                            # one metered context
+    assert calls["ctx"][0].get("surface") == vision_judge.ai_usage.SURFACE_BUILDER_JUDGE
+    assert calls["usage"] == 0                               # no manual row on success
     assert calls["images"] == ["AAA", "BBB", "CCC"]
     assert "KIND: website" in calls["prompt"]
     assert verdict and verdict["responsive_ok"] is False
+
+
+def test_judge_failure_logs_single_failure_row(monkeypatch):
+    calls = {"usage": []}
+
+    def boom(system, user, images, **k):
+        raise RuntimeError("upstream down")
+
+    monkeypatch.setattr(vision_judge.llm, "vision_json", boom)
+    monkeypatch.setattr(vision_judge.ai_usage, "log_usage",
+                        lambda *a, **k: calls["usage"].append(k))
+    verdict = vision_judge.judge("ZZZ", username="u", brief="x")
+    assert verdict is None
+    assert len(calls["usage"]) == 1
+    assert calls["usage"][0].get("success") is False
+    assert calls["usage"][0].get("reason_blocked") == "judge_error"
 
 
 def test_judge_single_string_back_compat(monkeypatch):
