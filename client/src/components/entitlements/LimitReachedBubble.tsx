@@ -1,11 +1,15 @@
 import { useNavigate } from 'react-router-dom'
 import type { EntitlementsError } from '../../utils/entitlementsError'
+import { subscriptionPlansCtaUrl } from '../../utils/entitlementsError'
 
 interface Props {
   err: EntitlementsError
   onClose?: () => void
   /** When true, render with tighter spacing suited for a chat bubble rail. */
   compact?: boolean
+  /** Community the chat belongs to — deep-links the upgrade CTA to that
+   *  community's plans on Subscription Plans instead of the bare picker. */
+  communityId?: number | null
 }
 
 /**
@@ -17,13 +21,13 @@ interface Props {
  * `LimitReachedModal` which full-screens the user for button-triggered
  * actions (feed / post summary / voice summary).
  */
-export default function LimitReachedBubble({ err, onClose, compact = false }: Props) {
+export default function LimitReachedBubble({ err, onClose, compact = false, communityId }: Props) {
   const navigate = useNavigate()
 
   const handleCta = () => {
     const url = err.cta?.url
     if (url && url.startsWith('/')) {
-      navigate(url)
+      navigate(subscriptionPlansCtaUrl(url, err.reason, communityId))
     } else if (url) {
       window.open(url, '_blank', 'noopener,noreferrer')
     }

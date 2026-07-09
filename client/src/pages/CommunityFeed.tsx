@@ -4352,7 +4352,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
       ) {
         return false
       }
-      entitlementsHandler.showError(buildClientPremiumRequiredError())
+      entitlementsHandler.showError(buildClientPremiumRequiredError(), { communityId })
       return true
     },
     [communityId, enforcement_enabled, entitlementsLoading, entitlements, entitlementsHandler],
@@ -4447,7 +4447,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
         })
       })
       
-      const data = await entitlementsHandler.handleResponse<{ success?: boolean; reply?: Reply; error?: string }>(response)
+      const data = await entitlementsHandler.handleResponse<{ success?: boolean; reply?: Reply; error?: string }>(response, { communityId })
       if (!data) return // entitlements modal already shown
       console.log('[Steve AI] API response:', data)
       

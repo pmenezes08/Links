@@ -557,6 +557,11 @@ export default function CommunityOwnerSetupIntro({
               : t('communities.owner_setup_subscription_local')}
           </p>
           {!billingInherited && (
+            <p className="mt-2 text-sm leading-relaxed text-c-text-tertiary">
+              {t('communities.owner_setup_subscription_trial')}
+            </p>
+          )}
+          {!billingInherited && (
             <button
               type="button"
               onClick={() =>

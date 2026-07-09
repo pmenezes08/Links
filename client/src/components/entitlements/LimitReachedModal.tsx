@@ -2,10 +2,14 @@ import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import type { EntitlementsError } from '../../utils/entitlementsError'
+import { subscriptionPlansCtaUrl } from '../../utils/entitlementsError'
 
 interface Props {
   err: EntitlementsError
   onClose: () => void
+  /** Community the user was acting in — deep-links the upgrade CTA to that
+   *  community's plans on Subscription Plans instead of the bare picker. */
+  communityId?: number | null
 }
 
 /** B2B pivot: pitch community paid tiers + Steve Community Package (keep aligned with the Community card on Subscription Plans). */
@@ -72,7 +76,7 @@ function CommunityPlanBenefitsList({ err }: { err: EntitlementsError }) {
  * (KB-editable) except `premium_required`, where we show your plan line plus a
  * community-plan bullet list instead of the long default message.
  */
-export default function LimitReachedModal({ err, onClose }: Props) {
+export default function LimitReachedModal({ err, onClose, communityId }: Props) {
   const { t } = useTranslation()
   const navigate = useNavigate()
 
@@ -95,7 +99,7 @@ export default function LimitReachedModal({ err, onClose }: Props) {
   const handleCta = () => {
     const url = err.cta?.url
     if (url && url.startsWith('/')) {
-      navigate(url)
+      navigate(subscriptionPlansCtaUrl(url, err.reason, communityId))
     } else if (url) {
       window.open(url, '_blank', 'noopener,noreferrer')
     }
