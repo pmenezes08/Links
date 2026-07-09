@@ -54,8 +54,8 @@
   },
   "entitlements": {
     "premium_required": {
-      "message": "O Premium desbloqueia o Steve em DM, feed e conversas elegíveis — até {steve_uses_per_month} conversas com o Steve por mês e {whisper_minutes_per_month} minutos de resumos de notas de voz em cada ciclo de faturação.",
-      "cta_label": "Subir para Premium"
+      "message": "O Steve é desbloqueado através do plano pago de uma comunidade. Comunidades num escalão pago podem adicionar o Pacote Steve para comunidades, para todos os membros terem o Steve no feed, nos grupos e nas conversas.",
+      "cta_label": "Ver planos de comunidade"
     },
     "daily_cap": {
       "message": "Atingiste o limite diário do Steve ({ai_daily_limit} chamadas). Reinicia às {resets_at_daily}.",
@@ -70,8 +70,8 @@
       "cta_label": "Ver a minha utilização"
     },
     "community_pool_exhausted": {
-      "message": "A bolsa partilhada do Steve nesta comunidade está esgotada este mês. Os membros Premium podem continuar a usar a sua quota pessoal.",
-      "cta_label": "Subir para Premium"
+      "message": "A bolsa partilhada do Steve nesta comunidade está esgotada este mês. Renova no próximo ciclo — quem gere a comunidade pode subir o plano para ter uma bolsa maior.",
+      "cta_label": "Ver planos de comunidade"
     },
     "rpm_exceeded": {
       "message": "Estás a enviar pedidos demasiado depressa — abranda um momento e tenta de novo.",
@@ -90,8 +90,8 @@
       "cta_label": "Contactar o suporte"
     },
     "grace_expired": {
-      "message": "O teu lugar Enterprise terminou. Subscreve o Premium para continuares a usar o Steve.",
-      "cta_label": "Subscrever Premium"
+      "message": "O teu lugar Enterprise terminou. O Steve continua disponível através do plano pago de uma comunidade.",
+      "cta_label": "Ver planos de comunidade"
     }
   },
   "billing": {

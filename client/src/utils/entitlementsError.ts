@@ -87,6 +87,39 @@ export async function parseEntitlementsError(
   }
 }
 
+/** Coerce a loosely-typed community id (route param, API field) to a positive number or null. */
+export function normalizeCommunityId(id: number | string | null | undefined): number | null {
+  if (id === null || id === undefined || id === '') return null
+  const n = Number(id)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+/**
+ * Rewrite a bare `/subscription_plans` CTA so it deep-links into the plans UI
+ * for the community the user was acting in (same URL shape the owner-setup
+ * wizard uses: `?open=community_plans&community_id=N`, consumed by
+ * SubscriptionPlans). `community_pool_exhausted` is a Steve-package problem,
+ * not a tier problem, so it opens the add-ons picker instead.
+ *
+ * Leaves the URL untouched when no community is known, when the CTA points
+ * elsewhere, or when the backend already specified `open`/`community_id`.
+ */
+export function subscriptionPlansCtaUrl(
+  url: string,
+  reason: EntitlementsReason,
+  communityId?: number | string | null,
+): string {
+  const id = normalizeCommunityId(communityId)
+  if (!id) return url
+  const [path, query = ''] = url.split('?')
+  if (path !== '/subscription_plans') return url
+  const params = new URLSearchParams(query)
+  if (params.has('community_id') || params.has('open')) return url
+  params.set('open', reason === 'community_pool_exhausted' ? 'community_addons' : 'community_plans')
+  params.set('community_id', String(id))
+  return `${path}?${params.toString()}`
+}
+
 export function surfacePreferredComponent(reason: EntitlementsReason): 'bubble' | 'modal' | 'toast' {
   switch (reason) {
     case 'rpm_exceeded':

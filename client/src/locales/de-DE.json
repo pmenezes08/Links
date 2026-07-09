@@ -934,6 +934,7 @@
     "owner_setup_description_hint": "Wird unter deinem Community-Namen im Feed angezeigt.",
     "owner_setup_subscription_inherited": "Abrechnung und Stufe für diese Community werden im übergeordneten Netzwerk verwaltet. Öffne die Community verwalten der Stamm-Community, um den Plan zu ändern.",
     "owner_setup_subscription_local": "Dein Community-Plan legt Mitgliederlimits, Speicher und mehr fest. Du kannst Stufen vergleichen und hier die Kaufabwicklung starten.",
+    "owner_setup_subscription_trial": "Deine Community startet mit dem Steve Community Package 14 Tage lang kostenlos – Steve im Feed, in Gruppen und Chats für alle Mitglieder.",
     "owner_setup_subscription_title": "Abo",
     "owner_setup_plans_billing": "Community-Pläne & Abrechnung",
     "owner_setup_member_limit_title": "Mitgliederlimit",
@@ -2776,7 +2777,12 @@
     "error_load_communities": "Communitys konnten nicht geladen werden",
     "restore_no_purchase": "Kein aktives Abo in deinem {{provider}}-Konto gefunden. Wenn du mit einem anderen Konto abonniert hast, melde dich bei diesem an und versuche es erneut — dir wird nichts doppelt berechnet.",
     "restore_account_mismatch": "Wir haben ein Abo gefunden, aber es ist mit einem anderen Konto verknüpft. Dein Kauf ist sicher — wende dich an den Support, und wir verbinden ihn.",
-    "restore_transient": "{{provider}} konnte nicht erreicht werden. Bitte versuche es gleich erneut."
+    "restore_transient": "{{provider}} konnte nicht erreicht werden. Bitte versuche es gleich erneut.",
+    "iap_purchases_unavailable": "Käufe sind in der App vorübergehend nicht verfügbar. Bitte versuche es später erneut.",
+    "web_billing_notice": "Dies wird über die Web-Abrechnung auf app.c-point.co verwaltet.",
+    "steve_addon_web_only": "Das Steve-Paket ist in der App noch nicht käuflich verfügbar. Du kannst es in der Web-App auf app.c-point.co abonnieren.",
+    "premium_native_managed_web": "Deine Premium-Mitgliedschaft wird über die Web-Abrechnung auf app.c-point.co verwaltet.",
+    "premium_native_unavailable": "Neue Premium-Käufe sind in der App nicht verfügbar. Wenn du Premium bereits abonniert hast, nutze unten „Käufe wiederherstellen“."
   },
   "time": {
     "just_now": "gerade eben",

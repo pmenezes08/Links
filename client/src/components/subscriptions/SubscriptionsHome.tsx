@@ -2,7 +2,7 @@ import { useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import SettingsRow from '../settings/SettingsRow'
 import { SettingsDivider, SettingsSection, PanelCard } from '../settings/SettingsSection'
-import { providerBadge } from '../../utils/mobileStoreBilling'
+import { providerBadge, providerLabel, type StoreProvider } from '../../utils/mobileStoreBilling'
 import {
   communityStripeHealthy,
   benefitsCopy,
@@ -27,6 +27,15 @@ type SubscriptionsHomeProps = {
   activePanel: SubscriptionsPanelKey | null
   showTestBanner: boolean
   ownerIntroFeedReturnId: number | null
+  /**
+   * Native store provider when restore is possible (native shell + IAP config
+   * loaded); null hides the affordance. Restore must be reachable from the
+   * hub for community-tier/Steve buyers, not only inside the soft-retired
+   * Premium panel (App Store 3.1.1).
+   */
+  restoreProvider: StoreProvider | null
+  restoreLoading: boolean
+  onRestorePurchases: () => void
   onOpenPanel: (panel: SubscriptionsPanelKey) => void
   onManagePersonal: () => void
   onManageCommunity: (communityId: number) => void
@@ -40,6 +49,9 @@ export default function SubscriptionsHome({
   activePanel,
   showTestBanner,
   ownerIntroFeedReturnId,
+  restoreProvider,
+  restoreLoading,
+  onRestorePurchases,
   onOpenPanel,
   onManagePersonal,
   onManageCommunity,
@@ -245,6 +257,19 @@ export default function SubscriptionsHome({
             <i className="fa-solid fa-chevron-right text-xs text-c-text-tertiary" />
           </a>
         </SettingsSection>
+
+        {restoreProvider ? (
+          <button
+            type="button"
+            onClick={onRestorePurchases}
+            disabled={restoreLoading}
+            className="mx-auto block w-full pb-1 text-center text-xs font-semibold text-cpoint-turquoise active:opacity-70 disabled:text-c-text-tertiary"
+          >
+            {restoreLoading
+              ? t('subscriptions.restoring')
+              : t('subscriptions.restore_purchases', { provider: providerLabel(restoreProvider) })}
+          </button>
+        ) : null}
       </div>
     </div>
   )

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { openExternalBillingUrl } from '../../utils/mobileStoreBilling'
 import { triggerHaptic } from '../../utils/haptics'
 import i18n from '../../i18n'
 import { PanelCard } from '../settings/SettingsSection'
@@ -25,7 +24,6 @@ type CommunityPickerPanelProps = {
   error?: string | null
   loading?: boolean
   mobileBillingNotice?: boolean
-  webBillingUrl: string
   onChoose: (communityId: number) => void
   onCreate: () => void
 }
@@ -37,7 +35,6 @@ export default function CommunityPickerPanel({
   error,
   loading,
   mobileBillingNotice,
-  webBillingUrl,
   onChoose,
   onCreate,
 }: CommunityPickerPanelProps) {
@@ -139,13 +136,11 @@ export default function CommunityPickerPanel({
         <div className="rounded-2xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {error}
           {mobileBillingNotice ? (
-            <button
-              type="button"
-              onClick={() => openExternalBillingUrl(webBillingUrl)}
-              className="mt-3 block text-left text-cpoint-turquoise underline"
-            >
-              {t('subscriptions.open_web_billing', { url: webBillingUrl })}
-            </button>
+            // Informational only — plain text, no external checkout link on
+            // native (App Store 3.1.1).
+            <span className="mt-3 block text-red-200/80">
+              {t('subscriptions.web_billing_notice')}
+            </span>
           ) : null}
         </div>
       ) : null}

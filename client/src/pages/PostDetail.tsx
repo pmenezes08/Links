@@ -121,7 +121,7 @@ export default function PostDetail(){
       ) {
         return false
       }
-      entitlementsHandler.showError(buildClientPremiumRequiredError())
+      entitlementsHandler.showError(buildClientPremiumRequiredError(), { communityId })
       return true
     },
     [enforcement_enabled, entitlementsLoading, entitlements, entitlementsHandler],
@@ -205,7 +205,7 @@ export default function PostDetail(){
         })
       })
       
-      const data = await entitlementsHandler.handleResponse<{ success?: boolean; reply?: Reply; error?: string }>(response)
+      const data = await entitlementsHandler.handleResponse<{ success?: boolean; reply?: Reply; error?: string }>(response, { communityId })
       if (!data) return // entitlements modal already shown
       
       if (data.success && data.reply) {
