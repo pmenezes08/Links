@@ -219,14 +219,23 @@ class TestCommunityPaymentFailed:
             subscription_id="sub_pastdue",
             status="active",
         )
+        # Real invoices reference their subscription under
+        # ``parent.subscription_details`` (their own metadata is empty) —
+        # the ownership check needs that id to recognise the event as
+        # belonging to the active subscription.
         event = {
             "type": "invoice.payment_failed",
             "data": {"object": {
                 "id": "in_fail_1",
-                "metadata": {
-                    "sku": "community_tier",
-                    "community_id": str(cid),
-                },
+                "object": "invoice",
+                "metadata": {},
+                "parent": {"subscription_details": {
+                    "subscription": "sub_pastdue",
+                    "metadata": {
+                        "sku": "community_tier",
+                        "community_id": str(cid),
+                    },
+                }},
             }},
         }
         _install_event(monkeypatch, event)
