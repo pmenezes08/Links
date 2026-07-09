@@ -54,8 +54,8 @@
   },
   "entitlements": {
     "premium_required": {
-      "message": "Premium schaltet Steve in der DM, im Feed und in geeigneten Chats frei — bis zu {steve_uses_per_month} Steve-Gespräche pro Monat und {whisper_minutes_per_month} Minuten Sprachnachricht-Zusammenfassungen pro Abrechnungszeitraum.",
-      "cta_label": "Auf Premium upgraden"
+      "message": "Steve wird über den bezahlten Plan einer Community freigeschaltet. Communities mit einem Bezahl-Tarif können das Steve Community Package hinzufügen, damit alle Mitglieder Steve im Feed, in Gruppen und in Chats bekommen.",
+      "cta_label": "Community-Pläne ansehen"
     },
     "daily_cap": {
       "message": "Du hast heute dein Steve-Limit von {ai_daily_limit} Anfragen erreicht. Es wird um {resets_at_daily} zurückgesetzt.",
@@ -70,8 +70,8 @@
       "cta_label": "Meine Nutzung ansehen"
     },
     "community_pool_exhausted": {
-      "message": "Der gemeinsame Steve-Pool dieser Community ist für diesen Monat leer. Premium-Mitglieder können weiterhin ihr persönliches Kontingent nutzen.",
-      "cta_label": "Auf Premium upgraden"
+      "message": "Der gemeinsame Steve-Pool dieser Community ist für diesen Monat leer. Er füllt sich im nächsten Zyklus wieder — Community-Inhaber können den Plan der Community upgraden, um einen größeren Pool zu bekommen.",
+      "cta_label": "Community-Pläne ansehen"
     },
     "rpm_exceeded": {
       "message": "Du sendest zu schnell Anfragen — mach kurz langsamer und versuch es erneut.",
@@ -90,8 +90,8 @@
       "cta_label": "Support kontaktieren"
     },
     "grace_expired": {
-      "message": "Dein Enterprise-Platz ist abgelaufen. Schließe ein Premium-Abo ab, um Steve weiter zu nutzen.",
-      "cta_label": "Premium abonnieren"
+      "message": "Dein Enterprise-Platz ist abgelaufen. Steve bleibt über den bezahlten Plan einer Community verfügbar.",
+      "cta_label": "Community-Pläne ansehen"
     }
   },
   "billing": {

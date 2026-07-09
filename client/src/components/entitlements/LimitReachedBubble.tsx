@@ -56,7 +56,7 @@ export default function LimitReachedBubble({ err, onClose, compact = false }: Pr
   const titleForReason = (): string => {
     switch (err.reason) {
       case 'premium_required':
-        return 'Steve is a Premium feature'
+        return 'Steve comes with community plans'
       case 'daily_cap':
         return '24-hour limit reached'
       case 'upload_daily_limit':

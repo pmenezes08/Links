@@ -203,7 +203,7 @@ Run these in TestFlight and Play internal testing before flipping `iap_purchases
 ## §8 — Entitlements gating
 
 - [ ] As `test_free`, try to open a DM with Steve. Client should show
-      the "Upgrade to Premium" modal (not a generic 401 / 500).
+      the "Steve comes with community plans" modal (not a generic 401 / 500).
 - [ ] As `test_premium`, the same action should succeed.
 - [ ] As `test_trial`, same — trial gets Steve.
 - [ ] As `test_special`, same — unlimited.

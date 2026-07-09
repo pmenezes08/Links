@@ -20,7 +20,6 @@ import { useTranslation } from 'react-i18next'
 import { Capacitor } from '@capacitor/core'
 import { useEntitlements } from '../../hooks/useEntitlements'
 import {
-  currentStoreProvider,
   openExternalBillingUrl,
   providerBadge,
   providerLabel,
@@ -248,7 +247,6 @@ function PlanTab() {
   const tier = entitlements.tier
   const isEnterprise = !!(entitlements as { inherited_from?: string | null })?.inherited_from?.startsWith('enterprise:')
   const storeBilled = billingProvider === 'apple' || billingProvider === 'google'
-  const nativeProvider = currentStoreProvider()
 
   const tierLabel =
     entitlements.is_special
@@ -330,18 +328,10 @@ function PlanTab() {
         ) : (
           <button
             type="button"
-            onClick={() => {
-              if (Capacitor.isNativePlatform() && nativeProvider) {
-                window.location.href = '/subscription_plans'
-              } else {
-                window.location.href = '/subscription_plans'
-              }
-            }}
+            onClick={() => { window.location.href = '/subscription_plans' }}
             className="w-full bg-cpoint-turquoise text-black font-semibold py-3 rounded-lg hover:brightness-90 transition"
           >
-            {nativeProvider
-              ? t('billing.upgrade_via_store', { provider: providerLabel(nativeProvider) })
-              : t('billing.upgrade_to_premium')}
+            {t('subscriptions.see_community_plans')}
           </button>
         )
       )}
@@ -624,7 +614,7 @@ function BillingTab() {
           onClick={() => { window.location.href = '/subscription_plans' }}
           className="w-full bg-cpoint-turquoise text-black font-semibold py-3 rounded-lg hover:brightness-90 transition"
         >
-          {t('billing.upgrade_to_premium')}
+          {t('subscriptions.see_community_plans')}
         </button>
       )}
     </div>

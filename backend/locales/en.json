@@ -54,8 +54,8 @@
   },
   "entitlements": {
     "premium_required": {
-      "message": "Premium unlocks Steve in DM, feed, and eligible chats — up to {steve_uses_per_month} Steve conversations per month and {whisper_minutes_per_month} minutes of voice-note summaries each billing cycle.",
-      "cta_label": "Upgrade to Premium"
+      "message": "Steve is unlocked through a community's paid plan. Communities on a paid tier can add the Steve Community Package so every member gets Steve in the feed, groups, and chats.",
+      "cta_label": "See community plans"
     },
     "daily_cap": {
       "message": "You've hit today's Steve limit of {ai_daily_limit} calls. It resets at {resets_at_daily}.",
@@ -70,8 +70,8 @@
       "cta_label": "See my usage"
     },
     "community_pool_exhausted": {
-      "message": "This community's shared Steve pool is empty for this month. Premium members can still use their personal allowance.",
-      "cta_label": "Upgrade to Premium"
+      "message": "This community's shared Steve pool is empty for this month. It refills next cycle — community owners can upgrade the community's plan for a bigger pool.",
+      "cta_label": "See community plans"
     },
     "rpm_exceeded": {
       "message": "You're sending requests too fast — slow down for a moment and try again.",
@@ -90,8 +90,8 @@
       "cta_label": "Contact support"
     },
     "grace_expired": {
-      "message": "Your Enterprise seat has ended. Subscribe to Premium to keep using Steve.",
-      "cta_label": "Subscribe to Premium"
+      "message": "Your Enterprise seat has ended. Steve stays available through a community's paid plan.",
+      "cta_label": "See community plans"
     }
   },
   "billing": {
