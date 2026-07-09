@@ -1241,7 +1241,9 @@ export default function PremiumDashboard() {
                   onCreate={() => navigate('/builder')}
                   onExplore={() => navigate('/explore-creations')}
                 />
-                {onboardingCompletionCard}
+                {/* Profile-help card intentionally NOT repeated here — it already
+                    renders once at the top of the content area for every state,
+                    including zero communities. */}
               </>
             ) : (
             <>
