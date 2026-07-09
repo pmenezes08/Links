@@ -1,6 +1,6 @@
 /** Shapes returned by the owner-analytics endpoints (backend metric registry). */
 
-export type OwnerMetricFormat = 'stat' | 'activity' | 'funnel' | 'segments' | 'comm' | 'leaderboards' | 'locked'
+export type OwnerMetricFormat = 'stat' | 'activity' | 'funnel' | 'segments' | 'comm' | 'leaderboards' | 'ratio' | 'locked'
 
 export type OwnerMetric = {
   id: string
@@ -15,10 +15,24 @@ export type OwnerMetric = {
   value: Record<string, unknown> | null
 }
 
+export type OwnerSteveAction = {
+  key: string
+  params: Record<string, number | string>
+  // client behavior id — e.g. 'pending_invites' opens the invitee drill-in
+  action?: string
+}
+
+export type OwnerPendingInvitee = {
+  display: string
+  type: 'username' | 'email'
+  invited_at?: string | null
+}
+
 export type OwnerSteve = {
   greeting_key: string
   read_key: string
   read_params: Record<string, number | string>
+  actions?: OwnerSteveAction[]
   low_data: boolean
 }
 

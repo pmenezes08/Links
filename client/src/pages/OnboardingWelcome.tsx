@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { WELCOME_CAROUSEL_SLIDE_MS } from '../design/motion'
 
 const WELCOME_CARDS_CACHE_KEY = 'cpoint:welcome_cards'
 
@@ -99,8 +100,8 @@ export default function OnboardingWelcome(){
                      setTouchStartX(null); setTouchDeltaX(0)
                    }
                  }}>
-              <div className="absolute inset-0 flex transition-transform duration-500"
-                   style={{ transform: `translateX(calc(-${cardIndex * 100}% + ${touchDeltaX}px))` }}>
+              <div className="absolute inset-0 flex transition-transform"
+                   style={{ transform: `translateX(calc(-${cardIndex * 100}% + ${touchDeltaX}px))`, transitionDuration: `${WELCOME_CAROUSEL_SLIDE_MS}ms` }}>
                 {cards.map((src, i) => (
                   <div key={i} className="min-w-full h-full bg-c-bg-surface relative">
                     {/* Show subtle loading shimmer only if image not loaded yet */}
@@ -119,12 +120,14 @@ export default function OnboardingWelcome(){
                 ))}
               </div>
               {cards.length > 1 && (
-                <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-2">
+                <div className="absolute bottom-0 left-0 right-0 flex justify-center">
                   {cards.map((_, i) => (
                     <button key={i}
                             aria-label={t('onboarding.welcome.slide_label', { number: i + 1 })}
                             onClick={() => setCardIndex(i)}
-                            className={`w-2.5 h-2.5 rounded-full ${cardIndex===i ? 'bg-cpoint-turquoise' : 'bg-white/30'}`} />
+                            className="flex h-11 w-11 items-center justify-center">
+                      <span className={`w-2.5 h-2.5 rounded-full ${cardIndex===i ? 'bg-cpoint-turquoise' : 'bg-white/30'}`} />
+                    </button>
                   ))}
                 </div>
               )}

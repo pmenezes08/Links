@@ -13,8 +13,10 @@
  * Changing either value here re-skins every Steve touchpoint in the dashboard
  * with no component edits — see components/owner/OwnerSteveMark.tsx.
  */
+import cpointMark from '../assets/cpoint-mark.svg'
+
 export const STEVE_BRAND = {
   name: 'Steve',
   /** When set, rendered as an <img src> instead of the built-in glyph. */
-  markSrc: null as string | null,
+  markSrc: cpointMark as string | null,
 }

@@ -1,10 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import Avatar from './Avatar'
 import { useLogoutRequest } from '../contexts/LogoutPromptContext'
 import { triggerHaptic } from '../utils/haptics'
-import { getCachedDashboardSnapshot } from '../utils/dashboardCache'
+import { getCachedDashboardSnapshot, refreshDashboardCommunities } from '../utils/dashboardCache'
 
 type BurgerMenuDrawerProps = {
   username?: string
@@ -50,15 +50,38 @@ export default function BurgerMenuDrawer({
   const title = displayName || username || ''
   const isAdmin = username === 'admin'
   // Owner Dashboard entry: deep-link to a community the user owns (from the
-  // cached dashboard). Hidden until we know they own one — the route itself is
-  // still server-side gated, so this is cosmetic only.
-  const ownedCommunityId = (() => {
+  // cached dashboard). The route itself is server-side gated, so this is
+  // cosmetic only. On a cold cache (fresh web session) the cache is empty —
+  // fetch once when the drawer opens so owners still discover the entry.
+  const [ownedCommunityId, setOwnedCommunityId] = useState<number | null>(() => {
     try {
       return getCachedDashboardSnapshot()?.communities?.find(c => c.is_owner || c.is_admin)?.id ?? null
     } catch {
       return null
     }
-  })()
+  })
+
+  useEffect(() => {
+    if (ownedCommunityId != null) return
+    let mounted = true
+    const cached = (() => {
+      try {
+        return getCachedDashboardSnapshot()?.communities
+      } catch {
+        return null
+      }
+    })()
+    if (cached && cached.length > 0) return   // warm cache, genuinely not an owner
+    refreshDashboardCommunities()
+      .then(communities => {
+        if (!mounted || !communities) return
+        const owned = communities.find(c => c.is_owner || c.is_admin)?.id ?? null
+        if (owned != null) setOwnedCommunityId(owned)
+      })
+      .catch(() => {})
+    return () => { mounted = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     void triggerHaptic('light')

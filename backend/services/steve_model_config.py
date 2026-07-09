@@ -165,6 +165,51 @@ def estimate_call_cost_usd(
     )
 
 
+# Non-Grok model families the platform calls (Steve Builder tiers, the vision
+# judge, build-time web research). Each row maps a model-id prefix to the KB
+# field prefix on ``credits-entitlements`` (``<kb_prefix>input_per_m_usd`` /
+# ``<kb_prefix>output_per_m_usd``) plus hard fallbacks mirroring the provider's
+# published pricing, so a KB gap can never zero out cost attribution. Order
+# matters: more specific prefixes first (fable before the generic claude row).
+_MODEL_FAMILY_RATES = (
+    ("claude-fable", "model_fable_", 10.0, 50.0),   # Claude Fable 5 ($10/$50 per 1M)
+    ("claude-mythos", "model_fable_", 10.0, 50.0),  # same pricing as Fable 5
+    ("claude", "model_opus_", 5.0, 25.0),           # Opus 4.8 (judge + Fable fallback)
+    ("gpt", "model_openai_", 2.5, 10.0),            # gpt-4o (builder web research)
+    ("o1", "model_openai_", 2.5, 10.0),
+    ("o3", "model_openai_", 2.5, 10.0),
+    ("o4", "model_openai_", 2.5, 10.0),
+)
+
+
+def estimate_model_cost_usd(
+    model: Optional[str],
+    tokens_in: Optional[int],
+    tokens_out: Optional[int],
+) -> float:
+    """Estimate token cost in USD for *any* model the platform calls.
+
+    Grok-family models keep using the KB-backed primary-model config via
+    :func:`estimate_call_cost_usd`; Anthropic / OpenAI models (Steve Builder
+    tiers, vision judge, research) read their own KB rates from the
+    ``credits-entitlements`` page (``model_costs`` group).
+    """
+    m = (model or "").strip().lower()
+    family = next((f for f in _MODEL_FAMILY_RATES if m.startswith(f[0])), None)
+    if family is None:
+        return estimate_call_cost_usd(tokens_in, tokens_out)
+    _prefix, kb_prefix, default_in, default_out = family
+    credits = _field_map("credits-entitlements")
+    input_rate = _float(credits.get(f"{kb_prefix}input_per_m_usd"), default_in, minimum=0)
+    output_rate = _float(credits.get(f"{kb_prefix}output_per_m_usd"), default_out, minimum=0)
+    tin = max(0, int(tokens_in or 0))
+    tout = max(0, int(tokens_out or 0))
+    return round(
+        (tin / 1_000_000.0) * input_rate + (tout / 1_000_000.0) * output_rate,
+        6,
+    )
+
+
 def response_usage_tokens(response: Any) -> Tuple[Optional[int], Optional[int]]:
     """Best-effort extraction for OpenAI-compatible Responses/Chat objects."""
 

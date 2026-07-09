@@ -76,3 +76,18 @@ def test_in_app_text_no_community_variant():
     assert "paulo" in line
     # PT message should not be the same as the English one.
     assert "paulo posted in a group" != line
+
+
+@pytest.mark.parametrize("locale", ["en", "pt-PT", "de-DE"])
+def test_invitee_joined_resolves_in_all_locales(locale):
+    line = notification_copy.in_app_text(
+        "invitee_joined", locale, username="ana", community="WHU"
+    )
+    assert "ana" in line and "WHU" in line
+    assert "notifications." not in line  # resolved copy, not a raw key
+
+    payload = notification_copy.push_payload(
+        "invitee_joined", locale, username="ana", community="WHU"
+    )
+    assert payload["title"] and "notifications." not in payload["title"]
+    assert "ana" in payload["body"] and "WHU" in payload["body"]

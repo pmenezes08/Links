@@ -49,6 +49,7 @@ Stack (from [`client/src/index.css`](../client/src/index.css)):
 | `CHAT_KEYBOARD_ANIMATION_MS` | 250ms | Composer / list inset smoothing |
 | `CPOINT_EASE_OUT` | `cubic-bezier(0.32, 0.72, 0, 1)` | Native-style deceleration |
 | `REDUCED_MOTION_FADE_MS` | 80ms | Reduced-motion fallback: quick opacity fade instead of slide |
+| `WELCOME_CAROUSEL_SLIDE_MS` | 500ms | Pre-login welcome carousel slide |
 | `STEVE_REPLY_DELAY_BASE_MS` / `_PER_CHAR_MS` / `_MIN_MS` / `_MAX_MS` / `_JITTER_MS` / `STEVE_REPLY_BURST_DISCOUNT` | 180ms / 4ms·char / 350ms / 1100ms / 120ms / 0.6 | Steve onboarding reply pacing — length-scaled typing delay: `clamp(BASE + chars×PER_CHAR, MIN, MAX) × (burst ? DISCOUNT : 1) + jitter`. Short acks land fast; long questions read as composed; consecutive bubbles in one burst pay a discounted price so multi-bubble stages never drag. |
 | `STEVE_THINKING_SEARCHING_MS` / `_NARROWING_MS` / `_LONG_MS` / `STEVE_THINKING_CROSSFADE_MS` | 2.5s / 7s / 14s / 280ms | Networking "Steve is thinking" staged wait line — advance-only, fixed-height so the page scroller never jitters. Labels **crossfade**: the outgoing line fades+slides up while the incoming one fades+slides in over `STEVE_THINKING_CROSSFADE_MS` (`cpoint-label-in`/`-out` keyframes), not an instant swap. Recalibrate stage thresholds from `ai_usage_log.response_time_ms`, never by feel; copy must not claim progress the client can't know. |
 
@@ -85,9 +86,13 @@ Prefer `navigate(-1)` for back; fall back to a tab root only on deep links with 
 
 ## Logo
 
-- App / UI: `/api/public/logo` (see [`client/index.html`](../client/index.html))
-- Do not distort the wave/point relationship
-- Monochrome variants on dark backgrounds for in-app chrome
+- **Assets:** bundled `client/src/assets/cpoint-logo.png` rendered via `BrandLogo.tsx` (the in-app source of truth — the `/api/public/logo` endpoint exists for invites/external surfaces, not the SPA), and `client/src/assets/cpoint-mark.svg` — the production vector export (founder-supplied 2026-07-02).
+- Do not distort the wave/point relationship; never recolor the mark.
+- **One mark, two treatments** (ratified 2026-07-02, replaces the old "company lockup vs Steve glyph" separation):
+  - **Bare mark = the product.** Headers, onboarding gates, splash — `BrandLogo`, no container.
+  - **Mark on a black disc with a 1px `cpoint-turquoise/40` ring = Steve speaking.** All conversational Steve surfaces — `components/steve/SteveAvatar.tsx` (the single swap point). The disc answers "who's talking"; product chrome never wears it, and no system-message row may wear it either.
+  - At tiny sizes (≤20px inline affordances, e.g. feed action rows) the full mark doesn't survive — keep the simplified `SteveGlyph` from `SteveMark.tsx`.
+- Steve's server-side avatar (DM/feed rows) is the `steve` user's profile picture in prod — keep it the rasterized disc treatment (`steve-avatar-512.png`) so client and server faces match.
 
 ## Related docs
 

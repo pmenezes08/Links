@@ -208,6 +208,15 @@ try:
 except Exception as _me:
     print(f"[STARTUP] Mute table init warning: {_me}", file=sys.stderr, flush=True)
 
+# Ensure post_reports exists at startup (DDL used to self-heal inside the
+# report request handler, which would mask schema migrations later).
+try:
+    from backend.services.community_moderation import ensure_post_reports_table as _ensure_post_reports
+    _ensure_post_reports(use_mysql=USE_MYSQL)
+    print("[STARTUP] post_reports table ensured", file=sys.stderr, flush=True)
+except Exception as _pre:
+    print(f"[STARTUP] post_reports init warning: {_pre}", file=sys.stderr, flush=True)
+
 try:
     with get_db_connection() as _sc:
         _scc = _sc.cursor()
@@ -273,8 +282,23 @@ try:
         # Migrate new columns for contextual feedback (safe for existing DBs)
         try:
             if USE_MYSQL:
-                _scc.execute("ALTER TABLE steve_recommendation_feedback ADD COLUMN IF NOT EXISTS reasoning_text TEXT NULL")
-                _scc.execute("ALTER TABLE steve_recommendation_feedback ADD COLUMN IF NOT EXISTS query_context TEXT NULL")
+                # MySQL 8 has no ADD COLUMN IF NOT EXISTS (MariaDB-only), so
+                # check information_schema first — mirrors the SQLite PRAGMA
+                # branch below and stops the startup false-alarm warning.
+                _scc.execute(
+                    "SELECT COLUMN_NAME FROM information_schema.COLUMNS"
+                    " WHERE TABLE_SCHEMA = DATABASE()"
+                    " AND TABLE_NAME = 'steve_recommendation_feedback'"
+                    " AND COLUMN_NAME IN ('reasoning_text','query_context')"
+                )
+                _existing_cols = {
+                    str(row['COLUMN_NAME'] if hasattr(row, 'keys') else row[0]).lower()
+                    for row in _scc.fetchall()
+                }
+                if 'reasoning_text' not in _existing_cols:
+                    _scc.execute("ALTER TABLE steve_recommendation_feedback ADD COLUMN reasoning_text TEXT NULL")
+                if 'query_context' not in _existing_cols:
+                    _scc.execute("ALTER TABLE steve_recommendation_feedback ADD COLUMN query_context TEXT NULL")
             else:
                 # SQLite doesn't support IF NOT EXISTS on ALTER, so check first
                 _scc.execute("PRAGMA table_info(steve_recommendation_feedback)")
@@ -840,6 +864,20 @@ def _block_unverified_users():
         # Cron endpoints authenticate via X-Cron-Secret, not session cookies.
         # Cloud Scheduler cannot send cookies, so they must bypass this gate.
         if path.startswith('/api/cron/'):
+            return None
+        # Internal service-to-service endpoints (e.g. the Cloud Tasks builder
+        # worker /api/internal/builder/jobs/<id>/run) authenticate via shared
+        # secret headers in their handlers — Cloud Tasks cannot send cookies,
+        # so a session gate here turns every delivery into a 401 retry-storm.
+        if path.startswith('/api/internal/'):
+            return None
+        # Published public web builds (builds.c-point.co worker proxy): these
+        # routes are deliberately unauthenticated — slug-scoped public data
+        # only, per-build/IP rate-limited in their handlers, non-enumerating
+        # 404s, no session features. A session gate here breaks every image/
+        # data/capsule call on every published public site (anonymous
+        # visitors never have a cookie).
+        if path.startswith('/api/builder/public/'):
             return None
         # Session required, but must run even if email not verified (logout cleanup)
         session_auth_unverified_ok = (
@@ -2519,10 +2557,28 @@ def add_missing_tables():
                              created_at TEXT NOT NULL,
                              updated_at TEXT NOT NULL)''')
 
-            # Ensure helpful indexes
+            # Ensure helpful indexes. MySQL has no CREATE INDEX IF NOT
+            # EXISTS (the old form warned on every boot and the indexes were
+            # never created) — probe information_schema first. SQLite keeps
+            # the IF NOT EXISTS form, which it supports natively.
             try:
-                c.execute("CREATE INDEX IF NOT EXISTS idx_replies_post ON replies(post_id)")
-                c.execute("CREATE INDEX IF NOT EXISTS idx_replies_parent ON replies(parent_reply_id)")
+                if USE_MYSQL:
+                    for _idx_name, _idx_ddl in (
+                        ("idx_replies_post", "CREATE INDEX idx_replies_post ON replies(post_id)"),
+                        ("idx_replies_parent", "CREATE INDEX idx_replies_parent ON replies(parent_reply_id)"),
+                    ):
+                        c.execute(
+                            "SELECT 1 FROM information_schema.STATISTICS"
+                            " WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'replies'"
+                            f" AND INDEX_NAME = '{_idx_name}' LIMIT 1"
+                        )
+                        if c.fetchone() is None:
+                            c.execute(_idx_ddl)
+                            conn.commit()
+                            logger.info(f"Created missing replies index {_idx_name}")
+                else:
+                    c.execute("CREATE INDEX IF NOT EXISTS idx_replies_post ON replies(post_id)")
+                    c.execute("CREATE INDEX IF NOT EXISTS idx_replies_parent ON replies(parent_reply_id)")
             except Exception as e:
                 logger.warning(f"Could not create replies indexes: {e}")
 
@@ -6297,7 +6353,14 @@ def auto_flag_content_if_needed(post_id, content, username, community_id):
                     })
                 except Exception as notif_err:
                     logger.warning(f"Failed to notify admin about auto-flagged content: {notif_err}")
-                    
+
+                # Owner-first moderation: auto-flags land in the owner's queue too
+                try:
+                    from backend.services.community_moderation import notify_moderators_of_report
+                    notify_moderators_of_report(community_id, post_id, 'system', username, system=True)
+                except Exception as owner_err:
+                    logger.warning(f"Failed to notify community moderators about auto-flag: {owner_err}")
+
                 logger.info(f"Auto-flagged post {post_id} for objectionable content: {flagged_words}")
         except Exception as e:
             logger.error(f"Error auto-flagging content: {e}")
@@ -19046,78 +19109,17 @@ def delete_post():
             if not has_post_delete_permission(username, post['username'], post['community_id']):
                 return jsonify({'success': False, 'error': 'Post not found or unauthorized!'}), 403
 
-            # Steve welcome posts are locked from delete for the first 7 days
-            # so brand-new owners can't accidentally erase the community
-            # manual before they've had a chance to read it.
-            try:
-                from backend.services.steve_community_welcome import is_within_delete_lock
-                post_dict = dict(post) if hasattr(post, 'keys') else {}
-                if is_within_delete_lock(post_dict):
-                    return jsonify({
-                        'success': False,
-                        'error': "Steve's welcome post is locked from delete for the first 7 days. You can delete it after that if you'd rather.",
-                    }), 403
-            except Exception as lock_err:
-                logger.warning("delete_post: welcome lock check failed (non-fatal): %s", lock_err)
-            
-            # Get community_id for cache invalidation before deleting
-            post_community_id = post['community_id'] if post else None
-            
-            # Cancel any pending imagine jobs for this post
-            try:
-                ph = get_sql_placeholder()
-                c.execute(f"""
-                    UPDATE imagine_jobs 
-                    SET status = {ph}
-                    WHERE target_type = {ph} AND target_id = {ph} AND status IN ({ph}, {ph})
-                """, (IMAGINE_STATUS_ERROR, 'post', post_id, IMAGINE_STATUS_PENDING, IMAGINE_STATUS_PROCESSING))
-                conn.commit()
-            except Exception as e:
-                logger.warning(f"Could not cancel imagine jobs for post {post_id}: {e}")
-            
-            # Delete image file if it exists
-            if post['image_path']:
-                try:
-                    image_file_path = os.path.join('static', post['image_path'])
-                    if os.path.exists(image_file_path):
-                        os.remove(image_file_path)
-                except Exception as e:
-                    logger.warning(f"Could not delete image file {post['image_path']}: {e}")
-            # Delete video file if it exists (skip if pending)
-            video_path_val = None
-            try:
-                video_path_val = post['video_path']
-            except Exception:
-                try:
-                    video_path_val = post[2]
-                except Exception:
-                    video_path_val = None
-            if video_path_val and video_path_val != 'pending':
-                try:
-                    video_file_path = os.path.join('static', video_path_val)
-                    if os.path.exists(video_file_path):
-                        os.remove(video_file_path)
-                except Exception as e:
-                    logger.warning(f"Could not delete video file {video_path_val}: {e}")
-            
-            c.execute("DELETE FROM replies WHERE post_id= ?", (post_id,))
-            c.execute("DELETE FROM post_views WHERE post_id = ?", (post_id,))
-            c.execute("DELETE FROM posts WHERE id= ?", (post_id,))
-            conn.commit()
-        
-        # Invalidate community feed cache so deleted post disappears immediately
-        if post_community_id:
-            try:
-                invalidate_community_cache(post_community_id)
-                logger.info(f"Invalidated cache for community {post_community_id} after post deletion")
-            except Exception as cache_err:
-                logger.warning(f"Failed to invalidate cache after delete for community {post_community_id}: {cache_err}")
-        try:
-            from backend.services.post_detail_cache import invalidate_post_detail
-            invalidate_post_detail(post_id, scope="community")
-        except Exception as cache_err:
-            logger.warning(f"Post detail cache invalidate after delete failed: {cache_err}")
-        
+        # Full cleanup (welcome lock, imagine jobs, media incl. R2, replies,
+        # views, caches) is shared with the moderation/admin delete paths.
+        from backend.services.post_deletion import delete_post_cascade
+        payload, status = delete_post_cascade(post_id, actor=username)
+        if not payload.get('success'):
+            if status == 403:
+                return jsonify({'success': False, 'error': payload.get('message') or 'Post is locked.'}), 403
+            if status == 404:
+                return jsonify({'success': False, 'error': 'Post not found!'}), 404
+            return jsonify({'success': False, 'error': 'Failed to delete post'}), status
+
         logger.info(f"Post {post_id} deleted successfully by {username}")
         return jsonify(_api_errors.success_payload('feed.post_deleted')), 200
     except Exception as e:
@@ -19141,7 +19143,13 @@ def report_post():
         return jsonify({'success': False, 'error': 'Post ID is required'}), 400
     if not reason:
         return jsonify({'success': False, 'error': 'Reason is required'}), 400
-    
+
+    # Flood guard: reporting is deduped per (post, reporter) but was otherwise
+    # unlimited. Generous window — a legitimate member never hits this.
+    from backend.services import rate_limit as _rate_limit
+    if not _rate_limit.allow('report_post', username, max_events=15, window_seconds=3600):
+        return _api_errors.error_response('feed.report_rate_limited', 429)
+
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -19160,36 +19168,8 @@ def report_post():
             if post_author == username:
                 return jsonify({'success': False, 'error': 'You cannot report your own post'}), 400
             
-            # Ensure post_reports table exists
-            try:
-                if USE_MYSQL:
-                    c.execute('''CREATE TABLE IF NOT EXISTS post_reports
-                                 (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                                  post_id INTEGER NOT NULL,
-                                  reporter_username VARCHAR(191) NOT NULL,
-                                  reason TEXT NOT NULL,
-                                  details TEXT,
-                                  status VARCHAR(50) DEFAULT 'pending',
-                                  reviewed_by VARCHAR(191),
-                                  reviewed_at TIMESTAMP NULL,
-                                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                  UNIQUE KEY unique_report (post_id, reporter_username))''')
-                else:
-                    c.execute('''CREATE TABLE IF NOT EXISTS post_reports
-                                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                  post_id INTEGER NOT NULL,
-                                  reporter_username TEXT NOT NULL,
-                                  reason TEXT NOT NULL,
-                                  details TEXT,
-                                  status TEXT DEFAULT 'pending',
-                                  reviewed_by TEXT,
-                                  reviewed_at TIMESTAMP NULL,
-                                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                  UNIQUE(post_id, reporter_username))''')
-                conn.commit()
-            except Exception as table_err:
-                logger.warning(f"Could not ensure post_reports table: {table_err}")
-            
+            # post_reports table is ensured at startup (community_moderation service)
+
             # Check if user already reported this post
             c.execute(f"SELECT id FROM post_reports WHERE post_id = {ph} AND reporter_username = {ph}", (post_id, username))
             existing_report = c.fetchone()
@@ -19229,7 +19209,15 @@ def report_post():
                         logger.warning(f"Failed to notify admin {admin_username} about report: {notif_err}")
             except Exception as admin_err:
                 logger.warning(f"Failed to notify admins about reported post: {admin_err}")
-            
+
+            # Owner-first moderation: the community's owner + delegated admins
+            # review reports in their Owner Dashboard queue — tell them.
+            try:
+                from backend.services.community_moderation import notify_moderators_of_report
+                notify_moderators_of_report(community_id, post_id, username, post_author)
+            except Exception as owner_err:
+                logger.warning(f"Failed to notify community moderators about report: {owner_err}")
+
             logger.info(f"Post {post_id} reported by {username} for: {reason}")
             return jsonify(_api_errors.success_payload('feed.post_reported'))
     
@@ -19423,22 +19411,33 @@ def admin_review_report():
             ph = get_sql_placeholder()
             
             new_status = 'dismissed' if action == 'dismiss' else 'reviewed'
-            
+
+            # Only act on still-pending rows: the community-owner queue
+            # (owner_moderation blueprint) reads the same table, and a report
+            # the owner already resolved should not be silently overwritten.
             if USE_MYSQL:
                 c.execute(f"""
-                    UPDATE post_reports 
+                    UPDATE post_reports
                     SET status = {ph}, reviewed_by = {ph}, reviewed_at = NOW()
-                    WHERE id = {ph}
+                    WHERE id = {ph} AND status = 'pending'
                 """, (new_status, username, report_id))
             else:
                 c.execute(f"""
-                    UPDATE post_reports 
+                    UPDATE post_reports
                     SET status = {ph}, reviewed_by = {ph}, reviewed_at = datetime('now')
-                    WHERE id = {ph}
+                    WHERE id = {ph} AND status = 'pending'
                 """, (new_status, username, report_id))
-            
+
+            if getattr(c, 'rowcount', 1) == 0:
+                c.execute(f"SELECT status, reviewed_by FROM post_reports WHERE id = {ph}", (report_id,))
+                row = c.fetchone()
+                current = (row['status'] if hasattr(row, 'keys') else row[0]) if row else 'reviewed'
+                resolved_by = (row['reviewed_by'] if hasattr(row, 'keys') else row[1]) if row else None
+                return jsonify({'success': True, 'already_resolved': True, 'status': current,
+                                'reviewed_by': resolved_by})
+
             conn.commit()
-            
+
             logger.info(f"Report {report_id} {new_status} by {username}")
             return jsonify({'success': True, 'message': f'Report {new_status}'})
     
@@ -19462,45 +19461,21 @@ def admin_delete_reported_post():
         return jsonify({'success': False, 'error': 'Post ID is required'}), 400
     
     try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            
-            # Get post info for cache invalidation
-            c.execute(f"SELECT community_id FROM posts WHERE id = {ph}", (post_id,))
-            post = c.fetchone()
-            community_id = post['community_id'] if post and hasattr(post, 'keys') else (post[0] if post else None)
-            
-            # Mark all reports for this post as reviewed
-            if USE_MYSQL:
-                c.execute(f"""
-                    UPDATE post_reports 
-                    SET status = 'reviewed', reviewed_by = {ph}, reviewed_at = NOW()
-                    WHERE post_id = {ph}
-                """, (username, post_id))
-            else:
-                c.execute(f"""
-                    UPDATE post_reports 
-                    SET status = 'reviewed', reviewed_by = {ph}, reviewed_at = datetime('now')
-                    WHERE post_id = {ph}
-                """, (username, post_id))
-            
-            # Delete the post (this will cascade to delete related data)
-            c.execute(f"DELETE FROM replies WHERE post_id = {ph}", (post_id,))
-            c.execute(f"DELETE FROM posts WHERE id = {ph}", (post_id,))
-            
-            conn.commit()
-            
-            # Invalidate cache
-            if community_id:
-                try:
-                    invalidate_community_cache(community_id)
-                except Exception as cache_err:
-                    logger.warning(f"Failed to invalidate cache: {cache_err}")
-            
-            logger.info(f"Reported post {post_id} deleted by admin {username}")
-            return jsonify(_api_errors.success_payload('feed.post_deleted'))
-    
+        # Shared cascade: resolves the post's reports, then cleans up replies,
+        # views, imagine jobs, media (incl. R2), and both caches. App admins
+        # bypass the welcome lock (global moderation tooling).
+        from backend.services.post_deletion import delete_post_cascade
+        payload, status = delete_post_cascade(
+            post_id, actor=username, resolve_reports=True, enforce_welcome_lock=False,
+        )
+        if not payload.get('success'):
+            if status == 404:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            return jsonify({'success': False, 'error': 'Failed to delete post'}), status
+
+        logger.info(f"Reported post {post_id} deleted by admin {username}")
+        return jsonify(_api_errors.success_payload('feed.post_deleted'))
+
     except Exception as e:
         logger.error(f"Error deleting reported post: {e}")
         return jsonify({'success': False, 'error': 'Failed to delete post'}), 500

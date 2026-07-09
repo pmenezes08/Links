@@ -114,6 +114,7 @@ function iconFor(type?: string){
     case 'poll_vote': return 'fa-solid fa-square-poll-vertical'
     case 'event_invitation': return 'fa-solid fa-calendar-check'
     case 'new_member': return 'fa-solid fa-user-plus'
+    case 'invitee_joined': return 'fa-solid fa-user-check'
     default: return 'fa-regular fa-bell'
   }
 }

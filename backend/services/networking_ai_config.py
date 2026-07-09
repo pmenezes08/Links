@@ -52,6 +52,11 @@ class NetworkingAiConfig:
     # Reasoning depth for the planner stage. grok-4.3 defaults to "low" at the
     # API; intent decomposition benefits from "medium". "none" = fast/no-reasoning.
     planner_reasoning_effort: str = "medium"
+    # Rolling-welcome cue link: appends a size-gated "ask Steve for
+    # introductions" link to the weekly welcome post. Zero-AI attribution
+    # experiment for proactive networking (Increment 0 of the concierge plan).
+    welcome_cue_enabled: bool = True
+    welcome_cue_min_members: int = 15
     use_large_context_model_after_tokens: int = 900_000
     # Planner runs grok-4.3 ($1.25 in / $2.50 out per 1M) — keep cost estimates honest.
     planner_input_usd_per_million: float = 1.25
@@ -240,6 +245,17 @@ def _build_config(page: Optional[Mapping[str, Any]]) -> NetworkingAiConfig:
             fields,
             "planner_reasoning_effort",
             defaults.planner_reasoning_effort,
+        ),
+        welcome_cue_enabled=_bool(
+            fields,
+            "networking_welcome_cue_enabled",
+            defaults.welcome_cue_enabled,
+        ),
+        welcome_cue_min_members=_int(
+            fields,
+            "networking_welcome_cue_min_members",
+            defaults.welcome_cue_min_members,
+            minimum=1,
         ),
         use_large_context_model_after_tokens=_int(
             fields,

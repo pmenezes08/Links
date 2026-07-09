@@ -10,3 +10,14 @@ def test_check_pending_and_clear_stale_in_allowlist_tuple():
     src = open(bb.__file__, encoding="utf-8").read()
     assert "'/api/check_pending_login'" in src
     assert "'/api/clear_stale_session'" in src
+
+
+def test_internal_service_paths_bypass_session_gate():
+    """Cloud Tasks worker callbacks (`/api/internal/...`) authenticate via
+    shared-secret headers in their handlers, never cookies. The session gate
+    must not 401 them — that exact bug turned every builder job delivery into
+    a 401 retry-storm and left builds stuck at `queued` forever."""
+    import bodybuilding_app as bb
+
+    src = open(bb.__file__, encoding="utf-8").read()
+    assert "path.startswith('/api/internal/')" in src

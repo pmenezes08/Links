@@ -856,3 +856,81 @@ Wave 2 (`Pilot Wave 2 — composer & profile polish`, KB test ref `manual:pilot_
 - [ ] **Delete account clears cookies**: After account deletion, `remember_token`, `cpoint_session`, and `native_push_install_id` cookies are cleared in the response headers.
 - [ ] **Password login isolation**: Log in as User A via password. Without logging out, log in as User B via password on the same browser. No remnants of User A's session data leak into User B's session.
 - [ ] **Vitest passes**: Run `npx vitest run src/utils/logout.test.ts` — all tests pass, including the FCMNotifications.deleteToken test.
+
+## §17 — Steve Builder (async builds)
+
+Run after any change to the builder create/iterate flow, job polling,
+notifications, or creation playback. Maps to the `runner=manual` Tests row
+`builder:async-builds`.
+
+#### §17.A — Build while away (mobile)
+
+- [ ] **Locked phone**: Start a build (any tier), then lock the phone. Wait ~30s–2min, unlock. A push notification arrives ("Steve finished {title}"); tapping it deep-links to the Builder with the finished `creation_id` and the creation loads.
+- [ ] **Navigate away**: Start a build, then go to the feed (do NOT lock). The completion shows in the in-app notification list; tapping it opens the creation.
+- [ ] **App killed**: Start a build, hard-close (swipe-kill) the app, re-open, go to Builder. The creation list shows the result (succeeded or failed); no orphan "building…" state.
+
+#### §17.B — Error path (mobile)
+
+- [ ] **Forced failure** (staging): trigger a build failure (e.g. point `STEVE_BUILDER_MODEL_FAST` at a broken value). Push says "couldn't finish"; tapping opens the Builder with a retry affordance; no phantom spinner. Exactly one failure notification (not repeated).
+
+#### §17.C — Active-job guard (409)
+
+- [ ] While a build is queued/running, starting a second build from the same account shows the "already building" message and does NOT enqueue a second job.
+
+#### §17.D — Reliability (durability)
+
+- [ ] **Cloud Tasks active**: On staging/prod startup logs, confirm `builder: async builds via Cloud Tasks` (NOT the in-process thread fallback warning).
+- [ ] **Reaper**: Manually `POST /api/cron/builder/sweep` with `X-Cron-Secret`. Returns `{"success": true, "requeued": N, "failed": M}`. A job stuck in `running` past its lease is requeued or terminally failed (never stuck forever).
+
+#### §17.E — Play surface controls (mobile)
+
+- [ ] Open a finished creation full-screen. The ONLY host control is the close (X) button — no D-pad, no host sound icon, no browser chrome.
+- [ ] If a creation has sound, its own in-creation mute toggle works; there is no duplicate host-level sound control.
+
+#### §17.F — Notification copy (i18n)
+
+- [ ] Set device locale to pt-PT, trigger a successful build → push title/body are in Portuguese.
+- [ ] Repeat for de-DE.
+
+#### §17.G — Save slots (CPoint persistence)
+
+- [ ] In a creation with save/load, save `slot-1`, reload the play surface, load `slot-1` → state returns.
+- [ ] Save `slot-2` and confirm it does NOT overwrite `slot-1` (distinct slots).
+- [ ] As a second user, open the same creation and confirm you cannot read the first user's save (per-user scoping).
+- [ ] Generated games persist via `CPoint.save/load`, never `localStorage` (check that progress survives a reload but is empty for a different account).
+
+#### §17.H — My Builds page
+
+- [ ] From the dashboard, the **My Builds** shortcut opens `/builds` with dashboard chrome and bottom nav.
+- [ ] The page lists your creations (title, draft/published, plays, updated time) with loading, empty, and error states.
+- [ ] **Play/Preview** opens the creation; **Continue building** reopens the Builder with the draft; **Open community** lands in the community feed.
+
+#### §17.H.1 — Public web publishing
+
+- [ ] Build a website or lightweight app, then click **Publish web** from Builder or `/builds`. Expected: a `builds.c-point.co/<slug>` public URL is returned and copied.
+- [ ] Open the public URL in a signed-out/private browser. Expected: the build loads without C-Point login, shows the short C-Point loading splash, and keeps a visible **Built with C-Point** badge linking to `https://c-point.co`.
+- [ ] Test a public build using `CPoint.data(...)`. Expected: vetted public data connectors work and display attribution; session-backed saves, scores, ratings, collections/forms, and multiplayer are unavailable.
+- [ ] Try to publish a game to web. Expected: the UI blocks it with copy explaining games stay inside C-Point for saves, scores, identity, and multiplayer.
+- [ ] Unpublish the public URL. Expected: the public URL returns the branded not-found page while the build remains available inside C-Point.
+
+#### §17.I — Delete builds
+
+- [ ] From `/builds`, delete a draft build. Expected: confirmation appears, the row disappears, direct `/community/<id>/creation/<creation_id>` returns not found.
+- [ ] Delete a published/public build. Expected: the build disappears from `/builds`, the linked community feed post disappears, the public URL stops resolving, and play/preview no longer loads.
+- [ ] Confirm saved data is gone: after delete, a new build with the same save slot cannot load the deleted build's `CPoint.save/load` data.
+- [ ] As a second user, attempt to delete another user's build (or call the endpoint directly). Expected: `404 not_found` / no deletion.
+
+#### §17.J — Public data connectors
+
+- [ ] Build a weather app using a city name (for example Lisbon). Expected: the creation renders immediately with a loading/fallback state, then updates with forecast data and visible `Weather by Open-Meteo` attribution.
+- [ ] Build a sports fixtures/results app using `sports` for a date. Expected: it shows fixtures/results for that day (recent/cached is OK; not second-by-second live scores) and visible TheSportsDB attribution.
+- [ ] Build one random connector app (`joke`, `fact`, `advice`, `recipe`, or `cocktail`). Expected: the app receives a batch and picks one result client-side, with no repeated rapid upstream spinner/fetch loop.
+- [ ] Temporarily force a provider failure on staging (or use a blocked connector budget in a test build). Expected: the creation degrades gracefully, shows stale last-good data if available, and never renders blank.
+- [ ] Confirm a generated creation does not use raw `fetch()` to arbitrary APIs; it uses `CPoint.data(...)` and works without it when the bridge is absent.
+
+#### §17.K — R2 artifact storage
+
+- [ ] Create a new build on staging with R2 enabled. Expected: `GET /api/builder/<id>` still returns `creation.html`, while the DB row has `html_r2_key` set and a small/empty legacy `html_content` fallback.
+- [ ] Play the creation from `/builds` and from the community feed. Expected: both paths load the same artifact and preserve the sandbox/`CPoint` bridge behavior.
+- [ ] Iterate the creation. Expected: the new version loads, old HTML is not served from cache, and the previous R2 object is cleaned up best-effort.
+- [ ] Delete the build. Expected: the DB row, `creation_data`, `builder_jobs`, linked post, and private R2 object are removed or no longer retrievable.

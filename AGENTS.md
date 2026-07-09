@@ -149,12 +149,14 @@ prod values for store releases. See **`docs/DEPLOYMENT_INSTANCES.md`** § Mobile
 The repo carries **two product lines on one shared codebase**: **C-Point** (the B2B connector) and the **build product** (Steve Build, a separate product in the making). Keep them on separate branches so connector releases never drag build code, and so non-build work promotes to `main` cleanly.
 
 - **`main`** — C-Point production. **Build-free.** Never commit build code here.
-- **`staging`** — C-Point development. **Build-free.** Connector work branches off `staging` and merges back; release by merging `staging → main`.
-- **`build`** — the build line (= `main` + the build delta). All Steve Build work lives here.
+- **`staging`** — the staging deployment line: carries **both** connector work AND the build line (`cpoint-app-staging` serves both products for QA). Connector work branches off `staging` and merges back; release by merging `staging → main` (build files must never be part of that promotion — they only exist on `staging` via `build → staging` merges, never as staging-side edits).
+- **`build`** — the build line (= `main` + the build delta). All Steve Build work lives here, then merges to `staging`.
+
+**MANDATORY after every `build → staging` merge:** verify staging fully contains the build work — `git diff staging build -- client/src backend` must be EMPTY. The two branches have criss-cross merge bases, so git can silently auto-resolve build additions in SHARED files (e.g. the Steve cards in `client/src/pages/PremiumDashboard.tsx`) as "deleted by staging" with NO conflict — this has dropped dashboard build UI more than once. If the diff is non-empty, restore build's version of those files on `staging` in a follow-up commit.
 
 Where to commit:
-- **Connector / non-build work** → branch off `staging` → merge to `staging` → (release) merge `staging → main`. Never put build code on `staging`/`main`.
-- **Build work** → branch off `build` → merge to `build`. Build-only files live **only** on `build`: `backend/blueprints/builder.py`, `backend/services/builder*.py`, `backend/services/creation_*.py`, `backend/services/builder_guide.md`, `client/src/pages/BuilderPage.tsx`, `client/src/pages/CreationPlay.tsx`, `client/src/pages/ExploreCreations.tsx`, `client/src/hooks/useBuilder.ts`, `client/src/components/builder/*`, `client/src/utils/creationHtml.ts`, plus the build routes in `client/src/App.tsx` and the build blueprint registration in `backend/blueprints/__init__.py`.
+- **Connector / non-build work** → branch off `staging` → merge to `staging` → (release) merge `staging → main`. Never put build code on `main`.
+- **Build work** → branch off `build` → merge to `build` → merge `build → staging` (then run the mandatory containment check above). Build-only files originate **only** on `build`: `backend/blueprints/builder.py`, `backend/services/builder*.py`, `backend/services/creation_*.py`, `backend/services/builder_guide.md`, `client/src/pages/BuilderPage.tsx`, `client/src/pages/CreationPlay.tsx`, `client/src/pages/ExploreCreations.tsx`, `client/src/hooks/useBuilder.ts`, `client/src/components/builder/*`, `client/src/utils/creationHtml.ts`, plus the build routes in `client/src/App.tsx`, the Steve dashboard cards in `client/src/pages/PremiumDashboard.tsx`, and the build blueprint registration in `backend/blueprints/__init__.py`.
 - **Shared-spine changes both lines need** (`backend/services/content_generation/llm.py`, `ai_usage.py`, `entitlements*.py`, `knowledge_base.py`, auth, notifications/push, the communities/feed core) → commit on the **connector side** (`staging`/`main`) so they reach both, then `git merge main` into `build`. **Do not** make a shared-service fix as a build-only commit — it would be stranded on `build`.
 
 Rules:
@@ -198,6 +200,7 @@ Route inventory, data-store maps, deploy topology, and journey narratives **must
 | Material shift in a **cross-system** flow (Stripe/checkout/webhook path, AI gate + usage logging, enterprise seat lifecycle, onboarding stages, DM/group storage or read path) | **`docs/PRODUCT_JOURNEYS.md`**. |
 | Monolith reduction **epic** priority or acceptance criteria shift | **`docs/MONOLITH_REDUCTION_ROADMAP.md`**. |
 | New major dependency, supplier, blueprint area, or integration worth a one-line pointer | **`docs/C_POINT_ARCHITECTURE.md`**. |
+| **Steve's build capabilities** — a new `CPoint` API / route / connector, a new build kind, a design-direction change, or a new build quality pass | **`backend/services/builder_guide.md`** (the single guide injected into every build; the CAPS block is also shared into Steve's chat prompt, so updating it keeps both his builds AND his user-facing feedback accurate). |
 
 Full checkbox list: **[docs/AGENT_TASK_CHECKLIST.md](docs/AGENT_TASK_CHECKLIST.md)**.
 

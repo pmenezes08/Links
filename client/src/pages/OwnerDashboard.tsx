@@ -1,10 +1,12 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import OverviewTab from '../components/owner/OverviewTab'
 import SpacesTab from '../components/owner/SpacesTab'
 import ReportsTab from '../components/owner/ReportsTab'
 import CommunitySwitcher from '../components/owner/CommunitySwitcher'
+import ManageMembershipModal from '../components/membership/ManageMembershipModal'
+import { SkeletonFeedCard, SkeletonRow } from '../components/SkeletonRow'
 import type { OwnerOverview, OwnerManagedCommunity, OwnerScope } from '../components/owner/types'
 
 type Tab = 'overview' | 'reports' | 'spaces'
@@ -30,7 +32,7 @@ function ScopeChip({ active, onClick, children }: { active: boolean; onClick: ()
       type="button"
       onClick={onClick}
       className={`rounded-full px-3 py-1 text-[11px] ${
-        active ? 'bg-cpoint-turquoise text-[#063b39]' : 'border border-c-border text-c-text-secondary'
+        active ? 'bg-cpoint-turquoise text-c-text-on-accent' : 'border border-c-border text-c-text-secondary'
       }`}
     >
       {children}
@@ -80,6 +82,11 @@ export default function OwnerDashboard() {
   const [scope, setScope] = useState<OwnerScope>('network')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [membershipOpen, setMembershipOpen] = useState(false)
+  const autoScopedRef = useRef<number | null>(null)
+
+  // Owner vs delegated admin — billing/upgrade moves are owner-only.
+  const isOwner = managed.find(c => c.id === communityId)?.is_owner ?? false
 
   useEffect(() => {
     let mounted = true
@@ -103,7 +110,18 @@ export default function OwnerDashboard() {
         if (!r.ok) throw new Error(String(r.status))
         return r.json()
       })
-      .then(j => { if (mounted) { setData(j); setLoading(false) } })
+      .then(j => {
+        if (!mounted) return
+        setData(j)
+        setLoading(false)
+        // Free owner with a locked network rollup: land on their real numbers
+        // (self) instead of the locked teaser. Once per community — the chip
+        // still lets them view the teaser deliberately.
+        if (j?.network?.locked && scope === 'network' && autoScopedRef.current !== communityId) {
+          autoScopedRef.current = communityId
+          setScope('self')
+        }
+      })
       .catch(() => { if (mounted) { setError(true); setLoading(false) } })
     return () => { mounted = false }
   }, [communityId, scope])
@@ -115,7 +133,9 @@ export default function OwnerDashboard() {
     setSearchParams(sp, { replace: true })
   }
 
-  const onUpgrade = () => navigate('/subscription_plans')
+  // Upgrade opens the canonical plan/billing modal in place (no page swap);
+  // it reads live billing state itself — never hardcode tiers/prices here.
+  const onUpgrade = () => setMembershipOpen(true)
 
   return (
     <div className="min-h-screen bg-c-bg-app text-c-text-primary">
@@ -141,14 +161,23 @@ export default function OwnerDashboard() {
         )}
       </div>
 
-      <div className="flex gap-5 border-b border-c-border px-4">
+      <div className="flex gap-5 overflow-x-auto border-b border-c-border px-4 [scrollbar-width:none]">
         <TabButton active={tab === 'overview'} onClick={() => changeTab('overview')}>{t('owner.tab_overview')}</TabButton>
         <TabButton active={tab === 'reports'} onClick={() => changeTab('reports')}>{t('owner.tab_reports')}</TabButton>
         <TabButton active={tab === 'spaces'} onClick={() => changeTab('spaces')}>{t('owner.tab_spaces')}</TabButton>
       </div>
 
       <div className="mx-auto max-w-2xl px-3 pt-2 pb-4">
-        {loading && <div className="py-10 text-center text-sm text-c-text-tertiary">…</div>}
+        {loading && (
+          <div className="pt-2">
+            <SkeletonRow className="mb-3" />
+            <div className="mb-2.5 grid grid-cols-2 gap-2.5">
+              <SkeletonFeedCard />
+              <SkeletonFeedCard />
+            </div>
+            <SkeletonFeedCard />
+          </div>
+        )}
 
         {error && !loading && (
           <div className="py-10 text-center text-sm text-c-text-secondary">{t('owner.error')}</div>
@@ -167,7 +196,7 @@ export default function OwnerDashboard() {
                 {data.network?.locked && scope === 'network' && (
                   <NetworkLockedCard teaser={data.network.teaser_members} onUpgrade={onUpgrade} />
                 )}
-                <OverviewTab data={data} onUpgrade={onUpgrade} />
+                <OverviewTab data={data} onUpgrade={onUpgrade} isOwner={isOwner} communityId={communityId} />
               </>
             )}
             {tab === 'reports' && communityId != null && <ReportsTab communityId={communityId} />}
@@ -175,6 +204,8 @@ export default function OwnerDashboard() {
           </>
         )}
       </div>
+
+      <ManageMembershipModal open={membershipOpen} onClose={() => setMembershipOpen(false)} initialTab="plan" />
     </div>
   )
 }

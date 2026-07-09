@@ -1,6 +1,11 @@
 import { Link } from "react-router-dom";
+import { useLang } from "@/i18n/LanguageContext";
 
 export const Footer = () => {
+  const { copy } = useLang();
+  const f = copy.footer;
+  const nav = copy.nav;
+
   return (
     <footer className="bg-[#4db6ac] py-12">
       <div className="max-w-6xl mx-auto px-6">
@@ -9,66 +14,55 @@ export const Footer = () => {
             <a href="/" className="text-lg font-bold tracking-tight text-white">
               C<span className="text-white/80">-</span>Point
             </a>
-            <p className="text-sm text-white/60 mt-1">
-              A global platform of private networks — invitation-only, with Steve in every community.
-            </p>
+            <p className="text-sm text-white/60 mt-1">{f.tagline}</p>
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
             <a href="#manifesto" className="text-sm text-white/70 hover:text-white transition-colors">
-              Manifesto
+              {f.manifesto}
             </a>
-            <a href="#why-cpoint" className="text-sm text-white/70 hover:text-white transition-colors">
-              Why C-Point
-            </a>
-            <a href="#audiences" className="text-sm text-white/70 hover:text-white transition-colors">
-              Who it's for
-            </a>
-            <a href="#steve" className="text-sm text-white/70 hover:text-white transition-colors">
-              Steve
-            </a>
-            <a href="#communities" className="text-sm text-white/70 hover:text-white transition-colors">
-              Communities
-            </a>
-            <a href="#tools" className="text-sm text-white/70 hover:text-white transition-colors">
-              Tools
-            </a>
-            <a href="#membership" className="text-sm text-white/70 hover:text-white transition-colors">
-              Plans
-            </a>
+            {nav.links.map((link) => (
+              <a key={link.href} href={link.href} className="text-sm text-white/70 hover:text-white transition-colors">
+                {link.label}
+              </a>
+            ))}
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
-            <Link to="/privacy" className="text-sm text-white/70 hover:text-white transition-colors">
-              Privacy
+            <Link to={f.legalPaths.privacy} className="text-sm text-white/70 hover:text-white transition-colors">
+              {f.privacy}
             </Link>
-            <Link to="/terms" className="text-sm text-white/70 hover:text-white transition-colors">
-              Terms
+            <Link to={f.legalPaths.terms} className="text-sm text-white/70 hover:text-white transition-colors">
+              {f.terms}
             </Link>
             <Link to="/support" className="text-sm text-white/70 hover:text-white transition-colors">
-              Support
+              {f.support}
             </Link>
-            <Link to="/safety" className="text-sm text-white/70 hover:text-white transition-colors">
-              Safety
+            <Link to={f.legalPaths.safety} className="text-sm text-white/70 hover:text-white transition-colors">
+              {f.safety}
             </Link>
             <span className="text-white/30 hidden sm:inline" aria-hidden>
               |
             </span>
-            <Link to="/pt/privacy" className="text-sm text-white/70 hover:text-white transition-colors" lang="pt-PT">
-              Privacidade (PT)
-            </Link>
-            <Link to="/pt/terms" className="text-sm text-white/70 hover:text-white transition-colors" lang="pt-PT">
-              Termos (PT)
-            </Link>
+            {f.crossLang.map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                className="text-sm text-white/70 hover:text-white transition-colors"
+                lang={item.lang}
+              >
+                {item.label}
+              </Link>
+            ))}
             <Link to="/admin" className="text-sm text-white/70 hover:text-white transition-colors">
-              Operator login
+              {f.operator}
             </Link>
           </div>
         </div>
 
         <div className="mt-8 pt-6 border-t border-white/15 text-center">
           <p className="text-xs text-white/50">
-            &copy; {new Date().getFullYear()} C-Point. All rights reserved.
+            &copy; {new Date().getFullYear()} C-Point. {f.rights}
           </p>
         </div>
       </div>

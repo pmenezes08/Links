@@ -5,25 +5,27 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { MANIFESTO_FULL, MANIFESTO_SUMMARY_PARAS } from "@/content/siteCopy";
+import { useLang } from "@/i18n/LanguageContext";
 
 export function ManifestoSection() {
   const [open, setOpen] = useState(false);
+  const { copy } = useLang();
+  const c = copy.manifesto;
 
   return (
     <section id="manifesto" className="section-padding bg-[#4db6ac]/10">
       <div className="max-w-3xl mx-auto px-6">
         <p className="text-sm font-semibold text-primary uppercase tracking-widest mb-3 text-center">
-          C-Point manifesto
+          {c.kicker}
         </p>
         <h2 className="heading-lg text-foreground mb-6 text-center">
-          The world is meant to be{" "}
+          {c.h2Pre}{" "}
           <span className="bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
-            lived.
+            {c.h2Highlight}
           </span>
         </h2>
         <div className="space-y-4 text-center sm:text-left">
-          {MANIFESTO_SUMMARY_PARAS.map((p, i) => (
+          {c.paras.map((p, i) => (
             <p key={i} className="body-lg text-muted-foreground leading-relaxed">
               {p}
             </p>
@@ -35,7 +37,7 @@ export function ManifestoSection() {
             className="text-sm font-medium text-primary hover:underline"
             onClick={() => setOpen(true)}
           >
-            Read the full manifesto
+            {c.readFull}
           </button>
         </div>
       </div>
@@ -43,10 +45,10 @@ export function ManifestoSection() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg sm:max-w-2xl max-h-[85vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Full manifesto</DialogTitle>
+            <DialogTitle>{c.dialogTitle}</DialogTitle>
           </DialogHeader>
           <div className="overflow-y-auto pr-1 text-sm text-muted-foreground whitespace-pre-wrap break-words leading-relaxed">
-            {MANIFESTO_FULL}
+            {c.full}
           </div>
         </DialogContent>
       </Dialog>

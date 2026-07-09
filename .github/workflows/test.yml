@@ -111,11 +111,24 @@ jobs:
             tests/test_stripe_webhook_community.py \
             tests/test_stripe_webhook_hardening.py \
             tests/test_onboarding_session.py \
+            tests/test_onboarding_llm.py \
+            tests/test_onboarding_ai_metering.py \
+            tests/test_onboarding_events.py \
+            tests/test_onboarding_reminders.py \
+            tests/test_onboarding_locale_prompts.py \
+            tests/test_firestore_onboarding_identity.py \
+            tests/test_notification_copy.py \
+            tests/test_invitee_joined_notification.py \
             tests/test_spotlight_kb.py \
             tests/test_redis_cache_resilience.py \
             tests/test_dm_unread_counts.py \
             tests/test_dm_audio_idempotency.py \
             tests/test_http_conditional.py \
+            tests/test_vision_judge_unit.py \
+            tests/test_owner_analytics.py \
+            tests/test_owner_moderation.py \
+            tests/test_owner_pulse.py \
+            tests/test_rate_limit.py \
             -v --tb=short --maxfail=5
 
       - name: Upload test logs (on failure)

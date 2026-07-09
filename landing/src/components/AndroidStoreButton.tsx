@@ -1,6 +1,7 @@
 import { Smartphone } from "lucide-react";
-import { androidStoreLabel, PLAY_STORE_URL } from "@/content/siteCopy";
+import { PLAY_STORE_URL } from "@/content/siteCopy";
 import { cn } from "@/lib/utils";
+import { useLang } from "@/i18n/LanguageContext";
 
 type Props = {
   /** Hero: light border on teal. CTA: muted border. */
@@ -9,6 +10,7 @@ type Props = {
 };
 
 export function AndroidStoreButton({ variant = "muted", className }: Props) {
+  const { copy } = useLang();
   const base =
     variant === "hero"
       ? "border-2 border-white bg-white/10 text-white hover:bg-white/20 shadow-lg"
@@ -19,7 +21,7 @@ export function AndroidStoreButton({ variant = "muted", className }: Props) {
       href={PLAY_STORE_URL}
       target="_blank"
       rel="noopener noreferrer"
-      title={androidStoreLabel}
+      title={copy.android.storeLabel}
       className={cn(
         "inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full text-sm font-semibold backdrop-blur-sm transition-colors",
         base,
@@ -27,7 +29,7 @@ export function AndroidStoreButton({ variant = "muted", className }: Props) {
       )}
     >
       <Smartphone size={18} />
-      Get for Android
+      {copy.android.get}
     </a>
   );
 }
