@@ -133,6 +133,29 @@ def _steve_addon_reroute_overrides(root_id: int) -> Optional[Dict[str, Any]]:
     }
 
 
+def _fire_owner_cta(kind: str, root_id: Optional[int], username: str) -> None:
+    """Best-effort owner CTA side-channel off a deny path.
+
+    Must NEVER raise into the gate — the service is fully fail-open and
+    this wrapper adds a second belt. Rate limits / owner checks / paid-tier
+    checks all live inside :mod:`owner_billing_ctas`.
+    """
+    if not root_id:
+        return
+    try:
+        from backend.services import owner_billing_ctas
+
+        if kind == "member_blocked":
+            owner_billing_ctas.notify_member_blocked(root_id, username)
+        elif kind == "pool_exhausted":
+            owner_billing_ctas.notify_pool_exhausted(root_id, username)
+    except Exception:
+        logger.debug(
+            "owner CTA notify (%s) failed for community %s", kind, root_id,
+            exc_info=True,
+        )
+
+
 # ─── Core check ─────────────────────────────────────────────────────────
 
 
@@ -293,6 +316,7 @@ def check_steve_access(
                 reason=errs.REASON_COMMUNITY_POOL_EXHAUSTED,
                 community_id=root_id,
             )
+            _fire_owner_cta("pool_exhausted", root_id, username)
             return False, payload, status, ent
         else:
             addon_overrides: Optional[Dict[str, Any]] = None
@@ -313,6 +337,10 @@ def check_steve_access(
                 reason=errs.REASON_PREMIUM_REQUIRED,
                 community_id=root_id,
             )
+            if addon_overrides:
+                # Paid tier, no Steve package: signal the owner (rate-limited
+                # inside the service; the blocked member is never named).
+                _fire_owner_cta("member_blocked", root_id, username)
             return False, payload, status, ent
 
     # 2. Daily cap (rolling 24h).
@@ -356,6 +384,7 @@ def check_steve_access(
                     reason=errs.REASON_COMMUNITY_POOL_EXHAUSTED,
                     community_id=root_id,
                 )
+                _fire_owner_cta("pool_exhausted", root_id, username)
                 return False, payload, status, ent
         elif (
             not ent.get("can_use_steve")

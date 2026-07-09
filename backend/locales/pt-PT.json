@@ -180,6 +180,26 @@
       "body": "{wau} membros ativos em {community} esta semana — mais {delta} do que na anterior. Boa.",
       "message": "Pulso semanal: {wau} ativos em {community}, mais {delta} do que na semana passada"
     },
+    "owner_cta_steve_trial_ending": {
+      "title": "O teste do Steve Community Package está a acabar",
+      "body": "O teste gratuito de {community} termina a {date}. Adiciona o Steve Community Package para manteres o Steve disponível para os teus membros.",
+      "message": "O teste do Steve Community Package de {community} termina a {date}. Adiciona o pacote para manteres o Steve disponível para os teus membros."
+    },
+    "owner_cta_steve_trial_expired": {
+      "title": "O teste do Steve Community Package terminou",
+      "body": "O teste gratuito de {community} terminou, por isso o Steve deixou de estar disponível para os membros. Podes adicionar o Steve Community Package para o trazer de volta.",
+      "message": "O teste do Steve Community Package de {community} terminou. Adiciona o pacote para voltares a disponibilizar o Steve aos membros."
+    },
+    "owner_cta_steve_member_blocked": {
+      "title": "Há membros a pedir o Steve",
+      "body": "Há membros a tentar usar o Steve em {community} — ainda não está ativo aqui. Ao adicionares o Steve Community Package, o Steve fica disponível para todos os membros.",
+      "message": "Há membros a tentar usar o Steve em {community} — ainda não está ativo aqui. Adiciona o Steve Community Package para o ativares."
+    },
+    "owner_cta_steve_pool_exhausted": {
+      "title": "A bolsa do Steve esgotou em {community}",
+      "body": "{community} usou toda a bolsa partilhada do Steve deste mês. Renova no próximo ciclo de faturação — podes rever as opções de plano da comunidade quando quiseres.",
+      "message": "{community} usou toda a bolsa partilhada do Steve deste mês. Renova no próximo ciclo de faturação — podes rever as opções de plano quando quiseres."
+    },
     "owner_report": {
       "title": "Algo foi sinalizado",
       "body": "Um membro sinalizou uma publicação em {community}. Vê quando puderes — tu decides o que fica.",

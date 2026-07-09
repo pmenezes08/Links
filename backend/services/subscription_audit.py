@@ -83,6 +83,12 @@ ACTIONS = {
     "billing_charge_refunded",
     "billing_dispute_created",
     "duplicate_subscription_auto_cancelled",
+    # Owner CTA notifications (Steve Community Package billing moments).
+    # Trial rows double as the forever-dedup marker for the lifecycle cron.
+    "owner_cta_steve_trial_ending",
+    "owner_cta_steve_trial_expired",
+    "owner_cta_steve_member_blocked",
+    "owner_cta_steve_pool_exhausted",
 }
 
 

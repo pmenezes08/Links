@@ -180,6 +180,26 @@
       "body": "{wau} Mitglieder diese Woche in {community} aktiv — {delta} mehr als letzte Woche. Stark.",
       "message": "Wochenpuls: {wau} aktiv in {community}, {delta} mehr als letzte Woche"
     },
+    "owner_cta_steve_trial_ending": {
+      "title": "Steve Community Package: Testphase endet bald",
+      "body": "Die kostenlose Testphase für {community} endet am {date}. Füge das Steve Community Package hinzu, damit Steve für deine Mitglieder verfügbar bleibt.",
+      "message": "Die Testphase des Steve Community Package für {community} endet am {date}. Füge das Paket hinzu, damit Steve für deine Mitglieder verfügbar bleibt."
+    },
+    "owner_cta_steve_trial_expired": {
+      "title": "Steve Community Package: Testphase beendet",
+      "body": "Die kostenlose Testphase für {community} ist beendet, daher ist Steve für Mitglieder nicht mehr verfügbar. Du kannst das Steve Community Package hinzufügen, um Steve wieder zu aktivieren.",
+      "message": "Die Testphase des Steve Community Package für {community} ist beendet. Füge das Paket hinzu, um Steve wieder für deine Mitglieder verfügbar zu machen."
+    },
+    "owner_cta_steve_member_blocked": {
+      "title": "Mitglieder fragen nach Steve",
+      "body": "Mitglieder versuchen, Steve in {community} zu nutzen — er ist hier noch nicht aktiv. Mit dem Steve Community Package wird Steve für alle Mitglieder verfügbar.",
+      "message": "Mitglieder versuchen, Steve in {community} zu nutzen — er ist hier noch nicht aktiv. Füge das Steve Community Package hinzu, um ihn zu aktivieren."
+    },
+    "owner_cta_steve_pool_exhausted": {
+      "title": "Steve-Pool in {community} aufgebraucht",
+      "body": "{community} hat den gemeinsamen Steve-Pool für diesen Monat komplett aufgebraucht. Er füllt sich im nächsten Abrechnungszyklus wieder — die Plan-Optionen der Community kannst du jederzeit ansehen.",
+      "message": "{community} hat den gemeinsamen Steve-Pool für diesen Monat komplett aufgebraucht. Er füllt sich im nächsten Abrechnungszyklus wieder — die Plan-Optionen kannst du jederzeit ansehen."
+    },
     "owner_report": {
       "title": "Etwas wurde gemeldet",
       "body": "Ein Mitglied hat einen Beitrag in {community} gemeldet. Schau vorbei, wenn du Zeit hast — du entscheidest, was bleibt.",

@@ -322,7 +322,7 @@ for job in enterprise-grace-sweep enterprise-iap-nag enterprise-winback-expire \
            communities-lifecycle-dispatch media-purge-retained-stories \
            chat-uploads-janitor purge-underage \
            event-reminder-dispatch kb-weekly-synthesis steve-reminder-vault-dispatch \
-           group-steve-agent-due; do
+           group-steve-agent-due steve-trial-lifecycle; do
   gcloud scheduler jobs pause "$job" --location=europe-west1
 done
 ```
@@ -539,3 +539,46 @@ gcloud scheduler jobs create http owner-weekly-pulse \
 ```
 
 Add `owner-weekly-pulse` to the bulk-pause list in §6 when you register the job in GCP.
+
+## 12. Steve trial lifecycle — owner CTA notifications
+
+| Field | Value |
+|-------|--------|
+| **URI** | `{BASE}/api/cron/steve-trial-lifecycle` |
+| **Method** | `POST` |
+| **Header** | `X-Cron-Secret` = same `CRON_SHARED_SECRET` as other crons |
+| **Suggested schedule** | **Daily, 09:30 Europe/Dublin** (`30 9 * * *`) — lands in the owner's inbox during waking hours. |
+| **Query** | `dry_run=1` — counts ending-soon / expired trial candidates without sending or writing audit rows. |
+| **Kill switch** | env `OWNER_BILLING_CTAS_ENABLED=false` on the Cloud Run service → `{"success": true, "skipped": true}` (never 5xx, so Scheduler doesn't retry). Also mutes the gate-driven owner CTAs (member-blocked / pool-exhausted). |
+
+Sweeps root communities whose Steve Community Package row is the synthetic
+trial (`trial_pkg_<id>` / `trialing`, `backend/services/community_billing.py`)
+and sends the owner one `owner_cta:steve_trial_ending` push + in-app row when
+the period end is within 3 days, and one `owner_cta:steve_trial_expired` once
+it has passed — each **once per community ever**, dedup'd via
+`subscription_audit_log` (`owner_cta_steve_trial_*` actions), so Scheduler
+retries never double-send. Copy resolves in the **recipient's** locale via
+`notification_copy`; deep link is the add-on panel
+(`/subscription_plans?open=community_addons&community_id=<id>`).
+Service: `backend/services/owner_billing_ctas.py`.
+
+```bash
+# Staging first (staging- prefix + staging secret, per §5/§7):
+BASE_STAGING=https://cpoint-app-staging-739552904126.europe-west1.run.app
+SECRET_STAGING=$(gcloud secrets versions access latest --secret=cron-shared-secret-staging)
+
+# Smoke-test the blast radius:
+curl -X POST "$BASE_STAGING/api/cron/steve-trial-lifecycle?dry_run=1" -H "X-Cron-Secret: $SECRET_STAGING"
+
+gcloud scheduler jobs create http staging-steve-trial-lifecycle \
+  --location=europe-west1 \
+  --schedule="30 9 * * *" \
+  --time-zone=Europe/Dublin \
+  --uri="$BASE_STAGING/api/cron/steve-trial-lifecycle" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET_STAGING" \
+  --attempt-deadline=300s \
+  --description="Owner CTA notifications for ending/expired Steve package trials"
+```
+
+Add `steve-trial-lifecycle` to the bulk-pause list in §6 when you register the job in GCP (already listed).
