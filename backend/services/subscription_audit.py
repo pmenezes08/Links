@@ -36,6 +36,7 @@ ACTIONS = {
     "personal_premium_renewed",
     "personal_premium_cancelled",
     "personal_premium_expired",
+    "personal_premium_past_due",
     "personal_premium_paused_for_enterprise",
     # Community Paid Tier (Step E)
     "community_tier_purchased",
@@ -78,6 +79,10 @@ ACTIONS = {
     # Usage cycle notifications (queued by cron, delivered by push/email layer)
     "usage_cycle_warning_80",
     "usage_cycle_warning_95",
+    # Webhook hardening (2026-07): money-back + duplicate handling
+    "billing_charge_refunded",
+    "billing_dispute_created",
+    "duplicate_subscription_auto_cancelled",
 }
 
 
