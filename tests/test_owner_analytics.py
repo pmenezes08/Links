@@ -139,6 +139,18 @@ def _by_id(body):
     return {m["id"]: m for m in body["metrics"]}
 
 
+def _flush_overview_cache() -> None:
+    """The overview endpoint caches per (community, scope, role) for 5 min;
+    a test that re-reads after changing server-side inputs (e.g. a
+    monkeypatched tier) must drop the cache or it re-reads the first payload."""
+    try:
+        from redis_cache import cache
+
+        cache.flush_all()
+    except Exception:
+        pass
+
+
 def test_overview_requires_login(mysql_dsn):
     import bodybuilding_app
 
@@ -326,6 +338,9 @@ def test_switcher_lists_root_networks_only(mysql_dsn):
     assert communities[0]["spaces"] == 2   # subtree summary counts both descendants
 
 
+# Mirrors the prod table (bodybuilding_app.py): the timestamp column is
+# ``invited_at`` — the pending-invites drill-in ORDERs BY it, so a drifted
+# name here silently empties the listing.
 _INVITES_DDL = """
 CREATE TABLE community_invitations (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -336,7 +351,7 @@ CREATE TABLE community_invitations (
     token VARCHAR(255) NULL,
     status VARCHAR(50) DEFAULT 'pending',
     used TINYINT(1) DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    invited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 """
 
@@ -584,6 +599,10 @@ def test_leaderboards_rank_contributors(mysql_dsn):
 
 
 def _ensure_comm_tables():
+    # NOTE: when the whole suite runs, ``messages`` usually already exists in
+    # the monolith's shape (``timestamp TEXT NOT NULL`` — no default), so the
+    # CREATE below is a no-op. Inserts must always provide ``timestamp``
+    # explicitly or MySQL strict mode rejects them (errno 1364).
     ddls = [
         "CREATE TABLE IF NOT EXISTS messages (id INT PRIMARY KEY AUTO_INCREMENT, sender VARCHAR(191), "
         "receiver VARCHAR(191), message TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)",
@@ -628,7 +647,10 @@ def test_members_communicating_counts_member_to_member(mysql_dsn):
         c = conn.cursor()
         # alice <-> bob (both members); carol DMs a non-member (must not count)
         for s, r in (("alice", "bob"), ("bob", "alice"), ("carol", "stranger")):
-            c.execute(f"INSERT INTO messages (sender, receiver, message) VALUES ({ph}, {ph}, {ph})", (s, r, "hi"))
+            c.execute(
+                f"INSERT INTO messages (sender, receiver, message, timestamp) VALUES ({ph}, {ph}, {ph}, NOW())",
+                (s, r, "hi"),
+            )
         try:
             conn.commit()
         except Exception:
@@ -774,6 +796,20 @@ def test_delegated_admin_never_receives_owner_only_metrics(mysql_dsn):
     _add_member("modA", A, role="admin")
     _add_member("m1", A)
 
+    # Some activity, or the overview is the low-data empty state
+    # (read_empty) for every viewer and never reaches the admin template.
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"INSERT INTO posts (community_id, username, content) VALUES ({ph}, {ph}, {ph})",
+            (A, "m1", "hello"),
+        )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
     # Owner sees the full payload.
     _login(client, "ownerA")
     owner_metrics = _by_id(_overview(client, A).get_json())
@@ -869,6 +905,7 @@ def test_cap_warning_threshold(mysql_dsn, monkeypatch):
         return {"tier": "free", "is_paid": False, "member_cap": 100}
 
     monkeypatch.setattr(community_analytics, "_resolve_tier", fake_tier_big)
+    _flush_overview_cache()
     members = _by_id(_overview(client, a).get_json())["members"]["value"]
     assert members["cap_warning"] is False  # 8 < 80
 
@@ -876,6 +913,7 @@ def test_cap_warning_threshold(mysql_dsn, monkeypatch):
         return {"tier": "free", "is_paid": False, "member_cap": None}
 
     monkeypatch.setattr(community_analytics, "_resolve_tier", fake_tier_nocap)
+    _flush_overview_cache()
     members = _by_id(_overview(client, a).get_json())["members"]["value"]
     assert members["cap_warning"] is False  # no cap → never warns
 
