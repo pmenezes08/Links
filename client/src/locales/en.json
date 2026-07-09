@@ -2298,7 +2298,19 @@
     "type_story_comment": "commented on your story",
     "type_mention_post": "mentioned you in a post",
     "type_mention_reply": "mentioned you in a reply",
-    "type_interacted": "interacted with you"
+    "type_interacted": "interacted with you",
+    "owner_cta": {
+      "title_steve_trial_ending": "Your Steve trial is ending",
+      "cta_steve_trial_ending": "Keep Steve",
+      "title_steve_trial_expired": "Your Steve trial ended",
+      "cta_steve_trial_expired": "Bring Steve back",
+      "title_steve_member_blocked": "Your members want Steve",
+      "cta_steve_member_blocked": "Add Steve",
+      "title_steve_pool_exhausted": "Steve pool used up",
+      "cta_steve_pool_exhausted": "Get a bigger pool",
+      "title_generic": "For your community",
+      "cta_generic": "View"
+    }
   },
   "calendar": {
     "page_title": "Calendar",

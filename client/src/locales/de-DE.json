@@ -2298,7 +2298,19 @@
     "type_story_comment": "hat deine Story kommentiert",
     "type_mention_post": "hat dich in einem Beitrag erwähnt",
     "type_mention_reply": "hat dich in einer Antwort erwähnt",
-    "type_interacted": "hat mit dir interagiert"
+    "type_interacted": "hat mit dir interagiert",
+    "owner_cta": {
+      "title_steve_trial_ending": "Deine Steve-Testphase endet bald",
+      "cta_steve_trial_ending": "Steve behalten",
+      "title_steve_trial_expired": "Deine Steve-Testphase ist beendet",
+      "cta_steve_trial_expired": "Steve zurückholen",
+      "title_steve_member_blocked": "Deine Mitglieder wollen Steve",
+      "cta_steve_member_blocked": "Steve hinzufügen",
+      "title_steve_pool_exhausted": "Steve-Pool aufgebraucht",
+      "cta_steve_pool_exhausted": "Größeren Pool holen",
+      "title_generic": "Für deine Community",
+      "cta_generic": "Ansehen"
+    }
   },
   "calendar": {
     "page_title": "Kalender",

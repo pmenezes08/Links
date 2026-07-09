@@ -2298,7 +2298,19 @@
     "type_story_comment": "comentou a tua story",
     "type_mention_post": "mencionou-te numa publicação",
     "type_mention_reply": "mencionou-te numa resposta",
-    "type_interacted": "interagiu contigo"
+    "type_interacted": "interagiu contigo",
+    "owner_cta": {
+      "title_steve_trial_ending": "O teu período de teste do Steve está a acabar",
+      "cta_steve_trial_ending": "Manter o Steve",
+      "title_steve_trial_expired": "O teu período de teste do Steve terminou",
+      "cta_steve_trial_expired": "Trazer o Steve de volta",
+      "title_steve_member_blocked": "Os teus membros querem o Steve",
+      "cta_steve_member_blocked": "Adicionar o Steve",
+      "title_steve_pool_exhausted": "Pool do Steve esgotado",
+      "cta_steve_pool_exhausted": "Obter um pool maior",
+      "title_generic": "Para a tua comunidade",
+      "cta_generic": "Ver"
+    }
   },
   "calendar": {
     "page_title": "Calendário",
