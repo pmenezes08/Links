@@ -55,7 +55,9 @@
   "entitlements": {
     "premium_required": {
       "message": "Steve is unlocked through a community's paid plan. Communities on a paid tier can add the Steve Community Package so every member gets Steve in the feed, groups, and chats.",
-      "cta_label": "See community plans"
+      "cta_label": "See community plans",
+      "addon_message": "This community is on a paid plan — adding the Steve Community Package unlocks Steve for every member.",
+      "addon_cta_label": "Add the Steve Community Package"
     },
     "daily_cap": {
       "message": "You've hit today's Steve limit of {ai_daily_limit} calls. It resets at {resets_at_daily}.",

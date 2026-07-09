@@ -54,8 +54,10 @@
   },
   "entitlements": {
     "premium_required": {
-      "message": "O Steve é desbloqueado através do plano pago de uma comunidade. Comunidades num escalão pago podem adicionar o Pacote Steve para comunidades, para todos os membros terem o Steve no feed, nos grupos e nas conversas.",
-      "cta_label": "Ver planos de comunidade"
+      "message": "O Steve é desbloqueado através do plano pago de uma comunidade. Comunidades num escalão pago podem adicionar o Steve Community Package, para todos os membros terem o Steve no feed, nos grupos e nas conversas.",
+      "cta_label": "Ver planos de comunidade",
+      "addon_message": "Esta comunidade já está num plano pago — ao adicionar o Steve Community Package, o Steve fica desbloqueado para todos os membros.",
+      "addon_cta_label": "Adicionar o Steve Community Package"
     },
     "daily_cap": {
       "message": "Atingiste o limite diário do Steve ({ai_daily_limit} chamadas). Reinicia às {resets_at_daily}.",

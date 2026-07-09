@@ -55,7 +55,9 @@
   "entitlements": {
     "premium_required": {
       "message": "Steve wird über den bezahlten Plan einer Community freigeschaltet. Communities mit einem Bezahl-Tarif können das Steve Community Package hinzufügen, damit alle Mitglieder Steve im Feed, in Gruppen und in Chats bekommen.",
-      "cta_label": "Community-Pläne ansehen"
+      "cta_label": "Community-Pläne ansehen",
+      "addon_message": "Diese Community hat bereits einen Bezahl-Tarif — mit dem Steve Community Package wird Steve für alle Mitglieder freigeschaltet.",
+      "addon_cta_label": "Steve Community Package hinzufügen"
     },
     "daily_cap": {
       "message": "Du hast heute dein Steve-Limit von {ai_daily_limit} Anfragen erreicht. Es wird um {resets_at_daily} zurückgesetzt.",
