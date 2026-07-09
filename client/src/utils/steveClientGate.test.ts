@@ -31,7 +31,8 @@ describe('steveClientGate', () => {
     expect(err.success).toBe(false)
     expect(err.error).toBe('entitlements_error')
     expect(err.reason).toBe('premium_required')
-    expect(err.cta.url).toBe('/subscription_plans?mode=choose')
+    expect(err.cta.url).toBe('/subscription_plans')
+    expect(err.cta.label).toBe('See community plans')
     expect(err.usage.monthly_steve_used).toBeNull()
   })
 

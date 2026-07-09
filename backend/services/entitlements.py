@@ -14,7 +14,7 @@ Typical call site::
     from backend.services.entitlements import resolve_entitlements
     ent = resolve_entitlements("paulo")
     if not ent["can_use_steve"]:
-        return jsonify({"error": "Upgrade to Premium"}), 402
+        return jsonify({"error": "Steve requires a community plan"}), 402
     if ent["ai_remaining_today"] <= 0:
         return jsonify({"error": "Daily limit reached"}), 429
 

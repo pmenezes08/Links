@@ -11,8 +11,8 @@ rather than a dozen surface-specific ones::
         "message": "You've used all 100 Steve calls this month.",
         "cta": {
             "type": "upgrade" | "wait" | "manage" | "open_url",
-            "label": "Upgrade to Premium",
-            "url": "/subscription_plans?mode=choose"
+            "label": "See community plans",
+            "url": "/subscription_plans"
         },
         "usage": {
             "monthly_steve_used": 100,
@@ -71,15 +71,14 @@ _DEFAULT_TEMPLATES: Dict[str, Dict[str, Any]] = {
     REASON_PREMIUM_REQUIRED: {
         "http_status": 402,
         "message": (
-            "Premium unlocks Steve in DM, feed, and eligible chats — up to "
-            "{steve_uses_per_month} Steve conversations per month and "
-            "{whisper_minutes_per_month} minutes of voice-note summaries "
-            "each billing cycle."
+            "Steve is unlocked through a community's paid plan. Communities "
+            "on a paid tier can add the Steve Community Package so every "
+            "member gets Steve in the feed, groups, and chats."
         ),
         "cta": {
             "type": "upgrade",
-            "label": "Upgrade to Premium",
-            "url": "/subscription_plans?mode=choose",
+            "label": "See community plans",
+            "url": "/subscription_plans",
         },
     },
     REASON_DAILY_CAP: {
@@ -122,12 +121,13 @@ _DEFAULT_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "http_status": 429,
         "message": (
             "This community's shared Steve pool is empty for this month. "
-            "Premium members can still use their personal allowance."
+            "It refills next cycle — community owners can upgrade the "
+            "community's plan for a bigger pool."
         ),
         "cta": {
             "type": "upgrade",
-            "label": "Upgrade to Premium",
-            "url": "/subscription_plans?mode=choose",
+            "label": "See community plans",
+            "url": "/subscription_plans",
         },
     },
     REASON_RPM_EXCEEDED: {
@@ -175,13 +175,13 @@ _DEFAULT_TEMPLATES: Dict[str, Dict[str, Any]] = {
     REASON_GRACE_EXPIRED: {
         "http_status": 402,
         "message": (
-            "Your Enterprise seat has ended. Subscribe to Premium to keep "
-            "using Steve."
+            "Your Enterprise seat has ended. Steve stays available through "
+            "a community's paid plan."
         ),
         "cta": {
             "type": "upgrade",
-            "label": "Subscribe to Premium",
-            "url": "/subscription_plans?mode=choose",
+            "label": "See community plans",
+            "url": "/subscription_plans",
         },
     },
 }
