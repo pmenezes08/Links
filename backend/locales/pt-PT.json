@@ -261,6 +261,21 @@
       "title": "Do Steve",
       "body": "Já sei o que fazes. Gostava de saber quem és.",
       "message": "Já sei o que fazes. Gostava de saber quem és."
+    },
+    "billing_payment_failed_personal": {
+      "title": "O pagamento não passou",
+      "body": "Não conseguimos processar o pagamento do teu Premium. Atualiza o método de pagamento para manteres os benefícios.",
+      "message": "Não conseguimos processar o último pagamento do teu Premium. Atualiza o método de pagamento para manteres os benefícios."
+    },
+    "billing_payment_failed_community": {
+      "title": "O pagamento não passou",
+      "body": "Não conseguimos processar o pagamento de {community}. Atualiza o método de pagamento para manteres o plano pago.",
+      "message": "Não conseguimos processar o último pagamento de {community}. Atualiza o método de pagamento para manteres o plano pago da comunidade."
+    },
+    "billing_payment_failed_steve": {
+      "title": "O pagamento não passou",
+      "body": "Não conseguimos processar o pagamento do Steve em {community}. Atualiza o método de pagamento para manteres o pacote ativo.",
+      "message": "Não conseguimos processar o último pagamento do pacote Steve em {community}. Atualiza o método de pagamento para o manteres ativo."
     }
   },
   "communities": {

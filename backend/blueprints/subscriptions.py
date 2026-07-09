@@ -741,38 +741,39 @@ def _preflight_premium(username: str) -> Optional[Tuple[Dict[str, Any], int]]:
         seat = enterprise_membership.active_seat_for(username)
     except Exception:
         logger.exception("premium preflight: active_seat_for failed for %s", username)
-        return None
-    if not seat:
-        decision = billing_ownership.check_premium(
-            username,
-            incoming_provider="stripe",
-            incoming_mode=_stripe_mode(),
+        seat = None
+    if seat and seat.get("active"):
+        return (
+            {
+                "success": False,
+                "error": "You already have Premium through your Enterprise community.",
+                "reason": "enterprise_seat_active",
+                "community_id": seat.get("community_id"),
+                "community_slug": seat.get("community_slug"),
+            },
+            409,
         )
-        if not decision.allowed:
-            provider = decision.owner.provider if decision.owner else "billing"
-            billing_ownership.log_conflict(
-                subscription_audit,
-                username=username,
-                action="billing_ownership_conflict_premium_checkout",
-                decision=decision,
-            )
-            return _ownership_block_payload(
-                decision,
-                message=f"Your Premium subscription is managed through {_provider_label(provider)}.",
-            )
-        return None
-    if not seat.get("active"):
-        return None
-    return (
-        {
-            "success": False,
-            "error": "You already have Premium through your Enterprise community.",
-            "reason": "enterprise_seat_active",
-            "community_id": seat.get("community_id"),
-            "community_slug": seat.get("community_slug"),
-        },
-        409,
+    # The duplicate/other-provider check must run even when a lapsed seat
+    # is still in its grace window — otherwise a user with an active
+    # subscription could start a second Checkout during grace.
+    decision = billing_ownership.check_premium(
+        username,
+        incoming_provider="stripe",
+        incoming_mode=_stripe_mode(),
     )
+    if not decision.allowed:
+        provider = decision.owner.provider if decision.owner else "billing"
+        billing_ownership.log_conflict(
+            subscription_audit,
+            username=username,
+            action="billing_ownership_conflict_premium_checkout",
+            decision=decision,
+        )
+        return _ownership_block_payload(
+            decision,
+            message=f"Your Premium subscription is managed through {_provider_label(provider)}.",
+        )
+    return None
 
 
 def _preflight_community_tier(

@@ -261,6 +261,21 @@
       "title": "From Steve",
       "body": "I know what you do. I'd like to know who you are.",
       "message": "I know what you do. I'd like to know who you are."
+    },
+    "billing_payment_failed_personal": {
+      "title": "Payment didn't go through",
+      "body": "We couldn't process your Premium payment. Update your payment method to keep your benefits.",
+      "message": "We couldn't process your latest Premium payment. Please update your payment method to keep your benefits."
+    },
+    "billing_payment_failed_community": {
+      "title": "Payment didn't go through",
+      "body": "We couldn't process the payment for {community}. Update your payment method to keep the paid plan.",
+      "message": "We couldn't process the latest payment for {community}. Please update your payment method to keep the community's paid plan."
+    },
+    "billing_payment_failed_steve": {
+      "title": "Payment didn't go through",
+      "body": "We couldn't process the payment for Steve in {community}. Update your payment method to keep the package active.",
+      "message": "We couldn't process the latest payment for the Steve package in {community}. Please update your payment method to keep it active."
     }
   },
   "communities": {

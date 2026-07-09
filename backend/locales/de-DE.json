@@ -261,6 +261,21 @@
       "title": "Von Steve",
       "body": "Ich weiß, was du machst. Jetzt würde ich gern wissen, wer du bist.",
       "message": "Ich weiß, was du machst. Jetzt würde ich gern wissen, wer du bist."
+    },
+    "billing_payment_failed_personal": {
+      "title": "Zahlung fehlgeschlagen",
+      "body": "Wir konnten deine Premium-Zahlung nicht verarbeiten. Aktualisiere deine Zahlungsmethode, um deine Vorteile zu behalten.",
+      "message": "Wir konnten deine letzte Premium-Zahlung nicht verarbeiten. Bitte aktualisiere deine Zahlungsmethode, um deine Vorteile zu behalten."
+    },
+    "billing_payment_failed_community": {
+      "title": "Zahlung fehlgeschlagen",
+      "body": "Wir konnten die Zahlung für {community} nicht verarbeiten. Aktualisiere deine Zahlungsmethode, um den bezahlten Plan zu behalten.",
+      "message": "Wir konnten die letzte Zahlung für {community} nicht verarbeiten. Bitte aktualisiere deine Zahlungsmethode, um den bezahlten Plan der Community zu behalten."
+    },
+    "billing_payment_failed_steve": {
+      "title": "Zahlung fehlgeschlagen",
+      "body": "Wir konnten die Zahlung für Steve in {community} nicht verarbeiten. Aktualisiere deine Zahlungsmethode, um das Paket aktiv zu halten.",
+      "message": "Wir konnten die letzte Zahlung für das Steve-Paket in {community} nicht verarbeiten. Bitte aktualisiere deine Zahlungsmethode, um es aktiv zu halten."
     }
   },
   "communities": {
