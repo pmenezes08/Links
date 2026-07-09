@@ -198,6 +198,16 @@ def _status(reason: str) -> int:
     return 400
 
 
+# Copy shown after the store has (usually) already charged the user, so it
+# must be calm, specific, and actionable — never a raw backend code. Where the
+# money-taken case applies, point at support so we can finish setup or refund.
+_SUPPORT_EMAIL = "support@c-point.co"
+_CHARGED_SUFFIX = (
+    f"Your payment went through but we couldn't finish setup — contact {_SUPPORT_EMAIL} "
+    "and we'll fix it."
+)
+
+
 def _error_message(reason: str, detail: Optional[Dict[str, Any]]) -> str:
     provider = ""
     mode = ""
@@ -213,6 +223,41 @@ def _error_message(reason: str, detail: Optional[Dict[str, Any]]) -> str:
         return f"This subscription belongs to Stripe {mode or 'another mode'} and cannot be changed here."
     if reason == "needs_reconciliation":
         return "This billing state needs reconciliation before another subscription can be applied."
+    if reason == "iap_purchases_disabled":
+        return (
+            "In-app purchases are temporarily unavailable. If you were charged, contact "
+            f"{_SUPPORT_EMAIL} and we'll finish the setup or make it right."
+        )
+    if reason == "tier_too_small":
+        return f"This community already has more members than that tier allows. {_CHARGED_SUFFIX}"
+    if reason == "not_owner":
+        return f"Only the community owner can buy this for a community. {_CHARGED_SUFFIX}"
+    if reason == "not_root_community":
+        return f"This plan applies to top-level communities only, not sub-communities. {_CHARGED_SUFFIX}"
+    if reason == "community_subscription_inactive":
+        return f"The Steve package needs an active paid community plan first. {_CHARGED_SUFFIX}"
+    if reason == "steve_package_already_active":
+        return (
+            "This community already has the Steve package. If you were charged again, contact "
+            f"{_SUPPORT_EMAIL} and we'll sort it out."
+        )
+    if reason == "unknown_product":
+        return f"We didn't recognize this product. {_CHARGED_SUFFIX}"
+    if reason == "apple_transaction_not_found":
+        return (
+            "We couldn't find this purchase on your App Store account yet. Wait a moment and try "
+            f"Restore purchases — if it still doesn't appear, contact {_SUPPORT_EMAIL}."
+        )
+    if reason in ("apple_verification_unconfigured", "google_verification_unconfigured"):
+        return (
+            "We couldn't verify the purchase right now. Your payment is safe — try Restore "
+            f"purchases in a moment, or contact {_SUPPORT_EMAIL} and we'll finish setup."
+        )
+    if reason == "purchase_owned_by_other_user":
+        return (
+            "This purchase is linked to a different C-Point account. Sign in to that account to "
+            f"use it, or contact {_SUPPORT_EMAIL} and we'll move it."
+        )
     return reason
 
 

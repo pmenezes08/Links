@@ -934,6 +934,7 @@
     "owner_setup_description_hint": "Isto aparece abaixo do nome da comunidade no feed.",
     "owner_setup_subscription_inherited": "A faturação e o plano desta comunidade são geridos na rede principal. Abre Gerir comunidade na raiz para alterar o plano.",
     "owner_setup_subscription_local": "O plano da comunidade define limites de membros, armazenamento e mais. Podes comparar planos e fazer checkout aqui.",
+    "owner_setup_subscription_trial": "A tua comunidade começa com o Pacote Steve para comunidades grátis durante 14 dias — Steve no feed, nos grupos e nos chats para todos os membros.",
     "owner_setup_subscription_title": "Subscrição",
     "owner_setup_plans_billing": "Planos e faturação da comunidade",
     "owner_setup_member_limit_title": "Limite de membros",
@@ -2776,7 +2777,12 @@
     "error_load_communities": "Falha ao carregar comunidades",
     "restore_no_purchase": "Não encontrámos nenhuma subscrição ativa na tua conta {{provider}}. Se subscreveste com outra conta, inicia sessão nessa e tenta novamente — não vais ser cobrado duas vezes.",
     "restore_account_mismatch": "Encontrámos uma subscrição, mas está ligada a outra conta. A tua compra está segura — contacta o suporte e nós ligamo-la à tua conta.",
-    "restore_transient": "Não foi possível contactar a {{provider}}. Tenta novamente daqui a um momento."
+    "restore_transient": "Não foi possível contactar a {{provider}}. Tenta novamente daqui a um momento.",
+    "iap_purchases_unavailable": "As compras estão temporariamente indisponíveis na app. Tenta novamente mais tarde.",
+    "web_billing_notice": "Isto é gerido através da faturação web em app.c-point.co.",
+    "steve_addon_web_only": "O pacote Steve ainda não está disponível para compra na app. Podes subscrever na app web em app.c-point.co.",
+    "premium_native_managed_web": "A tua subscrição Premium é gerida através da faturação web em app.c-point.co.",
+    "premium_native_unavailable": "Novas compras Premium não estão disponíveis na app. Se já subscreveste o Premium, usa Restaurar compras abaixo."
   },
   "time": {
     "just_now": "agora mesmo",

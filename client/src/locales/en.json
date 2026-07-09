@@ -934,6 +934,7 @@
     "owner_setup_description_hint": "This appears under your community name on the feed.",
     "owner_setup_subscription_inherited": "Billing and tier for this community are managed on the parent network. Open the root community's Manage Community to change the plan.",
     "owner_setup_subscription_local": "Your community plan sets member caps, storage, and more. You can compare tiers and checkout here.",
+    "owner_setup_subscription_trial": "Your community starts with the Steve Community Package free for 14 days — Steve in the feed, groups, and chats for every member.",
     "owner_setup_subscription_title": "Subscription",
     "owner_setup_plans_billing": "Community plans & billing",
     "owner_setup_member_limit_title": "Member limit",
@@ -2776,7 +2777,12 @@
     "error_load_communities": "Failed to load communities",
     "restore_no_purchase": "No active subscription found on your {{provider}} account. If you subscribed with a different account, sign in to that one and try again — you won't be charged twice.",
     "restore_account_mismatch": "We found a subscription, but it's linked to a different account. Your purchase is safe — contact support and we'll connect it.",
-    "restore_transient": "Couldn't reach the {{provider}}. Please try again in a moment."
+    "restore_transient": "Couldn't reach the {{provider}}. Please try again in a moment.",
+    "iap_purchases_unavailable": "Purchases are temporarily unavailable in the app. Please try again later.",
+    "web_billing_notice": "This is managed through web billing on app.c-point.co.",
+    "steve_addon_web_only": "The Steve package isn't available to purchase in the app yet. You can subscribe from the web app at app.c-point.co.",
+    "premium_native_managed_web": "Your Premium membership is managed through web billing on app.c-point.co.",
+    "premium_native_unavailable": "New Premium purchases aren't available in the app. If you subscribed to Premium before, use Restore purchases below."
   },
   "time": {
     "just_now": "just now",
