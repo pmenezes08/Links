@@ -74,6 +74,23 @@ export default function Networking() {
   const pendingUrlCommunityRef = useRef<number | null>(
     /^\d+$/.test(searchParams.get('community') || '') ? Number(searchParams.get('community')) : null,
   )
+  // Attribution sink: record where this visit came from (?source=welcome_cue
+  // etc.) exactly once per mount. Fire-and-forget — attribution loss must
+  // never affect the page. Server collapses unknown sources to 'direct'.
+  const pageViewSentRef = useRef(false)
+  useEffect(() => {
+    if (pageViewSentRef.current) return
+    pageViewSentRef.current = true
+    fetch('/api/networking/event', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      body: JSON.stringify({
+        event_type: 'page_view',
+        source: searchParams.get('source') || undefined,
+        community_id: pendingUrlCommunityRef.current ?? undefined,
+      }),
+    }).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   useEffect(() => { setTitle(t('networking.page_title')) }, [setTitle, t])
 
   const [activeSection, setActiveSection] = useState<SectionKey>('steve')
@@ -952,6 +969,15 @@ export default function Networking() {
           // and carry attribution so conversion from Steve matches is
           // measurable in chat analytics.
           if (!steveFeedback[u]) submitFeedback(u, 'up', 'implicit_message_tap')
+          fetch('/api/networking/event', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+            body: JSON.stringify({
+              event_type: 'message_tap',
+              source: 'steve_match',
+              community_id: steveCommunity ?? undefined,
+              target_username: u,
+            }),
+          }).catch(() => {})
           setMatchSheetOpen(false)
           navigate(`/user_chat/chat/${u}?source=steve_match`)
           void maybeRequestReview('steve_match_message') // strongest positive signal (throttled)

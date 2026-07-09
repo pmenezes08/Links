@@ -55,7 +55,7 @@ def test_pt_pt_uses_catalog_message():
     assert payload["cta"]["label"] != "See my usage"
 
 
-def test_pt_pt_premium_required_includes_offer_caps_text():
+def test_pt_pt_premium_required_pitches_community_plans():
     payload, status = errs.build_error(
         errs.REASON_PREMIUM_REQUIRED,
         ent={"tier": "free"},
@@ -63,11 +63,24 @@ def test_pt_pt_premium_required_includes_offer_caps_text():
     )
     assert status == 402
     assert payload["locale"] == "pt-PT"
+    # Payload shape keeps premium_offer for older clients.
     assert payload["premium_offer"]["steve_uses_per_month"] > 0
-    # The PT template references the offer caps via {steve_uses_per_month};
-    # confirm the number ended up in the rendered text.
-    offered = payload["premium_offer"]["steve_uses_per_month"]
-    assert str(offered) in payload["message"]
+    # B2B pivot: the denial pitches community plans, not personal Premium.
+    assert "comunidade" in payload["message"].lower()
+    assert "premium" not in payload["message"].lower()
+    assert payload["cta"]["url"] == "/subscription_plans"
+
+
+def test_en_premium_required_pitches_community_plans():
+    payload, status = errs.build_error(
+        errs.REASON_PREMIUM_REQUIRED,
+        ent={"tier": "free"},
+    )
+    assert status == 402
+    assert "community" in payload["message"].lower()
+    assert "premium" not in payload["message"].lower()
+    assert payload["cta"]["label"] == "See community plans"
+    assert payload["cta"]["url"] == "/subscription_plans"
 
 
 def test_unknown_locale_falls_back_to_english():

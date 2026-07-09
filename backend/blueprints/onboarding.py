@@ -30,11 +30,13 @@ from backend.services.database import get_db_connection, get_sql_placeholder
 from redis_cache import invalidate_user_cache
 from backend.services.firestore_writes import merge_onboarding_identity_to_steve_profile
 from backend.services.onboarding_llm import (
+    ONBOARDING_REDIRECT_DAILY_CAP,
     OPENAI_API_KEY as ONBOARDING_OPENAI_API_KEY,
     XAI_API_KEY as ONBOARDING_XAI_API_KEY,
     extract_json_object_from_llm_text,
     run_onboarding_chat_completion,
 )
+from backend.services import onboarding_events
 
 onboarding_bp = Blueprint("onboarding", __name__)
 logger = logging.getLogger(__name__)
@@ -502,6 +504,13 @@ def get_onboarding_state():
             sql_row=sql_row,
             firestore_doc=firestore_doc,
         )
+        if extras.get("requiresOnboardingResume"):
+            onboarding_events.record_onboarding_event(
+                username,
+                onboarding_events.EVENT_RESUME_REQUIRED,
+                client=onboarding_events.client_label_from_request(request),
+                dedupe_within_hours=24,
+            )
         if firestore_doc:
             return jsonify({"success": True, "state": firestore_doc, **extras})
         return jsonify({"success": True, "state": None, **extras})
@@ -537,6 +546,15 @@ def save_onboarding_state():
             merge_onboarding_identity_to_steve_profile(username, data.get("collected") or {})
         except Exception as merge_err:
             logger.warning("onboardingIdentity sync failed for %s: %s", username, merge_err)
+        event_intent = data.get("onboarding_intent")
+        onboarding_events.record_onboarding_event(
+            username,
+            onboarding_events.EVENT_STAGE,
+            stage=data.get("stage"),
+            intent=event_intent if event_intent in ("b2b", "b2c") else None,
+            client=onboarding_events.client_label_from_request(request),
+            dedupe_consecutive_stage=True,
+        )
         return jsonify({"success": True})
     except Exception as e:
         logger.warning("Failed to save onboarding state for %s: %s", username, e)
@@ -568,6 +586,12 @@ def onboarding_defer_profile():
             if isinstance(msgs, list):
                 extra["messages"] = msgs[-30:]
         db.collection("steve_onboarding").document(username).set({**patch, **extra}, merge=True)
+        onboarding_events.record_onboarding_event(
+            username,
+            onboarding_events.EVENT_DEFERRED,
+            stage=data.get("stage"),
+            client=onboarding_events.client_label_from_request(request),
+        )
         return jsonify({"success": True, "profileDeferUntil": patch["profile_defer_until"]})
     except Exception as e:
         logger.error("onboarding_defer_profile failed for %s: %s", username, e)
@@ -624,6 +648,13 @@ def onboarding_bootstrap_communities():
             child_names=child_names,
             parent_type=parent_type,
         )
+        if ok:
+            onboarding_events.record_onboarding_event(
+                username,
+                onboarding_events.EVENT_BOOTSTRAP,
+                intent="b2b",
+                client=onboarding_events.client_label_from_request(request),
+            )
         return jsonify(body), status
     except Exception as e:
         logger.exception("onboarding_bootstrap_communities failed for %s: %s", username, e)
@@ -634,26 +665,51 @@ def onboarding_bootstrap_communities():
 @_login_required
 def onboarding_redirect_message():
     """Handle off-script user messages during onboarding. Returns a natural Steve redirect."""
-    if not ONBOARDING_XAI_API_KEY and not ONBOARDING_OPENAI_API_KEY:
-        return jsonify({"success": True, "message": "That's a great question! Let's finish setting up your profile first, then I can help with that."})
+    from backend.services.i18n import t as i18n_t
+    from backend.services.user_locale import resolve_request_locale
 
+    locale = resolve_request_locale(request, session.get("username"))
+
+    if not ONBOARDING_XAI_API_KEY and not ONBOARDING_OPENAI_API_KEY:
+        return jsonify({"success": True, "message": i18n_t("onboarding.redirect.fallback", locale)})
+
+    username = session["username"]
     data = request.get_json(silent=True) or {}
     user_message = (data.get("message") or "").strip()
     stage = data.get("stage", "")
     question = data.get("currentQuestion", "")
 
     if not user_message:
-        return jsonify({"success": True, "message": "Let's keep going!"})
+        return jsonify({"success": True, "message": i18n_t("onboarding.redirect.keep_going", locale)})
+
+    from backend.services import ai_usage
+    from backend.services.onboarding_company_intel import usage_from_chat_completion
+    from backend.services.onboarding_llm import prompt_language_instruction
+
+    if (
+        ai_usage.daily_request_type_count(
+            username, ai_usage.SURFACE_ONBOARDING_AI, "onboarding_redirect"
+        )
+        >= ONBOARDING_REDIRECT_DAILY_CAP
+    ):
+        ai_usage.log_block(
+            username,
+            surface=ai_usage.SURFACE_ONBOARDING_AI,
+            reason="onboarding_redirect_daily_cap",
+        )
+        return jsonify({"success": True, "message": i18n_t("onboarding.redirect.fallback", locale)})
 
     try:
-        response, _model_used = run_onboarding_chat_completion(
+        rt_t0 = time.perf_counter()
+        response, model_used = run_onboarding_chat_completion(
             [
                 {"role": "system", "content": (
-                    "You are Steve, a friendly AI assistant helping a new user set up their CPoint profile. "
+                    "You are Steve, a friendly AI assistant helping a new user set up their C-Point profile. "
                     f'The user is currently on the "{stage}" step where you asked: "{question}". '
                     "They said something off-topic. Respond naturally in 1-2 sentences, acknowledge what they said, "
                     "then gently steer them back to the question. Be warm and conversational, not robotic. "
                     "Do NOT answer the off-topic question in detail — just redirect."
+                    + prompt_language_instruction(locale)
                 )},
                 {"role": "user", "content": user_message},
             ],
@@ -661,13 +717,36 @@ def onboarding_redirect_message():
             temperature=0.7,
             primary_model=GROK_MODEL_FAST,
         )
+        rt_ms = int((time.perf_counter() - rt_t0) * 1000)
+        t_in, t_out = usage_from_chat_completion(response)
         msg = (response.choices[0].message.content or "").strip()
+        ai_usage.log_usage(
+            username,
+            surface=ai_usage.SURFACE_ONBOARDING_AI,
+            request_type="onboarding_redirect",
+            tokens_in=t_in,
+            tokens_out=t_out,
+            success=True,
+            response_time_ms=rt_ms,
+            model=model_used,
+        )
         if not msg:
-            msg = "Interesting! Let's come back to that later. For now, let's finish getting you set up."
+            msg = i18n_t("onboarding.redirect.come_back", locale)
         return jsonify({"success": True, "message": msg})
     except Exception as e:
         logger.warning(f"Onboarding redirect LLM error: {e}")
-        return jsonify({"success": True, "message": "Great thought! Let's finish setting up your profile first, then we can chat about anything."})
+        try:
+            ai_usage.log_usage(
+                username,
+                surface=ai_usage.SURFACE_ONBOARDING_AI,
+                request_type="onboarding_redirect",
+                success=False,
+                reason_blocked="onboarding_redirect_error",
+                model=GROK_MODEL_FAST,
+            )
+        except Exception:
+            pass
+        return jsonify({"success": True, "message": i18n_t("onboarding.redirect.error", locale)})
 
 
 @onboarding_bp.route("/api/onboarding/resolve_role", methods=["POST"])
@@ -682,8 +761,13 @@ def onboarding_resolve_role():
     if not ONBOARDING_XAI_API_KEY and not ONBOARDING_OPENAI_API_KEY:
         return jsonify({"success": True, "role": text, "company": ""})
 
+    username = session["username"]
+    from backend.services import ai_usage
+    from backend.services.onboarding_company_intel import usage_from_chat_completion
+
     try:
-        response, _pu = run_onboarding_chat_completion(
+        rt_t0 = time.perf_counter()
+        response, model_used = run_onboarding_chat_completion(
             [
                 {"role": "system", "content": (
                     "You are a job title parser. Given a free-text description of someone's professional role, "
@@ -696,6 +780,8 @@ def onboarding_resolve_role():
                     "- 'Program Manager @ Google' -> {\"role\": \"Program Manager\", \"company\": \"Google\"}\n"
                     "- 'Software Engineer - Meta' -> {\"role\": \"Software Engineer\", \"company\": \"Meta\"}\n"
                     "- 'I work in consulting' -> {\"role\": \"Consultant\", \"company\": \"\"}\n"
+                    "The description may be written in any language (e.g. Portuguese or German). "
+                    "Keep the role title in the user's own language and wording; extract the company name verbatim. "
                     "Return ONLY the JSON, nothing else."
                 )},
                 {"role": "user", "content": text},
@@ -704,8 +790,34 @@ def onboarding_resolve_role():
             temperature=0,
             primary_model=GROK_MODEL_FAST,
         )
+        rt_ms = int((time.perf_counter() - rt_t0) * 1000)
+        t_in, t_out = usage_from_chat_completion(response)
         raw = (response.choices[0].message.content or "").strip()
-        parsed = extract_json_object_from_llm_text(raw)
+        try:
+            parsed = extract_json_object_from_llm_text(raw)
+        except Exception:
+            ai_usage.log_usage(
+                username,
+                surface=ai_usage.SURFACE_ONBOARDING_AI,
+                request_type="onboarding_resolve_role",
+                tokens_in=t_in,
+                tokens_out=t_out,
+                success=False,
+                reason_blocked="onboarding_resolve_role_parse",
+                response_time_ms=rt_ms,
+                model=model_used,
+            )
+            return jsonify({"success": True, "role": text, "company": ""})
+        ai_usage.log_usage(
+            username,
+            surface=ai_usage.SURFACE_ONBOARDING_AI,
+            request_type="onboarding_resolve_role",
+            tokens_in=t_in,
+            tokens_out=t_out,
+            success=True,
+            response_time_ms=rt_ms,
+            model=model_used,
+        )
         return jsonify({
             "success": True,
             "role": parsed.get("role", text),
@@ -713,6 +825,17 @@ def onboarding_resolve_role():
         })
     except Exception as e:
         logger.warning(f"resolve_role error: {e}")
+        try:
+            ai_usage.log_usage(
+                username,
+                surface=ai_usage.SURFACE_ONBOARDING_AI,
+                request_type="onboarding_resolve_role",
+                success=False,
+                reason_blocked="onboarding_resolve_role_error",
+                model=GROK_MODEL_FAST,
+            )
+        except Exception:
+            pass
         return jsonify({"success": True, "role": text, "company": ""})
 
 
@@ -753,9 +876,14 @@ def onboarding_resolve_location():
     if not ONBOARDING_XAI_API_KEY and not ONBOARDING_OPENAI_API_KEY:
         return jsonify({"success": True, "city": text, "country": "", "type": "unrecognized"})
 
+    username = session["username"]
+    from backend.services import ai_usage
+    from backend.services.onboarding_company_intel import usage_from_chat_completion
+
     try:
         country_hint = ", ".join(country_names[:30]) + "..." if country_names else ""
-        response, _pu = run_onboarding_chat_completion(
+        rt_t0 = time.perf_counter()
+        response, model_used = run_onboarding_chat_completion(
             [
                 {"role": "system", "content": (
                     "You are a geography lookup tool. Given a location input, determine the city and country. "
@@ -766,6 +894,8 @@ def onboarding_resolve_location():
                     "If the input is clearly a country (e.g. 'Germany', 'Brazil'), return type='country_only' with empty city. "
                     "If the input is a recognizable city, return type='city_and_country' with the city and its country. "
                     "If the input is gibberish or not a real place, return type='unrecognized'. "
+                    "The input may be written in any language (e.g. 'Alemanha', 'Lissabon'); resolve to the "
+                    "official ENGLISH names of the city and country. "
                     f"Known countries for validation: {country_hint}"
                     "\nReturn ONLY the JSON, nothing else."
                 )},
@@ -775,8 +905,34 @@ def onboarding_resolve_location():
             temperature=0,
             primary_model=GROK_MODEL_FAST,
         )
+        rt_ms = int((time.perf_counter() - rt_t0) * 1000)
+        t_in, t_out = usage_from_chat_completion(response)
         raw = (response.choices[0].message.content or "").strip()
-        parsed = extract_json_object_from_llm_text(raw)
+        try:
+            parsed = extract_json_object_from_llm_text(raw)
+        except Exception:
+            ai_usage.log_usage(
+                username,
+                surface=ai_usage.SURFACE_ONBOARDING_AI,
+                request_type="onboarding_resolve_location",
+                tokens_in=t_in,
+                tokens_out=t_out,
+                success=False,
+                reason_blocked="onboarding_resolve_location_parse",
+                response_time_ms=rt_ms,
+                model=model_used,
+            )
+            return jsonify({"success": True, "city": text, "country": "", "type": "unrecognized"})
+        ai_usage.log_usage(
+            username,
+            surface=ai_usage.SURFACE_ONBOARDING_AI,
+            request_type="onboarding_resolve_location",
+            tokens_in=t_in,
+            tokens_out=t_out,
+            success=True,
+            response_time_ms=rt_ms,
+            model=model_used,
+        )
         resolved_country = parsed.get("country", "")
         if resolved_country and country_names:
             best = next(
@@ -793,6 +949,17 @@ def onboarding_resolve_location():
         })
     except Exception as e:
         logger.warning(f"resolve_location error: {e}")
+        try:
+            ai_usage.log_usage(
+                username,
+                surface=ai_usage.SURFACE_ONBOARDING_AI,
+                request_type="onboarding_resolve_location",
+                success=False,
+                reason_blocked="onboarding_resolve_location_error",
+                model=GROK_MODEL_FAST,
+            )
+        except Exception:
+            pass
         return jsonify({"success": True, "city": text, "country": "", "type": "unrecognized"})
 
 
@@ -859,6 +1026,14 @@ def onboarding_compose_bio():
     try:
         from backend.services import ai_usage
         from backend.services import onboarding_company_intel as onboarding_ci
+        from backend.services.onboarding_llm import prompt_language_instruction
+        from backend.services.user_locale import resolve_request_locale
+
+        # The bio persists into the user's profile, so it must be written in
+        # their locale (formal register for pt/de per the onboarding split).
+        language_instruction = prompt_language_instruction(
+            resolve_request_locale(request, username)
+        )
 
         location = f"{city}, {country}".strip(', ') if city else ""
         professional = ""
@@ -908,6 +1083,7 @@ def onboarding_compose_bio():
                 "Preserve at least one concrete phrase from the user's inputs when possible. "
                 "Avoid generic phrases such as 'passionate about', 'driven by', 'meaningful connections', and 'leveraging'. "
                 "Keep it useful and human, not corporate. Do NOT use hashtags, emojis, or buzzwords. Return ONLY the bio text."
+                + language_instruction
             )
             user_prompt = (
                 revision_block
@@ -936,6 +1112,7 @@ def onboarding_compose_bio():
                 "Write in first person. Be authentic and human, not corporate or generic. "
                 "Avoid generic phrases such as 'passionate about', 'driven by', 'meaningful connections', and 'leveraging'. "
                 "Do NOT use hashtags, emojis, or buzzwords. Return ONLY the bio text."
+                + language_instruction
             )
             user_prompt = (
                 revision_block
@@ -1559,6 +1736,11 @@ def onboarding_save_social_links():
 def onboarding_complete():
     """Mark onboarding as complete. Trigger background profile analysis if not already done."""
     username = session["username"]
+    onboarding_events.record_onboarding_event(
+        username,
+        onboarding_events.EVENT_COMPLETED,
+        client=onboarding_events.client_label_from_request(request),
+    )
     try:
         db = _get_firestore_client()
         if db:

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from backend.services.database import get_db_connection, get_sql_placeholder
 
@@ -23,9 +23,155 @@ logger = logging.getLogger(__name__)
 
 VALID_STATUS_FILTERS = ("pending", "reviewed", "dismissed", "all")
 
+# reporter_username value for wordlist auto-flags (see auto_flag_content_if_needed
+# in the monolith). Surfaces render these with a distinct "auto-flagged" badge.
+SYSTEM_REPORTER = "system"
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def ensure_post_reports_table(use_mysql: bool = True) -> None:
+    """Create ``post_reports`` if missing. Called once at startup — the DDL
+    used to live inline in the report request handler, which would have
+    masked any future schema migration on a fresh environment."""
+    mysql_ddl = """CREATE TABLE IF NOT EXISTS post_reports
+                 (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                  post_id INTEGER NOT NULL,
+                  reporter_username VARCHAR(191) NOT NULL,
+                  reason TEXT NOT NULL,
+                  details TEXT,
+                  status VARCHAR(50) DEFAULT 'pending',
+                  reviewed_by VARCHAR(191),
+                  reviewed_at TIMESTAMP NULL,
+                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                  UNIQUE KEY unique_report (post_id, reporter_username))"""
+    sqlite_ddl = """CREATE TABLE IF NOT EXISTS post_reports
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  post_id INTEGER NOT NULL,
+                  reporter_username TEXT NOT NULL,
+                  reason TEXT NOT NULL,
+                  details TEXT,
+                  status TEXT DEFAULT 'pending',
+                  reviewed_by TEXT,
+                  reviewed_at TIMESTAMP NULL,
+                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                  UNIQUE(post_id, reporter_username))"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(mysql_ddl if use_mysql else sqlite_ddl)
+            conn.commit()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("ensure_post_reports_table failed: %s", exc)
+
+
+def _community_moderators(c, ph: str, community_id: int) -> List[str]:
+    """Usernames who moderate ``community_id``: the owner plus delegated
+    admins (``user_communities.role`` and the legacy ``community_admins``
+    table — the same sources ``is_community_admin`` checks). Lowercase-deduped;
+    the platform ``admin`` account is excluded (app-admins keep their own
+    global notification path)."""
+    recipients: Dict[str, str] = {}
+
+    def _add(name: Optional[str]) -> None:
+        name = (name or "").strip()
+        key = name.lower()
+        if name and key != "admin" and key not in recipients:
+            recipients[key] = name
+
+    c.execute(f"SELECT creator_username FROM communities WHERE id = {ph}", (community_id,))
+    row = c.fetchone()
+    if row:
+        _add(row["creator_username"] if hasattr(row, "keys") else row[0])
+
+    try:
+        c.execute(
+            f"""
+            SELECT u.username FROM user_communities uc
+            JOIN users u ON uc.user_id = u.id
+            WHERE uc.community_id = {ph}
+              AND LOWER(COALESCE(uc.role, '')) IN ('admin', 'owner', 'moderator', 'manager')
+            """,
+            (community_id,),
+        )
+        for r in c.fetchall() or []:
+            _add(r["username"] if hasattr(r, "keys") else r[0])
+    except Exception:
+        pass
+
+    try:
+        c.execute(f"SELECT username FROM community_admins WHERE community_id = {ph}", (community_id,))
+        for r in c.fetchall() or []:
+            _add(r["username"] if hasattr(r, "keys") else r[0])
+    except Exception:
+        pass
+
+    return list(recipients.values())
+
+
+def notify_moderators_of_report(
+    community_id: Optional[int],
+    post_id: Any,
+    reporter_username: str,
+    post_author: str,
+    *,
+    system: bool = False,
+) -> int:
+    """Tell the community's moderators a report landed in their queue.
+
+    Push + in-app row per recipient, each in the recipient's own locale,
+    deep-linking to the Owner Dashboard Reports tab. The reporter and the
+    reported author never receive it (the report flow stays silent toward
+    the author; the reporter gets the synchronous confirmation instead).
+    Best-effort: returns how many moderators were notified, never raises.
+    """
+    if not community_id:
+        return 0
+    sent = 0
+    try:
+        from backend.services import notification_copy
+        from backend.services.notifications import create_notification, send_push_to_user
+
+        skip = {(reporter_username or "").strip().lower(), (post_author or "").strip().lower()}
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            moderators = _community_moderators(c, ph, int(community_id))
+            c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
+            row = c.fetchone()
+            community_name = (row["name"] if hasattr(row, "keys") else row[0]) if row else ""
+
+        event = "owner_report_auto" if system else "owner_report"
+        url = f"/community/{int(community_id)}/owner?tab=reports"
+        for moderator in moderators:
+            if moderator.strip().lower() in skip:
+                continue
+            try:
+                locale = notification_copy.recipient_locale(moderator)
+                payload = notification_copy.push_payload(event, locale, community=community_name)
+                send_push_to_user(moderator, {
+                    "title": payload["title"],
+                    "body": payload["body"],
+                    "url": url,
+                    "tag": f"owner-report-{community_id}-{post_id}",
+                })
+                create_notification(
+                    user_id=moderator,
+                    from_user=SYSTEM_REPORTER if system else reporter_username,
+                    notification_type="owner_report",
+                    post_id=post_id,
+                    community_id=community_id,
+                    message=notification_copy.in_app_text(event, locale, community=community_name),
+                    link=url,
+                )
+                sent += 1
+            except Exception as exc:
+                logger.warning("owner report notify failed for %s: %s", moderator, exc)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("notify_moderators_of_report failed for community %s: %s", community_id, exc)
+    return sent
 
 
 def list_reports(community_id: int, status_filter: str = "pending") -> Dict[str, Any]:
@@ -111,14 +257,24 @@ def review_report(community_id: int, report_id: Any, action: str, reviewer: str)
             owner_cid = _report_community_id(c, ph, report_id)
             if owner_cid is None or owner_cid != int(community_id):
                 return {"success": False, "error": "not_found"}, 404
+            # Only act on a still-pending row. The app-admin queue reads the
+            # same table; when the other surface resolved it first, report
+            # that instead of silently overwriting their decision.
             c.execute(
                 f"""
                 UPDATE post_reports
                 SET status = {ph}, reviewed_by = {ph}, reviewed_at = {ph}
-                WHERE id = {ph}
+                WHERE id = {ph} AND status = 'pending'
                 """,
                 (new_status, reviewer, _now(), report_id),
             )
+            if getattr(c, "rowcount", 1) == 0:
+                c.execute(f"SELECT status, reviewed_by FROM post_reports WHERE id = {ph}", (report_id,))
+                row = c.fetchone()
+                current = (row["status"] if hasattr(row, "keys") else row[0]) if row else "reviewed"
+                resolved_by = (row["reviewed_by"] if hasattr(row, "keys") else row[1]) if row else None
+                return {"success": True, "already_resolved": True, "status": current,
+                        "reviewed_by": resolved_by}, 200
             conn.commit()
     except Exception as exc:
         logger.error("review_report failed: %s", exc)
@@ -127,8 +283,10 @@ def review_report(community_id: int, report_id: Any, action: str, reviewer: str)
 
 
 def remove_reported_post(community_id: int, post_id: Any, reviewer: str) -> Tuple[Dict[str, Any], int]:
-    """Delete a reported post (and its replies) and resolve its reports — only
-    if the post belongs to this community."""
+    """Delete a reported post and resolve its reports — only if the post
+    belongs to this community. The deletion itself runs through the shared
+    :func:`post_deletion.delete_post_cascade` so moderation removals clean up
+    everything a normal delete does (views, imagine jobs, media, caches)."""
     if not post_id:
         return {"success": False, "error": "post_id required"}, 400
     try:
@@ -142,28 +300,18 @@ def remove_reported_post(community_id: int, post_id: Any, reviewer: str) -> Tupl
             post_cid = row["community_id"] if hasattr(row, "keys") else row[0]
             if post_cid is None or int(post_cid) != int(community_id):
                 return {"success": False, "error": "not_found"}, 404
-
-            c.execute(
-                f"""
-                UPDATE post_reports
-                SET status = 'reviewed', reviewed_by = {ph}, reviewed_at = {ph}
-                WHERE post_id = {ph}
-                """,
-                (reviewer, _now(), post_id),
-            )
-            c.execute(f"DELETE FROM replies WHERE post_id = {ph}", (post_id,))
-            c.execute(f"DELETE FROM posts WHERE id = {ph}", (post_id,))
-            conn.commit()
     except Exception as exc:
-        logger.error("remove_reported_post failed: %s", exc)
+        logger.error("remove_reported_post scope check failed: %s", exc)
         return {"success": False, "error": "failed"}, 500
 
-    # Best-effort feed-cache invalidation so the post disappears promptly; the
-    # cache TTL covers us if the helper isn't importable.
-    try:
-        from bodybuilding_app import invalidate_community_cache
-        invalidate_community_cache(community_id)
-    except Exception:
-        pass
+    from backend.services.post_deletion import delete_post_cascade
 
+    payload, status = delete_post_cascade(int(post_id), actor=reviewer, resolve_reports=True)
+    if not payload.get("success"):
+        # Non-enumerating: whatever the cascade hit (lock, race-deleted), the
+        # moderator just sees the action fail; the welcome-lock message is
+        # safe to surface since the viewer already manages this community.
+        if status == 403:
+            return {"success": False, "error": payload.get("message") or "locked"}, 403
+        return {"success": False, "error": "not_found" if status == 404 else "failed"}, status
     return {"success": True}, 200

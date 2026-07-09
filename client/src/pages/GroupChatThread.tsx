@@ -171,7 +171,9 @@ export default function GroupChatThread() {
       ) {
         return false
       }
-      entitlementsHandler.showError(buildClientPremiumRequiredError())
+      entitlementsHandler.showError(buildClientPremiumRequiredError(), {
+        communityId: latestGroupRef.current?.community_id ?? null,
+      })
       return true
     },
     [enforcement_enabled, entitlementsLoading, entitlements, entitlementsHandler],
@@ -315,7 +317,9 @@ export default function GroupChatThread() {
       if (result.ok) {
         setTranslations(prev => ({ ...prev, [msgId]: result.translated }))
       } else if (result.entitlementsError) {
-        entitlementsHandler.showError(result.entitlementsError)
+        entitlementsHandler.showError(result.entitlementsError, {
+          communityId: latestGroupRef.current?.community_id ?? null,
+        })
       } else {
         console.error('Translation failed:', result.error || 'Unknown error')
       }
@@ -1084,7 +1088,9 @@ export default function GroupChatThread() {
           return
         }
         if (data?.entitlements_error && isEntitlementsError(data.entitlements_error)) {
-          entitlementsHandler.showError(data.entitlements_error)
+          entitlementsHandler.showError(data.entitlements_error, {
+            communityId: latestGroupRef.current?.community_id ?? null,
+          })
         }
         if (data.success) {
           if (outboxId >= 0) removeFromOutbox(outboxId).catch(() => {})
@@ -1155,7 +1161,9 @@ export default function GroupChatThread() {
           return
         }
         if (data?.entitlements_error && isEntitlementsError(data.entitlements_error)) {
-          entitlementsHandler.showError(data.entitlements_error)
+          entitlementsHandler.showError(data.entitlements_error, {
+            communityId: latestGroupRef.current?.community_id ?? null,
+          })
         }
         if (data.success) {
           getOutboxEntries().then(entries => {
@@ -1393,7 +1401,7 @@ export default function GroupChatThread() {
       quality: mediaQuality,
       onProgress: setUploadProgress,
       onError: (msg) => alert(msg),
-      onLimitReached: entitlementsHandler.showError,
+      onLimitReached: (err) => entitlementsHandler.showError(err, { communityId: latestGroupRef.current?.community_id ?? null }),
       onCancelReady: (cancel) => setCancelActiveUpload(() => cancel),
       onComplete: () => {
         setUploadingMedia(false)
@@ -1521,7 +1529,7 @@ export default function GroupChatThread() {
       quality: mediaQuality,
       onProgress: setUploadProgress,
       onError: (msg) => alert(msg),
-      onLimitReached: entitlementsHandler.showError,
+      onLimitReached: (err) => entitlementsHandler.showError(err, { communityId: latestGroupRef.current?.community_id ?? null }),
       onCancelReady: (cancel) => setCancelActiveUpload(() => cancel),
       onComplete: () => {
         setUploadProgress(null)
@@ -1562,7 +1570,7 @@ export default function GroupChatThread() {
         loadMessages,
         onProgress: setUploadProgress,
         onError: (msg) => alert(msg),
-        onLimitReached: entitlementsHandler.showError,
+        onLimitReached: (err) => entitlementsHandler.showError(err, { communityId: latestGroupRef.current?.community_id ?? null }),
         onComplete: () => {
           setUploadingMedia(false)
           setUploadProgress(null)

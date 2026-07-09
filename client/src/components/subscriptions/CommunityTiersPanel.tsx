@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { openExternalBillingUrl, providerLabel, type StoreProvider } from '../../utils/mobileStoreBilling'
+import { providerLabel, type StoreProvider } from '../../utils/mobileStoreBilling'
 import SettingsRow from '../settings/SettingsRow'
 import { SettingsDivider, PanelCard } from '../settings/SettingsSection'
 import SubscriptionLegalLinks from './SubscriptionLegalLinks'
@@ -12,7 +12,6 @@ type CommunityTiersPanelProps = {
   storeProvider: StoreProvider | null
   storeProductIds: Record<string, string>
   iapDisabledOnNative?: boolean
-  webBillingUrl?: string
   onPickTier: (tier: CommunityTierLevel) => void
   onOpenAddons: () => void
   pendingKey: string | null
@@ -24,6 +23,7 @@ function TierPickRow({
   ctaLabel,
   storeProvider,
   storeProductAvailable,
+  purchasesDisabled,
   loading,
   onPick,
 }: {
@@ -31,12 +31,15 @@ function TierPickRow({
   ctaLabel: string
   storeProvider: StoreProvider | null
   storeProductAvailable: boolean
+  purchasesDisabled: boolean
   loading: boolean
   onPick: () => void
 }) {
   const { t } = useTranslation()
   const canPurchase = tier.purchasable || storeProductAvailable
-  const disabled = !canPurchase || loading
+  // `purchasesDisabled` (native, IAP off) keeps the row label intact but
+  // inert — the panel-level notice explains why. Informational only.
+  const disabled = !canPurchase || loading || purchasesDisabled
   const label =
     storeProvider && storeProductAvailable
       ? t('subscriptions.subscribe_with_provider', { provider: providerLabel(storeProvider) })
@@ -64,7 +67,7 @@ function TierPickRow({
         aria-label={canPurchase ? label : t('subscriptions.coming_soon')}
         className={
           'shrink-0 rounded-2xl px-4 py-2 text-xs font-bold active:opacity-80 ' +
-          (!canPurchase
+          (!canPurchase || purchasesDisabled
             ? 'cursor-not-allowed border border-c-border bg-c-hover-bg text-c-text-tertiary'
             : loading
               ? 'cursor-wait bg-cpoint-turquoise/60 text-black'
@@ -82,7 +85,6 @@ export default function CommunityTiersPanel({
   storeProvider,
   storeProductIds,
   iapDisabledOnNative,
-  webBillingUrl,
   onPickTier,
   onOpenAddons,
   pendingKey,
@@ -100,14 +102,12 @@ export default function CommunityTiersPanel({
         </div>
       ) : null}
 
-      {iapDisabledOnNative && webBillingUrl ? (
-        <button
-          type="button"
-          onClick={() => openExternalBillingUrl(webBillingUrl)}
-          className="block text-left text-sm text-cpoint-turquoise underline"
-        >
-          {t('subscriptions.open_web_billing', { url: webBillingUrl })}
-        </button>
+      {iapDisabledOnNative ? (
+        // Informational only — never an external checkout link on native
+        // (App Store 3.1.1).
+        <div className="rounded-2xl border border-c-border bg-c-hover-bg px-4 py-3 text-sm text-c-text-secondary">
+          {t('subscriptions.iap_purchases_unavailable')}
+        </div>
       ) : null}
 
       <PanelCard>
@@ -119,6 +119,7 @@ export default function CommunityTiersPanel({
               ctaLabel={payload.cta_label}
               storeProvider={storeProvider}
               storeProductAvailable={!!storeProductIds[tier.tier_code]}
+              purchasesDisabled={!!iapDisabledOnNative}
               loading={!!pendingKey && pendingKey.startsWith(`community_tier:${tier.tier_code}`)}
               onPick={() => onPickTier(tier)}
             />

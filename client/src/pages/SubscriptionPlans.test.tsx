@@ -446,7 +446,7 @@ describe('SubscriptionPlans (settings-style hub)', () => {
     mockFetchOnce({ success: false, error: 'kaboom' }, { ok: false, status: 500 })
     renderPage()
 
-    await waitFor(() => expect(screen.getByText(/HTTP 500/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Failed to load pricing')).toBeInTheDocument())
     expect(screen.queryByText('User Premium Membership')).toBeNull()
   })
 })

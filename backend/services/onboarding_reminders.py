@@ -42,6 +42,12 @@ SECTION_PROMPT_SPACING_HOURS = 72
 PROFILE_ASK_BUDGET_HOURS = 24
 # Lifetime push budget for this cron. Two, ever. Silence is a feature.
 MAX_SECTION_PROMPTS = 2
+# Fallback anchor for silent abandons: members who left mid-flow without
+# ever tapping "finish later" have no profile_deferred_at, but every state
+# save stamps updated_at. Only a doc quiet for at least this long becomes
+# eligible; all downstream guards (lifetime cap, spacing, budget) apply
+# identically.
+SILENT_ABANDON_FALLBACK_HOURS = 48
 
 MARKER_LAST_SENT = "section_prompt_last_sent_at"
 MARKER_LAST_SECTION = "section_prompt_last_section"
@@ -164,9 +170,15 @@ def dispatch_onboarding_reminders(
             continue
 
         # Anchor on Tier-1 completion (the You page records it via
-        # defer_profile). No anchor → unknown account state → stay quiet.
+        # defer_profile). Silent abandons never set it — fall back to the
+        # last state save (updated_at). Docs with neither field are in an
+        # unknown state → stay quiet.
         anchor_hours = _hours_since(doc.get("profile_deferred_at"), now)
-        if anchor_hours is None or anchor_hours < MIN_HOURS_AFTER_TIER1:
+        min_anchor_hours = MIN_HOURS_AFTER_TIER1
+        if anchor_hours is None:
+            anchor_hours = _hours_since(doc.get("updated_at"), now)
+            min_anchor_hours = SILENT_ABANDON_FALLBACK_HOURS
+        if anchor_hours is None or anchor_hours < min_anchor_hours:
             skipped += 1
             continue
 
@@ -210,7 +222,15 @@ def dispatch_onboarding_reminders(
                     preview_text=message,
                 )
                 push = notification_copy.push_payload(event, locale)
-                send_push_to_user(username, push["title"], push["body"], data={"url": link})
+                send_push_to_user(
+                    username,
+                    {
+                        "title": push["title"],
+                        "body": push["body"],
+                        "url": link,
+                        "tag": f"profile_section_{section}_{username}",
+                    },
+                )
             except Exception as exc:
                 logger.warning("section prompts: send failed for %s: %s", username, exc)
                 continue

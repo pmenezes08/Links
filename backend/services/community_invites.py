@@ -657,6 +657,7 @@ def accept_invite(username: str, invite_id: int) -> Tuple[Dict[str, Any], int]:
                 username,
                 conn,
                 introduce_thread_post_id=introduce_thread_post_id,
+                inviter_username=_row_value(invite, "invited_by_username", 8),
             )
             conn.commit()
             mirror_introduce_yourself_thread(introduce_thread_post_id, community_id)
@@ -779,15 +780,74 @@ def notify_community_new_member(
     conn,
     *,
     introduce_thread_post_id: Optional[int] = None,
+    inviter_username: Optional[str] = None,
 ) -> None:
     try:
         c = conn.cursor()
         ph = get_sql_placeholder()
         c.execute(f"SELECT name, notify_on_new_member FROM communities WHERE id = {ph}", (community_id,))
         row = c.fetchone()
-        if not row or not _row_value(row, "notify_on_new_member", 1):
+        if not row:
             return
         community_name = _row_value(row, "name", 0)
+        broadcast_enabled = bool(_row_value(row, "notify_on_new_member", 1))
+        link = (
+            f"/post/{introduce_thread_post_id}?prompt=welcome"
+            if introduce_thread_post_id
+            else f"/community_feed/{community_id}"
+        )
+
+        # The inviter's "your invite worked" moment is personal — about their
+        # own action — so it fires regardless of the community's broadcast
+        # toggle, in the recipient's locale.
+        inviter_norm = (inviter_username or "").strip()
+        if inviter_norm and inviter_norm.lower() != new_username.lower():
+            c.execute(
+                f"""
+                SELECT u.username
+                FROM user_communities uc
+                JOIN users u ON uc.user_id = u.id
+                WHERE uc.community_id = {ph} AND LOWER(u.username) = LOWER({ph})
+                """,
+                (community_id, inviter_norm),
+            )
+            inviter_member = c.fetchone()
+            if inviter_member:
+                inviter_exact = _row_value(inviter_member, "username", 0)
+                try:
+                    from backend.services import notification_copy
+
+                    locale = notification_copy.recipient_locale(inviter_exact)
+                    inviter_message = notification_copy.in_app_text(
+                        "invitee_joined", locale, username=new_username, community=community_name
+                    )
+                    create_notification(
+                        inviter_exact,
+                        new_username,
+                        "invitee_joined",
+                        community_id=community_id,
+                        message=inviter_message,
+                        link=link,
+                    )
+                    push = notification_copy.push_payload(
+                        "invitee_joined", locale, username=new_username, community=community_name
+                    )
+                    send_push_to_user(
+                        inviter_exact,
+                        {
+                            "title": push["title"],
+                            "body": push["body"],
+                            "url": link,
+                            "tag": f"invitee_joined_{community_id}_{new_username}",
+                        },
+                    )
+                except Exception as exc:
+                    logger.warning("Failed invitee_joined notification for %s: %s", inviter_norm, exc)
+            else:
+                inviter_norm = ""
+
+        if not broadcast_enabled:
+            return
         c.execute(
             f"""
             SELECT DISTINCT u.username
@@ -798,13 +858,10 @@ def notify_community_new_member(
             (community_id, new_username),
         )
         message = f"{new_username} just joined {community_name}"
-        link = (
-            f"/post/{introduce_thread_post_id}?prompt=welcome"
-            if introduce_thread_post_id
-            else f"/community_feed/{community_id}"
-        )
         for member in c.fetchall() or []:
             member_username = _row_value(member, "username", 0)
+            if inviter_norm and str(member_username).lower() == inviter_norm.lower():
+                continue  # already got the personal invitee_joined moment
             try:
                 create_notification(
                     member_username,
@@ -850,7 +907,8 @@ def accept_token_invite(username: str, invite_token: str) -> Tuple[Dict[str, Any
             c.execute(
                 f"""
                 SELECT ci.id, ci.community_id, ci.used, ci.invited_email, c.name as community_name,
-                       ci.include_nested_ids, ci.include_parent_ids, ci.status, ci.expires_at
+                       ci.include_nested_ids, ci.include_parent_ids, ci.status, ci.expires_at,
+                       ci.invited_by_username
                 FROM community_invitations ci
                 JOIN communities c ON ci.community_id = c.id
                 WHERE ci.token = {ph}
@@ -918,6 +976,7 @@ def accept_token_invite(username: str, invite_token: str) -> Tuple[Dict[str, Any
                 username,
                 conn,
                 introduce_thread_post_id=introduce_thread_post_id,
+                inviter_username=_row_value(invitation, "invited_by_username", 9),
             )
             conn.commit()
             mirror_introduce_yourself_thread(introduce_thread_post_id, community_id)

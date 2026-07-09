@@ -221,3 +221,59 @@ def test_google_community_rejected_when_stripe_root_active(monkeypatch):
     assert ok is False
     assert reason == "managed_by_other_provider"
     assert result["current_provider"] == "stripe"
+
+
+def test_confirm_error_messages_cover_post_charge_reasons():
+    """Every confirm error renders post-charge in the app — no raw codes.
+
+    The blueprint's ``_error_message`` must map each reason the service can
+    emit to calm, human copy (the fallback returns the raw reason string,
+    which is exactly what must never reach a just-charged user).
+    """
+    from backend.blueprints.iap import _error_message
+
+    reasons = [
+        "iap_purchases_disabled",
+        "tier_too_small",
+        "not_owner",
+        "not_root_community",
+        "community_subscription_inactive",
+        "steve_package_already_active",
+        "unknown_product",
+        "apple_transaction_not_found",
+        "apple_verification_unconfigured",
+        "google_verification_unconfigured",
+        "purchase_owned_by_other_user",
+        "already_active_other_provider",
+        "already_active_same_provider",
+        "managed_by_other_provider",
+        "mode_mismatch",
+        "needs_reconciliation",
+    ]
+    for reason in reasons:
+        message = _error_message(reason, None)
+        assert message != reason, f"raw code leaked for {reason}"
+        assert " " in message and message[0].isupper(), f"not human copy for {reason}"
+
+    # Money-taken cases must point at support so we can finish setup/refund.
+    for reason in (
+        "tier_too_small",
+        "not_owner",
+        "not_root_community",
+        "community_subscription_inactive",
+        "unknown_product",
+        "iap_purchases_disabled",
+        "steve_package_already_active",
+        "purchase_owned_by_other_user",
+        "apple_verification_unconfigured",
+        "google_verification_unconfigured",
+        "apple_transaction_not_found",
+    ):
+        assert "support@c-point.co" in _error_message(reason, None)
+
+
+def test_confirm_error_message_keeps_provider_labels():
+    from backend.blueprints.iap import _error_message
+
+    message = _error_message("managed_by_other_provider", {"current_provider": "apple"})
+    assert "App Store" in message

@@ -2,7 +2,10 @@ import type { EntitlementsError } from './entitlementsError'
 import { mentionsSteve } from './steveClientGate'
 
 type EntitlementsHandler = {
-  handleResponse: <T = unknown>(res: Response) => Promise<T | null>
+  handleResponse: <T = unknown>(
+    res: Response,
+    opts?: { communityId?: number | string | null },
+  ) => Promise<T | null>
 }
 
 type StevePreflightResult = {
@@ -34,7 +37,7 @@ export async function preflightSteveMention(args: StevePreflightArgs): Promise<S
   const data = await args.entitlementsHandler.handleResponse<{
     success?: boolean
     error?: string
-  } | EntitlementsError>(response)
+  } | EntitlementsError>(response, { communityId: args.communityId ?? null })
 
   if (!data) return { ok: false }
   if (data.success === false) return { ok: false, error: data.error || 'Steve is not available for this post.' }

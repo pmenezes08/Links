@@ -4,6 +4,7 @@
  * mentions defer to the backend so active community Steve pools can be used.
  */
 
+import i18n from '../i18n'
 import type { EntitlementsError } from './entitlementsError'
 import type { EntitlementsSnapshot } from '../hooks/useEntitlements'
 
@@ -39,8 +40,8 @@ export function buildClientPremiumRequiredError(): EntitlementsError {
     message: '',
     cta: {
       type: 'upgrade',
-      label: 'Upgrade to Premium',
-      url: '/subscription_plans?mode=choose',
+      label: i18n.t('subscriptions.see_community_plans', { defaultValue: 'See community plans' }),
+      url: '/subscription_plans',
     },
     usage: emptyUsage,
     tier: 'free',

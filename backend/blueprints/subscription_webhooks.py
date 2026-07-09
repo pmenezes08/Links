@@ -38,16 +38,32 @@ from backend.services import (
     enterprise_iap_nag,
     iap_links,
     mobile_iap,
+    notification_copy,
     subscription_billing_ledger,
     subscription_audit,
     user_billing,
 )
 from backend.services.community import COMMUNITY_TIER_FREE
 from backend.services.database import get_db_connection, get_sql_placeholder
+from backend.services.notifications import create_notification, send_push_to_user
 
 
 subscription_webhooks_bp = Blueprint("subscription_webhooks", __name__)
 logger = logging.getLogger(__name__)
+
+
+class WebhookProcessingError(Exception):
+    """A verified event could not be fully applied to the database.
+
+    Raising it makes the Stripe endpoint return 500 so Stripe redelivers
+    the event (retries for ~3 days) instead of the grant/revoke being
+    silently dropped on a transient DB failure.
+    """
+
+
+def _require(ok: bool, what: str) -> None:
+    if not ok:
+        raise WebhookProcessingError(what)
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +100,12 @@ def _event_subscription_id(event_type: str, obj: Dict[str, Any]) -> Optional[str
         raw = raw.get("id")
     if not raw:
         raw = ((obj.get("parent") or {}).get("subscription_details") or {}).get("subscription")
-    if not raw and str(obj.get("object") or "") == "subscription":
+    if not raw and (
+        str(obj.get("object") or "") == "subscription"
+        or event_type.startswith("customer.subscription.")
+    ):
+        # For customer.subscription.* events the payload object IS the
+        # subscription, whether or not the "object" discriminator is set.
         raw = obj.get("id")
     return str(raw) if raw else None
 
@@ -122,16 +143,27 @@ def stripe_webhook():
     try:
         if event_type in {"invoice.paid", "invoice.payment_succeeded"}:
             _handle_invoice_paid(obj)
+        elif event_type == "charge.refunded":
+            _handle_charge_refunded(obj)
+        elif event_type == "charge.dispute.created":
+            _handle_dispute_created(obj)
         elif sku == "community_tier":
             _handle_community_tier_event(event_type, obj, username)
         elif sku == "steve_package":
             _handle_steve_package_event(event_type, obj, username)
         else:
             _handle_premium_event(event_type, obj, username)
+    except WebhookProcessingError as err:
+        logger.error(
+            "stripe_webhook: %s failed for %s (sku=%s) — returning 500 so Stripe retries",
+            err, event_type, sku,
+        )
+        return jsonify({"success": False, "error": "processing_failed"}), 500
     except Exception:
         logger.exception(
             "stripe_webhook: dispatch failed for %s (sku=%s)", event_type, sku
         )
+        return jsonify({"success": False, "error": "processing_failed"}), 500
 
     return jsonify({"success": True, "event_type": event_type, "sku": sku})
 
@@ -156,17 +188,34 @@ def _handle_premium_event(event_type: str, obj: Dict[str, Any], username: Option
                 action="billing_ownership_conflict_stripe_premium_webhook",
                 decision=decision,
             ):
+                _auto_cancel_duplicate_subscription(
+                    decision=decision,
+                    incoming_subscription_id=str(subscription_id or ""),
+                    username=username,
+                    scope="premium",
+                )
                 return
-            user_billing.mark_subscription(
-                username,
-                subscription="premium",
-                subscription_id=str(subscription_id or ""),
-                customer_id=str(customer_id or ""),
-                status="active",
-                current_period_end=subscription_snapshot.get("current_period_end"),
-                cancel_at_period_end=bool(subscription_snapshot.get("cancel_at_period_end", False)),
-                provider="stripe",
-                stripe_mode=_stripe_mode(),
+            _require(
+                user_billing.mark_subscription(
+                    username,
+                    subscription="premium",
+                    subscription_id=str(subscription_id or ""),
+                    customer_id=str(customer_id or ""),
+                    status="active",
+                    current_period_end=subscription_snapshot.get("current_period_end"),
+                    cancel_at_period_end=bool(subscription_snapshot.get("cancel_at_period_end", False)),
+                    provider="stripe",
+                    stripe_mode=_stripe_mode(),
+                ),
+                "premium checkout grant",
+            )
+        else:
+            # Paid but unresolvable — previously this vanished into an
+            # audit row nobody watched. A human must reconcile it.
+            _notify_platform_admins(
+                f"Stripe premium checkout completed but no username could be "
+                f"resolved (subscription {subscription_id}, customer "
+                f"{customer_id}). Grant NOT applied — reconcile manually."
             )
         subscription_audit.log(
             username=username or "",
@@ -178,17 +227,20 @@ def _handle_premium_event(event_type: str, obj: Dict[str, Any], username: Option
         )
     elif event_type == "customer.subscription.deleted":
         if username:
-            user_billing.mark_subscription(
-                username,
-                subscription="free",
-                subscription_id=str(subscription_id or ""),
-                customer_id=str(customer_id or ""),
-                status="cancelled",
-                current_period_end=obj.get("current_period_end"),
-                cancel_at_period_end=False,
-                canceled_at=obj.get("canceled_at") or obj.get("ended_at"),
-                provider="stripe",
-                stripe_mode=_stripe_mode(),
+            _require(
+                user_billing.mark_subscription(
+                    username,
+                    subscription="free",
+                    subscription_id=str(subscription_id or ""),
+                    customer_id=str(customer_id or ""),
+                    status="cancelled",
+                    current_period_end=obj.get("current_period_end"),
+                    cancel_at_period_end=False,
+                    canceled_at=obj.get("canceled_at") or obj.get("ended_at"),
+                    provider="stripe",
+                    stripe_mode=_stripe_mode(),
+                ),
+                "premium revoke",
             )
         subscription_audit.log(
             username=username or "",
@@ -206,6 +258,17 @@ def _handle_premium_event(event_type: str, obj: Dict[str, Any], username: Option
     elif event_type == "customer.subscription.updated":
         cancel_at_period_end = bool(obj.get("cancel_at_period_end"))
         status = obj.get("status")
+        # The entitlement column follows the Stripe status; a stale or
+        # retried event must never re-grant premium after a terminal
+        # status, and dunning states keep the current tier (grace) until
+        # Stripe sends the terminal event.
+        status_l = str(status or "").strip().lower()
+        if status_l in ("active", "trialing"):
+            subscription_value: Optional[str] = "premium"
+        elif status_l in ("canceled", "cancelled", "unpaid", "incomplete_expired"):
+            subscription_value = "free"
+        else:
+            subscription_value = None
         if username:
             decision = billing_ownership.check_premium(
                 username,
@@ -219,23 +282,28 @@ def _handle_premium_event(event_type: str, obj: Dict[str, Any], username: Option
                 decision=decision,
             ):
                 return
-            user_billing.mark_subscription(
-                username,
-                subscription="premium",
-                subscription_id=str(subscription_id or ""),
-                customer_id=str(customer_id or ""),
-                status=status,
-                current_period_end=obj.get("current_period_end"),
-                cancel_at_period_end=cancel_at_period_end,
-                canceled_at=obj.get("canceled_at"),
-                provider="stripe",
-                stripe_mode=_stripe_mode(),
+            _require(
+                user_billing.mark_subscription(
+                    username,
+                    subscription=subscription_value,
+                    subscription_id=str(subscription_id or ""),
+                    customer_id=str(customer_id or ""),
+                    status=status,
+                    current_period_end=obj.get("current_period_end"),
+                    cancel_at_period_end=cancel_at_period_end,
+                    canceled_at=obj.get("canceled_at"),
+                    provider="stripe",
+                    stripe_mode=_stripe_mode(),
+                ),
+                "premium update",
             )
         action = "personal_premium_renewed"
-        if cancel_at_period_end:
-            action = "personal_premium_paused_for_enterprise"
-        elif status == "past_due":
+        if subscription_value == "free":
             action = "personal_premium_cancelled"
+        elif cancel_at_period_end:
+            action = "personal_premium_paused_for_enterprise"
+        elif status_l == "past_due":
+            action = "personal_premium_past_due"
         subscription_audit.log(
             username=username or "",
             action=action,
@@ -259,19 +327,23 @@ def _handle_premium_event(event_type: str, obj: Dict[str, Any], username: Option
                 decision=decision,
             ):
                 return
-            user_billing.mark_subscription(
-                username,
-                status="past_due",
-                provider="stripe",
-                stripe_mode=_stripe_mode(),
+            _require(
+                user_billing.mark_subscription(
+                    username,
+                    status="past_due",
+                    provider="stripe",
+                    stripe_mode=_stripe_mode(),
+                ),
+                "premium past_due",
             )
         subscription_audit.log(
             username=username or "",
-            action="personal_premium_cancelled",
+            action="personal_premium_past_due",
             source="stripe",
             reason="invoice_payment_failed",
             metadata={"event_type": event_type, "invoice": obj.get("id")},
         )
+        _notify_payment_failed(username=username, sku="premium")
     else:
         logger.info("stripe_webhook: unhandled premium event %s", event_type)
 
@@ -303,6 +375,12 @@ def _handle_community_tier_event(
             "stripe_webhook: community_tier event %s missing community_id "
             "(sub=%s)", event_type, subscription_id,
         )
+        if event_type == "checkout.session.completed":
+            _notify_platform_admins(
+                f"Stripe community_tier checkout completed but no community "
+                f"could be resolved (subscription {subscription_id}). "
+                "Grant NOT applied — reconcile manually."
+            )
         return
 
     if event_type == "checkout.session.completed":
@@ -327,16 +405,26 @@ def _handle_community_tier_event(
             action="billing_ownership_conflict_stripe_community_tier_webhook",
             decision=decision,
         ):
+            _auto_cancel_duplicate_subscription(
+                decision=decision,
+                incoming_subscription_id=str(subscription_id or ""),
+                username=username,
+                scope="community_tier",
+                community_id=community_id,
+            )
             return
-        community_billing.mark_subscription(
-            community_id,
-            tier_code=tier_code,
-            subscription_id=subscription_id,
-            customer_id=customer_id,
-            status="active",
-            current_period_end=subscription_snapshot.get("current_period_end"),
-            cancel_at_period_end=False,
-            stripe_mode=_stripe_mode(),
+        _require(
+            community_billing.mark_subscription(
+                community_id,
+                tier_code=tier_code,
+                subscription_id=subscription_id,
+                customer_id=customer_id,
+                status="active",
+                current_period_end=subscription_snapshot.get("current_period_end"),
+                cancel_at_period_end=False,
+                stripe_mode=_stripe_mode(),
+            ),
+            "community tier activation",
         )
         subscription_audit.log(
             username=username or "",
@@ -349,6 +437,20 @@ def _handle_community_tier_event(
                       "customer": customer_id},
         )
     elif event_type == "customer.subscription.deleted":
+        # DB write first: if it fails we raise (Stripe retries) before any
+        # notification goes out, so a retry can't double-notify the owner.
+        _require(
+            community_billing.mark_subscription(
+                community_id,
+                tier_code=COMMUNITY_TIER_FREE,
+                status="cancelled",
+                current_period_end=obj.get("current_period_end"),
+                cancel_at_period_end=False,
+                canceled_at=obj.get("canceled_at") or obj.get("ended_at"),
+                stripe_mode=_stripe_mode(),
+            ),
+            "community tier revoke",
+        )
         if _metadata_value(obj, "cancellation_initiator") != "app":
             community_admin_notifications.notify_owner_of_admin_action(
                 community_id=community_id,
@@ -358,15 +460,6 @@ def _handle_community_tier_event(
             community_admin_notifications.notify_platform_admins_of_stripe_cancellation(
                 community_id=community_id,
             )
-        community_billing.mark_subscription(
-            community_id,
-            tier_code=COMMUNITY_TIER_FREE,
-            status="cancelled",
-            current_period_end=obj.get("current_period_end"),
-            cancel_at_period_end=False,
-            canceled_at=obj.get("canceled_at") or obj.get("ended_at"),
-            stripe_mode=_stripe_mode(),
-        )
         subscription_audit.log(
             username=username or "",
             action="community_tier_cancelled",
@@ -396,16 +489,19 @@ def _handle_community_tier_event(
             decision=decision,
         ):
             return
-        community_billing.mark_subscription(
-            community_id,
-            tier_code=updated_tier,
-            status=status,
-            subscription_id=subscription_id,
-            customer_id=customer_id,
-            current_period_end=obj.get("current_period_end"),
-            cancel_at_period_end=cancel_at_period_end,
-            canceled_at=obj.get("canceled_at"),
-            stripe_mode=_stripe_mode(),
+        _require(
+            community_billing.mark_subscription(
+                community_id,
+                tier_code=updated_tier,
+                status=status,
+                subscription_id=subscription_id,
+                customer_id=customer_id,
+                current_period_end=obj.get("current_period_end"),
+                cancel_at_period_end=cancel_at_period_end,
+                canceled_at=obj.get("canceled_at"),
+                stripe_mode=_stripe_mode(),
+            ),
+            "community tier update",
         )
         subscription_audit.log(
             username=username or "",
@@ -453,10 +549,13 @@ def _handle_community_tier_event(
             decision=decision,
         ):
             return
-        community_billing.mark_subscription(
-            community_id,
-            status="past_due",
-            stripe_mode=_stripe_mode(),
+        _require(
+            community_billing.mark_subscription(
+                community_id,
+                status="past_due",
+                stripe_mode=_stripe_mode(),
+            ),
+            "community tier past_due",
         )
         subscription_audit.log(
             username=username or "",
@@ -466,6 +565,13 @@ def _handle_community_tier_event(
             metadata={"event_type": event_type,
                       "community_id": community_id,
                       "invoice": obj.get("id")},
+        )
+        context = community_admin_notifications.get_community_context(community_id) or {}
+        _notify_payment_failed(
+            username=str(context.get("owner_username") or "") or None,
+            sku="community_tier",
+            community_id=community_id,
+            community_name=str(context.get("community_name") or ""),
         )
     else:
         logger.info("stripe_webhook: unhandled community_tier event %s", event_type)
@@ -528,12 +634,15 @@ def _handle_steve_package_event(
                 decision=decision,
             )
             return
-        community_billing.mark_steve_package_subscription(
-            community_id,
-            subscription_id=str(subscription_id or ""),
-            status="active",
-            current_period_end=subscription_snapshot.get("current_period_end"),
-            cancel_at_period_end=False,
+        _require(
+            community_billing.mark_steve_package_subscription(
+                community_id,
+                subscription_id=str(subscription_id or ""),
+                status="active",
+                current_period_end=subscription_snapshot.get("current_period_end"),
+                cancel_at_period_end=False,
+            ),
+            "steve package activation",
         )
         subscription_audit.log(
             username=username or "",
@@ -545,12 +654,15 @@ def _handle_steve_package_event(
                       "customer": customer_id},
         )
     elif event_type == "customer.subscription.deleted":
-        community_billing.mark_steve_package_subscription(
-            community_id,
-            status="cancelled",
-            current_period_end=obj.get("current_period_end"),
-            cancel_at_period_end=False,
-            canceled_at=obj.get("canceled_at") or obj.get("ended_at"),
+        _require(
+            community_billing.mark_steve_package_subscription(
+                community_id,
+                status="cancelled",
+                current_period_end=obj.get("current_period_end"),
+                cancel_at_period_end=False,
+                canceled_at=obj.get("canceled_at") or obj.get("ended_at"),
+            ),
+            "steve package revoke",
         )
         subscription_audit.log(
             username=username or "",
@@ -581,13 +693,16 @@ def _handle_steve_package_event(
                 decision=decision,
             )
             return
-        community_billing.mark_steve_package_subscription(
-            community_id,
-            subscription_id=str(subscription_id or ""),
-            status=status,
-            current_period_end=obj.get("current_period_end"),
-            cancel_at_period_end=cancel_at_period_end,
-            canceled_at=obj.get("canceled_at"),
+        _require(
+            community_billing.mark_steve_package_subscription(
+                community_id,
+                subscription_id=str(subscription_id or ""),
+                status=status,
+                current_period_end=obj.get("current_period_end"),
+                cancel_at_period_end=cancel_at_period_end,
+                canceled_at=obj.get("canceled_at"),
+            ),
+            "steve package update",
         )
         subscription_audit.log(
             username=username or "",
@@ -618,9 +733,12 @@ def _handle_steve_package_event(
                 decision=decision,
             )
             return
-        community_billing.mark_steve_package_subscription(
-            community_id,
-            status="past_due",
+        _require(
+            community_billing.mark_steve_package_subscription(
+                community_id,
+                status="past_due",
+            ),
+            "steve package past_due",
         )
         subscription_audit.log(
             username=username or "",
@@ -631,6 +749,13 @@ def _handle_steve_package_event(
                       "community_id": community_id,
                       "invoice": obj.get("id")},
         )
+        context = community_admin_notifications.get_community_context(community_id) or {}
+        _notify_payment_failed(
+            username=str(context.get("owner_username") or "") or None,
+            sku="steve_package",
+            community_id=community_id,
+            community_name=str(context.get("community_name") or ""),
+        )
     else:
         logger.info("stripe_webhook: unhandled steve_package event %s", event_type)
 
@@ -639,6 +764,270 @@ def _handle_invoice_paid(obj: Dict[str, Any]) -> None:
     inserted = subscription_billing_ledger.record_invoice_payment(obj)
     logger.info("stripe_webhook: invoice payment ledger insert=%s invoice=%s",
                 inserted, obj.get("id"))
+
+
+def _handle_charge_refunded(obj: Dict[str, Any]) -> None:
+    """Audit + admin alert only.
+
+    Refunds are admin-initiated today (there is no self-serve refund), so
+    the admin decides whether entitlement also ends — we never revoke
+    automatically here to keep goodwill refunds possible.
+    """
+    charge_id = obj.get("id")
+    username, community_id = _resolve_charge_owner(obj)
+    subscription_audit.log(
+        username=username or "",
+        action="billing_charge_refunded",
+        source="stripe",
+        metadata={
+            "charge": charge_id,
+            "invoice": obj.get("invoice"),
+            "customer": obj.get("customer"),
+            "community_id": community_id,
+            "amount_refunded": obj.get("amount_refunded"),
+        },
+    )
+    _notify_platform_admins(
+        f"Stripe refund recorded for charge {charge_id} "
+        f"(user={username or 'unknown'}, community={community_id or '-'}). "
+        "Entitlements were not changed automatically."
+    )
+
+
+def _handle_dispute_created(obj: Dict[str, Any]) -> None:
+    """A chargeback claws the money back immediately.
+
+    Personal Premium: revoke outright and cancel the Stripe subscription
+    so no further charges (and dispute fees) accrue. Community products:
+    mark past_due and alert platform admins for a human decision — we
+    don't automatically strip a whole community over one dispute.
+    """
+    charge_id = obj.get("charge")
+    charge = _retrieve_charge(charge_id)
+    if charge is None:
+        raise WebhookProcessingError(f"dispute charge retrieve failed ({charge_id})")
+    username, community_id = _resolve_charge_owner(charge)
+    if username:
+        state = user_billing.get_billing_state(username) or {}
+        sub_id = str(state.get("stripe_subscription_id") or "")
+        if sub_id:
+            _cancel_stripe_subscription(sub_id)
+        _require(
+            user_billing.mark_subscription(
+                username,
+                subscription="free",
+                status="cancelled",
+                cancel_at_period_end=False,
+                provider="stripe",
+                stripe_mode=_stripe_mode(),
+            ),
+            "dispute premium revoke",
+        )
+    elif community_id:
+        _require(
+            community_billing.mark_subscription(
+                community_id,
+                status="past_due",
+                stripe_mode=_stripe_mode(),
+            ),
+            "dispute community past_due",
+        )
+    subscription_audit.log(
+        username=username or "",
+        action="billing_dispute_created",
+        source="stripe",
+        reason=str(obj.get("reason") or ""),
+        metadata={
+            "dispute": obj.get("id"),
+            "charge": charge_id,
+            "community_id": community_id,
+            "amount": obj.get("amount"),
+        },
+    )
+    _notify_platform_admins(
+        f"Stripe dispute opened on charge {charge_id} "
+        f"(user={username or 'unknown'}, community={community_id or '-'}). "
+        + ("Personal Premium was revoked." if username
+           else "Community subscription marked past_due — review required.")
+    )
+
+
+def _resolve_charge_owner(obj: Dict[str, Any]) -> tuple[Optional[str], Optional[int]]:
+    customer_id = obj.get("customer")
+    if isinstance(customer_id, dict):
+        customer_id = customer_id.get("id")
+    customer_id = str(customer_id or "")
+    if not customer_id:
+        return None, None
+    username = user_billing.find_by_customer_id(customer_id)
+    if username:
+        return username, None
+    community_id = community_billing.find_by_customer_id(customer_id)
+    return None, community_id
+
+
+def _auto_cancel_duplicate_subscription(
+    *,
+    decision: billing_ownership.OwnershipDecision,
+    incoming_subscription_id: str,
+    username: Optional[str],
+    scope: str,
+    community_id: Optional[int] = None,
+) -> None:
+    """Cancel + refund a second Checkout subscription for a product the
+    account already holds with the same provider.
+
+    Safe against webhook retries: ``_decide`` returns
+    ``DECISION_SAME_SUBSCRIPTION`` (allowed) when the incoming id matches
+    the active one, so this branch only ever sees a *different*, newly
+    created duplicate — previously it kept charging the card monthly with
+    only an audit row as trace.
+    """
+    if decision.decision != billing_ownership.DECISION_ALREADY_ACTIVE_SAME_PROVIDER:
+        return
+    if not incoming_subscription_id:
+        return
+    owner_id = str(getattr(decision.owner, "subscription_id", "") or "")
+    if owner_id and owner_id == incoming_subscription_id:
+        return
+    cancelled = _cancel_stripe_subscription(incoming_subscription_id)
+    refunded = _refund_latest_invoice(incoming_subscription_id) if cancelled else False
+    subscription_audit.log(
+        username=username or "",
+        action="duplicate_subscription_auto_cancelled",
+        source="stripe",
+        metadata={
+            "scope": scope,
+            "community_id": community_id,
+            "subscription_id": incoming_subscription_id,
+            "kept_subscription_id": owner_id or None,
+            "cancelled": cancelled,
+            "refunded": refunded,
+        },
+    )
+    _notify_platform_admins(
+        f"Duplicate Stripe {scope} subscription {incoming_subscription_id} "
+        f"(user={username or 'unknown'}, community={community_id or '-'}) was "
+        + ("auto-cancelled and refunded." if refunded
+           else "auto-cancelled — refund NOT issued, check Stripe." if cancelled
+           else "detected but could NOT be cancelled — fix in Stripe dashboard.")
+    )
+
+
+def _cancel_stripe_subscription(subscription_id: str) -> bool:
+    try:
+        import stripe  # type: ignore
+        stripe.api_key = os.environ.get("STRIPE_API_KEY") or ""
+        cancel = getattr(stripe.Subscription, "cancel", None) or stripe.Subscription.delete
+        cancel(str(subscription_id))
+        return True
+    except Exception:
+        logger.exception("stripe_webhook: could not cancel subscription %s", subscription_id)
+        return False
+
+
+def _refund_latest_invoice(subscription_id: str) -> bool:
+    try:
+        import stripe  # type: ignore
+        stripe.api_key = os.environ.get("STRIPE_API_KEY") or ""
+        sub = stripe.Subscription.retrieve(str(subscription_id), expand=["latest_invoice"])
+        invoice = dict((sub or {}).get("latest_invoice") or {})
+        payment_intent = invoice.get("payment_intent")
+        if isinstance(payment_intent, dict):
+            payment_intent = payment_intent.get("id")
+        if payment_intent:
+            stripe.Refund.create(payment_intent=str(payment_intent))
+            return True
+        charge = invoice.get("charge")
+        if isinstance(charge, dict):
+            charge = charge.get("id")
+        if charge:
+            stripe.Refund.create(charge=str(charge))
+            return True
+        logger.warning("stripe_webhook: no payment to refund on duplicate %s", subscription_id)
+        return False
+    except Exception:
+        logger.exception("stripe_webhook: refund failed for duplicate %s", subscription_id)
+        return False
+
+
+def _retrieve_charge(charge_id: Any) -> Optional[Dict[str, Any]]:
+    """``None`` signals a transient retrieve failure (caller should 500)."""
+    if not charge_id:
+        return {}
+    try:
+        import stripe  # type: ignore
+        stripe.api_key = os.environ.get("STRIPE_API_KEY") or ""
+        charge = stripe.Charge.retrieve(str(charge_id))
+        return dict(charge or {})
+    except Exception:
+        logger.exception("stripe_webhook: could not retrieve charge %s", charge_id)
+        return None
+
+
+_PAYMENT_FAILED_EVENTS = {
+    "premium": "billing_payment_failed_personal",
+    "community_tier": "billing_payment_failed_community",
+    "steve_package": "billing_payment_failed_steve",
+}
+
+
+def _notify_payment_failed(
+    *,
+    username: Optional[str],
+    sku: str,
+    community_id: Optional[int] = None,
+    community_name: str = "",
+) -> None:
+    """Dunning signal: tell the payer their card failed, in their locale.
+
+    Stripe emits ``invoice.payment_failed`` per retry attempt, so the
+    payer gets at most a handful of reminders across the dunning window.
+    Best-effort — a notification failure must never fail the webhook.
+    """
+    if not username:
+        return
+    event = _PAYMENT_FAILED_EVENTS.get(sku)
+    if not event:
+        return
+    try:
+        locale = notification_copy.recipient_locale(username)
+        params = {"community": community_name or ""}
+        link = f"/edit_community/{community_id}" if community_id else "/subscription_plans"
+        create_notification(
+            username,
+            "admin",
+            "billing_payment_failed",
+            community_id=community_id,
+            message=notification_copy.in_app_text(event, locale, **params),
+            link=link,
+        )
+        push = notification_copy.push_payload(event, locale, **params)
+        push.update({
+            "url": link,
+            "tag": f"billing_payment_failed:{sku}:{community_id or username}",
+        })
+        send_push_to_user(username, push)
+    except Exception:
+        logger.exception(
+            "stripe_webhook: payment-failed notification failed for %s", username
+        )
+
+
+def _notify_platform_admins(message: str) -> None:
+    """Best-effort internal alert; platform-admin copy stays English by
+    precedent (see community_admin_notifications)."""
+    try:
+        for admin in community_admin_notifications.list_platform_admin_usernames():
+            create_notification(
+                admin,
+                "admin",
+                "billing_alert",
+                message=message,
+                link="/admin/subscriptions",
+            )
+    except Exception:
+        logger.exception("stripe_webhook: platform admin alert failed")
 
 
 def _maybe_freeze_after_subscription_ended(community_id: int) -> None:
@@ -704,9 +1093,27 @@ def _retrieve_subscription_snapshot(subscription_id: Any) -> Dict[str, Any]:
         return {}
 
 
+def _merged_metadata(obj: Dict[str, Any]) -> Dict[str, Any]:
+    """Checkout metadata may live on the object itself (session /
+    subscription) or, for invoice events, under ``subscription_details``
+    — invoices carry their *own* (empty) metadata, so reading only
+    ``obj.metadata`` routed every invoice to the premium handler.
+    Mirrors the ledger's ``_invoice_metadata`` resolution.
+    """
+    merged: Dict[str, Any] = {}
+    for source in (
+        obj.get("metadata"),
+        (obj.get("subscription_details") or {}).get("metadata"),
+        ((obj.get("parent") or {}).get("subscription_details") or {}).get("metadata"),
+    ):
+        if isinstance(source, dict):
+            merged.update(source)
+    return merged
+
+
 def _extract_username_from_stripe(obj: Dict[str, Any]) -> Optional[str]:
     """Try metadata.username first (set at Checkout), then email lookup."""
-    metadata = obj.get("metadata") or {}
+    metadata = _merged_metadata(obj)
     username = metadata.get("username")
     if username:
         return str(username)
@@ -723,7 +1130,7 @@ def _extract_sku(obj: Dict[str, Any]) -> str:
     Checkout creation. Missing or unknown values default to ``'premium'``
     so legacy Checkouts still route to the personal-Premium handler.
     """
-    metadata = obj.get("metadata") or {}
+    metadata = _merged_metadata(obj)
     sku = str(metadata.get("sku") or "").strip().lower()
     if sku in ("premium", "community_tier", "steve_package"):
         return sku
@@ -736,7 +1143,7 @@ def _extract_sku(obj: Dict[str, Any]) -> str:
 
 
 def _extract_community_id(obj: Dict[str, Any]) -> Optional[int]:
-    metadata = obj.get("metadata") or {}
+    metadata = _merged_metadata(obj)
     raw = metadata.get("community_id")
     if raw in (None, ""):
         # ``client_reference_id='community:<id>'`` for checkout.session.completed
@@ -751,7 +1158,7 @@ def _extract_community_id(obj: Dict[str, Any]) -> Optional[int]:
 
 
 def _extract_tier_code(obj: Dict[str, Any]) -> Optional[str]:
-    metadata = obj.get("metadata") or {}
+    metadata = _merged_metadata(obj)
     raw = metadata.get("tier_code")
     if not raw:
         return None
@@ -762,7 +1169,7 @@ def _extract_tier_code(obj: Dict[str, Any]) -> Optional[str]:
 
 
 def _metadata_value(obj: Dict[str, Any], key: str) -> str:
-    metadata = obj.get("metadata") or {}
+    metadata = _merged_metadata(obj)
     return str(metadata.get(key) or "").strip().lower()
 
 

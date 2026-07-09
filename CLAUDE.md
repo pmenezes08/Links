@@ -92,7 +92,7 @@ Play Store builds depend on fixed Gradle/Firebase config (`client/android/`): pr
 
 ## Living docs — update in the same change
 
-Route, data-store, deployment, and journey docs must stay accurate. If you change routes → regenerate `docs/BACKEND_ROUTES.md`; tables/collections → `docs/MYSQL_AND_FIRESTORE.md`; deploy topology → `docs/DEPLOYMENT_INSTANCES.md`; cross-system flows (Stripe, AI gating, seats, onboarding, DM storage) → `docs/PRODUCT_JOURNEYS.md`. Full checklist: `docs/AGENT_TASK_CHECKLIST.md`.
+Route, data-store, deployment, and journey docs must stay accurate. If you change routes → regenerate `docs/BACKEND_ROUTES.md`; tables/collections → `docs/MYSQL_AND_FIRESTORE.md`; deploy topology → `docs/DEPLOYMENT_INSTANCES.md`; cross-system flows (Stripe, AI gating, seats, onboarding, DM storage) → `docs/PRODUCT_JOURNEYS.md`; **Steve's build capabilities** (a `CPoint` API / route / connector, a new build kind, a design direction, or a quality pass) → `backend/services/builder_guide.md` (the single build guide injected into every build — update it in the same change so Steve always knows the new capability and his chat feedback stays accurate). Full checklist: `docs/AGENT_TASK_CHECKLIST.md`.
 
 ## Git hygiene
 

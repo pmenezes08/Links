@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { CPOINT_EASE_OUT, REDUCED_MOTION_FADE_MS, TAB_CROSSFADE_MS } from '../../design/motion'
 
 /**
- * Zero-communities dashboard state: one welcome card centered in the black
+ * Zero-communities dashboard state: the welcome card that leads the empty
  * canvas. Two doors (create / join-by-handle) and a quiet text link — never
  * three pills — plus a plain-text mantra line. Nothing below the welcome
  * card may wear control grammar: on this canvas a bordered rounded card
@@ -35,7 +35,7 @@ export default function DashboardEmptyState({
 
   return (
     <div
-      className="flex min-h-[60vh] flex-col justify-center px-3 py-6"
+      className="mb-4 px-3"
       style={{
         opacity: entered ? 1 : 0,
         transition: `opacity ${reducedMotion ? REDUCED_MOTION_FADE_MS : TAB_CROSSFADE_MS}ms ${CPOINT_EASE_OUT}`,

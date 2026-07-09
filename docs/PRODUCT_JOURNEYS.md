@@ -48,6 +48,8 @@ Compliance and minimization rules: **`docs/COMPLIANCE_AGE_GATE.md`**. Server sto
 
 1. User starts checkout from the client; backend creates a **Stripe Checkout** session (`backend/blueprints/subscriptions.py` and related).
 2. User completes payment on Stripe; **webhooks** hit **`backend/blueprints/subscription_webhooks.py`** (signature-verified). Events update MySQL (`users`, subscription rows) according to business rules.
+
+**Webhook hardening (July 2026):** A failed DB write inside a handler raises `WebhookProcessingError` → the endpoint returns **500 so Stripe redelivers** (retries ~3 days) instead of silently dropping a grant/revoke. Invoice events route to the right SKU handler via `_merged_metadata` (invoices carry their own empty metadata; the checkout metadata lives under `parent.subscription_details.metadata`), so community/Steve `invoice.payment_failed` correctly marks *those* products `past_due` instead of dirtying the owner's personal row. `customer.subscription.updated` follows the Stripe **status** (active/trialing → premium; canceled/unpaid/incomplete_expired → free; dunning states keep the tier) — a stale or retried event can no longer re-grant Premium after a terminal status. `invoice.payment_failed` also sends the payer a localized dunning notification (in-app + push, `notifications.billing_payment_failed_*` catalog keys). New events handled: `charge.dispute.created` (personal Premium → immediate revoke + Stripe-side cancel; community products → `past_due` + platform-admin alert) and `charge.refunded` (audit + admin alert only — refunds are admin-initiated, entitlement decisions stay human). A second Checkout subscription for an already-active same-provider product is **auto-cancelled and refunded** (`duplicate_subscription_auto_cancelled` audit action); safe against webhook retries because a redelivered event carries the *same* subscription id, which `billing_ownership` allows as `same_subscription`. Tests: `tests/test_stripe_webhook_hardening.py`.
 3. Every gated API path resolves **effective access** via **`resolve_entitlements(username)`** in `backend/services/entitlements.py` — not from ad-hoc checks of the `users.subscription` column alone.
 
 **Return URLs:** After Checkout, browser redirects use **`billing_return`** patterns so the SPA lands in a sane state.
@@ -81,7 +83,7 @@ Compliance and minimization rules: **`docs/COMPLIANCE_AGE_GATE.md`**. Server sto
 
 **Operator — end signup trial early:** From **admin-web → Users → Manage**, when the resolved tier is **trial**, an admin can **End trial** (requires a reason). That sets **`users.trial_revoked_at`** and writes **`subscription_audit_log`** with action **`trial_revoked_by_admin`**; **`resolve_entitlements`** then treats the account as **free** for tier purposes (Steve access follows free caps unless Premium / Special / Enterprise seat applies).
 
-**B2B pivot (June 2026) — signup trial grants no personal AI:** the `TIER_TRIAL` block in `backend/services/entitlements.py` now resolves with `can_use_steve: False` and zeroed Steve/Whisper/AI-daily/spend caps — identical to Free for AI purposes. The tier label, 30-day window, and admin trial-revoke tooling are unchanged (bookkeeping only). Members get Steve exclusively through a community's **Steve Community Package** pool (section 4) or an admin **Special** grant. Personal Premium is **soft-retired**: the purchase tile in `SubscriptionsHome` renders only for users with an existing personal subscription (legacy manage/cancel keeps working; backend checkout untouched), the dashboard "Upgrade to Premium" CTA and personal "Talk to Steve" entry points (bottom-nav Steve modal, dashboard card/tile, About modal prefill) were removed, and single-community users land directly on their community feed on app open (`useSingleCommunityLanding`). KB `user-tiers` trial seeds were zeroed — **requires KB reseed (Reseed + Force) after deploy**.
+**B2B pivot (June 2026) — signup trial grants no personal AI:** the `TIER_TRIAL` block in `backend/services/entitlements.py` now resolves with `can_use_steve: False` and zeroed Steve/Whisper/AI-daily/spend caps — identical to Free for AI purposes. The tier label, 30-day window, and admin trial-revoke tooling are unchanged (bookkeeping only). Members get Steve exclusively through a community's **Steve Community Package** pool (section 4) or an admin **Special** grant. Personal Premium is **soft-retired**: the purchase tile in `SubscriptionsHome` renders only for users with an existing personal subscription (legacy manage/cancel keeps working; backend checkout untouched), the dashboard "Upgrade to Premium" CTA and personal "Talk to Steve" entry points (bottom-nav Steve modal, dashboard card/tile, About modal prefill) were removed, and single-community users land directly on their community feed on app open (`useSingleCommunityLanding`). KB `user-tiers` trial seeds were zeroed — **requires KB reseed (Reseed + Force) after deploy**. Entitlement-denial CTAs follow the pivot (July 2026): `premium_required`, `community_pool_exhausted`, and `grace_expired` in `backend/services/entitlements_errors.py` (+ `entitlements.*` catalog keys, client `LimitReachedModal`/`LimitReachedBubble`, `steveClientGate`, `ManageMembershipModal`) pitch community paid tiers / the Steve Community Package with CTA "See community plans" → plain `/subscription_plans` — no "Upgrade to Premium" copy and no dead `?mode=choose` param.
 
 ---
 
@@ -173,6 +175,14 @@ Cloud Scheduler POSTs to **`/api/cron/*`** on **`cpoint-app`** (or staging) with
 **Owner recommendation mode:** Community owners can set `recommended_profile_mode = none | personal | professional | both` in Manage Community. The feed renders a dismissible soft card for members, for example “This community works best with a professional profile. Steve can help.” It never blocks posting, replying, reacting, inviting, or messaging. The card is suppressed when `/api/onboarding/state` reports that the recommended section is effectively complete from durable profile fields or onboarding state.
 
 **Scoped Steve profile builder:** Contextual recommendation CTAs route to a dedicated Steve profile-builder surface such as `/steve/profile-builder/professional?community_id=<id>&source=community_profile_card`, not generic Steve DM. This preserves the originating community context, uses the existing swipe page transition stack, runs only the requested profile section, and returns the user to the community feed when finished.
+
+**Exit routing:** both onboarding exits (Steve-chat completion and the intro gate's "Enter C-Point") resolve their landing URL via the dashboard's invite/join/single-community precedence — the user's community feed (`/community_feed_react/<id>`, without `?joined=1`) when there is exactly one obvious target, otherwise `/premium_dashboard`. Multi-community users with no invite context keep the dashboard.
+
+**Inviter moment:** when an invitee joins, the specific inviter (`community_invitations.invited_by_username`) receives a distinguished `invitee_joined` notification + push in their locale (`notifications.invitee_joined` catalog keys), independent of the community's `notify_on_new_member` broadcast toggle; they are excluded from the generic `new_member` broadcast.
+
+**Reminder anchoring:** the section-prompt cron (`onboarding_reminders.py`) anchors on `profile_deferred_at` (explicit "finish later"), falling back to the doc's `updated_at` for silent abandons who never tapped defer. All guards (48h floor, 72h spacing, 24h ask budget, 2-lifetime-push cap) apply identically to both anchors.
+
+**Funnel instrumentation:** the onboarding endpoints write server-side funnel events to MySQL **`onboarding_events`** (`backend/services/onboarding_events.py`): one `stage` row per stage transition (consecutive saves of the same stage dedupe), plus `completed`, `deferred`, `bootstrap_communities`, and `resume_required` (deduped per 24h). Abandonment is derived (latest event is a stale `stage` row); invite-accept→feed-view is derived from `community_invitations` × `community_visit_history`. No client analytics SDK is involved. The off-script redirect LLM route is soft-capped per user/day (`ONBOARDING_REDIRECT_DAILY_CAP`, default 20) and all onboarding LLM routes log to `ai_usage_log` under `surface='onboarding_ai'`.
 
 Onboarding stages and APIs: **`backend/blueprints/onboarding.py`** plus services such as **`onboarding_bootstrap`**, **`onboarding_company_intel`**, **`onboarding_cv_import`** (optional **PDF CV** upload: **`POST /api/onboarding/parse_cv`** extracts text locally, Grok returns structured current role / company / `current_role_start_ym` / prior roles; with **`persist=1`** the PDF is stored in **private R2** under `private/cv/{username}/…` and **`users.professional_cv_*`** metadata is updated when storage succeeds). **`POST /api/onboarding/apply_professional_structured`** persists to **`users`** after the user confirms, with **`mode`** **`replace`** (work history from the CV list only) or **`merge`** (keep and dedupe prior **`professional_work_history`**, promoting the previous current role into history when role/company change). Signed-in users download the last stored file via **`GET /api/profile/cv`**. **Firestore** collection **`steve_onboarding`** holds progressive state — see **`MYSQL_AND_FIRESTORE.md`**. Client navigates stages; backend enforces progression and ties into **Steve** where applicable.
 
@@ -387,3 +397,62 @@ Push tokens are stored in `fcm_tokens` (primary), `native_push_tokens` (direct A
 1. Merge to **staging** branch / workflow; run **`cloudbuild.yaml`** → **`cpoint-app-staging`**.
 2. Hit **staging** API and **admin-staging** against staging; remember **shared DB** risk (**OPERATIONS**).
 3. Promote to prod via **`cloudbuild-production.yaml`** → **`cpoint-app`** only after checks — **`AGENTS.md`** discourages prod-first deploys.
+
+## 14. Steve Builder (front-end creations) — Phase 1
+
+The Builder lets a member chat with Steve to generate a **front-end-only** web creation (a single self-contained HTML document — game, quiz, generator, site, or tool), iterate on it, share it to communities, publish eligible websites/apps to the web, and optionally list it anonymously in Explore Creations inside C-Point. It is the entry point to "Steve brings ideas to life"; generic AI app-builder framing is deliberately avoided.
+
+Source-of-truth doc for the pivot, runtime rules, host controls, sound philosophy, QA, and roadmap: **[`docs/STEVE_BUILD.md`](STEVE_BUILD.md)**.
+
+1. **Entry** — dashboard "Bring an idea to life" card → `/builder`; community feed still supports `/community/:id/builder`. Explore CTA → `/explore-creations`.
+2. **Build / iterate** — `POST /api/builder/create` accepts an optional `community_id`; no community means a personal creation (`creations.community_id=NULL`). `POST /api/builder/<id>/iterate` keeps ownership-only iteration. Durable `builder_jobs.community_id` is nullable, completion notifications deep-link to `/builder?creation_id=<id>` or `/community/:id/builder?creation_id=<id>` depending on job context. Each build is gated by `entitlements_gate.gate_builder_or_reason` and logs one `ai_usage_log` row through the builder services; the Builder deliberately does **not** use the Steve credit-pool gate. Pre-build chat (`POST /api/builder/chat`) and the plan narration (`POST /api/builder/plan`) share their own monthly allowance (`builder_chat_messages_per_month`, KB-seeded; paid tiers uncapped) via `gate_builder_chat_or_reason`, plus per-user rpm/hpm rate limits (`backend/services/rate_limit.py`). The client-requested quality tier is clamped server-side to the entitlements-resolved `builder_max_tier` (free/trial ≤ "balanced"; paid unlocks "best"). All builder LLM calls (chat, plan, build pipeline, vision judge) meter real tokens + `cost_usd` into `ai_usage_log` via `llm.usage_context`, so builder spend feeds the personal/community monthly spend ceilings.
+3. **Preview / play** — the HTML renders client-side in a sandboxed iframe (`srcDoc`, `sandbox="allow-scripts"` only → opaque origin, no access to app session cookies/storage). The injected `window.CPoint` bridge carries active context (`personal`/`community:<id>`) into `/api/builder/<id>/data/*`, `/api/builder/<id>/capsules/*`, and `/api/builder/<id>/match/*`. Scores, ratings, saves, shared state, collections, forms, leaderboards, named capsule recipes, and matches are scoped by `community_id` where applicable, so the same creation shared into multiple communities has separate runtime data.
+4. **Share = community post** — `POST /api/builder/<id>/publish` / `/share` inserts a normal `posts` row carrying `creation_id` and writes `creation_shares(creation_id, community_id, post_id, shared_by)`. Owners can share the same personal creation into multiple communities they belong to; the route enforces membership before writing. The React feed renders posts with `creation_id` as tap-to-play cards → `/community/:id/creation/:creation_id`.
+5. **Publish to web (websites/apps only)** — `POST /api/builder/<id>/publish-web` validates owner + public-eligible kind, injects a public-safe bridge plus mandatory C-Point splash/badge, writes a public R2 artifact (`public/builds/<slug>/<version>.html`) and manifest (`public/builds/<slug>/manifest.json`), then returns `https://builds.c-point.co/<slug>`. `services/public-builds-worker/` serves that manifest/artifact through Cloudflare with security headers and a branded 404, and proxies public-safe `CPoint.data`, `CPoint.images`, and `CPoint.capsule` requests back to the backend. Signed-in builds can expose explicit `CPoint.data(..., {refresh:true})` or `CPoint.capsule(name).refresh()` buttons while backend throttles, budgets, and circuit breakers still protect upstream providers; public build refresh is stripped in V1 and public reads are additionally throttled by anonymous IP. `DELETE /api/builder/<id>/publish-web` removes the manifest/artifact; games stay inside C-Point because saves, scores, identity, and multiplayer are community/session-bound.
+6. **Explore Creations** — `POST /api/builder/<id>/gallery` lets owners opt in/unlist any creation type for in-platform anonymous gallery inclusion; `POST /api/admin/builder/<id>/gallery` lets app admins approve/reject/delist if moderation is needed. `GET /api/builder/explore` lists approved creations with `/creation/<id>` play links and returns no creator, profile, community, or post identifiers.
+7. **Privacy / access** — create reads and play views authorize via owner access, gallery-approved in-platform access, or `community_access.can_view_community_content` against the active share context. Game invite opponents are only members of the active community and are exposed as opaque handles. Public web visitors are anonymous and receive only public-safe `CPoint` capabilities (public data/image connectors; no session saves, shared collections/forms, scores, ratings, or multiplayer).
+
+Phase-1 scope is front-end only (no user backends). Remix (copy a creation + `parent_creation_id`) and richer community picker UI for sharing are follow-ups.
+
+## 15. Owner Dashboard: analytics, moderation, and the weekly pulse
+
+Owner/delegated-admin surface at `/community/:id/owner` (Overview · Reports ·
+Spaces), served by `backend/blueprints/owner_analytics.py` +
+`owner_moderation.py` over `backend/services/community_analytics.py` /
+`community_moderation.py`. Metrics are a backend registry of descriptors the
+client renders declaratively; adding a metric is backend-only. Authorization
+is server-side and non-enumerating on the apex community; network (subtree)
+rollup is the paid unlock. Owner-only metrics (members-communicating, profile
+completion) are enforced server-side — delegated admins never receive them,
+and Steve's read switches to a reduced template. Responses are Redis-cached
+5 min with the viewer ROLE in the key.
+
+**Moderation remove** routes through the shared cascade
+(`backend/services/post_deletion.delete_post_cascade`) — the same cleanup as
+author/app-admin deletes (replies, post_views, imagine_jobs, media incl. R2,
+report resolution, feed + post-detail cache invalidation).
+
+**Report signal (owner-first, Moderation v2 Phase 0):** when a member reports
+a post (or the wordlist auto-flags one), the community's moderators — owner +
+delegated admins, never the reporter/author/platform-`admin` — get a push +
+in-app row in their own locale (`notifications.owner_report` /
+`owner_report_auto` via `community_moderation.notify_moderators_of_report`),
+deep-linking to `/community/:id/owner?tab=reports`. The reporter gets an
+in-app toast (no more `alert()`), and auto-flagged rows
+(`reporter_username='system'`) render a distinct badge in the owner queue and
+both app-admin surfaces. The two queues share `post_reports` with precedence:
+review actions only touch still-`pending` rows and return `already_resolved`
+(+ who resolved) instead of overwriting the other surface's decision.
+`POST /api/report_post` is rate-limited (15/h/user) through the shared
+`backend/services/rate_limit.py` primitive (Redis fixed window, fail-open);
+`post_reports` DDL is ensured at startup, no longer inside the handler.
+
+**Weekly pulse (the return loop):** Cloud Scheduler hits
+`POST /api/cron/owner-weekly-pulse` (X-Cron-Secret, Monday 08:00 UTC,
+`docs/cloud-scheduler-cron.md` §11). One templated push + in-app row per
+owner per ISO week (dedup table `owner_pulse_sends`), recipient-locale copy
+via `notification_copy` (`notifications.owner_pulse*` keys), deep link to the
+dashboard (handled in `PushInit.tsx`). Quiet weeks are skipped; multi-network
+owners get one pulse for their largest network; kill-switch
+`OWNER_PULSE_ENABLED`. Zero AI cost — Steve's voice is i18n templates over
+numbers computed at send time.

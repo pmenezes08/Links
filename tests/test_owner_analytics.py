@@ -638,3 +638,455 @@ def test_members_communicating_counts_member_to_member(mysql_dsn):
     comm = _by_id(_overview(client, a).get_json())["communicating"]["value"]
     assert comm["count"] == 2   # alice + bob; carol messaged a non-member → excluded
     assert comm["total"] == 3
+
+
+# ---------------------------------------------------------------------------
+# New-member activation (the paid unlock) + named-ranking hygiene
+# ---------------------------------------------------------------------------
+
+def _set_joined_days_ago(username: str, community_id: int, days: int) -> None:
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"UPDATE user_communities SET joined_at = DATE_SUB(NOW(), INTERVAL {int(days)} DAY) "
+            f"WHERE community_id = {ph} AND user_id = (SELECT id FROM users WHERE username = {ph})",
+            (community_id, username),
+        )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+
+def test_activation_unlocks_with_real_value_when_paid(mysql_dsn):
+    """Paying must UNLOCK a real activation number — the card may never
+    silently vanish on upgrade (the vanishing-teaser bug)."""
+    import bodybuilding_app
+
+    _ensure_activity_tables()
+    make_user("ownerA")
+    make_user("m_fast")   # joined now, active immediately → activated
+    make_user("m_slow")   # joined 20d ago, never active → joiner, not activated
+    make_user("m_old")    # joined 70d ago → outside the join window entirely
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")
+    _set_paid(a)
+    for u in ("m_fast", "m_slow", "m_old"):
+        _add_member(u, a)
+    _set_joined_days_ago("m_slow", a, 20)
+    _set_joined_days_ago("m_old", a, 70)
+
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        # m_fast posts on join day; m_old posts recently (must not count — not a joiner)
+        for u in ("m_fast", "m_old"):
+            c.execute(
+                f"INSERT INTO posts (community_id, username, content) VALUES ({ph}, {ph}, {ph})",
+                (a, u, "hello"),
+            )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+    _login(client, "ownerA")
+    body = _overview(client, a).get_json()
+    metrics = _by_id(body)
+    act = metrics["activation"]
+    assert act["locked"] is False
+    assert act["format"] == "ratio"
+    assert act["value"]["total"] == 2      # m_fast + m_slow (m_old outside 60d)
+    assert act["value"]["count"] == 1      # only m_fast did something within 14d of joining
+    assert act["value"]["window_days"] == 14
+
+
+def test_free_tier_keeps_activation_teaser_and_sticking_is_gone(mysql_dsn):
+    import bodybuilding_app
+
+    make_user("ownerA")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")   # free
+
+    _login(client, "ownerA")
+    metrics = _by_id(_overview(client, a).get_json())
+    assert metrics["activation"]["locked"] is True
+    assert metrics["activation"]["value"] is None
+    assert "sticking" not in metrics   # removed until actually built
+
+
+def test_top_active_names_contributors_not_lurkers(mysql_dsn):
+    """Named rankings are contributions-only: a visits-only member never
+    appears in the top-active list, but still counts toward DAU/WAU/MAU."""
+    import bodybuilding_app
+
+    _ensure_activity_tables()
+    make_user("ownerA")
+    make_user("m_post")
+    make_user("m_lurk")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")
+    _add_member("m_post", a)
+    _add_member("m_lurk", a)
+
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"INSERT INTO posts (community_id, username, content) VALUES ({ph}, {ph}, {ph})",
+            (a, "m_post", "content"),
+        )
+        for _ in range(5):
+            c.execute(
+                f"INSERT INTO community_visit_history (username, community_id, visit_time) "
+                f"VALUES ({ph}, {ph}, NOW())",
+                ("m_lurk", a),
+            )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+    _login(client, "ownerA")
+    active = _by_id(_overview(client, a).get_json())["active"]["value"]
+    names = [u["username"] for u in active["top_active"]]
+    assert "m_post" in names
+    assert "m_lurk" not in names        # reading a lot never ranks anyone
+    assert active["dau"] >= 2           # ...but visits still count in aggregates
+
+
+# ---------------------------------------------------------------------------
+# owner_only enforcement + privacy regression + cache keys
+# ---------------------------------------------------------------------------
+
+def test_delegated_admin_never_receives_owner_only_metrics(mysql_dsn):
+    """owner_only is a server-side gate, not a label: delegated admins get
+    neither the descriptors nor their numbers via Steve's read."""
+    import bodybuilding_app
+
+    _ensure_profile_columns()
+    make_user("ownerA")
+    make_user("modA")
+    make_user("m1")
+    client = bodybuilding_app.app.test_client()
+    A = make_community("Dash A", creator_username="ownerA")
+    _add_member("modA", A, role="admin")
+    _add_member("m1", A)
+
+    # Owner sees the full payload.
+    _login(client, "ownerA")
+    owner_metrics = _by_id(_overview(client, A).get_json())
+    assert "profile_completion" in owner_metrics
+    assert "communicating" in owner_metrics
+
+    # Delegated admin: descriptors omitted, Steve read reduced.
+    _login(client, "modA")
+    body = _overview(client, A).get_json()
+    admin_metrics = _by_id(body)
+    assert "profile_completion" not in admin_metrics
+    assert "communicating" not in admin_metrics
+    assert body["steve"]["read_key"] == "owner.steve.read_default_admin"
+    assert "communicating" not in body["steve"]["read_params"]
+    assert "complete" not in body["steve"]["read_params"]
+
+
+def test_aggregate_payloads_never_name_members(mysql_dsn):
+    """Privacy regression: profile completion, communicating, and per-sub
+    bands are counts-only — no member username may appear anywhere in those
+    payload fragments. Leaderboards/most-active are the ONLY naming surfaces."""
+    import json
+
+    import bodybuilding_app
+
+    _ensure_profile_columns()
+    _ensure_activity_tables()
+    make_user("ownerA")
+    members = ["priv_alice", "priv_bob", "priv_carol"]
+    for u in members:
+        make_user(u)
+    client = bodybuilding_app.app.test_client()
+    A = make_community("Dash A", creator_username="ownerA")
+    sub = make_community("Dash Sub", creator_username="ownerA", parent_community_id=A)
+    for u in members:
+        _add_member(u, A)
+        _add_member(u, sub)
+    _set_professional("priv_alice")
+
+    _login(client, "ownerA")
+    body = _overview(client, A).get_json()
+    metrics = _by_id(body)
+    for metric_id in ("profile_completion", "communicating"):
+        blob = json.dumps(metrics[metric_id])
+        for u in members:
+            assert u not in blob, f"{metric_id} leaked {u}"
+
+    spaces = client.get(f"/api/community/{A}/analytics/spaces").get_json()
+    blob = json.dumps(spaces["subcommunities"])
+    for u in members:
+        assert u not in blob, f"spaces breakdown leaked {u}"
+
+
+def test_overview_cache_key_varies_by_viewer_role():
+    """Unit: the cache key must differ owner vs delegated admin — a shared key
+    would serve owner-only aggregates to admins for the TTL window."""
+    from backend.blueprints.owner_analytics import _overview_cache_key
+
+    owner_key = _overview_cache_key(7, "network", True)
+    admin_key = _overview_cache_key(7, "network", False)
+    assert owner_key != admin_key
+    assert _overview_cache_key(7, "self", True) != owner_key      # scope in key
+    assert _overview_cache_key(8, "network", True) != owner_key   # community in key
+
+
+# ---------------------------------------------------------------------------
+# Cap-hit warning + WoW deltas + invite stage 3 + Steve actions
+# ---------------------------------------------------------------------------
+
+def test_cap_warning_threshold(mysql_dsn, monkeypatch):
+    """cap_warning flips at >=80% of member_cap, server-side."""
+    import bodybuilding_app
+    from backend.services import community_analytics
+
+    make_user("ownerA")
+    for i in range(8):
+        make_user(f"cap_m{i}")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")
+    for i in range(8):
+        _add_member(f"cap_m{i}", a)
+
+    def fake_tier(_cid):
+        return {"tier": "free", "is_paid": False, "member_cap": 10}
+
+    monkeypatch.setattr(community_analytics, "_resolve_tier", fake_tier)
+    _login(client, "ownerA")
+    members = _by_id(_overview(client, a).get_json())["members"]["value"]
+    assert members["count"] == 8
+    assert members["cap_warning"] is True   # 8 >= 0.8 * 10
+
+    def fake_tier_big(_cid):
+        return {"tier": "free", "is_paid": False, "member_cap": 100}
+
+    monkeypatch.setattr(community_analytics, "_resolve_tier", fake_tier_big)
+    members = _by_id(_overview(client, a).get_json())["members"]["value"]
+    assert members["cap_warning"] is False  # 8 < 80
+
+    def fake_tier_nocap(_cid):
+        return {"tier": "free", "is_paid": False, "member_cap": None}
+
+    monkeypatch.setattr(community_analytics, "_resolve_tier", fake_tier_nocap)
+    members = _by_id(_overview(client, a).get_json())["members"]["value"]
+    assert members["cap_warning"] is False  # no cap → never warns
+
+
+def test_wow_deltas_and_invite_stage3(mysql_dsn):
+    """wau_prev covers the 7-14d window; invite funnel carries 'activated'
+    (accepted invitees active within 14d of joining)."""
+    import bodybuilding_app
+
+    _ensure_activity_tables()
+    make_user("ownerA")
+    make_user("inv_kim")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")
+    _add_member("inv_kim", a)
+
+    # Accepted username invite for kim (fresh invitations table), who joined
+    # now and posts now → activated.
+    _seed_invitations(a, [("inv_kim", None, "accepted")])
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        # Activity 10 days ago → prior week's WAU, not this week's.
+        c.execute(
+            f"INSERT INTO posts (community_id, username, content, timestamp) "
+            f"VALUES ({ph}, {ph}, {ph}, DATE_SUB(NOW(), INTERVAL 10 DAY))",
+            (a, "inv_kim", "old post"),
+        )
+        c.execute(
+            f"INSERT INTO posts (community_id, username, content) VALUES ({ph}, {ph}, {ph})",
+            (a, "inv_kim", "fresh post"),
+        )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+    _login(client, "ownerA")
+    metrics = _by_id(_overview(client, a).get_json())
+    active = metrics["active"]["value"]
+    assert active["wau_prev"] >= 1          # the 10-day-old post
+    invites = metrics["invites"]["value"]
+    assert invites["activated"] == 1        # kim: accepted + active within 14d of join
+
+
+def test_steve_actions_priority_and_admin_exclusion(mysql_dsn, monkeypatch):
+    """Cap action outranks celebrate; max 2 actions; delegated admins get none
+    (billing/invite moves are the owner's)."""
+    import bodybuilding_app
+    from backend.services import community_analytics
+
+    _ensure_activity_tables()
+    make_user("ownerA")
+    make_user("modA")
+    for i in range(4):
+        make_user(f"act_m{i}")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")
+    _add_member("modA", a, role="admin")
+    for i in range(4):
+        _add_member(f"act_m{i}", a)
+
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"INSERT INTO posts (community_id, username, content) VALUES ({ph}, {ph}, {ph})",
+            (a, "act_m0", "this week"),
+        )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+    def fake_tier(_cid):
+        return {"tier": "free", "is_paid": False, "member_cap": 6}   # 5 members incl. modA ≥ 80%? 5>=4.8 yes
+
+    monkeypatch.setattr(community_analytics, "_resolve_tier", fake_tier)
+
+    _login(client, "ownerA")
+    steve = _overview(client, a).get_json()["steve"]
+    actions = steve.get("actions") or []
+    assert len(actions) <= 2
+    assert actions and actions[0]["key"] == "owner.steve.action_cap"   # cap wins priority
+
+    _login(client, "modA")
+    steve_admin = _overview(client, a).get_json()["steve"]
+    assert (steve_admin.get("actions") or []) == []
+
+
+# ---------------------------------------------------------------------------
+# Pending-invites drill-in (behind Steve's invite action) — OWNER-ONLY
+# ---------------------------------------------------------------------------
+
+def test_pending_invites_owner_only_and_deduped(mysql_dsn):
+    """The drill-in lists distinct unanswered invitees (emails included), so it
+    is owner-only: delegated admins and outsiders get the non-enumerating 404.
+    Accepted-elsewhere, QR placeholders, and 'admin' never appear."""
+    import bodybuilding_app
+
+    make_user("ownerA")
+    make_user("modA")
+    make_user("stranger")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")
+    _add_member("modA", a, role="admin")
+
+    _seed_invitations(a, [
+        ("kim", None, "pending"),
+        ("kim", "kim@x.com", "pending"),           # same person twice → once
+        (None, "lee@x.com", "pending"),
+        ("mia", None, "pending"),
+        ("mia", None, "accepted"),                  # accepted elsewhere → excluded
+        (None, "qr-invite-1@placeholder.local", "pending"),   # QR → excluded
+        ("admin", None, "pending"),                 # platform admin → excluded
+    ])
+
+    _login(client, "ownerA")
+    resp = client.get(f"/api/community/{a}/analytics/pending-invites")
+    assert resp.status_code == 200
+    invitees = resp.get_json()["invitees"]
+    displays = sorted(i["display"] for i in invitees)
+    assert displays == ["kim", "lee@x.com"]
+    types = {i["display"]: i["type"] for i in invitees}
+    assert types["kim"] == "username"
+    assert types["lee@x.com"] == "email"
+
+    # Delegated admin: same closed door as an outsider (emails are owner data).
+    _login(client, "modA")
+    assert client.get(f"/api/community/{a}/analytics/pending-invites").status_code == 404
+    _login(client, "stranger")
+    assert client.get(f"/api/community/{a}/analytics/pending-invites").status_code == 404
+
+
+def test_steve_invite_action_carries_drilldown_id(mysql_dsn):
+    """The invite action row advertises the pending_invites behavior so the
+    client can open the drill-in."""
+    import bodybuilding_app
+
+    make_user("ownerA")
+    make_user("m1")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")
+    _add_member("m1", a)
+    _seed_invitations(a, [
+        (None, "p1@x.com", "pending"),
+        (None, "p2@x.com", "pending"),
+        (None, "p3@x.com", "pending"),
+    ])
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"INSERT INTO posts (community_id, username, content) VALUES ({ph}, {ph}, {ph})",
+            (a, "m1", "activity so low_data is off"),
+        )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+    _login(client, "ownerA")
+    steve = _overview(client, a).get_json()["steve"]
+    invite_actions = [x for x in (steve.get("actions") or []) if x["key"] == "owner.steve.action_invite"]
+    assert invite_actions and invite_actions[0].get("action") == "pending_invites"
+
+
+def test_revoke_pending_invite_owner_only(mysql_dsn):
+    """The trash icon: revokes ALL unanswered rows for one invitee identity,
+    never touches accepted rows, and is owner-only (admin/outsider → 404)."""
+    import bodybuilding_app
+
+    make_user("ownerA")
+    make_user("modA")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Dash A", creator_username="ownerA")
+    _add_member("modA", a, role="admin")
+
+    _seed_invitations(a, [
+        ("kim", None, "pending"),
+        ("kim", "kim@x.com", "pending"),   # same identity, second row
+        (None, "lee@x.com", "pending"),
+        ("mia", None, "accepted"),          # accepted history — untouchable
+    ])
+
+    # Delegated admin and missing identity are both rejected.
+    _login(client, "modA")
+    assert client.post(
+        f"/api/community/{a}/analytics/pending-invites/revoke", json={"identity": "kim"},
+    ).status_code == 404
+    _login(client, "ownerA")
+    assert client.post(
+        f"/api/community/{a}/analytics/pending-invites/revoke", json={},
+    ).status_code == 400
+
+    resp = client.post(
+        f"/api/community/{a}/analytics/pending-invites/revoke", json={"identity": "kim"},
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["revoked"] == 2   # both of kim's pending rows
+
+    # kim gone from the drill-in; lee remains; mia's accepted row survives.
+    invitees = client.get(f"/api/community/{a}/analytics/pending-invites").get_json()["invitees"]
+    assert sorted(i["display"] for i in invitees) == ["lee@x.com"]
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"SELECT COUNT(*) AS n FROM community_invitations WHERE community_id = {ph} AND LOWER(status) = 'accepted'",
+            (a,),
+        )
+        row = c.fetchone()
+        n = row["n"] if hasattr(row, "keys") else row[0]
+    assert int(n) == 1

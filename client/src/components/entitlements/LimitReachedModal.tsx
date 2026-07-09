@@ -2,18 +2,22 @@ import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import type { EntitlementsError } from '../../utils/entitlementsError'
+import { subscriptionPlansCtaUrl } from '../../utils/entitlementsError'
 
 interface Props {
   err: EntitlementsError
   onClose: () => void
+  /** Community the user was acting in — deep-links the upgrade CTA to that
+   *  community's plans on Subscription Plans instead of the bare picker. */
+  communityId?: number | null
 }
 
-/** Keep aligned with `backend/blueprints/subscriptions.py` `_PREMIUM_FEATURE_BULLETS` / Personal card on Subscription Plans. */
-const PREMIUM_BULLET_KEYS = [
-  'entitlements.limit_modal.premium_bullet_1',
-  'entitlements.limit_modal.premium_bullet_2',
-  'entitlements.limit_modal.premium_bullet_3',
-  'entitlements.limit_modal.premium_bullet_4',
+/** B2B pivot: pitch community paid tiers + Steve Community Package (keep aligned with the Community card on Subscription Plans). */
+const COMMUNITY_PLAN_BULLET_KEYS = [
+  'entitlements.limit_modal.community_bullet_1',
+  'entitlements.limit_modal.community_bullet_2',
+  'entitlements.limit_modal.community_bullet_3',
+  'entitlements.limit_modal.community_bullet_4',
 ] as const
 
 /** Confirms current plan for Steve upgrade prompts (aligned with `err.tier` from the API). */
@@ -27,7 +31,7 @@ function planTierNotice(err: EntitlementsError, tr: (key: string) => string): st
   return null
 }
 
-function PremiumBenefitsList({ err }: { err: EntitlementsError }) {
+function CommunityPlanBenefitsList({ err }: { err: EntitlementsError }) {
   const { t } = useTranslation()
   if (err.reason !== 'premium_required') return null
   return (
@@ -41,7 +45,7 @@ function PremiumBenefitsList({ err }: { err: EntitlementsError }) {
           marginBottom: 8,
         }}
       >
-        {t('entitlements.limit_modal.with_premium')}
+        {t('entitlements.limit_modal.with_community_plan')}
       </div>
       <ul
         style={{
@@ -52,7 +56,7 @@ function PremiumBenefitsList({ err }: { err: EntitlementsError }) {
           lineHeight: 1.55,
         }}
       >
-        {PREMIUM_BULLET_KEYS.map((key) => (
+        {COMMUNITY_PLAN_BULLET_KEYS.map((key) => (
           <li key={key} style={{ marginBottom: 6 }}>
             {t(key)}
           </li>
@@ -69,10 +73,10 @@ function PremiumBenefitsList({ err }: { err: EntitlementsError }) {
  * `LimitReachedBubble` used inside ongoing chats.
  *
  * Maps each `reason` to a title + icon. Body copy comes from the backend
- * (KB-editable) except `premium_required`, where we show your plan line plus the
- * subscription-aligned bullet list instead of the long default message.
+ * (KB-editable) except `premium_required`, where we show your plan line plus a
+ * community-plan bullet list instead of the long default message.
  */
-export default function LimitReachedModal({ err, onClose }: Props) {
+export default function LimitReachedModal({ err, onClose, communityId }: Props) {
   const { t } = useTranslation()
   const navigate = useNavigate()
 
@@ -95,7 +99,7 @@ export default function LimitReachedModal({ err, onClose }: Props) {
   const handleCta = () => {
     const url = err.cta?.url
     if (url && url.startsWith('/')) {
-      navigate(url)
+      navigate(subscriptionPlansCtaUrl(url, err.reason, communityId))
     } else if (url) {
       window.open(url, '_blank', 'noopener,noreferrer')
     }
@@ -311,7 +315,7 @@ export default function LimitReachedModal({ err, onClose }: Props) {
           </p>
         ) : null}
 
-        <PremiumBenefitsList err={err} />
+        <CommunityPlanBenefitsList err={err} />
 
         {renderUsage()}
 

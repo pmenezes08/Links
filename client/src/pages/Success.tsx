@@ -179,7 +179,7 @@ export default function Success() {
 
         {sessionId ? (
           <p className="mt-4 text-[11px] uppercase tracking-[0.22em] text-c-text-tertiary">
-            {t('entitlements.checkout_success.ref_prefix')} {sessionId.slice(0, 18)}â€¦
+            {t('entitlements.checkout_success.ref_prefix')} {sessionId.slice(0, 18)}…
           </p>
         ) : null}
 

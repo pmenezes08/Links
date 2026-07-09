@@ -31,6 +31,7 @@ Single reference for repository layout, HTTP surface, backend services, dependen
 | Internal admin UI | React (Vite) | `admin-web/` |
 | Marketing site | separate Vite app | `landing/` |
 | Object storage | Cloudflare R2 (S3 API) | `backend/services/r2_storage.py` |
+| Public build edge | Cloudflare Workers + R2 binding | `services/public-builds-worker/` |
 | Container build / deploy | Docker + Cloud Build → Cloud Run | `Dockerfile`, `cloudbuild.yaml` |
 
 **Redis connection budget.** The cache runs on **Redis Cloud Essentials 256 MB** (europe-west1), whose ceiling is a **256-connection limit** — not memory. It was upgraded **2026-06-13** from the 30 MB / 30-connection tier, whose tiny ceiling was tripped by Cloud Run autoscaling (and by old+new revisions overlapping during a deploy), firing recurring *"connections limit reached"* alerts. To stay under the ceiling, each process serves Redis from one **bounded `BlockingConnectionPool`** (`redis_cache.py`): cluster-wide connections ≈ `REDIS_MAX_CONNECTIONS` (default **8**) × live Cloud Run instances. Tune `REDIS_MAX_CONNECTIONS` / `REDIS_POOL_TIMEOUT` via env vars — do not remove the pool bound. If connection alerts ever return, lower the per-instance cap or `--max-instances` before considering a bigger plan.
@@ -117,6 +118,11 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 | `post_views.py` | Server-side post view model. |
 | `platform_activity_digest.py` | Digest builder for `platform_activity` blueprint. |
 | `admin_metrics.py` | Admin dashboard metrics computation. |
+| `builder.py` | Steve Build creation service: artifact generation, async build jobs, private R2 artifacts, public website/app publishing metadata/manifests, community-scoped creation data, completion notifications, runtime/host-control policy. See [`STEVE_BUILD.md`](STEVE_BUILD.md). |
+| `builder_capsules.py` | Steve Build capsule recipe runtime: extracts Steve-authored JSON sidecars, validates the strict `capsule_recipe.v1` schema, rejects raw URLs/unknown engines/oversized limits, and executes named recipes through approved `feed` and `images` engines. |
+| `builder_feeds.py` | Steve Build public-data connector registry (`CPoint.data`): vetted keyless/free public sources, global caching, budgets, stale-while-revalidate, and circuit-breaker fallbacks for sandboxed creations. |
+| `creation_runtime.py` | Steve Build brokered data runtime: safe shared JSON state, small structured collections, and append-only form submissions for generated websites/apps/games. Enforces normalized names, size limits, row caps, and optimistic versions behind host-authenticated builder routes. |
+| `creation_match.py` | Steve Build two-player turn-based match service: seats, pending/active lifecycle, turn enforcement, optimistic versioning, move log, invite/cancel/decline/resign, and notification fan-out. |
 
 ### Entitlements & AI usage (revenue-sensitive)
 

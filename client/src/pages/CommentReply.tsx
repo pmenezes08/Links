@@ -109,7 +109,7 @@ export default function CommentReply() {
       ) {
         return false
       }
-      entitlementsHandler.showError(buildClientPremiumRequiredError())
+      entitlementsHandler.showError(buildClientPremiumRequiredError(), { communityId })
       return true
     },
     [enforcement_enabled, entitlementsLoading, entitlements, entitlementsHandler],
@@ -238,6 +238,7 @@ export default function CommentReply() {
       
       const data = await entitlementsHandler.handleResponse<{ success?: boolean; reply?: Reply; error?: string }>(
         response,
+        { communityId: post?.community_id ?? null },
       )
       if (!data) return
       console.log('[Steve AI] API response:', data)

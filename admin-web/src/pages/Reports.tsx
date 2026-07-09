@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { apiJson, apiPost } from '../utils/api'
 
 interface Report {
-  id: number
+  report_id: number
   post_id: number
   post_content?: string
-  reporter?: string
+  reporter_username?: string
   reason?: string
   status?: string
-  created_at?: string
+  reported_at?: string
+  reviewed_by?: string
 }
 
 type TabStatus = 'pending' | 'reviewed'
@@ -78,21 +79,28 @@ export default function Reports() {
       ) : (
         <div className="space-y-3">
           {reports.map(r => (
-            <div key={r.id} className="bg-surface-2 border border-white/10 rounded-xl p-4">
+            <div key={r.report_id} className="bg-surface-2 border border-white/10 rounded-xl p-4">
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   {r.post_content && (
                     <p className="text-sm mb-2 break-words">{r.post_content}</p>
                   )}
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
-                    {r.reporter && <span><i className="fa-solid fa-user mr-1" />Reporter: {r.reporter}</span>}
+                    {r.reporter_username === 'system' ? (
+                      <span className="text-accent"><i className="fa-solid fa-robot mr-1" />Auto-flagged (wordlist)</span>
+                    ) : r.reporter_username ? (
+                      <span><i className="fa-solid fa-user mr-1" />Reporter: {r.reporter_username}</span>
+                    ) : null}
                     {r.reason && <span><i className="fa-solid fa-circle-info mr-1" />{r.reason}</span>}
-                    {r.created_at && <span>{new Date(r.created_at).toLocaleDateString()}</span>}
+                    {r.reported_at && <span>{new Date(r.reported_at).toLocaleDateString()}</span>}
+                    {tab === 'reviewed' && r.reviewed_by && (
+                      <span><i className="fa-solid fa-user-check mr-1" />Handled by {r.reviewed_by}</span>
+                    )}
                   </div>
                 </div>
                 {tab === 'pending' && (
                   <div className="flex gap-2 shrink-0">
-                    <button onClick={() => handleDismiss(r.id)} className="px-3 py-1.5 text-xs rounded-lg bg-white/5 border border-white/10 text-muted hover:bg-white/10 transition">Dismiss</button>
+                    <button onClick={() => handleDismiss(r.report_id)} className="px-3 py-1.5 text-xs rounded-lg bg-white/5 border border-white/10 text-muted hover:bg-white/10 transition">Dismiss</button>
                     <button onClick={() => handleDelete(r.post_id)} className="px-3 py-1.5 text-xs rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 transition">Delete Post</button>
                   </div>
                 )}

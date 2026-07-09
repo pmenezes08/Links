@@ -397,6 +397,7 @@ _TRUNCATE_TABLES: List[str] = [
     "notifications",
     "`groups`",
     "ai_usage_log",
+    "onboarding_events",
     "special_access_log",
     "kb_pages",
     "kb_changelog",

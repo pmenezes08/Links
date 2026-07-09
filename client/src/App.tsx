@@ -888,6 +888,8 @@ function AppRoutes(){
     currentPathName.startsWith('/group_reply/') ||
     currentPathName.startsWith('/community_feed_react/') ||
     currentPathName.startsWith('/group_feed_react/') ||
+    currentPathName === '/builder' ||
+    (currentPathName.startsWith('/community/') && (currentPathName.includes('/builder') || currentPathName.includes('/creation/'))) ||
     currentPathName.startsWith('/community/') && currentPathName.includes('/feed')
   const showHeader = authLoaded && !hideHeader && !headerHiddenOverride
   const headerHeightValue = showHeader

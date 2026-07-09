@@ -17,6 +17,7 @@ import LinkPreview, { feedPostLinkPreviewUrls } from '../components/LinkPreview'
 import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
 import EditableAISummary from '../components/EditableAISummary'
 import SteveSummarySheet from '../components/steve/SteveSummarySheet'
+import FeedbackToast from '../components/moderation/FeedbackToast'
 import { SteveGlyph } from '../components/steve/SteveMark'
 import { clearDeviceCache, readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
 import { renderRichText } from '../utils/linkUtils'
@@ -120,7 +121,7 @@ export default function PostDetail(){
       ) {
         return false
       }
-      entitlementsHandler.showError(buildClientPremiumRequiredError())
+      entitlementsHandler.showError(buildClientPremiumRequiredError(), { communityId })
       return true
     },
     [enforcement_enabled, entitlementsLoading, entitlements, entitlementsHandler],
@@ -204,7 +205,7 @@ export default function PostDetail(){
         })
       })
       
-      const data = await entitlementsHandler.handleResponse<{ success?: boolean; reply?: Reply; error?: string }>(response)
+      const data = await entitlementsHandler.handleResponse<{ success?: boolean; reply?: Reply; error?: string }>(response, { communityId })
       if (!data) return // entitlements modal already shown
       
       if (data.success && data.reply) {
@@ -304,6 +305,8 @@ export default function PostDetail(){
   const [reportReason, setReportReason] = useState('')
   const [reportDetails, setReportDetails] = useState('')
   const [reportSubmitting, setReportSubmitting] = useState(false)
+  const [reportedByMe, setReportedByMe] = useState(false)
+  const [feedbackToast, setFeedbackToast] = useState<string | null>(null)
   const [blockReason, setBlockReason] = useState('')
   const [blockSubmitting, setBlockSubmitting] = useState(false)
 
@@ -1311,16 +1314,16 @@ export default function PostDetail(){
       })
       const j = await res.json().catch(() => null)
       if (j?.success) {
-        alert(j.message || t('feed.post_reported'))
         setShowReportModal(false)
         setReportReason('')
         setReportDetails('')
-        navigate(-1)
+        setReportedByMe(true)
+        setFeedbackToast(j.message || t('feed.post_reported'))
       } else {
-        alert(j?.error || t('feed.report_post_failed'))
+        setFeedbackToast(j?.error || t('feed.report_post_failed'))
       }
     } catch {
-      alert(t('feed.report_post_network_failed'))
+      setFeedbackToast(t('feed.report_post_network_failed'))
     } finally {
       setReportSubmitting(false)
     }
@@ -1801,6 +1804,12 @@ export default function PostDetail(){
                         <i className="fa-solid fa-eye-slash text-orange-400 w-4" />
                         {t('feed.hide_post')}
                       </button>
+                      {reportedByMe ? (
+                        <div className="w-full px-4 py-3 text-left text-sm text-c-text-tertiary flex items-center gap-3">
+                          <i className="fa-solid fa-flag text-c-text-tertiary w-4" />
+                          {t('feed.post_flagged')}
+                        </div>
+                      ) : (
                       <button
                         className="w-full px-4 py-3 text-left text-sm text-c-text-primary hover:bg-c-hover-bg flex items-center gap-3"
                         onClick={() => {
@@ -1811,6 +1820,7 @@ export default function PostDetail(){
                         <i className="fa-solid fa-flag text-red-400 w-4" />
                         {t('feed.report_post')}
                       </button>
+                      )}
                       </>
                       )}
                       <button
@@ -2669,9 +2679,11 @@ export default function PostDetail(){
         </div>
       )}
 
+      <FeedbackToast message={feedbackToast} onDone={() => setFeedbackToast(null)} />
+
       {/* Report Post Modal */}
       {showReportModal && (
-        <div 
+        <div
           className="fixed inset-0 z-[200] bg-c-bg-overlay backdrop-blur flex items-center justify-center p-4"
           onClick={(e) => e.currentTarget === e.target && !reportSubmitting && setShowReportModal(false)}
         >

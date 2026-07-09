@@ -72,6 +72,12 @@ export default function PushInit(){
         return
       }
 
+      // Owner Dashboard (weekly Steve pulse): /community/{id}/owner
+      if (/^\/community\/\d+\/owner/.test(url)) {
+        navigate(url)
+        return
+      }
+
       // Default: try to navigate to the URL directly
       navigate(url)
     }

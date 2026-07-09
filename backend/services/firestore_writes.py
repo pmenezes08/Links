@@ -438,7 +438,8 @@ def merge_onboarding_identity_to_steve_profile(username: str, collected: Optiona
     """Merge verbatim onboarding answers onto steve_user_profiles for Steve (networking, context).
 
     Keys match OnboardingChat collected: journey, talkAllDay, reachOut, recommend,
-    socialProvidedLinks (list of {platform, url}).
+    professionalAssociations, professionalStrengths, socialProvidedLinks
+    (list of {platform, url}).
     """
     if not USE_FIRESTORE_WRITES or not username:
         return
@@ -453,7 +454,8 @@ def merge_onboarding_identity_to_steve_profile(username: str, collected: Optiona
         if not isinstance(existing_ob, dict):
             existing_ob = {}
         ob_id = dict(existing_ob)
-        for k in ('journey', 'talkAllDay', 'reachOut', 'recommend'):
+        for k in ('journey', 'talkAllDay', 'reachOut', 'recommend',
+                  'professionalAssociations', 'professionalStrengths'):
             if k in collected:
                 value = (collected.get(k) or '').strip()
                 # Never let an empty value erase a previously saved answer:

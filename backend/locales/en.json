@@ -54,8 +54,8 @@
   },
   "entitlements": {
     "premium_required": {
-      "message": "Premium unlocks Steve in DM, feed, and eligible chats — up to {steve_uses_per_month} Steve conversations per month and {whisper_minutes_per_month} minutes of voice-note summaries each billing cycle.",
-      "cta_label": "Upgrade to Premium"
+      "message": "Steve is unlocked through a community's paid plan. Communities on a paid tier can add the Steve Community Package so every member gets Steve in the feed, groups, and chats.",
+      "cta_label": "See community plans"
     },
     "daily_cap": {
       "message": "You've hit today's Steve limit of {ai_daily_limit} calls. It resets at {resets_at_daily}.",
@@ -70,8 +70,8 @@
       "cta_label": "See my usage"
     },
     "community_pool_exhausted": {
-      "message": "This community's shared Steve pool is empty for this month. Premium members can still use their personal allowance.",
-      "cta_label": "Upgrade to Premium"
+      "message": "This community's shared Steve pool is empty for this month. It refills next cycle — community owners can upgrade the community's plan for a bigger pool.",
+      "cta_label": "See community plans"
     },
     "rpm_exceeded": {
       "message": "You're sending requests too fast — slow down for a moment and try again.",
@@ -90,8 +90,8 @@
       "cta_label": "Contact support"
     },
     "grace_expired": {
-      "message": "Your Enterprise seat has ended. Subscribe to Premium to keep using Steve.",
-      "cta_label": "Subscribe to Premium"
+      "message": "Your Enterprise seat has ended. Steve stays available through a community's paid plan.",
+      "cta_label": "See community plans"
     }
   },
   "billing": {
@@ -137,6 +137,12 @@
     },
     "hints": {
       "tier_load_failed": "Unable to load tier hints right now."
+    },
+    "redirect": {
+      "fallback": "That's a great question! Let's finish setting up your profile first, then I can help with that.",
+      "keep_going": "Let's keep going!",
+      "come_back": "Interesting! Let's come back to that later. For now, let's finish getting you set up.",
+      "error": "Great thought! Let's finish setting up your profile first, then we can chat about anything."
     }
   },
   "email": {
@@ -162,6 +168,26 @@
     }
   },
   "notifications": {
+    "owner_pulse": {
+      "title": "Steve's weekly pulse",
+      "body": "{wau} members were active in {community} this week. Here's your dashboard.",
+      "message": "Weekly pulse: {wau} members active in {community} this week"
+    },
+    "owner_pulse_up": {
+      "title": "Steve's weekly pulse",
+      "body": "{wau} members active in {community} this week — {delta} more than last week. Nice.",
+      "message": "Weekly pulse: {wau} active in {community}, {delta} more than last week"
+    },
+    "owner_report": {
+      "title": "Something was flagged",
+      "body": "A member flagged a post in {community}. Take a look when you can — you decide what stays.",
+      "message": "A member flagged a post in {community} — you decide what stays"
+    },
+    "owner_report_auto": {
+      "title": "Something was flagged",
+      "body": "A post in {community} was flagged automatically. Take a look when you can — you decide what stays.",
+      "message": "A post in {community} was flagged automatically — you decide what stays"
+    },
     "group_feed_post": {
       "title": "New group post",
       "body": "{author}: {preview}",
@@ -237,6 +263,21 @@
       "body": "{author} invited you to {community}",
       "message": "{author} invited you to join {community}"
     },
+    "match_invite": {
+      "title": "New game challenge",
+      "body": "{name} challenged you to a game",
+      "message": "{name} challenged you to a game"
+    },
+    "match_move": {
+      "title": "Your move",
+      "body": "{name} played — it's your turn",
+      "message": "It's your turn against {name}"
+    },
+    "match_over": {
+      "title": "Game over",
+      "body": "Your game with {name} has ended",
+      "message": "Your game with {name} has ended"
+    },
     "event_reminder": {
       "title": "Upcoming event",
       "body": "{event_name} starts soon",
@@ -252,6 +293,16 @@
       "body": "You're in — {community} accepted your request.",
       "message": "You're in — {community} accepted your request."
     },
+    "builder_complete": {
+      "title": "Steve finished your build",
+      "body": "{title} is ready to test.",
+      "message": "Steve finished {title}. Test it now."
+    },
+    "builder_failed": {
+      "title": "Steve could not finish this build",
+      "body": "Tap to retry when you're ready.",
+      "message": "Steve could not finish your build. Tap to retry."
+    },
     "profile_section_professional": {
       "title": "A question from Steve",
       "body": "What do you do? I can't introduce someone I don't know.",
@@ -261,6 +312,26 @@
       "title": "From Steve",
       "body": "I know what you do. I'd like to know who you are.",
       "message": "I know what you do. I'd like to know who you are."
+    },
+    "invitee_joined": {
+      "title": "Your invite worked",
+      "body": "{username} just joined {community} — you brought them in.",
+      "message": "{username} accepted your invite and joined {community}."
+    },
+    "billing_payment_failed_personal": {
+      "title": "Payment didn't go through",
+      "body": "We couldn't process your Premium payment. Update your payment method to keep your benefits.",
+      "message": "We couldn't process your latest Premium payment. Please update your payment method to keep your benefits."
+    },
+    "billing_payment_failed_community": {
+      "title": "Payment didn't go through",
+      "body": "We couldn't process the payment for {community}. Update your payment method to keep the paid plan.",
+      "message": "We couldn't process the latest payment for {community}. Please update your payment method to keep the community's paid plan."
+    },
+    "billing_payment_failed_steve": {
+      "title": "Payment didn't go through",
+      "body": "We couldn't process the payment for Steve in {community}. Update your payment method to keep the package active.",
+      "message": "We couldn't process the latest payment for the Steve package in {community}. Please update your payment method to keep it active."
     }
   },
   "communities": {
@@ -348,7 +419,8 @@
       "names_and_last": "{prefix}, and {last}",
       "joined_line": "A few people joined this week: {names}.",
       "new_members": "If you are new, drop a note in the **Introduce Yourself** thread when you are ready. Name, reason you joined, and one thing you are looking for is plenty.",
-      "existing_members": "If you have been here a while, say hello. Good spaces get built in small replies."
+      "existing_members": "If you have been here a while, say hello. Good spaces get built in small replies.",
+      "networking_cue": "Curious who here is worth meeting? [Ask Steve for introductions](/networking?community={community_id}&source=welcome_cue)."
     }
   },
   "feed": {
@@ -380,8 +452,9 @@
     "feedback_submitted": "Feedback submitted successfully",
     "community_not_found": "Community not found",
     "not_community_member": "Forbidden: not a member of this community",
-    "post_reported": "Post reported successfully. Our team will review it.",
-    "post_already_reported": "You have already reported this post",
+    "post_reported": "Thanks — this is now with the community's owner. The author won't know it was you.",
+    "post_already_reported": "You have already flagged this post",
+    "report_rate_limited": "You've flagged a lot recently. Give it a little while and try again.",
     "post_hidden": "Post hidden",
     "post_already_hidden": "Post already hidden",
     "post_unhidden": "Post unhidden",

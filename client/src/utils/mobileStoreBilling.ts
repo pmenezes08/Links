@@ -47,13 +47,19 @@ export function nativeIapPurchasesEnabled(config: IapConfig | null | undefined):
   return !!config?.iap_purchases_enabled
 }
 
-/** Native store IAP checkout can start (platform + configured product id). */
+/**
+ * Native store IAP checkout can start (platform + configured product id +
+ * purchases enabled in the KB config). When `iap_purchases_enabled` is off
+ * every native purchase CTA must degrade to an informational state — never
+ * to a web-billing purchase link (App Store 3.1.1). Restore is deliberately
+ * NOT gated on this flag.
+ */
 export function canUseNativeStoreIap(
   provider: StoreProvider | null,
-  _config: IapConfig | null | undefined,
+  config: IapConfig | null | undefined,
   productId: string | undefined | null,
 ): boolean {
-  return !!(provider && productId)
+  return !!(provider && productId && nativeIapPurchasesEnabled(config))
 }
 
 export async function loadIapConfig(): Promise<IapConfig | null> {

@@ -574,8 +574,8 @@ def api_process_due_content_generation_jobs():
         due_jobs = get_due_jobs(limit=5)
         processed = 0
         for job in due_jobs:
+            cadence = str((job.get("schedule") or {}).get("cadence") or "").strip().lower()
             try:
-                cadence = str((job.get("schedule") or {}).get("cadence") or "").strip().lower()
                 result = execute_job(job, triggered_by_username="system-cron")
                 update_job_next_run(job["id"], cadence)
                 processed += 1
@@ -588,6 +588,19 @@ def api_process_due_content_generation_jobs():
                 )
             except Exception as job_err:
                 logger.error("Failed to process due job %s: %s", job.get("id"), job_err, exc_info=True)
+                # CRITICAL: advance the schedule on failure too. Leaving
+                # next_run_at untouched keeps the job "due" forever, so the
+                # cron re-executes it every cycle — a weekly web-search job
+                # became a 10-minute job and burned ~4.6k paid grok calls
+                # before exhausting the xAI credits (July 2026). A failed
+                # weekly run waits for its next scheduled slot instead.
+                try:
+                    update_job_next_run(job["id"], cadence)
+                except Exception as adv_err:
+                    logger.error(
+                        "Could not advance schedule for failed job %s: %s",
+                        job.get("id"), adv_err,
+                    )
         return jsonify({"success": True, "processed": processed, "due": len(due_jobs)})
     except Exception as exc:
         logger.error("Due jobs cron error: %s", exc, exc_info=True)

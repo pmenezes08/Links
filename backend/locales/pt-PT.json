@@ -54,8 +54,8 @@
   },
   "entitlements": {
     "premium_required": {
-      "message": "O Premium desbloqueia o Steve em DM, feed e conversas elegíveis — até {steve_uses_per_month} conversas com o Steve por mês e {whisper_minutes_per_month} minutos de resumos de notas de voz em cada ciclo de faturação.",
-      "cta_label": "Subir para Premium"
+      "message": "O Steve é desbloqueado através do plano pago de uma comunidade. Comunidades num escalão pago podem adicionar o Pacote Steve para comunidades, para todos os membros terem o Steve no feed, nos grupos e nas conversas.",
+      "cta_label": "Ver planos de comunidade"
     },
     "daily_cap": {
       "message": "Atingiste o limite diário do Steve ({ai_daily_limit} chamadas). Reinicia às {resets_at_daily}.",
@@ -70,8 +70,8 @@
       "cta_label": "Ver a minha utilização"
     },
     "community_pool_exhausted": {
-      "message": "A bolsa partilhada do Steve nesta comunidade está esgotada este mês. Os membros Premium podem continuar a usar a sua quota pessoal.",
-      "cta_label": "Subir para Premium"
+      "message": "A bolsa partilhada do Steve nesta comunidade está esgotada este mês. Renova no próximo ciclo — quem gere a comunidade pode subir o plano para ter uma bolsa maior.",
+      "cta_label": "Ver planos de comunidade"
     },
     "rpm_exceeded": {
       "message": "Estás a enviar pedidos demasiado depressa — abranda um momento e tenta de novo.",
@@ -90,8 +90,8 @@
       "cta_label": "Contactar o suporte"
     },
     "grace_expired": {
-      "message": "O teu lugar Enterprise terminou. Subscreve o Premium para continuares a usar o Steve.",
-      "cta_label": "Subscrever Premium"
+      "message": "O teu lugar Enterprise terminou. O Steve continua disponível através do plano pago de uma comunidade.",
+      "cta_label": "Ver planos de comunidade"
     }
   },
   "billing": {
@@ -137,6 +137,12 @@
     },
     "hints": {
       "tier_load_failed": "Não foi possível carregar as sugestões de plano."
+    },
+    "redirect": {
+      "fallback": "Boa pergunta! Vamos primeiro terminar o seu perfil e depois posso ajudar com isso.",
+      "keep_going": "Vamos continuar!",
+      "come_back": "Interessante! Voltamos a isso mais tarde. Para já, vamos terminar a sua configuração.",
+      "error": "Boa ideia! Vamos primeiro terminar o seu perfil e depois falamos sobre o que quiser."
     }
   },
   "email": {
@@ -162,6 +168,26 @@
     }
   },
   "notifications": {
+    "owner_pulse": {
+      "title": "O pulso semanal do Steve",
+      "body": "{wau} membros estiveram ativos em {community} esta semana. Aqui tens o teu painel.",
+      "message": "Pulso semanal: {wau} membros ativos em {community} esta semana"
+    },
+    "owner_pulse_up": {
+      "title": "O pulso semanal do Steve",
+      "body": "{wau} membros ativos em {community} esta semana — mais {delta} do que na anterior. Boa.",
+      "message": "Pulso semanal: {wau} ativos em {community}, mais {delta} do que na semana passada"
+    },
+    "owner_report": {
+      "title": "Algo foi sinalizado",
+      "body": "Um membro sinalizou uma publicação em {community}. Vê quando puderes — tu decides o que fica.",
+      "message": "Um membro sinalizou uma publicação em {community} — tu decides o que fica"
+    },
+    "owner_report_auto": {
+      "title": "Algo foi sinalizado",
+      "body": "Uma publicação em {community} foi sinalizada automaticamente. Vê quando puderes — tu decides o que fica.",
+      "message": "Uma publicação em {community} foi sinalizada automaticamente — tu decides o que fica"
+    },
     "group_feed_post": {
       "title": "Nova publicação no grupo",
       "body": "{author}: {preview}",
@@ -237,6 +263,21 @@
       "body": "{author} convidou-te para {community}",
       "message": "{author} convidou-te para entrares em {community}"
     },
+    "match_invite": {
+      "title": "Novo desafio de jogo",
+      "body": "{name} desafiou-te para um jogo",
+      "message": "{name} desafiou-te para um jogo"
+    },
+    "match_move": {
+      "title": "É a tua vez",
+      "body": "{name} jogou — é a tua vez",
+      "message": "É a tua vez contra {name}"
+    },
+    "match_over": {
+      "title": "Jogo terminado",
+      "body": "O teu jogo com {name} terminou",
+      "message": "O teu jogo com {name} terminou"
+    },
     "event_reminder": {
       "title": "Evento a aproximar-se",
       "body": "{event_name} começa em breve",
@@ -252,6 +293,16 @@
       "body": "Estás dentro — {community} aceitou o teu pedido.",
       "message": "Estás dentro — {community} aceitou o teu pedido."
     },
+    "builder_complete": {
+      "title": "O Steve terminou a tua criação",
+      "body": "{title} está pronta para testar.",
+      "message": "O Steve terminou {title}. Testa agora."
+    },
+    "builder_failed": {
+      "title": "O Steve não conseguiu terminar esta criação",
+      "body": "Toca para tentar outra vez quando estiveres pronto.",
+      "message": "O Steve não conseguiu terminar a tua criação. Toca para tentar outra vez."
+    },
     "profile_section_professional": {
       "title": "Uma pergunta do Steve",
       "body": "O que fazes? Não consigo apresentar quem não conheço.",
@@ -261,6 +312,26 @@
       "title": "Do Steve",
       "body": "Já sei o que fazes. Gostava de saber quem és.",
       "message": "Já sei o que fazes. Gostava de saber quem és."
+    },
+    "invitee_joined": {
+      "title": "O teu convite resultou",
+      "body": "{username} acabou de entrar em {community} — veio pelo teu convite.",
+      "message": "{username} aceitou o teu convite e entrou em {community}."
+    },
+    "billing_payment_failed_personal": {
+      "title": "O pagamento não passou",
+      "body": "Não conseguimos processar o pagamento do teu Premium. Atualiza o método de pagamento para manteres os benefícios.",
+      "message": "Não conseguimos processar o último pagamento do teu Premium. Atualiza o método de pagamento para manteres os benefícios."
+    },
+    "billing_payment_failed_community": {
+      "title": "O pagamento não passou",
+      "body": "Não conseguimos processar o pagamento de {community}. Atualiza o método de pagamento para manteres o plano pago.",
+      "message": "Não conseguimos processar o último pagamento de {community}. Atualiza o método de pagamento para manteres o plano pago da comunidade."
+    },
+    "billing_payment_failed_steve": {
+      "title": "O pagamento não passou",
+      "body": "Não conseguimos processar o pagamento do Steve em {community}. Atualiza o método de pagamento para manteres o pacote ativo.",
+      "message": "Não conseguimos processar o último pagamento do pacote Steve em {community}. Atualiza o método de pagamento para o manteres ativo."
     }
   },
   "communities": {
@@ -348,7 +419,8 @@
       "names_and_last": "{prefix} e {last}",
       "joined_line": "Algumas pessoas juntaram-se esta semana: {names}.",
       "new_members": "Se acabaste de chegar, deixa uma nota no tópico **Apresenta-te** quando quiseres. Nome, motivo para te juntares e uma coisa que procuras chegam.",
-      "existing_members": "Se já estás cá há algum tempo, diz olá. Os bons espaços constroem-se em pequenas respostas."
+      "existing_members": "Se já estás cá há algum tempo, diz olá. Os bons espaços constroem-se em pequenas respostas.",
+      "networking_cue": "Queres saber quem vale a pena conhecer por aqui? [Pede apresentações ao Steve](/networking?community={community_id}&source=welcome_cue)."
     }
   },
   "feed": {
@@ -380,8 +452,9 @@
     "feedback_submitted": "Feedback enviado com sucesso",
     "community_not_found": "Comunidade não encontrada",
     "not_community_member": "Proibido: não és membro desta comunidade",
-    "post_reported": "Publicação reportada com sucesso. A nossa equipa vai analisar.",
-    "post_already_reported": "Já reportaste esta publicação",
+    "post_reported": "Obrigado — está agora com o dono da comunidade. O autor não vai saber que foste tu.",
+    "post_already_reported": "Já sinalizaste esta publicação",
+    "report_rate_limited": "Sinalizaste bastante coisa há pouco. Espera um bocadinho e tenta outra vez.",
     "post_hidden": "Publicação ocultada",
     "post_already_hidden": "Publicação já ocultada",
     "post_unhidden": "Publicação visível novamente",

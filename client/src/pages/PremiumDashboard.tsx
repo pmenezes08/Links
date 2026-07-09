@@ -455,6 +455,18 @@ export default function PremiumDashboard() {
     } catch {}
   }, [])
 
+  // Onboarding exits should land in the user's community, not the dashboard
+  // shell: invite context first, then a fresh join, then the only community
+  // they have. Multi-community users (no invite context) keep the dashboard.
+  // Deliberately no ?joined=1 — the invite-accept flow owns that welcome UI.
+  const resolveOnboardingExitUrl = () => {
+    const targetId =
+      pendingInviteTarget?.communityId
+      ?? joinedCommunityId
+      ?? (communitiesLoaded && communities.length === 1 ? communities[0]?.id : null)
+    return targetId ? `/community_feed_react/${targetId}` : '/premium_dashboard'
+  }
+
   const handleGoToCommunity = () => {
     try { localStorage.setItem(doneKey, '1') } catch {}
     const fallbackCommunityId = communities[0]?.id
@@ -1086,10 +1098,6 @@ export default function PremiumDashboard() {
           <button
             type="button"
             onClick={() => {
-              // When exactly one section is missing, open the scoped
-              // 2-minute builder for that section — the full chat
-              // (name/photo/section picker) is only right for a
-              // completely fresh profile.
               if (personalSectionComplete && !professionalSectionComplete) {
                 navigate('/steve/profile-builder/professional')
               } else if (professionalSectionComplete && !personalSectionComplete) {
@@ -1132,6 +1140,7 @@ export default function PremiumDashboard() {
           <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/profile">{t('navigation.profile')}</a>
           <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/user_chat">{t('navigation.messages')}</a>
           <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/followers">{t('navigation.followers')}</a>
+          <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/builds">My Builds</a>
           {hasGymAccess && <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/your_sports">{t('dashboard.your_sports')}</a>}
           <button className="block w-full text-left px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" onClick={requestLogout}>{t('navigation.logout')}</button>
           <a className="block px-5 py-3 text-sm text-c-text-primary hover:bg-cpoint-turquoise/20 hover:text-cpoint-turquoise" href="/account_settings">
@@ -1222,11 +1231,16 @@ export default function PremiumDashboard() {
                 <SkeletonCommunityCard />
               </div>
             ) : communities.length === 0 ? (
-              <DashboardEmptyState
-                onCreate={() => { setNewCommType('General'); setShowCreateModal(true) }}
-                onJoin={() => setShowJoinModal(true)}
-                onAbout={() => setShowAboutCPointModal(true)}
-              />
+              <>
+                <DashboardEmptyState
+                  onCreate={() => { setNewCommType('General'); setShowCreateModal(true) }}
+                  onJoin={() => setShowJoinModal(true)}
+                  onAbout={() => setShowAboutCPointModal(true)}
+                />
+                {/* Profile-help card intentionally NOT repeated here — it already
+                    renders once at the top of the content area for every state,
+                    including zero communities. */}
+              </>
             ) : (
             <>
               {searchOpen && (
@@ -1276,6 +1290,21 @@ export default function PremiumDashboard() {
                       <i className="fa-solid fa-at text-sm text-c-text-tertiary" aria-hidden="true" />
                       <span className="min-w-0 flex-1 truncate text-sm font-medium text-c-text-primary">
                         {t('communities.find_entry_label')}
+                      </span>
+                      <i className="fa-solid fa-chevron-right text-xs text-c-text-tertiary" aria-hidden="true" />
+                    </button>
+
+                    {/* My Builds — direct access to Steve Build creations without
+                        remembering which community they were made in. */}
+                    <button
+                      type="button"
+                      onClick={() => navigate('/builds')}
+                      aria-label="My Builds"
+                      className="flex h-11 w-full items-center gap-3 rounded-2xl border border-c-border bg-c-bg-elevated px-3 text-left transition hover:bg-c-hover-bg active:scale-[0.99]"
+                    >
+                      <i className="fa-solid fa-wand-magic-sparkles text-sm text-cpoint-turquoise" aria-hidden="true" />
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-c-text-primary">
+                        My Builds
                       </span>
                       <i className="fa-solid fa-chevron-right text-xs text-c-text-tertiary" aria-hidden="true" />
                     </button>
@@ -1381,6 +1410,7 @@ export default function PremiumDashboard() {
                 setOnboardingLaunching(true)
                 setShowOnboarding(true)
               }}
+              exitUrl={resolveOnboardingExitUrl()}
             />
           )}
           {/* The hard "finish your profile" wall is gone for good: the rich
@@ -1410,7 +1440,7 @@ export default function PremiumDashboard() {
                 setShowOnboardingWelcome(false)
                 setOnboardingLaunching(false)
                             onboardingTriggeredRef.current = false
-                window.location.href = '/premium_dashboard'
+                window.location.href = resolveOnboardingExitUrl()
               }}
               onCreateCommunity={() => {
                 setShowOnboarding(false)

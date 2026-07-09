@@ -259,7 +259,29 @@ gcloud scheduler jobs create http kb-weekly-synthesis \
   --http-method=POST \
   --headers="X-Cron-Secret=$SECRET" \
   --attempt-deadline=900s
+
+# Steve Builder reaper — reclaims async build jobs orphaned by a crashed
+# worker / recycled Cloud Run instance. Requeues + re-dispatches jobs whose
+# 10-min lease expired (if attempts remain), and terminally fails those past
+# max_attempts (one block row + one notification). Idempotent — safe to run
+# often. Every ~5 min keeps a stuck "building..." state short.
+#   curl -X POST "$BASE/api/cron/builder/sweep" -H "X-Cron-Secret: $SECRET"
+gcloud scheduler jobs create http builder-sweep \
+  --location=europe-west1 \
+  --schedule="*/5 * * * *" \
+  --time-zone=UTC \
+  --uri="$BASE/api/cron/builder/sweep" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=120s
 ```
+
+Note: the builder worker callback `/api/internal/builder/jobs/<id>/run` is
+invoked by **Cloud Tasks** (not Scheduler) and accepts either `X-Cron-Secret`
+(`CRON_SHARED_SECRET`) or a dedicated `X-Builder-Job-Secret` (`BUILDER_JOB_SECRET`).
+See `docs/DEPLOYMENT_INSTANCES.md` for the Cloud Tasks queue env (`BUILDER_TASKS_QUEUE`,
+`BUILDER_TASKS_LOCATION`, `PUBLIC_BASE_URL`); without it, builds fall back to a
+non-durable in-process thread (logged at startup by `builder_async_health`).
 
 ## 3. Monitor the jobs
 
@@ -481,3 +503,39 @@ gcloud scheduler jobs create http refresh-embedding-index \
 
 The snapshot is an accelerator, not a source of truth: if it is missing or
 corrupt, networking falls back to the legacy Firestore stream on first use.
+
+## 11. Owner weekly pulse (Steve's dashboard digest)
+
+| Field | Value |
+|-------|--------|
+| **URI** | `{BASE}/api/cron/owner-weekly-pulse` |
+| **Method** | `POST` |
+| **Header** | `X-Cron-Secret` = same `CRON_SHARED_SECRET` as other crons |
+| **Suggested schedule** | **Weekly, Monday 08:00 UTC** (`0 8 * * 1`) — one templated push + in-app row per community owner per ISO week, deep-linking to `/community/{id}/owner`. |
+| **Query** | `dry_run=1` — lists candidate owners + this-week/prior-week active counts without reserving or sending. |
+| **Kill switch** | env `OWNER_PULSE_ENABLED` must be truthy on the service for real sends (dry-run works regardless; a real run with the switch off returns 409). |
+
+Idempotent by design: sends are reserved INSERT-first in `owner_pulse_sends`
+(`UNIQUE(username, week_key)`), so Scheduler retries never double-push.
+Quiet communities (zero active members this week) are skipped, owners with
+several root networks get one pulse for their largest network, and copy is
+resolved in the **recipient's** locale via `notification_copy`.
+
+```bash
+BASE=https://cpoint-app-staging-739552904126.europe-west1.run.app
+SECRET=$(gcloud secrets versions access latest --secret=cron-shared-secret-staging)
+
+# Smoke-test first:
+curl -X POST "$BASE/api/cron/owner-weekly-pulse?dry_run=1" -H "X-Cron-Secret: $SECRET"
+
+gcloud scheduler jobs create http owner-weekly-pulse \
+  --location=europe-west1 \
+  --schedule="0 8 * * 1" \
+  --time-zone=UTC \
+  --uri="$BASE/api/cron/owner-weekly-pulse" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=300s
+```
+
+Add `owner-weekly-pulse` to the bulk-pause list in §6 when you register the job in GCP.

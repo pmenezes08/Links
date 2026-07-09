@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.onboarding_session import (
@@ -49,15 +49,12 @@ LOW_DATA_MEMBER_THRESHOLD = 5
 _NOT_ADMIN_MEMBER = "uc.user_id NOT IN (SELECT id FROM users WHERE LOWER(username) = 'admin')"
 _QR_INVITE_EMAIL_PATTERN = "qr-invite-%@placeholder.local"
 
-# Paid teaser metrics shown locked-but-visible on the free tier. These are
-# *built* in a later phase; here they only carry their shell so the client can
-# render the blurred upgrade teaser. Add/rename freely — additive.
-PAID_TEASERS = (
-    {"id": "activation", "format": "locked", "label_key": "owner.metric.activation",
-     "hint_key": "owner.metric.activation_hint"},
-    {"id": "sticking", "format": "locked", "label_key": "owner.metric.sticking",
-     "hint_key": "owner.metric.sticking_hint"},
-)
+# New-member activation: a joiner counts as activated if they have any
+# activity event within this many days of their own join date. Joiners are
+# considered over the trailing join window so the rate reflects recent
+# onboarding, not ancient history.
+ACTIVATION_WINDOW_DAYS = 14
+ACTIVATION_JOIN_WINDOW_DAYS = 60
 
 
 def _scalar(cursor, sql: str, params: tuple) -> int:
@@ -119,8 +116,10 @@ def _distinct_members(cursor, ph: str, ids: List[int], cutoff: Optional[str] = N
     return _scalar(cursor, sql, params)
 
 
-def _active_users(cursor, ph: str, ids: List[int], cutoff: str) -> int:
-    """Distinct users active in the scope's communities since ``cutoff``.
+def _active_users(cursor, ph: str, ids: List[int], cutoff: str,
+                  until: Optional[str] = None) -> int:
+    """Distinct users active in the scope's communities since ``cutoff``
+    (optionally bounded ``< until`` for prior-window comparisons).
 
     Active = visited the feed (community_visit_history) OR posted/replied in the
     community feed OR posted/replied in a group under it. Group chats are NOT
@@ -131,25 +130,31 @@ def _active_users(cursor, ph: str, ids: List[int], cutoff: str) -> int:
     if not ids:
         return 0
     n = _in_clause(ph, len(ids))
+    upper = f"AND {{col}} < {ph}" if until else ""
+
+    def w(col: str) -> str:
+        return upper.format(col=col)
+
     sql = f"""
         SELECT COUNT(DISTINCT active.username) AS count FROM (
-            SELECT username FROM community_visit_history WHERE community_id IN {n} AND visit_time >= {ph}
+            SELECT username FROM community_visit_history WHERE community_id IN {n} AND visit_time >= {ph} {w('visit_time')}
             UNION
-            SELECT username FROM posts WHERE community_id IN {n} AND timestamp >= {ph}
+            SELECT username FROM posts WHERE community_id IN {n} AND timestamp >= {ph} {w('timestamp')}
             UNION
-            SELECT username FROM replies WHERE community_id IN {n} AND timestamp >= {ph}
+            SELECT username FROM replies WHERE community_id IN {n} AND timestamp >= {ph} {w('timestamp')}
             UNION
             SELECT gp.username FROM group_posts gp JOIN `groups` g ON gp.group_id = g.id
-                WHERE g.community_id IN {n} AND gp.created_at >= {ph}
+                WHERE g.community_id IN {n} AND gp.created_at >= {ph} {w('gp.created_at')}
             UNION
             SELECT grp.username FROM group_replies grp
                 JOIN group_posts gp ON grp.group_post_id = gp.id
                 JOIN `groups` g ON gp.group_id = g.id
-                WHERE g.community_id IN {n} AND grp.created_at >= {ph}
+                WHERE g.community_id IN {n} AND grp.created_at >= {ph} {w('grp.created_at')}
         ) AS active
         WHERE LOWER(active.username) <> 'admin'
     """
-    params = (tuple(ids) + (cutoff,)) * 5
+    arm = (tuple(ids) + (cutoff,) + ((until,) if until else ()))
+    params = arm * 5
     return _scalar(cursor, sql, params)
 
 
@@ -169,9 +174,11 @@ def _scope_member_usernames(cursor, ph: str, ids: List[int]) -> List[str]:
         return []
 
 
-def _communicating_members(cursor, ph: str, ids: List[int], cutoff: str) -> int:
-    """Distinct members who messaged ANOTHER member since ``cutoff`` — via a DM
-    to a fellow member, or a group chat that has >=2 members of this scope.
+def _communicating_members(cursor, ph: str, ids: List[int], cutoff: str,
+                           until: Optional[str] = None) -> int:
+    """Distinct members who messaged ANOTHER member since ``cutoff`` (optionally
+    bounded ``< until``) — via a DM to a fellow member, or a group chat that has
+    >=2 members of this scope.
 
     Chats/DMs aren't community-scoped, so we attribute by MEMBERSHIP OVERLAP.
     Aggregate count only — never who-talked-to-whom, never content (privacy)."""
@@ -179,20 +186,23 @@ def _communicating_members(cursor, ph: str, ids: List[int], cutoff: str) -> int:
     if not members:
         return 0
     m = _in_clause(ph, len(members))
+    dm_upper = f"AND msg.timestamp < {ph}" if until else ""
+    gc_upper = f"AND gcm.created_at < {ph}" if until else ""
     sql = f"""
         SELECT COUNT(DISTINCT comm.username) AS count FROM (
             SELECT msg.sender AS username FROM messages msg
-                WHERE msg.timestamp >= {ph} AND msg.sender IN {m} AND msg.receiver IN {m}
+                WHERE msg.timestamp >= {ph} {dm_upper} AND msg.sender IN {m} AND msg.receiver IN {m}
             UNION
             SELECT gcm.sender_username AS username FROM group_chat_messages gcm
-                WHERE gcm.created_at >= {ph} AND gcm.sender_username IN {m}
+                WHERE gcm.created_at >= {ph} {gc_upper} AND gcm.sender_username IN {m}
                   AND gcm.group_id IN (
                     SELECT group_id FROM group_chat_members WHERE username IN {m}
                     GROUP BY group_id HAVING COUNT(*) >= 2)
         ) AS comm
     """
     mt = tuple(members)
-    params = (cutoff,) + mt + mt + (cutoff,) + mt + mt
+    ub = (until,) if until else ()
+    params = (cutoff,) + ub + mt + mt + (cutoff,) + ub + mt + mt
     return _scalar(cursor, sql, params)
 
 
@@ -237,18 +247,18 @@ def _top_contributors(cursor, ph: str, ids: List[int], kind: str,
 
 
 def _top_active_users(cursor, ph: str, ids: List[int], cutoff: str, limit: int = 5) -> List[Dict[str, Any]]:
-    """Top members by total activity *footprint* since ``cutoff`` — the people
-    composing DAU/WAU/MAU. Counts every activity event (visit + post + reply +
-    group post/reply), so it's broader than the per-type leaderboards. 'admin'
-    excluded. Names people (celebratory)."""
+    """Top members by *contribution* footprint since ``cutoff`` (posts, replies,
+    group posts/replies). Visits are deliberately excluded from this NAMED list
+    — publicly ranking someone for reading a lot is surveillance, not
+    celebration; visits still count toward the aggregate DAU/WAU/MAU. 'admin'
+    excluded."""
     if not ids:
         return []
     n = _in_clause(ph, len(ids))
     lim = max(1, min(20, int(limit)))
     sql = f"""
         SELECT ev.username AS username, COUNT(*) AS count FROM (
-            SELECT username FROM community_visit_history WHERE community_id IN {n} AND visit_time >= {ph}
-            UNION ALL SELECT username FROM posts WHERE community_id IN {n} AND timestamp >= {ph}
+            SELECT username FROM posts WHERE community_id IN {n} AND timestamp >= {ph}
             UNION ALL SELECT username FROM replies WHERE community_id IN {n} AND timestamp >= {ph}
             UNION ALL SELECT gp.username FROM group_posts gp JOIN `groups` g ON gp.group_id = g.id
                 WHERE g.community_id IN {n} AND gp.created_at >= {ph}
@@ -260,7 +270,7 @@ def _top_active_users(cursor, ph: str, ids: List[int], cutoff: str, limit: int =
         WHERE LOWER(ev.username) <> 'admin'
         GROUP BY ev.username ORDER BY count DESC LIMIT {lim}
     """
-    params = (tuple(ids) + (cutoff,)) * 5
+    params = (tuple(ids) + (cutoff,)) * 4
     out: List[Dict[str, Any]] = []
     try:
         cursor.execute(sql, params)
@@ -272,6 +282,202 @@ def _top_active_users(cursor, ph: str, ids: List[int], cutoff: str, limit: int =
     except Exception as exc:  # pragma: no cover - defensive
         logger.debug("_top_active_users failed: %s", exc)
     return out
+
+
+def _activated_within_window_sql(ph: str, n: str) -> str:
+    """SQL fragment: TRUE when ``u``/``uc`` (users + user_communities aliases in
+    the outer query) had any activity event within ``ACTIVATION_WINDOW_DAYS`` of
+    their own join date. Shared by activation and the invite-funnel stage 3.
+
+    Per-joiner date arithmetic is dialect-specific; on SQLite dev environments
+    the _scalar guard degrades callers to 0 rather than erroring (MySQL
+    everywhere real: CI, staging, prod).
+    """
+    from backend.services.database import USE_MYSQL
+
+    if USE_MYSQL:
+        window_end = f"DATE_ADD(uc.joined_at, INTERVAL {int(ACTIVATION_WINDOW_DAYS)} DAY)"
+    else:  # pragma: no cover - sqlite dev fallback
+        window_end = f"datetime(uc.joined_at, '+{int(ACTIVATION_WINDOW_DAYS)} days')"
+    return f"""(
+            EXISTS (SELECT 1 FROM community_visit_history v
+                    WHERE v.username = u.username AND v.community_id IN {n}
+                      AND v.visit_time >= uc.joined_at AND v.visit_time < {window_end})
+            OR EXISTS (SELECT 1 FROM posts p
+                    WHERE p.username = u.username AND p.community_id IN {n}
+                      AND p.timestamp >= uc.joined_at AND p.timestamp < {window_end})
+            OR EXISTS (SELECT 1 FROM replies r
+                    WHERE r.username = u.username AND r.community_id IN {n}
+                      AND r.timestamp >= uc.joined_at AND r.timestamp < {window_end})
+            OR EXISTS (SELECT 1 FROM group_posts gp JOIN `groups` g ON gp.group_id = g.id
+                    WHERE gp.username = u.username AND g.community_id IN {n}
+                      AND gp.created_at >= uc.joined_at AND gp.created_at < {window_end})
+            OR EXISTS (SELECT 1 FROM group_replies grp
+                    JOIN group_posts gp2 ON grp.group_post_id = gp2.id
+                    JOIN `groups` g2 ON gp2.group_id = g2.id
+                    WHERE grp.username = u.username AND g2.community_id IN {n}
+                      AND grp.created_at >= uc.joined_at AND grp.created_at < {window_end})
+          )"""
+
+
+def _activation(cursor, ph: str, ids: List[int], now: datetime) -> Dict[str, int]:
+    """New-member activation: of the people who joined the scope in the last
+    ``ACTIVATION_JOIN_WINDOW_DAYS``, how many had any activity event (visit,
+    post, reply, group post/reply) within ``ACTIVATION_WINDOW_DAYS`` of their
+    OWN join date. Aggregate counts only. 'admin' excluded."""
+    if not ids:
+        return {"activated": 0, "joiners": 0}
+    join_cutoff = (now - timedelta(days=ACTIVATION_JOIN_WINDOW_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+    joiners = _distinct_members(cursor, ph, ids, cutoff=join_cutoff)
+    if joiners == 0:
+        return {"activated": 0, "joiners": 0}
+
+    n = _in_clause(ph, len(ids))
+    sql = f"""
+        SELECT COUNT(DISTINCT uc.user_id) AS count
+        FROM user_communities uc JOIN users u ON uc.user_id = u.id
+        WHERE uc.community_id IN {n} AND uc.joined_at >= {ph}
+          AND LOWER(u.username) <> 'admin'
+          AND {_activated_within_window_sql(ph, n)}
+    """
+    params = tuple(ids) + (join_cutoff,) + tuple(ids) * 5
+    activated = _scalar(cursor, sql, params)
+    return {"activated": activated, "joiners": joiners}
+
+
+def _invites_activated(cursor, ph: str, ids: List[int]) -> int:
+    """Invite funnel stage 3: distinct ACCEPTED invitees who joined and had any
+    activity within ``ACTIVATION_WINDOW_DAYS`` of their join date. Only
+    username-linked invites can be traced to an account (email-only invitees
+    are excluded until email↔account reconciliation exists), so this is a
+    floor, not a ceiling. 'admin' excluded."""
+    if not ids:
+        return 0
+    n = _in_clause(ph, len(ids))
+    sql = f"""
+        SELECT COUNT(DISTINCT uc.user_id) AS count
+        FROM user_communities uc JOIN users u ON uc.user_id = u.id
+        WHERE uc.community_id IN {n}
+          AND LOWER(u.username) <> 'admin'
+          AND LOWER(u.username) IN (
+            SELECT DISTINCT LOWER(invited_username) FROM community_invitations
+            WHERE community_id IN {n} AND LOWER(status) = 'accepted'
+              AND invited_username IS NOT NULL
+          )
+          AND {_activated_within_window_sql(ph, n)}
+    """
+    params = tuple(ids) * 7
+    return _scalar(cursor, sql, params)
+
+
+def list_pending_invitees(community_id: int, scope: str = "network") -> Dict[str, Any]:
+    """Who hasn't answered their invite — the drill-in behind Steve's
+    "N invites haven't been answered" action. OWNER-ONLY at the route (this
+    exposes invitee emails); same scope resolution as the overview so the list
+    matches the funnel's numbers. A person with several invite rows counts
+    once, and anyone who accepted via ANY row is excluded."""
+    scope = "network" if str(scope or "").strip().lower() == "network" else "self"
+    tier_info = _resolve_tier(community_id)
+    invitees: List[Dict[str, Any]] = []
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            ids = [community_id]
+            if scope == "network" and tier_info.get("is_paid"):
+                from backend.services.community import get_descendant_community_ids
+
+                try:
+                    ids = [int(cid) for cid in get_descendant_community_ids(c, community_id)] or [community_id]
+                except Exception:
+                    ids = [community_id]
+            n = _in_clause(ph, len(ids))
+
+            c.execute(
+                f"""
+                SELECT invited_username, invited_email, invited_at
+                FROM community_invitations
+                WHERE community_id IN {n}
+                  AND LOWER(COALESCE(status, 'pending')) <> 'accepted'
+                  AND NOT (invited_username IS NULL AND invited_email LIKE {ph})
+                  AND COALESCE(LOWER(invited_username), LOWER(invited_email)) <> 'admin'
+                  AND COALESCE(LOWER(invited_username), LOWER(invited_email)) NOT IN (
+                    SELECT COALESCE(LOWER(invited_username), LOWER(invited_email))
+                    FROM community_invitations
+                    WHERE community_id IN {n} AND LOWER(status) = 'accepted'
+                      AND NOT (invited_username IS NULL AND invited_email LIKE {ph})
+                  )
+                ORDER BY invited_at DESC
+                """,
+                tuple(ids) + (_QR_INVITE_EMAIL_PATTERN,) + tuple(ids) + (_QR_INVITE_EMAIL_PATTERN,),
+            )
+            seen: set = set()
+            for r in c.fetchall() or []:
+                username = r["invited_username"] if hasattr(r, "keys") else r[0]
+                email = r["invited_email"] if hasattr(r, "keys") else r[1]
+                invited_at = r["invited_at"] if hasattr(r, "keys") else r[2]
+                identity = (username or email or "").strip().lower()
+                if not identity or identity in seen:
+                    continue
+                seen.add(identity)
+                invitees.append({
+                    "display": username or email,
+                    "type": "username" if username else "email",
+                    "invited_at": invited_at.isoformat() if hasattr(invited_at, "isoformat") else invited_at,
+                })
+                if len(invitees) >= 200:
+                    break
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("list_pending_invitees failed for %s: %s", community_id, exc)
+    return {"success": True, "invitees": invitees, "count": len(invitees)}
+
+
+def revoke_pending_invitee(community_id: int, identity: str, scope: str = "network") -> Dict[str, Any]:
+    """Revoke every UNANSWERED invite for one invitee — the delete action on a
+    pending-invites drill-in row. OWNER-ONLY at the route. ``identity`` is the
+    row's display value (username or email); we match it the same way the list
+    dedups (COALESCE(username, email), case-insensitive) and the same scope
+    resolution, so the delete removes exactly what the row represented.
+    Accepted rows are never touched (they're membership history, not an
+    invitation any more). Deleting the row also invalidates its token — the
+    accept flow requires a live row."""
+    identity = (identity or "").strip().lower()
+    if not identity:
+        return {"success": False, "error": "identity required", "revoked": 0}
+    scope = "network" if str(scope or "").strip().lower() == "network" else "self"
+    tier_info = _resolve_tier(community_id)
+    revoked = 0
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            ids = [community_id]
+            if scope == "network" and tier_info.get("is_paid"):
+                from backend.services.community import get_descendant_community_ids
+
+                try:
+                    ids = [int(cid) for cid in get_descendant_community_ids(c, community_id)] or [community_id]
+                except Exception:
+                    ids = [community_id]
+            n = _in_clause(ph, len(ids))
+
+            c.execute(
+                f"""
+                DELETE FROM community_invitations
+                WHERE community_id IN {n}
+                  AND LOWER(COALESCE(status, 'pending')) <> 'accepted'
+                  AND COALESCE(LOWER(invited_username), LOWER(invited_email)) = {ph}
+                """,
+                tuple(ids) + (identity,),
+            )
+            revoked = c.rowcount if c.rowcount and c.rowcount > 0 else 0
+            conn.commit()
+    except Exception as exc:
+        logger.error("revoke_pending_invitee failed for %s: %s", community_id, exc)
+        return {"success": False, "error": "failed", "revoked": 0}
+    return {"success": True, "revoked": revoked}
 
 
 def _last_activity_days(cursor, ph: str, ids: List[int], now: datetime) -> Optional[int]:
@@ -307,13 +513,92 @@ def _last_activity_days(cursor, ph: str, ids: List[int], now: datetime) -> Optio
         return None
 
 
+def _days_since(last_t: Any, now: datetime) -> Optional[int]:
+    """Whole days since ``last_t`` (DB datetime or string), or None."""
+    if not last_t:
+        return None
+    try:
+        if isinstance(last_t, str):
+            last_t = datetime.fromisoformat(last_t.replace(" ", "T").split(".")[0])
+        if last_t.tzinfo is None:
+            last_t = last_t.replace(tzinfo=timezone.utc)
+        return max(0, (now - last_t).days)
+    except Exception:  # pragma: no cover - defensive
+        return None
+
+
+def _active_users_by_community(cursor, ph: str, ids: List[int], cutoff: str) -> Dict[int, int]:
+    """Distinct active users PER community since ``cutoff`` — one grouped query
+    for the whole Spaces tab instead of a 5-way union per sub (the N+1)."""
+    if not ids:
+        return {}
+    n = _in_clause(ph, len(ids))
+    sql = f"""
+        SELECT ev.community_id AS community_id, COUNT(DISTINCT ev.username) AS count FROM (
+            SELECT community_id, username FROM community_visit_history WHERE community_id IN {n} AND visit_time >= {ph}
+            UNION ALL SELECT community_id, username FROM posts WHERE community_id IN {n} AND timestamp >= {ph}
+            UNION ALL SELECT community_id, username FROM replies WHERE community_id IN {n} AND timestamp >= {ph}
+            UNION ALL SELECT g.community_id, gp.username FROM group_posts gp JOIN `groups` g ON gp.group_id = g.id
+                WHERE g.community_id IN {n} AND gp.created_at >= {ph}
+            UNION ALL SELECT g.community_id, grp.username FROM group_replies grp
+                JOIN group_posts gp ON grp.group_post_id = gp.id
+                JOIN `groups` g ON gp.group_id = g.id
+                WHERE g.community_id IN {n} AND grp.created_at >= {ph}
+        ) AS ev
+        WHERE LOWER(ev.username) <> 'admin'
+        GROUP BY ev.community_id
+    """
+    out: Dict[int, int] = {}
+    try:
+        cursor.execute(sql, (tuple(ids) + (cutoff,)) * 5)
+        for r in cursor.fetchall() or []:
+            cid = int(r["community_id"] if hasattr(r, "keys") else r[0])
+            out[cid] = int((r["count"] if hasattr(r, "keys") else r[1]) or 0)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("_active_users_by_community failed: %s", exc)
+    return out
+
+
+def _last_activity_by_community(cursor, ph: str, ids: List[int], now: datetime) -> Dict[int, Optional[int]]:
+    """Dormancy clock PER community (days since last activity), one grouped
+    query for all subs."""
+    if not ids:
+        return {}
+    n = _in_clause(ph, len(ids))
+    sql = f"""
+        SELECT m.community_id AS community_id, MAX(m.t) AS last_t FROM (
+            SELECT community_id, MAX(visit_time) AS t FROM community_visit_history WHERE community_id IN {n} GROUP BY community_id
+            UNION ALL SELECT community_id, MAX(timestamp) FROM posts WHERE community_id IN {n} GROUP BY community_id
+            UNION ALL SELECT community_id, MAX(timestamp) FROM replies WHERE community_id IN {n} GROUP BY community_id
+            UNION ALL SELECT g.community_id, MAX(gp.created_at) FROM group_posts gp JOIN `groups` g ON gp.group_id = g.id
+                WHERE g.community_id IN {n} GROUP BY g.community_id
+            UNION ALL SELECT g.community_id, MAX(grp.created_at) FROM group_replies grp
+                JOIN group_posts gp ON grp.group_post_id = gp.id
+                JOIN `groups` g ON gp.group_id = g.id
+                WHERE g.community_id IN {n} GROUP BY g.community_id
+        ) AS m
+        GROUP BY m.community_id
+    """
+    out: Dict[int, Optional[int]] = {}
+    try:
+        cursor.execute(sql, tuple(ids) * 5)
+        for r in cursor.fetchall() or []:
+            cid = int(r["community_id"] if hasattr(r, "keys") else r[0])
+            out[cid] = _days_since(r["last_t"] if hasattr(r, "keys") else r[1], now)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("_last_activity_by_community failed: %s", exc)
+    return out
+
+
 def _activity_band(active_7d: int, members: int) -> str:
     """Per-sub health band from the *share* of members active this week (not a
     raw count — 5 active in a 30-member sub is ~17%, which is not 'thriving').
     Four bands so there's a middle ground between thriving and dormant."""
     if active_7d <= 0:
         return "dormant"
-    ratio = active_7d / members if members > 0 else 1.0
+    # Clamp: group activity under a sub can count people who aren't formal
+    # sub members, so the raw ratio can exceed 1.0 for group-heavy subs.
+    ratio = min(1.0, active_7d / members) if members > 0 else 1.0
     if ratio >= 0.33:
         return "thriving"   # ~1 in 3 members active this week
     if ratio >= 0.10:
@@ -360,7 +645,9 @@ def _profile_completion(cursor, ph: str, ids: List[int]) -> Dict[str, int]:
     return {"complete": complete, "partial": partial, "none": none}
 
 
-def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[str, Any]]:
+def build_overview(
+    community_id: int, scope: str = "network", *, viewer_is_owner: bool = True
+) -> Optional[Dict[str, Any]]:
     """Build the Owner Dashboard overview payload, or ``None`` if the community
     does not exist. Does NOT authorize — the route authorizes the apex first.
 
@@ -368,6 +655,11 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
     or "self" (this community only). Network rollup is a paid feature: on a free
     community that has sub-communities a network request falls back to self and
     is returned ``locked`` with a subtree member teaser (the upsell hook).
+
+    ``viewer_is_owner=False`` (a delegated admin, not the owner/app-admin):
+    owner-only metrics (profile completion, members communicating) are OMITTED
+    entirely — not nulled — and Steve's read switches to a template that never
+    interpolates their numbers. The "Only you can see this" label must be true.
     """
     scope = "network" if str(scope or "").strip().lower() == "network" else "self"
     tier_info = _resolve_tier(community_id)
@@ -407,7 +699,17 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
         dau = _active_users(c, ph, ids, (now - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"))
         wau = _active_users(c, ph, ids, cutoff)
         mau = _active_users(c, ph, ids, mau_cut)
-        communicating = _communicating_members(c, ph, ids, mau_cut)
+        # Prior windows for week-over-week reads (7-14d ago; 30-60d ago).
+        wau_prev = _active_users(
+            c, ph, ids, (now - timedelta(days=14)).strftime("%Y-%m-%d %H:%M:%S"), until=cutoff
+        )
+        communicating = _communicating_members(c, ph, ids, mau_cut) if viewer_is_owner else 0
+        communicating_prev = (
+            _communicating_members(
+                c, ph, ids, (now - timedelta(days=60)).strftime("%Y-%m-%d %H:%M:%S"), until=mau_cut
+            )
+            if viewer_is_owner else 0
+        )
         top_posters = _top_contributors(c, ph, ids, "posters", cutoff=mau_cut)
         top_repliers = _top_contributors(c, ph, ids, "repliers", cutoff=mau_cut)
         top_reactors = _top_contributors(c, ph, ids, "reactors")
@@ -451,26 +753,40 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
             tuple(ids) + (_QR_INVITE_EMAIL_PATTERN,),
         )
 
-        completion = _profile_completion(c, ph, ids)
+        # Owner-only inputs are not even computed for delegated admins — the
+        # numbers never exist in the payload path at all.
+        completion = _profile_completion(c, ph, ids) if viewer_is_owner else {}
         has_posts = _scalar(
             c, f"SELECT COUNT(*) AS count FROM posts WHERE community_id IN {in_ids}",
             tuple(ids),
         )
+        # Only computed for paid communities — free tier keeps the locked
+        # teaser with value None (never computed behind the lock).
+        activation = _activation(c, ph, ids, now) if is_paid else None
+        invites_activated = _invites_activated(c, ph, ids)
 
     low_data = members <= LOW_DATA_MEMBER_THRESHOLD and has_posts == 0
+
+    # Cap-approach warning is a SERVER decision (>= 80% of the member cap) so
+    # the client stays dumb and the threshold can move without an app release.
+    member_cap = tier_info.get("member_cap")
+    cap_warning = bool(
+        isinstance(member_cap, (int, float)) and member_cap > 0
+        and members >= 0.8 * float(member_cap)
+    )
 
     metrics: List[Dict[str, Any]] = [
         {
             "id": "members", "group": "overview", "format": "stat", "tier": "free",
             "label_key": "owner.metric.members", "locked": False,
             "value": {"count": members, "delta_7d": net_new_7d,
-                      "cap": tier_info.get("member_cap")},
+                      "cap": member_cap, "cap_warning": cap_warning},
         },
         {
             "id": "active", "group": "overview", "format": "activity", "tier": "free",
             "label_key": "owner.metric.active", "locked": False,
-            "value": {"dau": dau, "wau": wau, "mau": mau, "members": members,
-                      "top_active": top_active},
+            "value": {"dau": dau, "wau": wau, "mau": mau, "wau_prev": wau_prev,
+                      "members": members, "top_active": top_active},
         },
         {
             "id": "spaces", "group": "overview", "format": "stat", "tier": "free",
@@ -480,7 +796,8 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
         {
             "id": "invites", "group": "overview", "format": "funnel", "tier": "free",
             "label_key": "owner.metric.invites", "locked": False,
-            "value": {"sent": invites_sent, "accepted": invites_accepted},
+            "value": {"sent": invites_sent, "accepted": invites_accepted,
+                      "activated": invites_activated},
         },
         {
             "id": "profile_completion", "group": "overview", "format": "segments",
@@ -491,7 +808,7 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
         {
             "id": "communicating", "group": "overview", "format": "comm", "tier": "free",
             "label_key": "owner.metric.communicating", "owner_only": True, "locked": False,
-            "value": {"count": communicating, "total": members},
+            "value": {"count": communicating, "prev": communicating_prev, "total": members},
         },
         {
             "id": "leaderboards", "group": "overview", "format": "leaderboards", "tier": "free",
@@ -500,19 +817,33 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
         },
     ]
 
-    # Paid teasers: locked-but-visible on free; the value stays None (never
-    # computed) until the paid suite lands and the community is paid.
-    for teaser in PAID_TEASERS:
-        metrics.append({
-            "id": teaser["id"], "group": "overview", "format": teaser["format"],
-            "tier": "paid", "label_key": teaser["label_key"],
-            "hint_key": teaser.get("hint_key"),
-            "locked": not is_paid, "value": None,
-        })
+    # Activation is the paid unlock: locked-but-visible teaser on free
+    # (value None, never computed), a real ratio once the community pays.
+    metrics.append({
+        "id": "activation", "group": "overview", "format": "ratio", "tier": "paid",
+        "label_key": "owner.metric.activation",
+        "hint_key": "owner.metric.activation_hint",
+        "locked": not is_paid,
+        "value": (
+            {"count": activation["activated"], "total": activation["joiners"],
+             "window_days": ACTIVATION_WINDOW_DAYS,
+             "join_window_days": ACTIVATION_JOIN_WINDOW_DAYS}
+            if is_paid and activation is not None else None
+        ),
+    })
+
+    # Delegated admins never receive owner-only descriptors (filter on the
+    # flag so any future owner_only metric inherits the enforcement).
+    if not viewer_is_owner:
+        metrics = [m for m in metrics if not m.get("owner_only")]
 
     steve = _steve_block(low_data=low_data, net_new_7d=net_new_7d,
                          completion=completion, members=members,
-                         wau=wau, mau=mau, communicating=communicating)
+                         wau=wau, mau=mau, communicating=communicating,
+                         viewer_is_owner=viewer_is_owner,
+                         cap_warning=cap_warning, member_cap=member_cap,
+                         invites_sent=invites_sent, invites_accepted=invites_accepted,
+                         activation=activation, wau_prev=wau_prev)
 
     return {
         "success": True,
@@ -530,15 +861,70 @@ def build_overview(community_id: int, scope: str = "network") -> Optional[Dict[s
     }
 
 
+def _steve_actions(*, cap_warning: bool, member_cap: Any, members: int,
+                   invites_sent: int, invites_accepted: int,
+                   activation: Optional[Dict[str, int]], wau: int, wau_prev: int) -> List[Dict[str, Any]]:
+    """At most two one-line actions for Steve to suggest, priority-ordered:
+    cap (revenue moment) > invite nudge > low activation > celebrate. Copy is
+    payoff-first and aimed at what the OWNER can do — never at what members
+    failed to do."""
+    actions: List[Dict[str, Any]] = []
+    if cap_warning:
+        actions.append({"key": "owner.steve.action_cap",
+                        "params": {"count": members, "cap": int(member_cap or 0)}})
+    pending = max(0, invites_sent - invites_accepted)
+    if pending >= 3:
+        # "action" is a client behavior id: tapping this row opens the
+        # pending-invitees drill-in (owner-only, like the row itself).
+        actions.append({"key": "owner.steve.action_invite", "params": {"n": pending},
+                        "action": "pending_invites"})
+    if activation and activation.get("joiners", 0) >= 3:
+        joiners = activation["joiners"]
+        activated = activation.get("activated", 0)
+        if activated / joiners < 0.3:
+            actions.append({"key": "owner.steve.action_activation",
+                            "params": {"count": activated, "total": joiners}})
+    if wau > wau_prev > 0:
+        actions.append({"key": "owner.steve.action_celebrate",
+                        "params": {"wau": wau, "delta": wau - wau_prev}})
+    return actions[:2]
+
+
 def _steve_block(*, low_data: bool, net_new_7d: int, completion: Dict[str, int],
-                 members: int, wau: int, mau: int, communicating: int) -> Dict[str, Any]:
+                 members: int, wau: int, mau: int, communicating: int,
+                 viewer_is_owner: bool = True,
+                 cap_warning: bool = False, member_cap: Any = None,
+                 invites_sent: int = 0, invites_accepted: int = 0,
+                 activation: Optional[Dict[str, int]] = None,
+                 wau_prev: int = 0) -> Dict[str, Any]:
     """Pick Steve's narration template + params. Copy lives in the i18n
     catalogs; this only chooses which line and supplies the numbers (zero AI
     cost, payoff-first, never deficit-framed). The default read spans growth,
-    weekly + monthly activity, and connection so it isn't one-dimensional."""
+    weekly + monthly activity, and connection so it isn't one-dimensional.
+    ``actions`` are the "one thing you can do this week" rows under the read.
+
+    Delegated admins get a reduced read: the default template interpolates
+    owner-only numbers (communicating, profile completion), so handing it the
+    full param set would leak them through Steve's sentence."""
     if low_data:
         return {"greeting_key": "owner.steve.greeting",
-                "read_key": "owner.steve.read_empty", "read_params": {}, "low_data": True}
+                "read_key": "owner.steve.read_empty", "read_params": {},
+                "actions": [], "low_data": True}
+    actions = _steve_actions(
+        cap_warning=cap_warning, member_cap=member_cap, members=members,
+        invites_sent=invites_sent, invites_accepted=invites_accepted,
+        activation=activation, wau=wau, wau_prev=wau_prev,
+    )
+    if not viewer_is_owner:
+        # Admins get the read but no actions — cap/upgrade and invite nudges
+        # are owner moves (billing is owner-only).
+        return {
+            "greeting_key": "owner.steve.greeting",
+            "read_key": "owner.steve.read_default_admin",
+            "read_params": {"delta": net_new_7d, "wau": wau, "mau": mau},
+            "actions": [],
+            "low_data": False,
+        }
     return {
         "greeting_key": "owner.steve.greeting",
         "read_key": "owner.steve.read_default",
@@ -547,6 +933,7 @@ def _steve_block(*, low_data: bool, net_new_7d: int, completion: Dict[str, int],
             "communicating": communicating,
             "complete": completion.get("complete", 0), "total": members,
         },
+        "actions": actions,
         "low_data": False,
     }
 
@@ -689,12 +1076,16 @@ def list_spaces(community_id: int) -> Dict[str, Any]:
                 # Per-sub breakdown: active-this-week + a dormancy clock + a
                 # thriving/quiet/dormant band, so the owner can see where the life
                 # is and which rooms need a nudge. Counts only — never names.
+                # Two grouped queries for ALL subs (was 2 unions per sub — N+1).
                 now = datetime.now(timezone.utc)
                 wau_cut = (now - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+                sub_ids = [s["id"] for s in subcommunities]
+                active_by_cid = _active_users_by_community(c, ph, sub_ids, wau_cut)
+                last_by_cid = _last_activity_by_community(c, ph, sub_ids, now)
                 for sub in subcommunities:
-                    active_7d = _active_users(c, ph, [sub["id"]], wau_cut)
+                    active_7d = active_by_cid.get(sub["id"], 0)
                     sub["active_7d"] = active_7d
-                    sub["last_activity_days"] = _last_activity_days(c, ph, [sub["id"]], now)
+                    sub["last_activity_days"] = last_by_cid.get(sub["id"])
                     sub["status"] = _activity_band(active_7d, sub.get("member_count") or 0)
                 subcommunities.sort(key=lambda s: (-s["active_7d"], -(s.get("member_count") or 0)))
             except Exception as exc:  # pragma: no cover - defensive

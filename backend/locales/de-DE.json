@@ -54,8 +54,8 @@
   },
   "entitlements": {
     "premium_required": {
-      "message": "Premium schaltet Steve in der DM, im Feed und in geeigneten Chats frei — bis zu {steve_uses_per_month} Steve-Gespräche pro Monat und {whisper_minutes_per_month} Minuten Sprachnachricht-Zusammenfassungen pro Abrechnungszeitraum.",
-      "cta_label": "Auf Premium upgraden"
+      "message": "Steve wird über den bezahlten Plan einer Community freigeschaltet. Communities mit einem Bezahl-Tarif können das Steve Community Package hinzufügen, damit alle Mitglieder Steve im Feed, in Gruppen und in Chats bekommen.",
+      "cta_label": "Community-Pläne ansehen"
     },
     "daily_cap": {
       "message": "Du hast heute dein Steve-Limit von {ai_daily_limit} Anfragen erreicht. Es wird um {resets_at_daily} zurückgesetzt.",
@@ -70,8 +70,8 @@
       "cta_label": "Meine Nutzung ansehen"
     },
     "community_pool_exhausted": {
-      "message": "Der gemeinsame Steve-Pool dieser Community ist für diesen Monat leer. Premium-Mitglieder können weiterhin ihr persönliches Kontingent nutzen.",
-      "cta_label": "Auf Premium upgraden"
+      "message": "Der gemeinsame Steve-Pool dieser Community ist für diesen Monat leer. Er füllt sich im nächsten Zyklus wieder — Community-Inhaber können den Plan der Community upgraden, um einen größeren Pool zu bekommen.",
+      "cta_label": "Community-Pläne ansehen"
     },
     "rpm_exceeded": {
       "message": "Du sendest zu schnell Anfragen — mach kurz langsamer und versuch es erneut.",
@@ -90,8 +90,8 @@
       "cta_label": "Support kontaktieren"
     },
     "grace_expired": {
-      "message": "Dein Enterprise-Platz ist abgelaufen. Schließe ein Premium-Abo ab, um Steve weiter zu nutzen.",
-      "cta_label": "Premium abonnieren"
+      "message": "Dein Enterprise-Platz ist abgelaufen. Steve bleibt über den bezahlten Plan einer Community verfügbar.",
+      "cta_label": "Community-Pläne ansehen"
     }
   },
   "billing": {
@@ -137,6 +137,12 @@
     },
     "hints": {
       "tier_load_failed": "Stufen-Hinweise können gerade nicht geladen werden."
+    },
+    "redirect": {
+      "fallback": "Gute Frage! Lassen Sie uns zuerst Ihr Profil fertigstellen, danach helfe ich Ihnen gern damit.",
+      "keep_going": "Machen wir weiter!",
+      "come_back": "Interessant! Darauf kommen wir später zurück. Lassen Sie uns zuerst Ihre Einrichtung abschließen.",
+      "error": "Guter Gedanke! Lassen Sie uns zuerst Ihr Profil fertigstellen, danach können wir über alles reden."
     }
   },
   "email": {
@@ -162,6 +168,26 @@
     }
   },
   "notifications": {
+    "owner_pulse": {
+      "title": "Steves Wochenpuls",
+      "body": "{wau} Mitglieder waren diese Woche in {community} aktiv. Hier ist dein Dashboard.",
+      "message": "Wochenpuls: {wau} Mitglieder diese Woche in {community} aktiv"
+    },
+    "owner_pulse_up": {
+      "title": "Steves Wochenpuls",
+      "body": "{wau} Mitglieder diese Woche in {community} aktiv — {delta} mehr als letzte Woche. Stark.",
+      "message": "Wochenpuls: {wau} aktiv in {community}, {delta} mehr als letzte Woche"
+    },
+    "owner_report": {
+      "title": "Etwas wurde gemeldet",
+      "body": "Ein Mitglied hat einen Beitrag in {community} gemeldet. Schau vorbei, wenn du Zeit hast — du entscheidest, was bleibt.",
+      "message": "Ein Mitglied hat einen Beitrag in {community} gemeldet — du entscheidest, was bleibt"
+    },
+    "owner_report_auto": {
+      "title": "Etwas wurde gemeldet",
+      "body": "Ein Beitrag in {community} wurde automatisch gemeldet. Schau vorbei, wenn du Zeit hast — du entscheidest, was bleibt.",
+      "message": "Ein Beitrag in {community} wurde automatisch gemeldet — du entscheidest, was bleibt"
+    },
     "group_feed_post": {
       "title": "Neuer Gruppenbeitrag",
       "body": "{author}: {preview}",
@@ -237,6 +263,21 @@
       "body": "{author} hat dich zu {community} eingeladen",
       "message": "{author} hat dich eingeladen, {community} beizutreten"
     },
+    "match_invite": {
+      "title": "Neue Spielherausforderung",
+      "body": "{name} hat dich zu einem Spiel herausgefordert",
+      "message": "{name} hat dich zu einem Spiel herausgefordert"
+    },
+    "match_move": {
+      "title": "Du bist am Zug",
+      "body": "{name} hat gezogen — du bist dran",
+      "message": "Du bist gegen {name} am Zug"
+    },
+    "match_over": {
+      "title": "Spiel beendet",
+      "body": "Dein Spiel mit {name} ist beendet",
+      "message": "Dein Spiel mit {name} ist beendet"
+    },
     "event_reminder": {
       "title": "Bevorstehendes Event",
       "body": "{event_name} beginnt bald",
@@ -252,6 +293,16 @@
       "body": "Du bist dabei — {community} hat deine Anfrage angenommen.",
       "message": "Du bist dabei — {community} hat deine Anfrage angenommen."
     },
+    "builder_complete": {
+      "title": "Steve hat deinen Build fertiggestellt",
+      "body": "{title} ist bereit zum Testen.",
+      "message": "Steve hat {title} fertiggestellt. Teste es jetzt."
+    },
+    "builder_failed": {
+      "title": "Steve konnte diesen Build nicht fertigstellen",
+      "body": "Tippe, um es erneut zu versuchen, wenn du bereit bist.",
+      "message": "Steve konnte deinen Build nicht fertigstellen. Tippe, um es erneut zu versuchen."
+    },
     "profile_section_professional": {
       "title": "Eine Frage von Steve",
       "body": "Was machst du? Ich kann niemanden vorstellen, den ich nicht kenne.",
@@ -261,6 +312,26 @@
       "title": "Von Steve",
       "body": "Ich weiß, was du machst. Jetzt würde ich gern wissen, wer du bist.",
       "message": "Ich weiß, was du machst. Jetzt würde ich gern wissen, wer du bist."
+    },
+    "invitee_joined": {
+      "title": "Deine Einladung hat funktioniert",
+      "body": "{username} ist gerade {community} beigetreten — dank deiner Einladung.",
+      "message": "{username} hat deine Einladung angenommen und ist {community} beigetreten."
+    },
+    "billing_payment_failed_personal": {
+      "title": "Zahlung fehlgeschlagen",
+      "body": "Wir konnten deine Premium-Zahlung nicht verarbeiten. Aktualisiere deine Zahlungsmethode, um deine Vorteile zu behalten.",
+      "message": "Wir konnten deine letzte Premium-Zahlung nicht verarbeiten. Bitte aktualisiere deine Zahlungsmethode, um deine Vorteile zu behalten."
+    },
+    "billing_payment_failed_community": {
+      "title": "Zahlung fehlgeschlagen",
+      "body": "Wir konnten die Zahlung für {community} nicht verarbeiten. Aktualisiere deine Zahlungsmethode, um den bezahlten Plan zu behalten.",
+      "message": "Wir konnten die letzte Zahlung für {community} nicht verarbeiten. Bitte aktualisiere deine Zahlungsmethode, um den bezahlten Plan der Community zu behalten."
+    },
+    "billing_payment_failed_steve": {
+      "title": "Zahlung fehlgeschlagen",
+      "body": "Wir konnten die Zahlung für Steve in {community} nicht verarbeiten. Aktualisiere deine Zahlungsmethode, um das Paket aktiv zu halten.",
+      "message": "Wir konnten die letzte Zahlung für das Steve-Paket in {community} nicht verarbeiten. Bitte aktualisiere deine Zahlungsmethode, um es aktiv zu halten."
     }
   },
   "communities": {
@@ -348,7 +419,8 @@
       "names_and_last": "{prefix} und {last}",
       "joined_line": "Diese Woche sind ein paar Leute dazugekommen: {names}.",
       "new_members": "Wenn du neu bist, hinterlass ein paar Zeilen im **Stell dich vor**-Thread, sobald du so weit bist. Name, warum du beigetreten bist, und eine Sache, die du suchst, reichen völlig.",
-      "existing_members": "Wenn du schon eine Weile dabei bist, sag Hallo. Gute Bereiche entstehen aus kleinen Antworten."
+      "existing_members": "Wenn du schon eine Weile dabei bist, sag Hallo. Gute Bereiche entstehen aus kleinen Antworten.",
+      "networking_cue": "Neugierig, wen du hier kennenlernen solltest? [Bitte Steve um Vorstellungen](/networking?community={community_id}&source=welcome_cue)."
     }
   },
   "feed": {
@@ -380,8 +452,9 @@
     "feedback_submitted": "Feedback erfolgreich übermittelt",
     "community_not_found": "Community nicht gefunden",
     "not_community_member": "Kein Zugriff: du bist kein Mitglied dieser Community",
-    "post_reported": "Beitrag erfolgreich gemeldet. Unser Team wird ihn prüfen.",
+    "post_reported": "Danke — das liegt jetzt beim Inhaber der Community. Die Person erfährt nicht, dass du es warst.",
     "post_already_reported": "Du hast diesen Beitrag bereits gemeldet",
+    "report_rate_limited": "Du hast gerade viel gemeldet. Warte kurz und versuch es dann noch einmal.",
     "post_hidden": "Beitrag ausgeblendet",
     "post_already_hidden": "Beitrag bereits ausgeblendet",
     "post_unhidden": "Beitrag wieder eingeblendet",

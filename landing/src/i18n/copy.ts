@@ -249,17 +249,17 @@ const en = {
   membership: {
     kicker: "Membership",
     h2Pre: "Plans for",
-    h2Highlight: "people & communities.",
+    h2Highlight: "your communities.",
     intro:
       "We don't put stale prices on a static page — open the app for up-to-date plans, caps, and billing.",
     cards: [
       {
-        title: "Personal membership",
-        body: "Premium on your account unlocks Steve for you across the private spaces you're part of — deeper context and features tied to your membership. Current plans and allowances are always shown in the app.",
+        title: "Community paid tiers",
+        body: "Upgrade a community to a paid tier for higher member caps, more media storage, and optional add-ons — sized from a close circle to a full organisation. Current plans and caps are always shown in the app.",
       },
       {
-        title: "Community-level Steve",
-        body: "Paid communities can add a shared Steve allowance so everyone in that space gets more from the same intelligent presence. Availability and billing details are configured in community settings in-app.",
+        title: "Steve Community Package",
+        body: "Add Steve to a paid community so every member shares the same intelligent presence in the feed, groups, and chats — one shared allowance for the whole space, configured in community settings in-app.",
       },
     ],
     cta: "View plans in the app",
@@ -572,17 +572,17 @@ Este é o seu mundo. Venha ligar-se a ele.`,
   membership: {
     kicker: "Adesão",
     h2Pre: "Planos para",
-    h2Highlight: "pessoas e comunidades.",
+    h2Highlight: "as suas comunidades.",
     intro:
       "Não pomos preços desatualizados numa página estática — abra a app para ver planos, limites e faturação sempre atuais.",
     cards: [
       {
-        title: "Adesão pessoal",
-        body: "O Premium na sua conta desbloqueia o Steve para si nos espaços privados de que faz parte — mais contexto e funcionalidades associadas à sua adesão. Os planos e limites atuais estão sempre na app.",
+        title: "Escalões pagos de comunidade",
+        body: "Suba uma comunidade para um escalão pago e tenha mais membros, mais armazenamento de media e extras opcionais — do círculo próximo a uma organização inteira. Os planos e limites atuais estão sempre na app.",
       },
       {
-        title: "Steve ao nível da comunidade",
-        body: "As comunidades pagas podem adicionar um plano partilhado de Steve para que todos nesse espaço tirem mais partido da mesma presença inteligente. A disponibilidade e a faturação configuram-se nas definições da comunidade, na app.",
+        title: "Pacote Steve para comunidades",
+        body: "Adicione o Steve a uma comunidade paga para que todos os membros partilhem a mesma presença inteligente no feed, nos grupos e nas conversas — uma quota partilhada para todo o espaço, configurada nas definições da comunidade, na app.",
       },
     ],
     cta: "Ver planos na app",

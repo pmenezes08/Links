@@ -24,13 +24,13 @@ import type {
   SubscriptionsPanelKey,
 } from '../components/subscriptions/subscriptionTypes'
 import { useHeader } from '../contexts/HeaderContext'
+import { ENTITLEMENTS_REFRESH_EVENT } from '../hooks/useEntitlements'
 import { triggerHaptic } from '../utils/haptics'
 import {
   canUseNativeStoreIap,
   currentStoreProvider,
   loadIapConfig,
   nativeIapPurchasesEnabled,
-  openExternalBillingUrl,
   providerLabel,
   purchaseStoreSubscription,
   restoreStorePurchases,
@@ -174,6 +174,13 @@ export default function SubscriptionPlans() {
     }
   }, [queryParams])
 
+  // Steve gating reads the entitlements snapshot cached by useEntitlements
+  // (20s focus throttle). After a successful purchase/restore we dispatch the
+  // global refresh event so caps update immediately instead of on next focus.
+  const refreshEntitlements = useCallback(() => {
+    window.dispatchEvent(new Event(ENTITLEMENTS_REFRESH_EVENT))
+  }, [])
+
   const loadActiveSubscriptions = useCallback(async () => {
     const res = await fetch('/api/me/subscriptions', {
       credentials: 'include',
@@ -184,6 +191,7 @@ export default function SubscriptionPlans() {
       setActiveSubscriptions(data)
       const successMessage = maybeConfirmPendingCheckout(data)
       if (successMessage) {
+        refreshEntitlements()
         showToast(successMessage)
         setPanelStack([])
         setPendingTier(null)
@@ -193,7 +201,7 @@ export default function SubscriptionPlans() {
       }
     }
     return data
-  }, [showToast])
+  }, [refreshEntitlements, showToast])
 
   useEffect(() => {
     let cancelled = false
@@ -210,7 +218,7 @@ export default function SubscriptionPlans() {
           loadIapConfig().catch(() => null),
         ])
         if (!pricingRes.ok) {
-          throw new Error(`HTTP ${pricingRes.status}`)
+          throw new Error(i18n.t('subscriptions.error_load_pricing'))
         }
         const data: PricingPayload = await pricingRes.json()
         if (!cancelled) {
@@ -317,33 +325,31 @@ export default function SubscriptionPlans() {
 
   const storeProvider = currentStoreProvider()
   const iapEnabled = nativeIapPurchasesEnabled(iapConfig)
-  const webBillingUrl = iapConfig?.web_app_billing_url || 'https://app.c-point.co/subscription_plans'
+  // When KB purchases are off (or config failed to load) on a native shell,
+  // purchase CTAs become informational only — never a web checkout link
+  // (App Store 3.1.1). Restore stays available regardless.
+  const iapPurchasesDisabledOnNative = !!storeProvider && !iapEnabled
 
   const onSubscribePremium = useCallback(async () => {
-    const provider = currentStoreProvider()
-    const productId = provider ? iapConfig?.[provider]?.premium_product_id : ''
-    if (provider && productId && canUseNativeStoreIap(provider, iapConfig, productId)) {
-      setCheckoutLoading('premium')
-      setError(null)
-      try {
-        await purchaseStoreSubscription({ provider, productId })
-        showToast(t('subscriptions.status_premium_provider', { provider: providerLabel(provider) }))
-        await loadActiveSubscriptions()
-      } catch (err) {
-        setError(err instanceof Error ? err.message : t('subscriptions.error_iap'))
-        void triggerHaptic('error')
-        resetSubscriptionPageScroll()
-      } finally {
-        setCheckoutLoading(null)
-      }
+    // `cpoint_premium_monthly` was removed from sale in the app stores
+    // (July 2026): there is no native Premium purchase path any more. The
+    // panel hides the CTA on native; this guard keeps a stray call from
+    // falling through to a Stripe checkout inside the native shell.
+    if (currentStoreProvider()) {
+      setError(t('subscriptions.premium_native_unavailable'))
+      void triggerHaptic('error')
+      resetSubscriptionPageScroll()
       return
     }
     startCheckout({ plan_id: 'premium', billing_cycle: 'monthly' }, 'premium')
-  }, [iapConfig, loadActiveSubscriptions, showToast, startCheckout, t])
+  }, [startCheckout, t])
 
   const onRestorePurchases = useCallback(async () => {
+    // Restore is intentionally NOT gated on iap_purchases_enabled: legacy
+    // buyers (including retired App Store Premium purchasers) must always be
+    // able to re-link what they already paid for.
     const provider = currentStoreProvider()
-    if (!provider || !iapConfig || !nativeIapPurchasesEnabled(iapConfig)) return
+    if (!provider || !iapConfig) return
     setCheckoutLoading(`restore:${provider}`)
     setError(null)
     setPanelError(null)
@@ -354,6 +360,7 @@ export default function SubscriptionPlans() {
       // backend code. Money anxiety is the real failure mode on a reinstall.
       if (outcome.reason === 'restored') {
         showToast(t('subscriptions.status_restored', { count: outcome.count }))
+        refreshEntitlements()
         await loadActiveSubscriptions()
       } else if (outcome.reason === 'account_mismatch') {
         showToast(t('subscriptions.restore_account_mismatch'), 'error')
@@ -368,7 +375,7 @@ export default function SubscriptionPlans() {
     } finally {
       setCheckoutLoading(null)
     }
-  }, [iapConfig, loadActiveSubscriptions, showToast, t])
+  }, [iapConfig, loadActiveSubscriptions, refreshEntitlements, showToast, t])
 
   const onPickTier = useCallback(
     (tier: CommunityTierLevel) => {
@@ -384,6 +391,13 @@ export default function SubscriptionPlans() {
   const onCommunityChosen = useCallback(
     async (communityId: number) => {
       if (!pendingTier) return
+      // Native + purchases disabled: informational stop, never a checkout.
+      if (currentStoreProvider() && !nativeIapPurchasesEnabled(iapConfig)) {
+        setMobileBillingNotice(false)
+        setPanelError(t('subscriptions.iap_purchases_unavailable'))
+        void triggerHaptic('error')
+        return
+      }
       const activeCommunity = activeSubscriptions?.communities?.find(item => item.id === communityId)
       if (activeCommunity) {
         const billingProvider = String(activeCommunity.billing_provider || 'stripe').toLowerCase()
@@ -421,6 +435,7 @@ export default function SubscriptionPlans() {
             setPendingTier(null)
             historyDepthRef.current = 0
             resetSubscriptionPageScroll()
+            refreshEntitlements()
             await loadActiveSubscriptions()
           } catch (err) {
             setPanelError(err instanceof Error ? err.message : t('subscriptions.error_iap'))
@@ -499,6 +514,7 @@ export default function SubscriptionPlans() {
           setPendingTier(null)
           historyDepthRef.current = 0
           resetSubscriptionPageScroll()
+          refreshEntitlements()
           await loadActiveSubscriptions()
         } catch (err) {
           setPanelError(err instanceof Error ? err.message : t('subscriptions.error_iap'))
@@ -528,12 +544,18 @@ export default function SubscriptionPlans() {
         },
       )
     },
-    [activeSubscriptions, iapConfig, loadActiveSubscriptions, pendingTier, showToast, startCheckout, t],
+    [activeSubscriptions, iapConfig, loadActiveSubscriptions, pendingTier, refreshEntitlements, showToast, startCheckout, t],
   )
 
   const onSteveCommunityChosen = useCallback(
     async (communityId: number) => {
       const provider = currentStoreProvider()
+      // Native + purchases disabled: informational stop, never a checkout.
+      if (provider && !nativeIapPurchasesEnabled(iapConfig)) {
+        setPanelError(t('subscriptions.iap_purchases_unavailable'))
+        void triggerHaptic('error')
+        return
+      }
       const activeCommunity = activeSubscriptions?.communities?.find(item => item.id === communityId)
       const billingProvider = String(activeCommunity?.billing_provider || 'stripe').toLowerCase()
       const incomingProvider = provider || 'stripe'
@@ -559,6 +581,7 @@ export default function SubscriptionPlans() {
             productId: steveProductId,
             communityId,
           })
+          refreshEntitlements()
           const refreshed = await loadActiveSubscriptions()
           const name =
             refreshed?.communities?.find(c => c.id === communityId)?.name
@@ -578,10 +601,11 @@ export default function SubscriptionPlans() {
       }
 
       if (provider) {
-        setPanelError(null)
-        openExternalBillingUrl(
-          `${webBillingUrl}${webBillingUrl.includes('?') ? '&' : '?'}open=community_addons&community_id=${communityId}`,
-        )
+        // No store product id for the Steve add-on on this platform: plain
+        // informational notice — an external checkout link here would break
+        // App Store 3.1.1.
+        setPanelError(t('subscriptions.steve_addon_web_only'))
+        void triggerHaptic('warning')
         return
       }
       startCheckout(
@@ -599,7 +623,7 @@ export default function SubscriptionPlans() {
         },
       )
     },
-    [activeSubscriptions, iapConfig, loadActiveSubscriptions, showToast, startCheckout, t, webBillingUrl],
+    [activeSubscriptions, iapConfig, loadActiveSubscriptions, refreshEntitlements, showToast, startCheckout, t],
   )
 
   const openPanelFromHub = useCallback(
@@ -662,6 +686,9 @@ export default function SubscriptionPlans() {
                 activePanel={topPanel}
                 showTestBanner={!!pricing.show_stripe_test_banner}
                 ownerIntroFeedReturnId={ownerIntroFeedReturnId}
+                restoreProvider={iapConfig ? storeProvider : null}
+                restoreLoading={checkoutLoading != null && checkoutLoading.startsWith('restore:')}
+                onRestorePurchases={onRestorePurchases}
                 onOpenPanel={panel => {
                   void triggerHaptic('selection')
                   openPanelFromHub(panel)
@@ -697,10 +724,7 @@ export default function SubscriptionPlans() {
                 onSubscribe={onSubscribePremium}
                 loading={checkoutLoading === 'premium'}
                 storeProvider={storeProvider}
-                storeProductAvailable={!!(storeProvider && iapConfig?.[storeProvider]?.premium_product_id)}
-                iapDisabledOnNative={false}
-                iapProductionGrantsEnabled={iapEnabled}
-                webBillingUrl={webBillingUrl}
+                personalBillingProvider={activeSubscriptions?.personal?.subscription_provider ?? null}
                 onRestore={onRestorePurchases}
                 restoreLoading={checkoutLoading != null && checkoutLoading.startsWith('restore:')}
               />
@@ -717,8 +741,7 @@ export default function SubscriptionPlans() {
                 storeProductIds={
                   storeProvider ? iapConfig?.[storeProvider]?.community_product_ids || {} : {}
                 }
-                iapDisabledOnNative={false}
-                webBillingUrl={webBillingUrl}
+                iapDisabledOnNative={iapPurchasesDisabledOnNative}
                 onPickTier={tier => {
                   void triggerHaptic('selection')
                   onPickTier(tier)
@@ -745,7 +768,6 @@ export default function SubscriptionPlans() {
                   error={panelError}
                   loading={!!checkoutLoading}
                   mobileBillingNotice={mobileBillingNotice}
-                  webBillingUrl={webBillingUrl}
                   onChoose={onCommunityChosen}
                   onCreate={() => {
                     setPanelStack([])

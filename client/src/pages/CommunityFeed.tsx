@@ -11,6 +11,7 @@ import Avatar from '../components/Avatar'
 import { prefetchPostDetail } from '../utils/pilotRoutePrefetch'
 import ContentGenerationModal from '../components/ContentGenerationModal'
 import FrozenCommunityModal from '../components/FrozenCommunityModal'
+import FeedbackToast from '../components/moderation/FeedbackToast'
 import CommunityOwnerSetupIntro, {
   communityOwnerSetupStorageKey,
   type CommunityOwnerSetupSnapshot,
@@ -70,7 +71,7 @@ import { applyOptimisticPollVote, reconcilePollResults, usePollVote, type Poll }
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null, audio_path?: string|null, parent_reply_id?: number | null, reply_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
-type Post = { id: number; username: string; content: string; link_urls?: string[] | string | null; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean, view_count?: number, has_viewed?: boolean, media_paths?: MediaItem[] | string | null, is_system_post?: boolean | number | null, welcome_card_key?: string | null }
+type Post = { id: number; username: string; content: string; link_urls?: string[] | string | null; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean, view_count?: number, has_viewed?: boolean, media_paths?: MediaItem[] | string | null, is_system_post?: boolean | number | null, welcome_card_key?: string | null, creation_id?: number | null }
 type ReactionGroup = { reaction_type: string; users: Array<{ username: string; profile_picture?: string | null }> }
 type PostViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
 type TextOverlay = {
@@ -389,6 +390,7 @@ export default function CommunityFeed() {
   
   // Report/Hide/Block post state
   const [reportModalPost, setReportModalPost] = useState<Post | null>(null)
+  const [feedbackToast, setFeedbackToast] = useState<string | null>(null)
   const [hideModalPost, setHideModalPost] = useState<Post | null>(null)
   const [blockModalUser, setBlockModalUser] = useState<{ username: string; postId?: number } | null>(null)
   const [reportReason, setReportReason] = useState('')
@@ -2238,15 +2240,15 @@ export default function CommunityFeed() {
       })
       const j = await res.json().catch(() => null)
       if (j?.success) {
-        alert(j.message || 'Post reported successfully')
         setReportModalPost(null)
         setReportReason('')
         setReportDetails('')
+        setFeedbackToast(j.message || t('feed.post_reported'))
       } else {
-        alert(j?.error || 'Failed to report post')
+        setFeedbackToast(j?.error || t('feed.report_post_failed'))
       }
     } catch {
-      alert('Network error. Could not report post.')
+      setFeedbackToast(t('feed.report_post_network_failed'))
     } finally {
       setReportSubmitting(false)
     }
@@ -3958,6 +3960,9 @@ export default function CommunityFeed() {
             }`}
             style={{ marginBottom: 'var(--app-feed-bottom-nav-height)' }}
           >
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg flex items-center justify-end gap-2" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/builder`) }}>
+              <span style={{ color: '#00CEC8' }}>Build with Steve</span>
+            </button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/key_posts`) }}>
               {t('feed.key_posts')}
             </button>
@@ -4236,9 +4241,11 @@ export default function CommunityFeed() {
         </div>
       )}
 
+      <FeedbackToast message={feedbackToast} onDone={() => setFeedbackToast(null)} />
+
       {/* Report Post Modal */}
       {reportModalPost && (
-        <div 
+        <div
           className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
           onClick={(e) => e.currentTarget === e.target && !reportSubmitting && setReportModalPost(null)}
         >
@@ -4343,7 +4350,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
       ) {
         return false
       }
-      entitlementsHandler.showError(buildClientPremiumRequiredError())
+      entitlementsHandler.showError(buildClientPremiumRequiredError(), { communityId })
       return true
     },
     [communityId, enforcement_enabled, entitlementsLoading, entitlements, entitlementsHandler],
@@ -4438,7 +4445,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
         })
       })
       
-      const data = await entitlementsHandler.handleResponse<{ success?: boolean; reply?: Reply; error?: string }>(response)
+      const data = await entitlementsHandler.handleResponse<{ success?: boolean; reply?: Reply; error?: string }>(response, { communityId })
       if (!data) return // entitlements modal already shown
       console.log('[Steve AI] API response:', data)
       
