@@ -210,7 +210,7 @@ export default function SubscriptionPlans() {
           loadIapConfig().catch(() => null),
         ])
         if (!pricingRes.ok) {
-          throw new Error(`HTTP ${pricingRes.status}`)
+          throw new Error(i18n.t('subscriptions.error_load_pricing'))
         }
         const data: PricingPayload = await pricingRes.json()
         if (!cancelled) {

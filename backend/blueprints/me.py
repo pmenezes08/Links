@@ -790,7 +790,7 @@ def me_billing_portal():
         )
     except Exception as err:
         logger.exception("Stripe billing portal creation failed for %s", username)
-        return jsonify({"success": False, "error": "Unable to open billing portal", "detail": str(err)}), 500
+        return jsonify({"success": False, "error": "Unable to open billing portal"}), 500
 
     return jsonify({"success": True, "url": portal.get("url")})
 
