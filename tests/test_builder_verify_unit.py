@@ -181,7 +181,7 @@ _GOOD_VERDICT = {"render_ok": True, "design_score": 90, "data_verified": "na",
                  "data_issues": [], "critique": [], "responsive_ok": True}
 
 
-def _quality_pass(monkeypatch, *, model, kind="", score=90, critique=None,
+def _quality_pass(monkeypatch, *, model, tier=None, kind="", score=90, critique=None,
                   responsive_ok=True, repaired="", accept_shot=None):
     """Run _render_quality_pass with everything faked; returns (out, spies)."""
     from backend.services import render_service, vision_judge
@@ -213,20 +213,20 @@ def _quality_pass(monkeypatch, *, model, kind="", score=90, critique=None,
     out = builder._render_quality_pass(
         "<!doctype html><html><body>original</body></html>",
         prompt="x", facts="", sources=[], model=model, username="u",
-        community_id=1, kind=kind)
+        community_id=1, kind=kind, tier=tier)
     return out, spies
 
 
 def test_balanced_tier_refines_below_threshold(monkeypatch):
     fixed_html = "<!doctype html><html><body>refined</body></html>"
-    out, spies = _quality_pass(monkeypatch, model=builder._MODEL_MID, kind="app",
+    out, spies = _quality_pass(monkeypatch, model=builder._MODEL_MID, tier="balanced", kind="app",
                                score=60, critique=["tighten spacing"], repaired=fixed_html)
     assert spies["regens"] == 1
     assert out == fixed_html  # acceptance re-render was clean → accepted
 
 
 def test_balanced_tier_does_not_refine_at_or_above_threshold(monkeypatch):
-    out, spies = _quality_pass(monkeypatch, model=builder._MODEL_MID, kind="app",
+    out, spies = _quality_pass(monkeypatch, model=builder._MODEL_MID, tier="balanced", kind="app",
                                score=builder._DESIGN_REFINE_THRESHOLD_BALANCED,
                                critique=["nit"], repaired="<html><body>r</body></html>")
     assert spies["regens"] == 0
@@ -234,7 +234,7 @@ def test_balanced_tier_does_not_refine_at_or_above_threshold(monkeypatch):
 
 
 def test_fast_tier_never_refines(monkeypatch):
-    out, spies = _quality_pass(monkeypatch, model=builder._MODEL_FAST, kind="app",
+    out, spies = _quality_pass(monkeypatch, model=builder._MODEL_FAST, tier="fast", kind="app",
                                score=10, critique=["everything"], repaired="<html><body>r</body></html>")
     assert spies["regens"] == 0
     assert "original" in out
@@ -244,7 +244,7 @@ def test_refine_discarded_when_acceptance_render_breaks(monkeypatch):
     broken = "<!doctype html><html><body>refined-broken</body></html>"
     blank_shot = {"screenshot": "img", "console_errors": ["pageerror: boom"],
                   "blank": True, "overflow": False, "dimensions": {}}
-    out, spies = _quality_pass(monkeypatch, model=builder._MODEL_BEST, kind="website",
+    out, spies = _quality_pass(monkeypatch, model=builder._MODEL_BEST, tier="best", kind="website",
                                score=50, critique=["fix hero"], repaired=broken,
                                accept_shot=blank_shot)
     assert spies["regens"] == 1
@@ -275,7 +275,7 @@ def test_responsive_failure_feeds_desktop_fix_into_refine(monkeypatch):
     monkeypatch.setattr(builder, "_repair_regen", fake_regen)
     builder._render_quality_pass("<!doctype html><html><body>o</body></html>",
                                  prompt="x", facts="", sources=[], model=builder._MODEL_MID,
-                                 username="u", community_id=1, kind="website")
+                                 username="u", community_id=1, kind="website", tier="balanced")
     assert "desktop (1280px) layout" in captured["instruction"]
 
 

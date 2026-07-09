@@ -35,15 +35,22 @@ logger = logging.getLogger(__name__)
 
 # User-facing tiers map to models. Users only ever see "Fast" / "Best quality"
 # — never raw model names (Steve is the single face). Env-overridable so a tier
-# can be repointed without code. "best" routes to OpenAI GPT-5.x via the
-# provider router in llm.py; "fast" stays on Grok.
+# can be repointed without code.
 _MODEL_FAST = os.getenv("STEVE_BUILDER_MODEL_FAST", os.getenv("STEVE_BUILDER_MODEL", "grok-4.3"))
-_MODEL_MID = os.getenv("STEVE_BUILDER_MODEL_BALANCED", "gpt-5.5")
-_MODEL_BEST = os.getenv("STEVE_BUILDER_MODEL_BEST", "claude-opus-4-8")
+# Balanced is meant to move to grok-4.5, but our xAI team is EU-resident and
+# grok-4.5 is us-east-1/us-west-2 only at launch (403 "not available in your
+# region" from BOTH api.x.ai and us-east-1.api.x.ai — the restriction is the
+# ACCOUNT's data-residency region, not the network path). Until xAI ships it
+# to eu-west-1 (or the team region changes), balanced runs grok-4.3; the
+# design-refine pass (not the model) is what separates it from the fast tier.
+# Flip via env or this default once `grok-4.5` stops 403ing for our key.
+_MODEL_MID = os.getenv("STEVE_BUILDER_MODEL_BALANCED", "grok-4.3")
+_MODEL_BEST = os.getenv("STEVE_BUILDER_MODEL_BEST", "claude-fable-5")
 # Three user-facing quality tiers (users see only the labels Quick/Polished/
-# Showpiece, never these model names — Steve is the single face). "balanced"
-# routes to OpenAI (GPT-5.x) via the provider router; "fast" to Grok; "best"
-# to Anthropic (Opus). Env-overridable so a tier can be repointed without code.
+# Showpiece, never these model names — Steve is the single face). "fast" and
+# "balanced" route to xAI (Grok) via the provider router in llm.py; "best" to
+# Anthropic (Fable 5, with a server-side refusal fallback to Opus 4.8 wired in
+# llm.py). Env-overridable so a tier can be repointed without code.
 BUILDER_TIERS = {"fast": _MODEL_FAST, "balanced": _MODEL_MID, "best": _MODEL_BEST}
 _DEFAULT_TIER = "balanced"
 MODEL_LABEL = _MODEL_FAST  # default label; the actual model used is logged per build
@@ -1312,7 +1319,7 @@ def _research_landed(html: str, facts: str, sources: List[str]) -> bool:
 def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperature: float = 0.8,
                      model: Optional[str] = None, verify: bool = False,
                      username: Optional[str] = None, community_id: Optional[int] = None,
-                     kind: str = "") -> str:
+                     kind: str = "", tier: Optional[str] = None) -> str:
     """Generate (or revise) a self-contained HTML artifact via Steve/Grok.
 
     ``caps`` is deliberately not passed to ``llm.generate_text`` — the small
@@ -1435,7 +1442,7 @@ def generate_artifact(prompt: str, *, prior_html: Optional[str] = None, temperat
         html = _render_quality_pass(
             html, prompt=prompt, facts=facts, sources=sources,
             model=model or _MODEL_FAST, username=username, community_id=community_id,
-            kind=effective_kind,
+            kind=effective_kind, tier=tier,
         )
     return html
 
@@ -1450,12 +1457,17 @@ _DESIGN_REFINE_THRESHOLD = int(os.getenv("STEVE_BUILDER_REFINE_THRESHOLD_BEST", 
 _DESIGN_REFINE_THRESHOLD_BALANCED = int(os.getenv("STEVE_BUILDER_REFINE_THRESHOLD_BALANCED", "65"))
 
 
-def _refine_threshold(model: str) -> Optional[int]:
-    if model == _MODEL_BEST:
+def _refine_threshold(tier: Optional[str]) -> Optional[int]:
+    """Per-tier refine threshold — keyed on the TIER, not the model, because
+    tiers can share a model (fast and balanced both run grok-4.3 while
+    grok-4.5 is unavailable in our xAI region), so the model string no longer
+    identifies the tier."""
+    t = (tier or "").strip().lower()
+    if t == "best":
         return _DESIGN_REFINE_THRESHOLD
-    if model == _MODEL_MID:
+    if t == "balanced":
         return _DESIGN_REFINE_THRESHOLD_BALANCED
-    return None  # fast tier: no refine
+    return None  # fast tier (or unknown): no refine
 
 
 # The render/judge/repair pass must be strictly time-bounded — a build that
@@ -1627,7 +1639,8 @@ def _repair_regen(html: str, model: str, instruction: str,
 
 def _render_quality_pass(html: str, *, prompt: str, facts: str, sources: List[str],
                         model: str, username: Optional[str],
-                        community_id: Optional[int], kind: str = "") -> str:
+                        community_id: Optional[int], kind: str = "",
+                        tier: Optional[str] = None) -> str:
     """Render the artifact, judge it, and apply AT MOST ONE targeted repair, all
     within a hard wall-clock budget (further capped by the build-global
     ``_job_deadline``). Entirely best-effort: any failure (service down,
@@ -1765,7 +1778,7 @@ def _render_quality_pass(html: str, *, prompt: str, facts: str, sources: List[st
     # 2b) Design-refine: balanced + best tiers, when below the per-tier bar.
     refine_triggered = False
     refine_accepted = False
-    threshold = _refine_threshold(model)
+    threshold = _refine_threshold(tier)
     if (not fixed and threshold is not None and budget_left() > _MIN_BUDGET_FOR_REGEN
             and verdict.get("design_score", 100) < threshold):
         critique = list(verdict.get("critique") or [])
@@ -1802,8 +1815,8 @@ def _render_quality_pass(html: str, *, prompt: str, facts: str, sources: List[st
                     logger.warning("builder: design refine failed acceptance re-render; shipping original")
 
     logger.info(
-        "builder_judge_verdict kind=%s model=%s score=%s data=%s responsive=%s refine_triggered=%s refine_accepted=%s",
-        _public_kind(kind) if kind else "unknown", model, verdict.get("design_score"),
+        "builder_judge_verdict kind=%s tier=%s model=%s score=%s data=%s responsive=%s refine_triggered=%s refine_accepted=%s",
+        _public_kind(kind) if kind else "unknown", tier or "unknown", model, verdict.get("design_score"),
         verdict.get("data_verified"), verdict.get("responsive_ok"), refine_triggered, refine_accepted,
     )
     return html
@@ -1812,14 +1825,15 @@ def _render_quality_pass(html: str, *, prompt: str, facts: str, sources: List[st
 def _generate_with_fallback(prompt: str, *, prior_html: Optional[str] = None,
                            temperature: float, model: str, verify: bool = False,
                            username: Optional[str] = None, community_id: Optional[int] = None,
-                           kind: str = "") -> tuple:
-    """Generate via ``model``; if a non-fast model (e.g. OpenAI 'best') errors,
-    fall back to the fast model so a build never hard-fails. Returns
-    ``(html, model_actually_used)``."""
+                           kind: str = "", tier: Optional[str] = None) -> tuple:
+    """Generate via ``model``; if a non-fast model (balanced/best) errors,
+    fall back to the fast model so a build never hard-fails. ``tier`` rides
+    along unchanged either way — a Polished/Showpiece build keeps its refine
+    pass even when its model fell back. Returns ``(html, model_actually_used)``."""
     try:
         return generate_artifact(prompt, prior_html=prior_html, temperature=temperature, model=model,
                                  verify=verify, username=username, community_id=community_id,
-                                 kind=kind), model
+                                 kind=kind, tier=tier), model
     except BuildCancelled:
         raise  # user cancel is not a model failure — never burn a fallback call
     except Exception:
@@ -1827,7 +1841,7 @@ def _generate_with_fallback(prompt: str, *, prior_html: Optional[str] = None,
             logger.warning("builder: model %s failed; falling back to %s", model, _MODEL_FAST)
             return (generate_artifact(prompt, prior_html=prior_html, temperature=temperature,
                                       model=_MODEL_FAST, verify=verify, username=username,
-                                      community_id=community_id, kind=kind),
+                                      community_id=community_id, kind=kind, tier=tier),
                     _MODEL_FAST)
         raise
 
@@ -1842,7 +1856,8 @@ def create_creation(*, username: str, community_id: Optional[int], prompt: str,
     build_kind = _public_kind(infer_creation_kind(prompt, title))
     html, model_used = _generate_with_fallback(
         prompt, temperature=0.8, model=resolve_model(tier),
-        verify=verify, username=username, community_id=community_id, kind=build_kind)
+        verify=verify, username=username, community_id=community_id, kind=build_kind,
+        tier=tier)
     report_progress(92, "saving")
     resolved_title = (title or _extract_title(html, prompt))[:200]
     creation_kind = "game" if _has_multiplayer_wiring(html) else build_kind
@@ -1924,7 +1939,7 @@ def iterate_creation(*, creation_id: int, username: str, message: str, tier: str
     html, model_used = _generate_with_fallback(
         message, prior_html=prior, temperature=0.2, model=resolve_model(tier),
         verify=verify, username=username, community_id=row.get("community_id"),
-        kind=iterate_kind)
+        kind=iterate_kind, tier=tier)
     report_progress(92, "saving")
     history = _append_history(row.get("prompt_history"), message)
     now = _now()

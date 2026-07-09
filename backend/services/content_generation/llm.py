@@ -534,21 +534,40 @@ def generate_text(
         {"role": "user", "content": user_prompt},
     ]
     if _is_anthropic_model(mdl):
-        # Anthropic Claude (Opus/Sonnet/Haiku) via the official SDK. Opus/Sonnet
-        # reject `temperature` (400), so we omit it; `max_tokens` is the output
-        # cap, and an explicit timeout suppresses the SDK's large-output guard.
+        # Anthropic Claude (Fable/Opus/Sonnet/Haiku) via the official SDK. These
+        # models reject `temperature` (400), so we omit it; `max_tokens` is the
+        # output cap, and an explicit timeout suppresses the SDK's large-output
+        # guard. Fable 5 additionally runs safety classifiers that can decline a
+        # request (HTTP 200 + stop_reason "refusal"), so for Fable/Mythos we opt
+        # into the server-side fallback: a declined call is transparently
+        # re-served by Opus 4.8 inside the same request. Sent as raw
+        # header/body (not typed SDK params) so any anthropic>=0.40 works.
         if not ANTHROPIC_API_KEY:
             raise RuntimeError("ANTHROPIC_API_KEY is not configured")
         import anthropic
         aclient = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        extra: Dict[str, Any] = {}
+        if mdl.startswith(("claude-fable", "claude-mythos")):
+            extra = {
+                "extra_headers": {"anthropic-beta": "server-side-fallback-2026-06-01"},
+                "extra_body": {"fallbacks": [{"model": "claude-opus-4-8"}]},
+            }
         msg = aclient.messages.create(
             model=mdl,
             max_tokens=effective_max,
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
             timeout=timeout if timeout is not None else 600,
+            **extra,
         )
-        _log_llm_usage(msg, model=mdl)
+        # Log the model that actually served the response (the fallback model
+        # when the primary declined) so ai_usage rows reflect real billing.
+        _log_llm_usage(msg, model=str(getattr(msg, "model", "") or mdl))
+        if getattr(msg, "stop_reason", None) == "refusal":
+            # Whole chain declined — return empty so the builder's own model
+            # fallback (fast tier) takes over instead of shipping a partial.
+            logger.warning("anthropic refusal on %s; returning empty artifact", mdl)
+            return ""
         return next((b.text for b in msg.content if getattr(b, "type", None) == "text"), "")
     if _is_openai_model(mdl):
         # OpenAI GPT-5.x runs through the Responses API with max_output_tokens
