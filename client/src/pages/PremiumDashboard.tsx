@@ -11,6 +11,7 @@ import JoinByHandlePanel from '../components/community/JoinByHandlePanel'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { readDeviceCacheStale, writeDeviceCache } from '../utils/deviceCache'
+import { trackCommunityCreatedConversion } from '../lib/adsConversion'
 import { cacheKeyVal, deleteCachedKeyVal, getCachedKeyVal } from '../utils/offlineDb'
 import {
   DASHBOARD_CACHE_TTL_MS,
@@ -1607,6 +1608,7 @@ export default function PremiumDashboard() {
                           const r = await fetch('/create_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                           const j = await r.json().catch(()=>null)
                           if (j?.success){
+                            trackCommunityCreatedConversion()
                             handleCloseCreateModal()
                             try { localStorage.setItem(doneKey, '1') } catch {}
                             setShowOnboarding(false)
