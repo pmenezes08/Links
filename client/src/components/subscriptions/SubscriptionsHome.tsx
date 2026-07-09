@@ -66,6 +66,7 @@ export default function SubscriptionsHome({
   const personalNeedsAttention = !!personal?.needs_attention && !personalSpecial
   const healthyCommunities = communities.filter(c => communityStripeHealthy(c))
   const needsCommunities = communities.filter(c => !communityStripeHealthy(c))
+  const anySteveEligible = communities.some(c => c.steve_addon_eligible)
 
   const yourPlanRows = useMemo(() => {
     const rows: Array<{
@@ -231,11 +232,30 @@ export default function SubscriptionsHome({
             onClick={() => onOpenPanel('communityTiers')}
           />
           <SettingsDivider />
+          {/* Steve Community Package is a first-class row (not buried under a
+              generic "Add-ons" label). The turquoise dot marks that at least
+              one of the user's communities can add it right now. */}
           <SettingsRow
             icon="fa-solid fa-robot"
-            title={t('subscriptions.addons_title')}
-            subtitle={t('subscriptions.addons_subtitle')}
+            title={t('subscriptions.steve_addon_title')}
+            subtitle={t('subscriptions.steve_addon_one_liner')}
+            badge={
+              anySteveEligible ? (
+                <span
+                  className="block h-2 w-2 rounded-full bg-cpoint-turquoise"
+                  aria-hidden="true"
+                />
+              ) : null
+            }
             active={activePanel === 'addons' || activePanel === 'stevePicker'}
+            onClick={() => onOpenPanel('addons')}
+          />
+          <SettingsDivider />
+          <SettingsRow
+            icon="fa-solid fa-circle-nodes"
+            title={t('subscriptions.networking_hub_title')}
+            subtitle={t('subscriptions.coming_soon')}
+            active={false}
             onClick={() => onOpenPanel('addons')}
           />
         </SettingsSection>

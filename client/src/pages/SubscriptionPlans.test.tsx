@@ -261,7 +261,7 @@ describe('SubscriptionPlans (settings-style hub)', () => {
 
   it('opens community plans directly from query parameters', async () => {
     mockFetchOnce(makePricingPayload())
-    renderPage('/subscription_plans?mode=choose&open=community_plans&community_id=7')
+    renderPage('/subscription_plans?open=community_plans&community_id=7')
 
     expect((await screen.findAllByText('Paid L1')).length).toBeGreaterThanOrEqual(1)
     expect(screen.getByRole('button', { name: /^back$/i })).toBeInTheDocument()
@@ -319,7 +319,41 @@ describe('SubscriptionPlans (settings-style hub)', () => {
     await waitFor(() =>
       expect(screen.getByText(/Upgrade to Paid L1/)).toBeInTheDocument(),
     )
-    expect(screen.getByText('Paulo IST')).toBeInTheDocument()
+    // Exactly one eligible community: the radio list collapses to a single
+    // named confirm and the continue CTA auto-enables (selection resolved).
+    expect(await screen.findByText('Upgrade Paulo IST')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /continue to checkout/i })).toBeEnabled(),
+    )
+  })
+
+  it('keeps the community picker list when multiple communities are eligible', async () => {
+    installFetch({
+      '/api/kb/pricing': makePricingPayload(),
+      '/api/me/subscriptions': {
+        success: true,
+        personal: { active: false, subscription: 'free' },
+        communities: [],
+      },
+      '/api/user_communities_hierarchical': {
+        success: true,
+        username: 'paulo',
+        communities: [
+          { id: 1, name: 'Paulo IST', creator_username: 'paulo' },
+          { id: 2, name: 'Beta Club', creator_username: 'paulo' },
+        ],
+      },
+    })
+    renderPage()
+    await waitForHub()
+
+    openCommunityTiersPanel()
+    const upgradeButtons = await screen.findAllByRole('button', { name: /upgrade a community/i })
+    fireEvent.click(upgradeButtons[0])
+
+    expect(await screen.findByRole('button', { name: /Paulo IST/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Beta Club/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /continue to checkout/i })).toBeDisabled()
   })
 
   it('hides communities already on the selected tier from the picker', async () => {
@@ -390,7 +424,11 @@ describe('SubscriptionPlans (settings-style hub)', () => {
     openCommunityTiersPanel()
     const upgradeButtons = await screen.findAllByRole('button', { name: /upgrade a community/i })
     fireEvent.click(upgradeButtons[0])
-    fireEvent.click(await screen.findByRole('button', { name: /A very long community name/ }))
+    // Single eligible community: auto-resolved confirm, no row to click.
+    await screen.findByText(/Upgrade A very long community name/)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /continue to checkout/i })).toBeEnabled(),
+    )
     fireEvent.click(screen.getByRole('button', { name: /continue to checkout/i }))
 
     expect((await screen.findAllByText('Only the community owner can subscribe.')).length).toBeGreaterThan(0)
@@ -402,10 +440,18 @@ describe('SubscriptionPlans (settings-style hub)', () => {
     renderPage()
     await waitForHub()
 
-    fireEvent.click(screen.getByRole('button', { name: /Community Add-ons/i }))
+    // The hub now surfaces Steve as a first-class row (the generic
+    // "Community Add-ons" row moved inside the tiers panel only).
+    fireEvent.click(screen.getByRole('button', { name: /Steve Community Package/i }))
 
-    expect(await screen.findByText('Steve Community Package')).toBeInTheDocument()
-    expect(screen.getByText('Networking Package')).toBeInTheDocument()
+    expect((await screen.findAllByText('Steve Community Package')).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Networking Package').length).toBeGreaterThanOrEqual(1)
+    expect(
+      screen.getByText('Every member can ask Steve — free members included, not just Premium.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('14-day free trial')).toBeInTheDocument()
+    // formatEur strips trailing .00 and per_month has no leading space.
+    expect(screen.getByText('€49/ month')).toBeInTheDocument()
     const chips = screen.getAllByText(/coming soon/i)
     expect(chips.length).toBeGreaterThanOrEqual(2)
 
@@ -436,10 +482,40 @@ describe('SubscriptionPlans (settings-style hub)', () => {
     openCommunityTiersPanel()
     const upgradeButtons = await screen.findAllByRole('button', { name: /upgrade a community/i })
     fireEvent.click(upgradeButtons[0])
-    await screen.findByText('Paulo IST')
+    await screen.findByText('Upgrade Paulo IST')
 
     fireEvent.click(screen.getByRole('button', { name: /^back$/i }))
     expect(await screen.findAllByRole('button', { name: /upgrade a community/i })).toHaveLength(3)
+  })
+
+  it('collapses the Steve picker to a single confirm when one community is eligible', async () => {
+    installFetch({
+      '/api/kb/pricing': makePricingPayload(),
+      '/api/me/subscriptions': {
+        success: true,
+        personal: { active: false, subscription: 'free' },
+        communities: [
+          {
+            id: 7,
+            name: 'Jola de Domingo',
+            tier: 'paid_l1',
+            subscription_status: 'active',
+            tier_subscription_active: true,
+            steve_addon_eligible: true,
+          },
+        ],
+      },
+    })
+    // Drain any queued jsdom history traversal from earlier tests (panel
+    // back buttons call window.history.back() asynchronously); a stray
+    // popstate landing after mount would close the picker panel.
+    await new Promise(resolve => setTimeout(resolve, 0))
+    renderPage('/subscription_plans?open=community_addons')
+
+    expect(await screen.findByText('Add Steve to Jola de Domingo')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /continue to checkout/i })).toBeEnabled(),
+    )
   })
 
   it('shows an error banner when /api/kb/pricing fails', async () => {

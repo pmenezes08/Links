@@ -115,6 +115,26 @@ export default function CommunityPickerPanel({
     })
   }, [communities, activeByCommunity, tier.tier_code])
 
+  const targetRank = paidTierRank(tier.tier_code)
+
+  // Actually selectable rows (owned, not already on this tier, not blocked by
+  // a higher paid tier). When exactly one community qualifies, the radio list
+  // is pointless ceremony — collapse to a single named confirm.
+  const eligibleCommunities = useMemo(() => {
+    return (communities || []).filter(c => {
+      const row = activeByCommunity.get(c.id)
+      const curRank = paidTierRank(row?.tier || c.tier)
+      return !(curRank > targetRank && targetRank >= 1)
+    })
+  }, [communities, activeByCommunity, targetRank])
+
+  const singleEligible =
+    communities !== null && eligibleCommunities.length === 1 ? eligibleCommunities[0] : null
+
+  useEffect(() => {
+    if (singleEligible) setSelectedId(singleEligible.id)
+  }, [singleEligible])
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-c-text-tertiary">
@@ -157,12 +177,26 @@ export default function CommunityPickerPanel({
         </PanelCard>
       ) : null}
 
-      {communities && communities.length > 0 ? (
+      {singleEligible ? (
+        <PanelCard>
+          <div className="px-4 py-4">
+            <div className="text-base font-semibold text-c-text-primary">
+              {t('subscriptions.picker_single_upgrade', { name: singleEligible.name })}
+            </div>
+            {currentTierLabel(singleEligible, activeSubscriptions) ? (
+              <div className="mt-0.5 text-sm text-c-text-tertiary">
+                {currentTierLabel(singleEligible, activeSubscriptions)}
+              </div>
+            ) : null}
+          </div>
+        </PanelCard>
+      ) : null}
+
+      {!singleEligible && communities && communities.length > 0 ? (
         <PanelCard>
           {communities.map((c, index) => {
             const row = activeByCommunity.get(c.id)
             const curRank = paidTierRank(row?.tier || c.tier)
-            const targetRank = paidTierRank(tier.tier_code)
             const blockedHigher = curRank > targetRank && targetRank >= 1
             const checked = selectedId === c.id
             const tierHint = currentTierLabel(c, activeSubscriptions)

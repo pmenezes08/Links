@@ -581,7 +581,8 @@ Este é o seu mundo. Venha ligar-se a ele.`,
         body: "Suba uma comunidade para um escalão pago e tenha mais membros, mais armazenamento de media e extras opcionais — do círculo próximo a uma organização inteira. Os planos e limites atuais estão sempre na app.",
       },
       {
-        title: "Pacote Steve para comunidades",
+        // Product name is a proper noun — never translated in any locale.
+        title: "Steve Community Package",
         body: "Adicione o Steve a uma comunidade paga para que todos os membros partilhem a mesma presença inteligente no feed, nos grupos e nas conversas — uma quota partilhada para todo o espaço, configurada nas definições da comunidade, na app.",
       },
     ],
