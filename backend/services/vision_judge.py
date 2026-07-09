@@ -164,14 +164,21 @@ def judge(
     success = False
     verdict: Optional[Dict[str, Any]] = None
     try:
-        raw = llm.vision_json(
-            _SYSTEM,
-            _build_user_prompt(brief or "", facts or "", list(console_errors or []),
-                               kind=kind, image_labels=[s.get("label", "") for s in shots]),
-            [s["b64"] for s in shots],
-            model=model,
-            timeout=timeout,
-        )
+        # The nested usage_context makes the completed upstream call log its
+        # own SURFACE_BUILDER_JUDGE row with real tokens_in/out + cost_usd
+        # (and overrides the build worker's outer 'builder_llm' context so
+        # judge spend is never mislabelled).
+        with llm.usage_context(username=username, request_type="builder_judge",
+                               community_id=community_id,
+                               surface=ai_usage.SURFACE_BUILDER_JUDGE):
+            raw = llm.vision_json(
+                _SYSTEM,
+                _build_user_prompt(brief or "", facts or "", list(console_errors or []),
+                                   kind=kind, image_labels=[s.get("label", "") for s in shots]),
+                [s["b64"] for s in shots],
+                model=model,
+                timeout=timeout,
+            )
         if isinstance(raw, dict):
             verdict = _coerce_verdict(raw)
             success = True
@@ -179,17 +186,20 @@ def judge(
         logger.warning("vision_judge: judge call failed", exc_info=True)
         verdict = None
     finally:
-        try:
-            ai_usage.log_usage(
-                username,
-                surface=ai_usage.SURFACE_BUILDER_JUDGE,
-                request_type="builder_judge",
-                community_id=community_id,
-                model=model,
-                success=success,
-                reason_blocked=None if success else "judge_error",
-                response_time_ms=int((time.time() - started) * 1000),
-            )
-        except Exception:
-            logger.warning("vision_judge: usage logging failed", exc_info=True)
+        # Still exactly one row per pass: success is metered by the LLM call
+        # above; only a failed pass logs its (tokenless) failure row here.
+        if not success:
+            try:
+                ai_usage.log_usage(
+                    username,
+                    surface=ai_usage.SURFACE_BUILDER_JUDGE,
+                    request_type="builder_judge",
+                    community_id=community_id,
+                    model=model,
+                    success=False,
+                    reason_blocked="judge_error",
+                    response_time_ms=int((time.time() - started) * 1000),
+                )
+            except Exception:
+                logger.warning("vision_judge: usage logging failed", exc_info=True)
     return verdict

@@ -3,6 +3,10 @@
 All routes are cookie/session authenticated. Build turns (``create`` /
 ``iterate``) are gated by the self-contained builder entitlement and log one
 ``ai_usage_log`` row each (success or block), per the repo's AI invariants.
+Chat / plan are gated by their own monthly allowance
+(``builder_chat_messages_per_month``), rate-limited per user, and metered with
+real tokens/cost via ``usage_context``. The client-sent quality tier is
+clamped server-side to the entitlements-resolved ``builder_max_tier``.
 Builder deliberately does NOT use the Steve credit-pool gate.
 """
 
@@ -19,8 +23,10 @@ from backend.services import builder_capsules
 from backend.services import builder_feeds
 from backend.services import creation_runtime as runtime_svc
 from backend.services import creation_match as match_svc
+from backend.services import rate_limit
+from backend.services.content_generation.llm import usage_context
 from backend.services.cron_auth import cron_authed
-from backend.services.entitlements_gate import gate_builder_or_reason
+from backend.services.entitlements_gate import gate_builder_chat_or_reason, gate_builder_or_reason
 from backend.services.community_access import can_view_community_content
 from backend.services.community import is_app_admin
 from backend.services.database import get_db_connection, get_sql_placeholder
@@ -41,6 +47,36 @@ def _safe_tier(value):
     """Validate the user-facing quality tier (Quick='fast' | Polished='balanced' | Showpiece='best')."""
     t = value.strip().lower() if isinstance(value, str) else "balanced"
     return t if t in ("fast", "balanced", "best") else "balanced"
+
+
+_TIER_RANK = {"fast": 0, "balanced": 1, "best": 2}
+
+
+def _clamped_tier(tier: str, ent) -> str:
+    """Server-side tier ceiling: the entitlements-resolved ``builder_max_tier``
+    always wins over the client-sent tier, so free/trial users can never reach
+    the premium 'best' model whatever the request says."""
+    max_tier = str((ent or {}).get("builder_max_tier") or "balanced").strip().lower()
+    if max_tier not in _TIER_RANK:
+        max_tier = "balanced"
+    return tier if _TIER_RANK.get(tier, 1) <= _TIER_RANK[max_tier] else max_tier
+
+
+def _ai_rate_ok(action: str, username: str, ent) -> bool:
+    """Per-user fixed-window rate limit for builder AI endpoints. The rpm/hpm
+    caps come from the resolved entitlements (KB-backed ``rpm_per_user`` /
+    ``hpm_per_user``, the same limits Steve chat uses). Fail-open by design —
+    see backend.services.rate_limit."""
+    try:
+        rpm = int((ent or {}).get("rpm_per_user") or 10)
+    except Exception:
+        rpm = 10
+    try:
+        hpm = int((ent or {}).get("hpm_per_user") or 60)
+    except Exception:
+        hpm = 60
+    return (rate_limit.allow(f"{action}:rpm", username, max_events=rpm, window_seconds=60)
+            and rate_limit.allow(f"{action}:hpm", username, max_events=hpm, window_seconds=3600))
 
 
 def _can_access_community(username: str, community_id: int) -> bool:
@@ -95,6 +131,17 @@ def _limit_response(ent, reason):
     }), 402
 
 
+def _chat_limit_response(ent, reason):
+    cap = ent.get("builder_chat_messages_per_month") if isinstance(ent, dict) else None
+    return jsonify({
+        "success": False,
+        "error": "builder_limit_reached",
+        "code": reason or "builder_chat_monthly_cap",
+        "cap": cap,
+        "message": "You've used this month's free Steve chat allowance in the builder. Upgrade to keep designing.",
+    }), 402
+
+
 def _active_job_response():
     return jsonify({
         "success": False,
@@ -142,6 +189,7 @@ def builder_create():
         ai_usage.log_block(username, surface=ai_usage.SURFACE_BUILDER,
                            reason=reason or "builder_monthly_cap", community_id=community_id)
         return _limit_response(ent, reason)
+    tier = _clamped_tier(tier, ent)
 
     if builder_svc.user_has_active_job(username):
         return _active_job_response()
@@ -162,7 +210,10 @@ def builder_create():
 @builder_bp.route("/api/builder/chat", methods=["POST"])
 def builder_chat():
     """Steve's design conversation — reason / ideate / discuss / propose-and-confirm
-    before building. AI-free of the build cap (distinct surface)."""
+    before building. Never consumes a build turn (distinct surface) but it IS a
+    paid LLM call, so it is entitlement-gated (monthly chat allowance) and
+    rate-limited. The upstream call runs inside a usage_context, so the
+    ai_usage row carries the ACTUAL model + real tokens/cost."""
     username = session.get("username")
     if not username:
         return jsonify({"success": False, "error": "auth_required"}), 401
@@ -170,6 +221,17 @@ def builder_chat():
     message = (data.get("message") or "").strip()
     if not message:
         return jsonify({"success": False, "error": "message required"}), 400
+    community_id = _safe_int(data.get("community_id"))
+
+    allowed, reason, ent = gate_builder_chat_or_reason(username, community_id=community_id)
+    if not allowed:
+        ai_usage.log_block(username, surface=ai_usage.SURFACE_BUILDER_CHAT,
+                           reason=reason or "builder_chat_monthly_cap", community_id=community_id)
+        return _chat_limit_response(ent, reason)
+    if not _ai_rate_ok("builder_chat", username, ent):
+        return jsonify({"success": False, "error": "rate_limited",
+                        "message": "You're sending messages very fast — give me a moment, then try again."}), 429
+
     mode = "technical" if str(data.get("mode") or "").lower() == "technical" else "simple"
     # Ask (discuss only) vs Agent (can build). Defaults to Agent.
     agent_mode = str(data.get("agent_mode") or "agent").lower() != "ask"
@@ -184,18 +246,20 @@ def builder_chat():
         creation = builder_svc.get_creation(cid_int)
         if creation and creation.get("created_by") == username:
             current_html = creation.get("html_content")
-    tier = _safe_tier(data.get("tier"))
-    result = builder_svc.converse(history, message[:4000], mode=mode, agent_mode=agent_mode,
-                                  has_creation=bool(current_html), current_html=current_html, tier=tier)
-    ai_usage.log_usage(username, surface=ai_usage.SURFACE_BUILDER_CHAT, request_type="builder_chat",
-                       community_id=_safe_int(data.get("community_id")), model=builder_svc.MODEL_LABEL)
+    tier = _clamped_tier(_safe_tier(data.get("tier")), ent)
+    with usage_context(username=username, request_type="builder_chat",
+                       community_id=community_id, surface=ai_usage.SURFACE_BUILDER_CHAT):
+        result = builder_svc.converse(history, message[:4000], mode=mode, agent_mode=agent_mode,
+                                      has_creation=bool(current_html), current_html=current_html, tier=tier)
     return jsonify({"success": True, **result})
 
 
 @builder_bp.route("/api/builder/plan", methods=["POST"])
 def builder_plan():
-    """A quick 'here's what I'll make' narration shown while a build runs. Logged
-    under a distinct surface so it does NOT consume a build turn."""
+    """A quick 'here's what I'll make' narration shown while a build runs. A
+    distinct surface so it does NOT consume a build turn, but still a paid LLM
+    call: it shares the chat monthly allowance, is rate-limited, and meters
+    real tokens/cost through the usage_context."""
     username = session.get("username")
     if not username:
         return jsonify({"success": False, "error": "auth_required"}), 401
@@ -203,11 +267,20 @@ def builder_plan():
     prompt = (data.get("prompt") or data.get("message") or "").strip()
     if not prompt:
         return jsonify({"success": False, "error": "prompt required"}), 400
-    plan = builder_svc.plan_build(prompt[:4000], is_iteration=bool(data.get("iteration")))
-    if plan:
-        ai_usage.log_usage(username, surface=ai_usage.SURFACE_BUILDER_PLAN,
-                           request_type="builder_plan", community_id=_safe_int(data.get("community_id")),
-                           model=builder_svc.MODEL_LABEL)
+    community_id = _safe_int(data.get("community_id"))
+
+    allowed, reason, ent = gate_builder_chat_or_reason(username, community_id=community_id)
+    if not allowed:
+        ai_usage.log_block(username, surface=ai_usage.SURFACE_BUILDER_PLAN,
+                           reason=reason or "builder_chat_monthly_cap", community_id=community_id)
+        return _chat_limit_response(ent, reason)
+    if not _ai_rate_ok("builder_plan", username, ent):
+        return jsonify({"success": False, "error": "rate_limited",
+                        "message": "You're sending requests very fast — give me a moment, then try again."}), 429
+
+    with usage_context(username=username, request_type="builder_plan",
+                       community_id=community_id, surface=ai_usage.SURFACE_BUILDER_PLAN):
+        plan = builder_svc.plan_build(prompt[:4000], is_iteration=bool(data.get("iteration")))
     return jsonify({"success": True, "plan": plan})
 
 
@@ -235,6 +308,7 @@ def builder_iterate(creation_id: int):
         ai_usage.log_block(username, surface=ai_usage.SURFACE_BUILDER,
                            reason=reason or "builder_monthly_cap", community_id=community_id)
         return _limit_response(ent, reason)
+    tier = _clamped_tier(tier, ent)
 
     if builder_svc.user_has_active_job(username):
         return _active_job_response()

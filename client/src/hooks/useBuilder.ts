@@ -115,7 +115,9 @@ export function useBuilder(communityId: string) {
       })
       const data = (await res.json().catch(() => null)) as ChatResult | null
       if (!res.ok || !data?.success || !data.reply) {
-        setError(data?.error || 'Steve had trouble there — try again.')
+        // Gated responses (402 allowance / 429 rate limit) carry a human
+        // `message`; prefer it over the machine `error` code.
+        setError((data as { message?: string } | null)?.message || data?.error || 'Steve had trouble there — try again.')
         return
       }
       setMessages((m) => [...m, { role: 'steve', text: data.reply! }])

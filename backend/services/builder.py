@@ -53,7 +53,6 @@ _MODEL_BEST = os.getenv("STEVE_BUILDER_MODEL_BEST", "claude-fable-5")
 # llm.py). Env-overridable so a tier can be repointed without code.
 BUILDER_TIERS = {"fast": _MODEL_FAST, "balanced": _MODEL_MID, "best": _MODEL_BEST}
 _DEFAULT_TIER = "balanced"
-MODEL_LABEL = _MODEL_FAST  # default label; the actual model used is logged per build
 
 
 def resolve_model(tier: Optional[str]) -> str:
@@ -2340,28 +2339,36 @@ def run_build_job(job_id: int) -> Dict[str, Any]:
     deadline_token = _job_deadline.set(time.monotonic() + _JOB_DEADLINE_SECONDS)
     try:
         report_progress(5, "starting")
-        if kind == "iterate":
-            creation = iterate_creation(
-                creation_id=int(creation_id), username=username, message=prompt, tier=tier,
-                verify=True,
-            )
-        else:
-            creation = create_creation(
-                username=username, community_id=community_id, prompt=prompt, tier=tier,
-                verify=True,
-            )
+        # Meter every raw LLM call the pipeline makes (codegen, research,
+        # repair/refine regens) with real tokens + cost. Distinct surface
+        # ('builder_llm') so the single 'builder' turn row below stays the one
+        # source of truth for the monthly turn cap. The vision judge sets its
+        # own nested context, so its calls land under 'builder_judge'.
+        from backend.services import ai_usage
+        with llm.usage_context(username=username, request_type=request_type,
+                               community_id=community_id,
+                               surface=ai_usage.SURFACE_BUILDER_LLM):
+            if kind == "iterate":
+                creation = iterate_creation(
+                    creation_id=int(creation_id), username=username, message=prompt, tier=tier,
+                    verify=True,
+                )
+            else:
+                creation = create_creation(
+                    username=username, community_id=community_id, prompt=prompt, tier=tier,
+                    verify=True,
+                )
         result_id = int(creation["id"])
         report_progress(100, "done")
         _set_job_status(job_id_int, "succeeded", result_creation_id=result_id,
                         finished=True, clear_worker=True)
         try:
-            from backend.services import ai_usage
             ai_usage.log_usage(
                 username,
                 surface=ai_usage.SURFACE_BUILDER,
                 request_type=request_type,
                 community_id=community_id,
-                model=creation.get("model") or MODEL_LABEL,
+                model=creation.get("model") or resolve_model(tier),
             )
         except Exception:
             logger.warning("builder: usage logging failed for job %s", job_id, exc_info=True)
@@ -2402,7 +2409,7 @@ def run_build_job(job_id: int) -> Dict[str, Any]:
                 success=False,
                 reason_blocked="generation_error",
                 community_id=community_id,
-                model=MODEL_LABEL,
+                model=resolve_model(tier),
             )
         except Exception:
             logger.warning("builder: failure usage logging failed for job %s", job_id, exc_info=True)

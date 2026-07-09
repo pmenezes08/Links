@@ -1305,6 +1305,10 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "whisper_minutes_per_month", "label": "Whisper minutes / month", "type": "integer", "value": 100, "group": "user_allowance"},
                 {"name": "builder_turns_per_month", "label": "Steve Builder turns / month (free tier)", "type": "integer", "value": 10,
                  "help": "Free/trial monthly quota for building front-end creations with Steve. Paid tiers are uncapped.", "group": "user_allowance"},
+                {"name": "builder_chat_messages_per_month", "label": "Steve Builder chat messages / month (free tier)", "type": "integer", "value": 200,
+                 "help": "Free/trial monthly quota for Steve's builder design chat + plan narrations (surfaces builder_chat + builder_plan). "
+                         "These never consume a build turn but are paid LLM calls, so they get their own cap. Paid tiers are uncapped.",
+                 "group": "user_allowance"},
                 {"name": "display_format", "label": "Displayed to user as", "type": "string",
                  "value": "\"X of 100 Steve uses · Y of 100 voice minutes — resets on [date]\"", "group": "user_allowance"},
 
@@ -1379,6 +1383,15 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "model_heavy", "label": "Heavy model (reasoning)", "type": "string", "value": "grok-4.3", "group": "model_costs"},
                 {"name": "model_heavy_input_per_m_usd", "label": "Heavy model — input $/1M", "type": "decimal", "prefix": "$", "value": 1.25, "group": "model_costs"},
                 {"name": "model_heavy_output_per_m_usd", "label": "Heavy model — output $/1M", "type": "decimal", "prefix": "$", "value": 2.50, "group": "model_costs"},
+                # Non-Grok models used by the Steve Builder / vision judge / research.
+                # Read by steve_model_config.estimate_model_cost_usd (prefix match on
+                # the model id) so builder ai_usage rows carry real cost_usd.
+                {"name": "model_fable_input_per_m_usd", "label": "Builder Showpiece (Claude Fable 5) — input $/1M", "type": "decimal", "prefix": "$", "value": 10.00, "group": "model_costs"},
+                {"name": "model_fable_output_per_m_usd", "label": "Builder Showpiece (Claude Fable 5) — output $/1M", "type": "decimal", "prefix": "$", "value": 50.00, "group": "model_costs"},
+                {"name": "model_opus_input_per_m_usd", "label": "Claude Opus 4.8 (judge + Fable fallback) — input $/1M", "type": "decimal", "prefix": "$", "value": 5.00, "group": "model_costs"},
+                {"name": "model_opus_output_per_m_usd", "label": "Claude Opus 4.8 (judge + Fable fallback) — output $/1M", "type": "decimal", "prefix": "$", "value": 25.00, "group": "model_costs"},
+                {"name": "model_openai_input_per_m_usd", "label": "OpenAI research (gpt-4o) — input $/1M", "type": "decimal", "prefix": "$", "value": 2.50, "group": "model_costs"},
+                {"name": "model_openai_output_per_m_usd", "label": "OpenAI research (gpt-4o) — output $/1M", "type": "decimal", "prefix": "$", "value": 10.00, "group": "model_costs"},
                 {"name": "whisper_per_minute_usd", "label": "OpenAI Whisper ($/minute)", "type": "decimal", "prefix": "$", "value": 0.006, "group": "model_costs"},
                 {"name": "tool_call_per_1000_usd", "label": "Web / X / code-exec tool calls ($/1000 calls)", "type": "decimal", "prefix": "$", "value": 5.00, "group": "model_costs"},
                 {"name": "usd_to_eur_rate", "label": "USD → EUR rate", "type": "decimal", "value": 0.92, "group": "model_costs",

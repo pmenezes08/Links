@@ -77,6 +77,12 @@ SURFACE_BUILDER_CHAT = "builder_chat"
 # verification / design-refine inside a build. Logged for AI-spend visibility but
 # a DISTINCT surface so it never counts against the builder_turns_per_month cap.
 SURFACE_BUILDER_JUDGE = "builder_judge"
+# Per-call token/cost metering for the raw LLM calls inside a build (codegen,
+# research, repair/refine regens). One build turn can make several such calls,
+# so these rows are a DISTINCT surface from 'builder' — the single 'builder'
+# row per turn keeps powering builder_turns_per_month, while builder_llm rows
+# carry the real tokens_in/out + cost_usd for the spend ceilings.
+SURFACE_BUILDER_LLM = "builder_llm"
 
 ALL_SURFACES = (
     SURFACE_DM,
@@ -435,6 +441,33 @@ def builder_turns_this_month(username: str) -> int:
               AND created_at >= {ph}
             """,
             (username, _first_of_current_month_utc()),
+        )
+
+
+def builder_chat_calls_this_month(username: str) -> int:
+    """Successful Steve Builder chat + plan calls this calendar month.
+
+    Powers the ``builder_chat_messages_per_month`` cap. The two surfaces share
+    one allowance: both are pre-build design/narration calls that never consume
+    a build turn but must still be bounded for free/trial users.
+    """
+    if not username:
+        return 0
+    ensure_tables()
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        return _fetch_count(
+            c,
+            f"""
+            SELECT COUNT(*) AS cnt FROM ai_usage_log
+            WHERE username = {ph}
+              AND surface IN ({ph}, {ph})
+              AND success = 1
+              AND created_at >= {ph}
+            """,
+            (username, SURFACE_BUILDER_CHAT, SURFACE_BUILDER_PLAN,
+             _first_of_current_month_utc()),
         )
 
 

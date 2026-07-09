@@ -17,13 +17,15 @@ logger = logging.getLogger(__name__)
 
 # ── Usage metering ───────────────────────────────────────────────────────
 #
-# These helpers are shared by content generation AND the Steve Builder. The
-# builder logs its own ai_usage rows, so logging unconditionally here would
-# double-count. Instead, metering is CONTEXT-GATED: a caller that owns the
-# spend (content-gen's execute_job) wraps its work in ``usage_context(...)``
-# and every paid call inside logs one real-token row to ai_usage_log. No
-# context → no row here. This closes the gap that let ~4.6k web-search grok
-# calls burn credits invisibly (July 2026 xAI credit exhaustion).
+# These helpers are shared by content generation AND the Steve Builder.
+# Metering is CONTEXT-GATED: a caller that owns the spend (content-gen's
+# execute_job, the builder's chat/plan routes and build worker) wraps its work
+# in ``usage_context(...)`` and every paid call inside logs one real-token row
+# (tokens_in/out + cost_usd) to ai_usage_log. No context → no row here, so a
+# caller that logs its own rows can't double-count. This closes the gap that
+# let ~4.6k web-search grok calls burn credits invisibly (July 2026 xAI credit
+# exhaustion) and the follow-up gap where builder LLM spend carried no
+# tokens/cost at all.
 
 _USAGE_CTX: contextvars.ContextVar[Optional[Dict[str, Any]]] = contextvars.ContextVar(
     "content_gen_usage_ctx", default=None
@@ -31,13 +33,22 @@ _USAGE_CTX: contextvars.ContextVar[Optional[Dict[str, Any]]] = contextvars.Conte
 
 
 @contextmanager
-def usage_context(*, username: str, request_type: str, community_id: Optional[int] = None):
-    """Attribute all paid LLM calls inside this block to one actor/job."""
+def usage_context(*, username: str, request_type: str, community_id: Optional[int] = None,
+                  surface: Optional[str] = None):
+    """Attribute all paid LLM calls inside this block to one actor/job.
+
+    ``surface`` overrides the default ``content_gen`` ai_usage surface so
+    other metered callers (the Steve Builder's chat / plan / build pipeline)
+    reuse the same context-gated metering without mislabelling their rows.
+    Contexts nest: an inner context (e.g. the vision judge inside a build)
+    wins for the calls it wraps, then the outer one is restored.
+    """
     token = _USAGE_CTX.set(
         {
             "username": username,
             "request_type": request_type,
             "community_id": community_id,
+            "surface": surface,
         }
     )
     try:
@@ -79,12 +90,21 @@ def _log_llm_usage(response: Any, *, model: str, tools_web_search: bool = False)
         from backend.services import ai_usage
 
         tokens_in, tokens_out = _usage_tokens(getattr(response, "usage", None))
+        cost_usd = None
+        if tokens_in is not None or tokens_out is not None:
+            try:
+                from backend.services.steve_model_config import estimate_model_cost_usd
+
+                cost_usd = estimate_model_cost_usd(model, tokens_in, tokens_out)
+            except Exception:
+                cost_usd = None
         ai_usage.log_usage(
             ctx["username"],
-            surface=ai_usage.SURFACE_CONTENT_GEN,
+            surface=ctx.get("surface") or ai_usage.SURFACE_CONTENT_GEN,
             request_type=ctx["request_type"],
             tokens_in=tokens_in,
             tokens_out=tokens_out,
+            cost_usd=cost_usd,
             community_id=ctx.get("community_id"),
             model=model,
             tools_web_search=tools_web_search,

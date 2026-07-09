@@ -12,7 +12,7 @@ import pytest
 
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services import ai_usage, builder, builder_feeds, creation_runtime, r2_storage
-from backend.services.entitlements_gate import gate_builder_or_reason
+from backend.services.entitlements_gate import gate_builder_chat_or_reason, gate_builder_or_reason
 
 pytestmark = pytest.mark.usefixtures("mysql_dsn")
 
@@ -435,6 +435,67 @@ def test_paid_tier_is_uncapped():
     assert ent.get("builder_turns_per_month") is None
 
 
+# ── Chat/plan gate (builder_chat_messages_per_month) + tier ceiling ──────────
+
+def test_chat_gate_counts_chat_and_plan_surfaces_together():
+    """The chat allowance counter sums SUCCESSFUL builder_chat + builder_plan
+    rows only — blocked rows and build-turn rows never consume it."""
+    _make_user("chatty")
+    ai_usage.log_usage("chatty", surface=ai_usage.SURFACE_BUILDER_CHAT, request_type="builder_chat")
+    ai_usage.log_usage("chatty", surface=ai_usage.SURFACE_BUILDER_CHAT, request_type="builder_chat")
+    ai_usage.log_usage("chatty", surface=ai_usage.SURFACE_BUILDER_PLAN, request_type="builder_plan")
+    ai_usage.log_block("chatty", surface=ai_usage.SURFACE_BUILDER_CHAT, reason="builder_chat_monthly_cap")
+    ai_usage.log_usage("chatty", surface=ai_usage.SURFACE_BUILDER, request_type="builder_create")
+
+    assert ai_usage.builder_chat_calls_this_month("chatty") == 3
+    # Chatting never consumes a build turn (and vice versa).
+    assert ai_usage.builder_turns_this_month("chatty") == 1
+
+
+def test_chat_gate_allows_free_quota_then_blocks_at_cap(monkeypatch):
+    _make_user("designer")
+    allowed, reason, ent = gate_builder_chat_or_reason("designer", enforce_override=True)
+    assert allowed is True and reason is None
+    cap = ent.get("builder_chat_messages_per_month")
+    assert isinstance(cap, int) and cap > 0
+
+    # At the cap → blocked with the dedicated reason code.
+    monkeypatch.setattr(ai_usage, "builder_chat_calls_this_month", lambda _u: cap)
+    blocked, reason2, _ent = gate_builder_chat_or_reason("designer", enforce_override=True)
+    assert blocked is False
+    assert reason2 == "builder_chat_monthly_cap"
+
+    # Flag-off legacy mode soft-blocks (allowed, but reason reported).
+    soft_allowed, soft_reason, _ = gate_builder_chat_or_reason("designer", enforce_override=False)
+    assert soft_allowed is True
+    assert soft_reason == "builder_chat_monthly_cap"
+
+
+def test_paid_tier_chat_is_uncapped_and_unlocks_best_tier():
+    _make_user("prochat", subscription="premium")
+    allowed, _reason, ent = gate_builder_chat_or_reason("prochat", enforce_override=True)
+    assert allowed is True
+    assert ent.get("builder_chat_messages_per_month") is None
+    assert ent.get("builder_max_tier") == "best"
+
+
+def test_free_tier_max_tier_is_balanced():
+    _make_user("freebie")
+    _allowed, _reason, ent = gate_builder_or_reason("freebie", enforce_override=True)
+    assert ent.get("builder_max_tier") == "balanced"
+
+
+def test_clamped_tier_helper():
+    from backend.blueprints.builder import _clamped_tier
+    assert _clamped_tier("best", {"builder_max_tier": "balanced"}) == "balanced"
+    assert _clamped_tier("best", {"builder_max_tier": "best"}) == "best"
+    assert _clamped_tier("fast", {"builder_max_tier": "balanced"}) == "fast"
+    assert _clamped_tier("balanced", {}) == "balanced"          # missing → balanced ceiling
+    assert _clamped_tier("best", {}) == "balanced"
+    assert _clamped_tier("best", {"builder_max_tier": "junk"}) == "balanced"
+    assert _clamped_tier("balanced", {"builder_max_tier": "fast"}) == "fast"
+
+
 # --- Community interaction data ------------------------------------------------
 
 def _make_creation(cid: int, owner: str = "maker", monkeypatch=None) -> int:
@@ -771,6 +832,27 @@ def _count_usage_rows(username: str, *, surface: str = "builder", success=None) 
     return int(row["n"] if hasattr(row, "keys") else row[0])
 
 
+def _fetch_usage_rows(username: str, *, surface: str) -> list:
+    """Full ai_usage rows (model/tokens/cost) for metering assertions."""
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""SELECT model, tokens_in, tokens_out, cost_usd, request_type, success
+                FROM ai_usage_log WHERE username = {ph} AND surface = {ph}""",
+            (username, surface),
+        )
+        rows = c.fetchall() or []
+    out = []
+    for row in rows:
+        if hasattr(row, "keys"):
+            out.append(dict(row))
+        else:
+            out.append({"model": row[0], "tokens_in": row[1], "tokens_out": row[2],
+                        "cost_usd": row[3], "request_type": row[4], "success": row[5]})
+    return out
+
+
 def _set_job_raw(job_id: int, **cols) -> None:
     """Force builder_jobs columns directly so tests can fabricate states
     (e.g. an expired lease) that are tedious to reach through the worker."""
@@ -1000,6 +1082,208 @@ def test_blueprint_create_logs_block_and_returns_402_when_gate_denies(monkeypatc
     assert _count_usage_rows("capped", success=False) == 1
     # No job enqueued.
     assert builder_client._enqueued == []
+
+
+def test_blueprint_chat_blocks_at_cap_and_logs_block(monkeypatch, builder_client):
+    monkeypatch.setattr(builder_bp_mod, "gate_builder_chat_or_reason",
+                        lambda *a, **k: (False, "builder_chat_monthly_cap",
+                                         {"builder_chat_messages_per_month": 200}))
+    _make_user("chatcapped")
+    _login(builder_client, "chatcapped")
+
+    resp = builder_client.post("/api/builder/chat", json={"message": "hi"})
+    body = resp.get_json()
+
+    assert resp.status_code == 402
+    assert body["error"] == "builder_limit_reached"
+    assert body["code"] == "builder_chat_monthly_cap"
+    assert body["cap"] == 200
+    assert _count_usage_rows("chatcapped", surface="builder_chat", success=False) == 1
+
+
+def test_blueprint_plan_blocks_at_cap_and_logs_block(monkeypatch, builder_client):
+    monkeypatch.setattr(builder_bp_mod, "gate_builder_chat_or_reason",
+                        lambda *a, **k: (False, "builder_chat_monthly_cap", {}))
+    called = []
+    monkeypatch.setattr(builder_bp_mod.builder_svc, "plan_build",
+                        lambda *a, **k: called.append(1) or "a plan")
+    _make_user("plancapped")
+    _login(builder_client, "plancapped")
+
+    resp = builder_client.post("/api/builder/plan", json={"prompt": "a quiz"})
+
+    assert resp.status_code == 402
+    assert resp.get_json()["error"] == "builder_limit_reached"
+    assert _count_usage_rows("plancapped", surface="builder_plan", success=False) == 1
+    assert called == []  # no paid call after a block
+
+
+def test_blueprint_chat_and_plan_are_rate_limited(monkeypatch, builder_client):
+    monkeypatch.setattr(builder_bp_mod, "gate_builder_chat_or_reason",
+                        lambda *a, **k: (True, None, {"rpm_per_user": 10, "hpm_per_user": 60}))
+    monkeypatch.setattr(builder_bp_mod.rate_limit, "allow", lambda *a, **k: False)
+    called = []
+    monkeypatch.setattr(builder_bp_mod.builder_svc, "converse",
+                        lambda *a, **k: called.append("chat") or {})
+    monkeypatch.setattr(builder_bp_mod.builder_svc, "plan_build",
+                        lambda *a, **k: called.append("plan") or "a plan")
+    _make_user("spammy")
+    _login(builder_client, "spammy")
+
+    chat = builder_client.post("/api/builder/chat", json={"message": "hi"})
+    plan = builder_client.post("/api/builder/plan", json={"prompt": "a quiz"})
+
+    assert chat.status_code == 429 and chat.get_json()["error"] == "rate_limited"
+    assert plan.status_code == 429 and plan.get_json()["error"] == "rate_limited"
+    assert called == []  # limiter fired before any paid call
+
+
+def test_blueprint_chat_rate_limit_uses_entitlement_caps(monkeypatch, builder_client):
+    """The rpm/hpm ceilings come from the resolved entitlements, not code."""
+    monkeypatch.setattr(builder_bp_mod, "gate_builder_chat_or_reason",
+                        lambda *a, **k: (True, None, {"rpm_per_user": 7, "hpm_per_user": 42}))
+    seen = []
+    monkeypatch.setattr(builder_bp_mod.rate_limit, "allow",
+                        lambda action, identity, *, max_events, window_seconds:
+                        seen.append((action, max_events, window_seconds)) or True)
+    monkeypatch.setattr(builder_bp_mod.builder_svc, "converse",
+                        lambda *a, **k: {"reply": "ok", "ready": False, "brief": ""})
+    _make_user("limits")
+    _login(builder_client, "limits")
+
+    resp = builder_client.post("/api/builder/chat", json={"message": "hi"})
+
+    assert resp.status_code == 200
+    assert ("builder_chat:rpm", 7, 60) in seen
+    assert ("builder_chat:hpm", 42, 3600) in seen
+
+
+def test_blueprint_chat_clamps_best_tier_for_free_users(monkeypatch, builder_client):
+    monkeypatch.setattr(builder_bp_mod, "gate_builder_chat_or_reason",
+                        lambda *a, **k: (True, None, {"builder_max_tier": "balanced"}))
+    seen = {}
+
+    def fake_converse(*_a, **kw):
+        seen.update(kw)
+        return {"reply": "ok", "ready": False, "brief": ""}
+
+    monkeypatch.setattr(builder_bp_mod.builder_svc, "converse", fake_converse)
+    _make_user("freeclamp")
+    _login(builder_client, "freeclamp")
+
+    resp = builder_client.post("/api/builder/chat", json={"message": "hi", "tier": "best"})
+
+    assert resp.status_code == 200
+    assert seen["tier"] == "balanced"
+
+
+def test_blueprint_create_clamps_best_tier_for_free_users(monkeypatch, builder_client):
+    monkeypatch.setattr(builder_bp_mod, "gate_builder_or_reason",
+                        lambda *a, **k: (True, None, {"builder_max_tier": "balanced"}))
+    _make_user("freemaker")
+    cid = _make_community()
+    _login(builder_client, "freemaker")
+
+    resp = builder_client.post("/api/builder/create",
+                               json={"community_id": cid, "prompt": "a quiz", "tier": "best"})
+
+    assert resp.status_code == 202
+    job_id = int(resp.get_json()["job"]["id"])
+    assert builder.get_build_job(job_id)["tier"] == "balanced"
+
+
+def test_blueprint_create_keeps_best_tier_for_paid_users(monkeypatch, builder_client):
+    monkeypatch.setattr(builder_bp_mod, "gate_builder_or_reason",
+                        lambda *a, **k: (True, None, {"builder_max_tier": "best",
+                                                      "builder_turns_per_month": None}))
+    _make_user("paidmaker")
+    cid = _make_community()
+    _login(builder_client, "paidmaker")
+
+    resp = builder_client.post("/api/builder/create",
+                               json={"community_id": cid, "prompt": "a quiz", "tier": "best"})
+
+    assert resp.status_code == 202
+    assert builder.get_build_job(int(resp.get_json()["job"]["id"]))["tier"] == "best"
+
+
+def test_blueprint_iterate_clamps_best_tier_for_free_users(monkeypatch, builder_client):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    monkeypatch.setattr(builder_bp_mod, "gate_builder_or_reason",
+                        lambda *a, **k: (True, None, {"builder_max_tier": "balanced"}))
+    _make_user("freeiter")
+    cid = _make_community()
+    created = builder.create_creation(username="freeiter", community_id=cid, prompt="a quiz")
+    _login(builder_client, "freeiter")
+
+    resp = builder_client.post(f"/api/builder/{int(created['id'])}/iterate",
+                               json={"message": "make it neon", "tier": "best"})
+
+    assert resp.status_code == 202
+    assert builder.get_build_job(int(resp.get_json()["job"]["id"]))["tier"] == "balanced"
+
+
+# ── Metering: real tokens + cost on chat and the build pipeline ─────────────
+
+def _fake_llm_response(tokens_in: int, tokens_out: int):
+    from types import SimpleNamespace
+    return SimpleNamespace(usage=SimpleNamespace(input_tokens=tokens_in, output_tokens=tokens_out))
+
+
+def test_blueprint_chat_meters_actual_model_and_tokens(monkeypatch, builder_client):
+    """/api/builder/chat wraps the LLM call in a usage_context, so the row
+    carries the ACTUAL tier model + real tokens/cost (the old path logged a
+    tokenless row stamped with the fast-model label regardless of tier)."""
+    from backend.services.content_generation import llm as content_llm
+
+    monkeypatch.setattr(builder_bp_mod, "gate_builder_chat_or_reason",
+                        lambda *a, **k: (True, None, {"builder_max_tier": "best"}))
+
+    def fake_generate_text(*_a, **kw):
+        # Simulate what a completed upstream call does inside generate_text.
+        content_llm._log_llm_usage(_fake_llm_response(1000, 200), model=kw.get("model"))
+        return '{"reply":"ok","ready":false,"brief":""}'
+
+    monkeypatch.setattr(builder.llm, "generate_text", fake_generate_text)
+    _make_user("metered")
+    _login(builder_client, "metered")
+
+    resp = builder_client.post("/api/builder/chat", json={"message": "hi", "tier": "best"})
+
+    assert resp.status_code == 200
+    rows = _fetch_usage_rows("metered", surface="builder_chat")
+    assert len(rows) == 1
+    assert rows[0]["model"] == builder.BUILDER_TIERS["best"]
+    assert int(rows[0]["tokens_in"]) == 1000 and int(rows[0]["tokens_out"]) == 200
+    assert float(rows[0]["cost_usd"]) > 0
+
+
+def test_run_build_job_meters_pipeline_llm_calls(monkeypatch, notify_recorder):
+    """The build worker runs the pipeline inside a usage_context: every raw
+    LLM call logs a builder_llm row with real tokens/cost, while the single
+    'builder' turn row stays the one source of truth for the monthly cap."""
+    from backend.services.content_generation import llm as content_llm
+
+    def fake_generate_text(*_a, **kw):
+        content_llm._log_llm_usage(_fake_llm_response(5000, 2000), model=kw.get("model"))
+        return _FAKE_HTML
+
+    monkeypatch.setattr(builder.llm, "generate_text", fake_generate_text)
+    _make_user("maker")
+    cid = _make_community()
+    job = builder.create_build_job(username="maker", community_id=cid, prompt="a quiz", tier="balanced")
+
+    out = builder.run_build_job(int(job["id"]))
+
+    assert out["success"] is True
+    # Exactly one build-turn row; the cap counter is unchanged by metering.
+    assert _count_usage_rows("maker", surface="builder", success=True) == 1
+    assert ai_usage.builder_turns_this_month("maker") == 1
+    llm_rows = _fetch_usage_rows("maker", surface="builder_llm")
+    assert len(llm_rows) == 1
+    assert int(llm_rows[0]["tokens_in"]) == 5000 and int(llm_rows[0]["tokens_out"]) == 2000
+    assert float(llm_rows[0]["cost_usd"]) > 0
+    assert llm_rows[0]["request_type"] == "builder_create"
 
 
 def test_enqueue_build_job_cloud_tasks_path(monkeypatch):
