@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Send } from "lucide-react";
+import { useLang } from "@/i18n/LanguageContext";
 
 interface ContactFormProps {
   open: boolean;
@@ -27,6 +28,8 @@ export const ContactForm = ({ open, onOpenChange }: ContactFormProps) => {
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+  const { copy } = useLang();
+  const c = copy.contact;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,8 +38,8 @@ export const ContactForm = ({ open, onOpenChange }: ContactFormProps) => {
     // Validate form
     if (!name.trim() || !email.trim() || !message.trim()) {
       toast({
-        title: "Error",
-        description: "Please fill in all fields",
+        title: c.errorTitle,
+        description: c.fillAll,
         variant: "destructive",
       });
       setIsSubmitting(false);
@@ -47,8 +50,8 @@ export const ContactForm = ({ open, onOpenChange }: ContactFormProps) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       toast({
-        title: "Error",
-        description: "Please enter a valid email address",
+        title: c.errorTitle,
+        description: c.invalidEmail,
         variant: "destructive",
       });
       setIsSubmitting(false);
@@ -76,8 +79,8 @@ export const ContactForm = ({ open, onOpenChange }: ContactFormProps) => {
       }
 
       toast({
-        title: "Message Sent!",
-        description: "We'll get back to you as soon as possible.",
+        title: c.sentTitle,
+        description: c.sentDescription,
       });
 
       // Reset form
@@ -87,8 +90,8 @@ export const ContactForm = ({ open, onOpenChange }: ContactFormProps) => {
       onOpenChange(false);
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Something went wrong. Please try again.",
+        title: c.errorTitle,
+        description: c.genericError,
         variant: "destructive",
       });
     } finally {
@@ -100,38 +103,36 @@ export const ContactForm = ({ open, onOpenChange }: ContactFormProps) => {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle className="text-2xl">Get in Touch</DialogTitle>
-          <DialogDescription>
-            Have questions? We'd love to hear from you. Send us a message and we'll respond as soon as possible.
-          </DialogDescription>
+          <DialogTitle className="text-2xl">{c.title}</DialogTitle>
+          <DialogDescription>{c.description}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor="name">{c.nameLabel}</Label>
             <Input
               id="name"
-              placeholder="Your name"
+              placeholder={c.namePlaceholder}
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{c.emailLabel}</Label>
             <Input
               id="email"
               type="email"
-              placeholder="your.email@example.com"
+              placeholder={c.emailPlaceholder}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="message">Message</Label>
+            <Label htmlFor="message">{c.messageLabel}</Label>
             <Textarea
               id="message"
-              placeholder="Tell us how we can help..."
+              placeholder={c.messagePlaceholder}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={5}
@@ -140,10 +141,10 @@ export const ContactForm = ({ open, onOpenChange }: ContactFormProps) => {
           </div>
           <Button type="submit" className="w-full" disabled={isSubmitting}>
             {isSubmitting ? (
-              "Sending..."
+              c.sending
             ) : (
               <>
-                Send Message
+                {c.submit}
                 <Send className="ml-2 w-4 h-4" />
               </>
             )}

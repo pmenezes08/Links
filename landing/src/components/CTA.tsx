@@ -2,10 +2,13 @@ import { useState } from "react";
 import { Apple, Laptop, MessageCircle } from "lucide-react";
 import { ContactForm } from "./ContactForm";
 import { AndroidStoreButton } from "@/components/AndroidStoreButton";
-import { APP_STORE_URL, APP_WEB_URL, PLATFORM_AVAILABILITY_LINE } from "@/content/siteCopy";
+import { APP_STORE_URL, APP_WEB_URL } from "@/content/siteCopy";
+import { useLang } from "@/i18n/LanguageContext";
 
 export const CTA = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const { copy } = useLang();
+  const c = copy.cta;
 
   return (
     <section className="section-padding relative overflow-hidden">
@@ -13,17 +16,17 @@ export const CTA = () => {
 
       <div className="relative z-10 max-w-4xl mx-auto px-6 text-center">
         <p className="text-sm font-semibold text-primary uppercase tracking-widest mb-3">
-          Get Started
+          {c.kicker}
         </p>
         <h2 className="heading-lg text-foreground mb-6">
-          Ready to join a{" "}
+          {c.h2Pre}{" "}
           <span className="bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
-            private network?
+            {c.h2Highlight}
           </span>
         </h2>
 
         <p className="text-sm text-muted-foreground mb-10 max-w-lg mx-auto">
-          {PLATFORM_AVAILABILITY_LINE}
+          {c.availability}
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center items-center flex-wrap mb-8">
@@ -34,7 +37,7 @@ export const CTA = () => {
             className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full border border-black/15 text-foreground text-sm font-medium hover:bg-muted transition-colors"
           >
             <Apple size={18} />
-            Download for iOS
+            {c.downloadIos}
           </a>
           <AndroidStoreButton variant="muted" />
           <a
@@ -44,7 +47,7 @@ export const CTA = () => {
             className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity shadow-lg"
           >
             <Laptop size={18} />
-            Open web app
+            {c.openWebApp}
           </a>
         </div>
 
@@ -54,11 +57,11 @@ export const CTA = () => {
           className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <MessageCircle size={16} />
-          Have questions? Contact us
+          {c.contact}
         </button>
 
         <p className="mt-12 text-xs text-muted-foreground max-w-md mx-auto leading-relaxed">
-          Push notifications where supported across iOS, Android, and Web.
+          {c.push}
         </p>
       </div>
 
