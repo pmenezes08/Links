@@ -100,7 +100,12 @@ def _event_subscription_id(event_type: str, obj: Dict[str, Any]) -> Optional[str
         raw = raw.get("id")
     if not raw:
         raw = ((obj.get("parent") or {}).get("subscription_details") or {}).get("subscription")
-    if not raw and str(obj.get("object") or "") == "subscription":
+    if not raw and (
+        str(obj.get("object") or "") == "subscription"
+        or event_type.startswith("customer.subscription.")
+    ):
+        # For customer.subscription.* events the payload object IS the
+        # subscription, whether or not the "object" discriminator is set.
         raw = obj.get("id")
     return str(raw) if raw else None
 
