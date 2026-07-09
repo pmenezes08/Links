@@ -1,9 +1,9 @@
-import { User, Users } from "lucide-react";
+import { Sparkles, Users } from "lucide-react";
 import { APP_WEB_URL, APP_SUBSCRIPTION_PATH } from "@/content/siteCopy";
 import { useLang } from "@/i18n/LanguageContext";
 
 const plansUrl = `${APP_WEB_URL}${APP_SUBSCRIPTION_PATH}`;
-const icons = [User, Users];
+const icons = [Users, Sparkles];
 
 export function MembershipSection() {
   const { copy } = useLang();
@@ -29,7 +29,7 @@ export function MembershipSection() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto mb-10">
           {c.cards.map((item, i) => {
-            const Icon = icons[i] ?? User;
+            const Icon = icons[i] ?? Users;
             return (
               <div key={item.title} className="glass-card rounded-2xl p-8">
                 <div className="w-11 h-11 rounded-xl bg-primary/[0.08] flex items-center justify-center mb-4">
