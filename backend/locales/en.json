@@ -178,6 +178,16 @@
       "body": "{wau} members active in {community} this week — {delta} more than last week. Nice.",
       "message": "Weekly pulse: {wau} active in {community}, {delta} more than last week"
     },
+    "owner_report": {
+      "title": "Something was flagged",
+      "body": "A member flagged a post in {community}. Take a look when you can — you decide what stays.",
+      "message": "A member flagged a post in {community} — you decide what stays"
+    },
+    "owner_report_auto": {
+      "title": "Something was flagged",
+      "body": "A post in {community} was flagged automatically. Take a look when you can — you decide what stays.",
+      "message": "A post in {community} was flagged automatically — you decide what stays"
+    },
     "group_feed_post": {
       "title": "New group post",
       "body": "{author}: {preview}",
@@ -427,8 +437,9 @@
     "feedback_submitted": "Feedback submitted successfully",
     "community_not_found": "Community not found",
     "not_community_member": "Forbidden: not a member of this community",
-    "post_reported": "Post reported successfully. Our team will review it.",
-    "post_already_reported": "You have already reported this post",
+    "post_reported": "Thanks — this is now with the community's owner. The author won't know it was you.",
+    "post_already_reported": "You have already flagged this post",
+    "report_rate_limited": "You've flagged a lot recently. Give it a little while and try again.",
     "post_hidden": "Post hidden",
     "post_already_hidden": "Post already hidden",
     "post_unhidden": "Post unhidden",

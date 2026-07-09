@@ -208,6 +208,15 @@ try:
 except Exception as _me:
     print(f"[STARTUP] Mute table init warning: {_me}", file=sys.stderr, flush=True)
 
+# Ensure post_reports exists at startup (DDL used to self-heal inside the
+# report request handler, which would mask schema migrations later).
+try:
+    from backend.services.community_moderation import ensure_post_reports_table as _ensure_post_reports
+    _ensure_post_reports(use_mysql=USE_MYSQL)
+    print("[STARTUP] post_reports table ensured", file=sys.stderr, flush=True)
+except Exception as _pre:
+    print(f"[STARTUP] post_reports init warning: {_pre}", file=sys.stderr, flush=True)
+
 try:
     with get_db_connection() as _sc:
         _scc = _sc.cursor()
@@ -6344,7 +6353,14 @@ def auto_flag_content_if_needed(post_id, content, username, community_id):
                     })
                 except Exception as notif_err:
                     logger.warning(f"Failed to notify admin about auto-flagged content: {notif_err}")
-                    
+
+                # Owner-first moderation: auto-flags land in the owner's queue too
+                try:
+                    from backend.services.community_moderation import notify_moderators_of_report
+                    notify_moderators_of_report(community_id, post_id, 'system', username, system=True)
+                except Exception as owner_err:
+                    logger.warning(f"Failed to notify community moderators about auto-flag: {owner_err}")
+
                 logger.info(f"Auto-flagged post {post_id} for objectionable content: {flagged_words}")
         except Exception as e:
             logger.error(f"Error auto-flagging content: {e}")
@@ -19127,7 +19143,13 @@ def report_post():
         return jsonify({'success': False, 'error': 'Post ID is required'}), 400
     if not reason:
         return jsonify({'success': False, 'error': 'Reason is required'}), 400
-    
+
+    # Flood guard: reporting is deduped per (post, reporter) but was otherwise
+    # unlimited. Generous window — a legitimate member never hits this.
+    from backend.services import rate_limit as _rate_limit
+    if not _rate_limit.allow('report_post', username, max_events=15, window_seconds=3600):
+        return _api_errors.error_response('feed.report_rate_limited', 429)
+
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -19146,36 +19168,8 @@ def report_post():
             if post_author == username:
                 return jsonify({'success': False, 'error': 'You cannot report your own post'}), 400
             
-            # Ensure post_reports table exists
-            try:
-                if USE_MYSQL:
-                    c.execute('''CREATE TABLE IF NOT EXISTS post_reports
-                                 (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                                  post_id INTEGER NOT NULL,
-                                  reporter_username VARCHAR(191) NOT NULL,
-                                  reason TEXT NOT NULL,
-                                  details TEXT,
-                                  status VARCHAR(50) DEFAULT 'pending',
-                                  reviewed_by VARCHAR(191),
-                                  reviewed_at TIMESTAMP NULL,
-                                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                  UNIQUE KEY unique_report (post_id, reporter_username))''')
-                else:
-                    c.execute('''CREATE TABLE IF NOT EXISTS post_reports
-                                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                  post_id INTEGER NOT NULL,
-                                  reporter_username TEXT NOT NULL,
-                                  reason TEXT NOT NULL,
-                                  details TEXT,
-                                  status TEXT DEFAULT 'pending',
-                                  reviewed_by TEXT,
-                                  reviewed_at TIMESTAMP NULL,
-                                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                  UNIQUE(post_id, reporter_username))''')
-                conn.commit()
-            except Exception as table_err:
-                logger.warning(f"Could not ensure post_reports table: {table_err}")
-            
+            # post_reports table is ensured at startup (community_moderation service)
+
             # Check if user already reported this post
             c.execute(f"SELECT id FROM post_reports WHERE post_id = {ph} AND reporter_username = {ph}", (post_id, username))
             existing_report = c.fetchone()
@@ -19215,7 +19209,15 @@ def report_post():
                         logger.warning(f"Failed to notify admin {admin_username} about report: {notif_err}")
             except Exception as admin_err:
                 logger.warning(f"Failed to notify admins about reported post: {admin_err}")
-            
+
+            # Owner-first moderation: the community's owner + delegated admins
+            # review reports in their Owner Dashboard queue — tell them.
+            try:
+                from backend.services.community_moderation import notify_moderators_of_report
+                notify_moderators_of_report(community_id, post_id, username, post_author)
+            except Exception as owner_err:
+                logger.warning(f"Failed to notify community moderators about report: {owner_err}")
+
             logger.info(f"Post {post_id} reported by {username} for: {reason}")
             return jsonify(_api_errors.success_payload('feed.post_reported'))
     
@@ -19409,22 +19411,33 @@ def admin_review_report():
             ph = get_sql_placeholder()
             
             new_status = 'dismissed' if action == 'dismiss' else 'reviewed'
-            
+
+            # Only act on still-pending rows: the community-owner queue
+            # (owner_moderation blueprint) reads the same table, and a report
+            # the owner already resolved should not be silently overwritten.
             if USE_MYSQL:
                 c.execute(f"""
-                    UPDATE post_reports 
+                    UPDATE post_reports
                     SET status = {ph}, reviewed_by = {ph}, reviewed_at = NOW()
-                    WHERE id = {ph}
+                    WHERE id = {ph} AND status = 'pending'
                 """, (new_status, username, report_id))
             else:
                 c.execute(f"""
-                    UPDATE post_reports 
+                    UPDATE post_reports
                     SET status = {ph}, reviewed_by = {ph}, reviewed_at = datetime('now')
-                    WHERE id = {ph}
+                    WHERE id = {ph} AND status = 'pending'
                 """, (new_status, username, report_id))
-            
+
+            if getattr(c, 'rowcount', 1) == 0:
+                c.execute(f"SELECT status, reviewed_by FROM post_reports WHERE id = {ph}", (report_id,))
+                row = c.fetchone()
+                current = (row['status'] if hasattr(row, 'keys') else row[0]) if row else 'reviewed'
+                resolved_by = (row['reviewed_by'] if hasattr(row, 'keys') else row[1]) if row else None
+                return jsonify({'success': True, 'already_resolved': True, 'status': current,
+                                'reviewed_by': resolved_by})
+
             conn.commit()
-            
+
             logger.info(f"Report {report_id} {new_status} by {username}")
             return jsonify({'success': True, 'message': f'Report {new_status}'})
     

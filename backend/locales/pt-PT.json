@@ -178,6 +178,16 @@
       "body": "{wau} membros ativos em {community} esta semana — mais {delta} do que na anterior. Boa.",
       "message": "Pulso semanal: {wau} ativos em {community}, mais {delta} do que na semana passada"
     },
+    "owner_report": {
+      "title": "Algo foi sinalizado",
+      "body": "Um membro sinalizou uma publicação em {community}. Vê quando puderes — tu decides o que fica.",
+      "message": "Um membro sinalizou uma publicação em {community} — tu decides o que fica"
+    },
+    "owner_report_auto": {
+      "title": "Algo foi sinalizado",
+      "body": "Uma publicação em {community} foi sinalizada automaticamente. Vê quando puderes — tu decides o que fica.",
+      "message": "Uma publicação em {community} foi sinalizada automaticamente — tu decides o que fica"
+    },
     "group_feed_post": {
       "title": "Nova publicação no grupo",
       "body": "{author}: {preview}",
@@ -427,8 +437,9 @@
     "feedback_submitted": "Feedback enviado com sucesso",
     "community_not_found": "Comunidade não encontrada",
     "not_community_member": "Proibido: não és membro desta comunidade",
-    "post_reported": "Publicação reportada com sucesso. A nossa equipa vai analisar.",
-    "post_already_reported": "Já reportaste esta publicação",
+    "post_reported": "Obrigado — está agora com o dono da comunidade. O autor não vai saber que foste tu.",
+    "post_already_reported": "Já sinalizaste esta publicação",
+    "report_rate_limited": "Sinalizaste bastante coisa há pouco. Espera um bocadinho e tenta outra vez.",
     "post_hidden": "Publicação ocultada",
     "post_already_hidden": "Publicação já ocultada",
     "post_unhidden": "Publicação visível novamente",

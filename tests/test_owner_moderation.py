@@ -175,6 +175,97 @@ def test_remove_deletes_post_and_resolves_reports(mysql_dsn):
     assert int(n) == 0
 
 
+def test_owner_review_does_not_overwrite_prior_resolution(mysql_dsn):
+    """Queue precedence: when the app-admin queue resolved a report first,
+    the owner's action reports already_resolved instead of clobbering it."""
+    import bodybuilding_app
+
+    make_user("ownerA")
+    make_user("m1")
+    make_user("r1")
+    client = bodybuilding_app.app.test_client()
+    a = make_community("Mod A", creator_username="ownerA")
+    pid = _make_post(a, "m1")
+    rid = _make_report(pid, "r1")
+
+    # Simulate the admin surface resolving the row first.
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"UPDATE post_reports SET status = 'reviewed', reviewed_by = 'admin' WHERE id = {ph}",
+            (rid,),
+        )
+        conn.commit()
+
+    _login(client, "ownerA")
+    rev = client.post(f"/api/community/{a}/reports/review", json={"report_id": rid, "action": "dismiss"})
+    assert rev.status_code == 200
+    body = rev.get_json()
+    assert body["success"] is True
+    assert body["already_resolved"] is True
+    assert body["status"] == "reviewed"
+    assert body["reviewed_by"] == "admin"
+
+    # The admin's resolution stands — the row did not become 'dismissed'.
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT status FROM post_reports WHERE id = {ph}", (rid,))
+        row = c.fetchone()
+        status = row["status"] if hasattr(row, "keys") else row[0]
+    assert status == "reviewed"
+
+
+def _add_member(username: str, community_id: int, role: str = "member") -> None:
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT id FROM users WHERE username = {ph}", (username,))
+        row = c.fetchone()
+        uid = row["id"] if hasattr(row, "keys") else row[0]
+        c.execute(
+            f"INSERT INTO user_communities (user_id, community_id, role) VALUES ({ph}, {ph}, {ph})",
+            (int(uid), community_id, role),
+        )
+        conn.commit()
+
+
+def test_report_notifies_owner_and_delegated_admin_only(mysql_dsn, monkeypatch):
+    """Owner-first signal: a new report notifies the community's moderators
+    (owner + delegated admins) in-app + push — never the reporter, never the
+    reported author, never the platform 'admin' account."""
+    from backend.services import notifications as notif_mod
+    from backend.services.community_moderation import notify_moderators_of_report
+
+    make_user("ownerA")
+    make_user("deleg1")
+    make_user("m1")
+    make_user("r1")
+    a = make_community("Mod A", creator_username="ownerA")
+    _add_member("deleg1", a, role="admin")
+    _add_member("m1", a)
+    _add_member("r1", a)
+    pid = _make_post(a, "m1")
+
+    pushed, rows = [], []
+    monkeypatch.setattr(notif_mod, "send_push_to_user", lambda u, p: pushed.append((u, p)))
+    monkeypatch.setattr(notif_mod, "create_notification", lambda **kw: rows.append(kw))
+
+    sent = notify_moderators_of_report(a, pid, "r1", "m1")
+    assert sent == 2
+    recipients = sorted(u for u, _ in pushed)
+    assert recipients == ["deleg1", "ownerA"]
+    assert sorted(r["user_id"] for r in rows) == ["deleg1", "ownerA"]
+    for _, payload in pushed:
+        assert payload["url"] == f"/community/{a}/owner?tab=reports"
+
+    # When the owner is the one reporting, they are not notified about it.
+    pushed.clear(); rows.clear()
+    sent = notify_moderators_of_report(a, pid, "ownerA", "m1")
+    assert sent == 1
+    assert [u for u, _ in pushed] == ["deleg1"]
+
+
 def test_no_cross_community_moderation(mysql_dsn):
     import bodybuilding_app
 

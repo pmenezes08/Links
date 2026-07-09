@@ -129,6 +129,7 @@ jobs:
             tests/test_owner_analytics.py \
             tests/test_owner_moderation.py \
             tests/test_owner_pulse.py \
+            tests/test_rate_limit.py \
             -v --tb=short --maxfail=5
 
       - name: Upload test logs (on failure)

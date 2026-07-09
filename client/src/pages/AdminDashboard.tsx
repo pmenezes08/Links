@@ -1012,6 +1012,9 @@ export default function AdminDashboard() {
       })
       const data = await response.json()
       if (data?.success) {
+        if (data.already_resolved) {
+          alert(`Already handled${data.reviewed_by ? ` by @${data.reviewed_by}` : ''} (${data.status}). Refreshing.`)
+        }
         loadReportedPosts(reportsFilter)
       } else {
         alert(data?.error || 'Failed to review report')
@@ -2328,7 +2331,14 @@ export default function AdminDashboard() {
                           <div className="text-xs text-c-text-tertiary">{report.details}</div>
                         )}
                         <div className="text-[11px] text-c-text-tertiary mt-1">
-                          Reported by: @{report.reporter_username}
+                          {report.reporter_username === 'system' ? (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-cpoint-turquoise/10 text-cpoint-turquoise">
+                              <i className="fa-solid fa-robot text-[9px]" />
+                              Auto-flagged (wordlist)
+                            </span>
+                          ) : (
+                            <>Reported by: @{report.reporter_username}</>
+                          )}
                         </div>
                       </div>
 

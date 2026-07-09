@@ -11,6 +11,7 @@ import Avatar from '../components/Avatar'
 import { prefetchPostDetail } from '../utils/pilotRoutePrefetch'
 import ContentGenerationModal from '../components/ContentGenerationModal'
 import FrozenCommunityModal from '../components/FrozenCommunityModal'
+import FeedbackToast from '../components/moderation/FeedbackToast'
 import CommunityOwnerSetupIntro, {
   communityOwnerSetupStorageKey,
   type CommunityOwnerSetupSnapshot,
@@ -391,6 +392,7 @@ export default function CommunityFeed() {
   
   // Report/Hide/Block post state
   const [reportModalPost, setReportModalPost] = useState<Post | null>(null)
+  const [feedbackToast, setFeedbackToast] = useState<string | null>(null)
   const [hideModalPost, setHideModalPost] = useState<Post | null>(null)
   const [blockModalUser, setBlockModalUser] = useState<{ username: string; postId?: number } | null>(null)
   const [reportReason, setReportReason] = useState('')
@@ -2240,15 +2242,15 @@ export default function CommunityFeed() {
       })
       const j = await res.json().catch(() => null)
       if (j?.success) {
-        alert(j.message || 'Post reported successfully')
         setReportModalPost(null)
         setReportReason('')
         setReportDetails('')
+        setFeedbackToast(j.message || t('feed.post_reported'))
       } else {
-        alert(j?.error || 'Failed to report post')
+        setFeedbackToast(j?.error || t('feed.report_post_failed'))
       }
     } catch {
-      alert('Network error. Could not report post.')
+      setFeedbackToast(t('feed.report_post_network_failed'))
     } finally {
       setReportSubmitting(false)
     }
@@ -4241,9 +4243,11 @@ export default function CommunityFeed() {
         </div>
       )}
 
+      <FeedbackToast message={feedbackToast} onDone={() => setFeedbackToast(null)} />
+
       {/* Report Post Modal */}
       {reportModalPost && (
-        <div 
+        <div
           className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
           onClick={(e) => e.currentTarget === e.target && !reportSubmitting && setReportModalPost(null)}
         >

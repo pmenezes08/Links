@@ -31,9 +31,16 @@ function ReportCard({
         <span className="truncate text-[11px] text-c-text-tertiary">
           {t('owner.reports_flagged_as', { reason: rep.reason })}
         </span>
-        <span className="ml-auto shrink-0 text-[10px] text-c-text-tertiary">
-          {rep.report_count > 1 ? t('owner.reports_count', { n: rep.report_count }) : `@${rep.reporter_username}`}
-        </span>
+        {rep.reporter_username === 'system' ? (
+          <span className="ml-auto shrink-0 rounded-md bg-white/[0.08] px-1.5 py-0.5 text-[10px] text-cpoint-turquoise">
+            <i className="fa-solid fa-robot mr-1 text-[9px]" />
+            {t('owner.reports_autoflagged')}
+          </span>
+        ) : (
+          <span className="ml-auto shrink-0 text-[10px] text-c-text-tertiary">
+            {rep.report_count > 1 ? t('owner.reports_count', { n: rep.report_count }) : `@${rep.reporter_username}`}
+          </span>
+        )}
       </div>
       <div className="rounded-xl bg-white/[0.04] p-3">
         <div className="mb-1 text-[11px] text-c-text-tertiary">@{rep.post_author}</div>

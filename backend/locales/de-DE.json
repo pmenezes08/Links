@@ -178,6 +178,16 @@
       "body": "{wau} Mitglieder diese Woche in {community} aktiv — {delta} mehr als letzte Woche. Stark.",
       "message": "Wochenpuls: {wau} aktiv in {community}, {delta} mehr als letzte Woche"
     },
+    "owner_report": {
+      "title": "Etwas wurde gemeldet",
+      "body": "Ein Mitglied hat einen Beitrag in {community} gemeldet. Schau vorbei, wenn du Zeit hast — du entscheidest, was bleibt.",
+      "message": "Ein Mitglied hat einen Beitrag in {community} gemeldet — du entscheidest, was bleibt"
+    },
+    "owner_report_auto": {
+      "title": "Etwas wurde gemeldet",
+      "body": "Ein Beitrag in {community} wurde automatisch gemeldet. Schau vorbei, wenn du Zeit hast — du entscheidest, was bleibt.",
+      "message": "Ein Beitrag in {community} wurde automatisch gemeldet — du entscheidest, was bleibt"
+    },
     "group_feed_post": {
       "title": "Neuer Gruppenbeitrag",
       "body": "{author}: {preview}",
@@ -427,8 +437,9 @@
     "feedback_submitted": "Feedback erfolgreich übermittelt",
     "community_not_found": "Community nicht gefunden",
     "not_community_member": "Kein Zugriff: du bist kein Mitglied dieser Community",
-    "post_reported": "Beitrag erfolgreich gemeldet. Unser Team wird ihn prüfen.",
+    "post_reported": "Danke — das liegt jetzt beim Inhaber der Community. Die Person erfährt nicht, dass du es warst.",
     "post_already_reported": "Du hast diesen Beitrag bereits gemeldet",
+    "report_rate_limited": "Du hast gerade viel gemeldet. Warte kurz und versuch es dann noch einmal.",
     "post_hidden": "Beitrag ausgeblendet",
     "post_already_hidden": "Beitrag bereits ausgeblendet",
     "post_unhidden": "Beitrag wieder eingeblendet",

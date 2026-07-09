@@ -430,6 +430,21 @@ and Steve's read switches to a reduced template. Responses are Redis-cached
 author/app-admin deletes (replies, post_views, imagine_jobs, media incl. R2,
 report resolution, feed + post-detail cache invalidation).
 
+**Report signal (owner-first, Moderation v2 Phase 0):** when a member reports
+a post (or the wordlist auto-flags one), the community's moderators — owner +
+delegated admins, never the reporter/author/platform-`admin` — get a push +
+in-app row in their own locale (`notifications.owner_report` /
+`owner_report_auto` via `community_moderation.notify_moderators_of_report`),
+deep-linking to `/community/:id/owner?tab=reports`. The reporter gets an
+in-app toast (no more `alert()`), and auto-flagged rows
+(`reporter_username='system'`) render a distinct badge in the owner queue and
+both app-admin surfaces. The two queues share `post_reports` with precedence:
+review actions only touch still-`pending` rows and return `already_resolved`
+(+ who resolved) instead of overwriting the other surface's decision.
+`POST /api/report_post` is rate-limited (15/h/user) through the shared
+`backend/services/rate_limit.py` primitive (Redis fixed window, fail-open);
+`post_reports` DDL is ensured at startup, no longer inside the handler.
+
 **Weekly pulse (the return loop):** Cloud Scheduler hits
 `POST /api/cron/owner-weekly-pulse` (X-Cron-Secret, Monday 08:00 UTC,
 `docs/cloud-scheduler-cron.md` §11). One templated push + in-app row per
