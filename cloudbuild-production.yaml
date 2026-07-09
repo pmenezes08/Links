@@ -2,11 +2,25 @@
 # Use: gcloud builds submit --config=cloudbuild-production.yaml .
 #
 # This pipeline:
+#   0. Guards against deploying a build-line tree (prod = build-free main)
 #   1. Builds and deploys the image
 #   2. Re-applies Secret Manager bindings (image-only deploys must not drop them)
 #   3. Runs production smoke checks (welcome_cards, health, session cookie)
 
 steps:
+  # Production ships from the build-free `main` line only. Deploys are
+  # working-tree submits, so a staging/build checkout submitted with this
+  # config would otherwise silently ship Steve Builder to prod.
+  - name: 'google/cloud-sdk:slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if [ -f backend/blueprints/builder.py ] || [ -f backend/services/builder.py ]; then
+          echo "ERROR: builder files present in this tree — prod deploys only from the build-free main line."
+          echo "Check out main (or a main-based worktree) and re-run the submit."
+          exit 1
+        fi
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', 'gcr.io/$PROJECT_ID/cpoint-app:latest', '.']
   - name: 'gcr.io/cloud-builders/docker'
