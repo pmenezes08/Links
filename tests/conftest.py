@@ -178,12 +178,18 @@ CREATE TABLE IF NOT EXISTS communities (
 # by community_id, and a handful of existing suites touch posts for smoke
 # tests. We deliberately keep this thin so adding a column to the real
 # ``posts`` table in the monolith doesn't force a test-schema edit.
+# Exception (per the users-table rule above): columns a service READS must
+# exist here — post_deletion._fetch_post selects image_path / video_path /
+# is_system_post, so those three ride along.
 _POSTS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS posts (
     id INT PRIMARY KEY AUTO_INCREMENT,
     community_id INT,
     username VARCHAR(191),
     content TEXT,
+    image_path TEXT NULL,
+    video_path TEXT NULL,
+    is_system_post TINYINT(1) DEFAULT 0,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_posts_community_ts (community_id, timestamp)
 )
@@ -396,6 +402,22 @@ _TRUNCATE_TABLES: List[str] = [
     "replies",
     "notifications",
     "`groups`",
+    # Activity + chat + moderation tables some suites create lazily (CREATE IF
+    # NOT EXISTS). They MUST be cleared between tests: TRUNCATE resets the
+    # communities AUTO_INCREMENT, so a later test's community reuses an earlier
+    # id — stale activity rows would silently attach to it (e.g. a "quiet"
+    # community suddenly has WAU from another test's visit history).
+    "community_visit_history",
+    "group_posts",
+    "group_replies",
+    "messages",
+    "group_chats",
+    "group_chat_messages",
+    "group_chat_members",
+    "group_chat_read_receipts",
+    "post_reports",
+    "imagine_jobs",
+    "owner_pulse_sends",
     "ai_usage_log",
     "onboarding_events",
     "special_access_log",
