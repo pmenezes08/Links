@@ -18,6 +18,11 @@ on:
     branches: [main, staging]
   workflow_dispatch:
 
+# Least privilege: this workflow only reads the repo to run tests. Without an
+# explicit block, GitHub grants the broad default token scope.
+permissions:
+  contents: read
+
 concurrency:
   group: tests-${{ github.ref }}
   cancel-in-progress: true

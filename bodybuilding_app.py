@@ -579,6 +579,10 @@ def add_cache_headers(response):
     # Add security headers while we're at it
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    # HSTS on HTTPS deployments (Cloud Run terminates TLS at the edge). Host-scoped
+    # only (no includeSubDomains/preload) so sibling subdomains are not pinned.
+    if _is_cloud_run or _canonical_scheme == 'https':
+        response.headers.setdefault('Strict-Transport-Security', 'max-age=15552000')
 
     return response
 
