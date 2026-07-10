@@ -148,6 +148,11 @@
   --c-bg-surface: rgba(18, 20, 24, 0.78);
   --c-bg-recessed: rgba(18, 18, 22, 0.8);
   --c-bg-overlay: rgba(0, 0, 0, 0.6);
+  /* Fully opaque sheet fill. Glass surfaces carry no backdrop blur
+     (Phase 0 scroll perf) and their fills are translucent, so full-screen
+     sheets (GIF picker) need this to keep page chrome — composers, focused
+     inputs — from bleeding through sharply. */
+  --c-bg-sheet-opaque: #101014;
 
   /* Text */
   --c-text-primary: #FFFFFF;
@@ -271,6 +276,7 @@
   --c-bg-surface: #FFFFFF;
   --c-bg-recessed: #E4E7EC;
   --c-bg-overlay: rgba(15, 20, 25, 0.42);
+  --c-bg-sheet-opaque: #FFFFFF;
 
   /* Text */
   --c-text-primary: #0F1419;
@@ -374,6 +380,7 @@ textarea::placeholder {
   --c-bg-surface: rgba(18, 20, 24, 0.78);
   --c-bg-recessed: rgba(18, 18, 22, 0.8);
   --c-bg-overlay: rgba(0, 0, 0, 0.6);
+  --c-bg-sheet-opaque: #101014;
   --c-text-primary: #FFFFFF;
   --c-text-secondary: rgba(255, 255, 255, 0.7);
   --c-text-tertiary: rgba(255, 255, 255, 0.45);
