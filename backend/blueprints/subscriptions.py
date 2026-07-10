@@ -197,9 +197,10 @@ def _steve_pool_snapshot(root_community_id: int, state: Dict[str, Any]) -> Dict[
     breakdown = {**breakdown, "networking": None}
     # Trial flag so the panel can show "14-day trial · day N"; the client
     # derives the day from the (already returned) period_end + total days.
+    # Total days come from KB (community-tiers.steve_package_trial_days).
     try:
         is_trial = bool(community_billing.is_synthetic_steve_package_trial(state))
-        trial_total_days = int(getattr(community_billing, "STEVE_PACKAGE_TRIAL_DAYS", 14))
+        trial_total_days = int(community_billing.steve_package_trial_days())
     except Exception:
         is_trial = False
         trial_total_days = 14
@@ -1659,6 +1660,32 @@ def api_stripe_create_checkout_session():
             exc,
         )
         return jsonify({"success": False, "error": "Unable to start checkout"}), 500
+
+    # Conversion-funnel intent marker. Purchases stay webhook-driven; this
+    # row lets us measure checkout starts (and abandonment) per CTA source.
+    # Best-effort — never blocks the checkout redirect.
+    try:
+        checkout_source = subscription_audit.normalize_checkout_source(payload.get("source"))
+        audit_community_id: Optional[int] = None
+        if metadata.get("community_id"):
+            try:
+                audit_community_id = int(metadata["community_id"])
+            except (TypeError, ValueError):
+                audit_community_id = None
+        audit_metadata: Dict[str, Any] = {"source": checkout_source}
+        if metadata.get("tier_code"):
+            audit_metadata["tier_code"] = metadata["tier_code"]
+        if metadata.get("billing_cycle"):
+            audit_metadata["billing_cycle"] = metadata["billing_cycle"]
+        subscription_audit.log(
+            username=username,
+            action=f"{plan_id}_checkout_started",
+            source="checkout",
+            community_id=audit_community_id,
+            metadata=audit_metadata,
+        )
+    except Exception:
+        logger.warning("checkout_started audit failed (non-fatal)", exc_info=True)
 
     return jsonify({
         "success": True,

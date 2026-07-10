@@ -582,3 +582,43 @@ gcloud scheduler jobs create http staging-steve-trial-lifecycle \
 ```
 
 Add `steve-trial-lifecycle` to the bulk-pause list in §6 when you register the job in GCP (already listed).
+
+## 13. Member weekly digest (the member-side return loop)
+
+| Field | Value |
+|-------|--------|
+| **URI** | `{BASE}/api/cron/member-weekly-digest` |
+| **Method** | `POST` |
+| **Header** | `X-Cron-Secret` = same `CRON_SHARED_SECRET` as other crons |
+| **Suggested schedule** | **Weekly, Thursday 17:00 UTC** (`0 17 * * 4`) — offset from the Monday owner pulse so members and owners aren't pinged the same day. |
+| **Query** | `dry_run=1` — lists candidate members + their most-active community without reserving or sending. `max_sends=N` throttles a run (default 500). |
+| **Kill switch** | env `MEMBER_DIGEST_ENABLED` must be truthy for real sends — **off by default and off on staging** (staging shares the prod Cloud SQL instance, so a staging run must never push to real members). Real run with the switch off returns 409; dry-run works regardless. |
+
+One templated push + in-app row per member per ISO week (`member_digest_sends`,
+INSERT-first `UNIQUE(username, week_key)`), for the member's community with the
+most new posts by *other* people this week (≥ 3; own posts don't count; owners
+are skipped — they get the pulse). Copy resolves in the **recipient's** locale
+via `notification_copy` (`notifications.member_digest`); the deep link is
+`/community_feed_react/{id}?source=weekly_digest_push` so tap-through lands in
+`retention_events` (`digest_opened`) against the cron's `digest_sent` rows.
+Service: `backend/services/member_digest.py`.
+
+```bash
+# Dry-run only until MEMBER_DIGEST_ENABLED is set on the target service:
+BASE=https://cpoint-app-staging-739552904126.europe-west1.run.app
+SECRET=$(gcloud secrets versions access latest --secret=cron-shared-secret-staging)
+
+curl -X POST "$BASE/api/cron/member-weekly-digest?dry_run=1" -H "X-Cron-Secret: $SECRET"
+
+# Register only when enabling for real (prod, after QA):
+gcloud scheduler jobs create http member-weekly-digest \
+  --location=europe-west1 \
+  --schedule="0 17 * * 4" \
+  --time-zone=UTC \
+  --uri="$BASE/api/cron/member-weekly-digest" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=300s
+```
+
+Add `member-weekly-digest` to the bulk-pause list in §6 when you register the job in GCP.

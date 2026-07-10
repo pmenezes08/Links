@@ -89,7 +89,30 @@ ACTIONS = {
     "owner_cta_steve_trial_expired",
     "owner_cta_steve_member_blocked",
     "owner_cta_steve_pool_exhausted",
+    # Checkout intent (conversion funnel): a Stripe Checkout session was
+    # created. Purchases stay webhook-driven — these rows measure the
+    # start of the funnel, with `metadata.source` from CHECKOUT_SOURCES.
+    "premium_checkout_started",
+    "community_tier_checkout_started",
+    "steve_package_checkout_started",
 }
+
+# Closed vocabulary for where a checkout was started from. Unknown values
+# collapse to "direct" so old clients never lose the event.
+CHECKOUT_SOURCES = {
+    "owner_dashboard",      # Owner Dashboard trial/value card or Steve action
+    "owner_cta",            # owner_cta:* notification deep link
+    "manage_membership",    # ManageMembershipModal
+    "subscription_plans",   # SubscriptionPlans page (burger menu / generic)
+    "edit_community",       # Manage Community → Manage Subscription
+    "limit_modal",          # LimitReachedModal / LimitReachedBubble CTA
+    "direct",               # no source provided
+}
+
+
+def normalize_checkout_source(source) -> str:
+    src = str(source or "").strip().lower()
+    return src if src in CHECKOUT_SOURCES else "direct"
 
 
 def _utc_now_str() -> str:

@@ -293,6 +293,56 @@ export default function MetricCard({ metric, onUpgrade, isOwner = false, communi
     )
   }
 
+  if (metric.format === 'steve_value') {
+    // Steve trial/value card — the owner's conversion moment. Shows what the
+    // community consumed from the shared pool (aggregates only) and, during
+    // the trial, how long is left + the keep-Steve CTA.
+    const cap = num(v, 'pool_cap')
+    const used = num(v, 'pool_used')
+    const wau = num(v, 'wau')
+    const isTrial = v?.is_trial === true
+    const daysLeft = typeof v?.trial_days_left === 'number' ? (v.trial_days_left as number) : null
+    const totalDays = typeof v?.trial_total_days === 'number' ? (v.trial_total_days as number) : null
+    const pctUsed = cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0
+    return (
+      <div className="rounded-2xl border border-cpoint-turquoise/25 bg-cpoint-turquoise/[0.06] p-3.5">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-c-text-secondary">{label}</span>
+          {metric.owner_only && <span className="text-[10px] text-c-text-tertiary">{t('owner.owner_only')}</span>}
+        </div>
+        {isTrial && daysLeft != null && (
+          <div className="mt-1.5 text-[13px] font-semibold text-cpoint-turquoise">
+            {t('owner.steve_trial_days_left', { days: daysLeft, total: totalDays ?? daysLeft })}
+          </div>
+        )}
+        {cap > 0 && (
+          <>
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="text-2xl font-semibold text-c-text-primary">{used}</span>
+              <span className="text-[12px] text-c-text-tertiary">{t('owner.steve_pool_used', { cap })}</span>
+            </div>
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-c-active-bg">
+              <div className="h-full" style={{ width: `${pctUsed}%`, background: TURQUOISE }} />
+            </div>
+          </>
+        )}
+        {wau > 0 && (
+          <div className="mt-1.5 text-[11px] text-c-text-tertiary">{t('owner.steve_value_context', { wau })}</div>
+        )}
+        {isTrial && isOwner && (
+          <button
+            type="button"
+            onClick={onUpgrade}
+            className="mt-2.5 flex items-center gap-1.5 text-[11px] font-medium text-cpoint-turquoise"
+          >
+            {t('owner.steve_keep_cta')}
+            <i className="fa-solid fa-chevron-right text-[9px]" aria-hidden="true" />
+          </button>
+        )}
+      </div>
+    )
+  }
+
   if (metric.format === 'segments') {
     const total = num(v, 'total')
     const complete = num(v, 'complete')

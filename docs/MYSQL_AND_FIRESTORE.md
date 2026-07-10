@@ -105,6 +105,8 @@ Also: **`groups`** (optional **`steve_agent_enabled`**, **`steve_agent_preset`**
 | `notifications` | In-app rows. |
 | `fcm_tokens`, `native_push_tokens`, `push_subscriptions`, `push_send_log` | FCM / web push / delivery logs. |
 | `owner_pulse_sends` | Dedup log for the weekly owner pulse (`/api/cron/owner-weekly-pulse`). INSERT-first reservation, `UNIQUE(username, week_key)` (ISO year-week) so Scheduler retries never double-push an owner. Lazily created by `backend/services/owner_pulse.py`. |
+| `member_digest_sends` | Dedup log for the weekly member digest (`/api/cron/member-weekly-digest`). Same INSERT-first `UNIQUE(username, week_key)` pattern. Lazily created by `backend/services/member_digest.py`. |
+| `retention_events` | Append-only attribution sink for return loops (digest sent/opened, pulse opened, owner dashboard action taps). Closed event/source vocabulary, never message content or other members' identities. Written by `backend/services/retention_events.py` (client sink: `POST /api/retention/event`). |
 | `remember_tokens` | Long-lived login (`remember_tokens.py`). |
 
 ### Community extras

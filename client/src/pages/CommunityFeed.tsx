@@ -60,6 +60,7 @@ import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/de
 import { cacheFeed, getCachedFeed } from '../utils/offlineDb'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { useBadges } from '../contexts/BadgeContext'
+import { useRetentionAttribution } from '../hooks/useRetentionAttribution'
 import { openExternalInApp } from '../utils/openExternalInApp'
 import {
   buildClientPremiumRequiredError,
@@ -214,6 +215,8 @@ export default function CommunityFeed() {
   }
   const navigate = useNavigate()
   const routerLocation = useLocation()
+  // Weekly digest deep links land here with ?source= — record tap-through.
+  useRetentionAttribution('digest_opened', community_id ? Number(community_id) : null)
   const { unreadMsgs, unreadNotifs, refreshBadges } = useBadges()
   const {
     entitlements: feedEntitlements,

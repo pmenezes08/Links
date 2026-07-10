@@ -27,6 +27,7 @@ is a separate, entitlement-gated paid surface (later phase), not this.
 from __future__ import annotations
 
 import logging
+import math
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -832,6 +833,19 @@ def build_overview(
         ),
     })
 
+    # Steve trial countdown + value report — owner-only (billing is the
+    # owner's), aggregates only (never per-member Steve usage). Rendered as
+    # the conversion moment on the dashboard while the synthetic trial or a
+    # real package is active on this billing root.
+    steve_value = _steve_package_value(community_id, wau=wau) if viewer_is_owner else None
+    if steve_value is not None:
+        metrics.insert(0, {
+            "id": "steve_trial", "group": "overview", "format": "steve_value",
+            "tier": "free", "label_key": "owner.metric.steve_value",
+            "owner_only": True, "locked": False,
+            "value": steve_value,
+        })
+
     # Delegated admins never receive owner-only descriptors (filter on the
     # flag so any future owner_only metric inherits the enforcement).
     if not viewer_is_owner:
@@ -843,7 +857,8 @@ def build_overview(
                          viewer_is_owner=viewer_is_owner,
                          cap_warning=cap_warning, member_cap=member_cap,
                          invites_sent=invites_sent, invites_accepted=invites_accepted,
-                         activation=activation, wau_prev=wau_prev)
+                         activation=activation, wau_prev=wau_prev,
+                         steve_value=steve_value)
 
     return {
         "success": True,
@@ -861,14 +876,89 @@ def build_overview(
     }
 
 
+def _steve_package_value(community_id: int, *, wau: int = 0) -> Optional[Dict[str, Any]]:
+    """Owner-only Steve package trial/value block, or ``None`` when the
+    community isn't its own billing root or has no active package.
+
+    Aggregates only: shared pool counters + per-surface breakdown + weekly
+    active members for context. Never per-member usage, never provider cost
+    (that's an operator-only KB field). Trial length comes from the KB via
+    ``community_billing.steve_package_trial_days``.
+    """
+    try:
+        from backend.services import ai_usage, community_billing
+        from backend.services.community import resolve_root_community_id
+
+        root_id, is_root = resolve_root_community_id(int(community_id))
+        if not is_root or int(root_id) != int(community_id):
+            return None
+        state = community_billing.get_billing_state(community_id) or {}
+        if not state.get("steve_package_subscription_active"):
+            return None
+        is_trial = bool(community_billing.is_synthetic_steve_package_trial(state))
+
+        cap = 0
+        try:
+            from backend.services.knowledge_base import get_page
+            from backend.services.steve_community_config import get_paid_steve_package_config
+
+            fields = {
+                f.get("name"): f.get("value")
+                for f in (get_page("community-tiers") or {}).get("fields") or []
+                if f.get("name")
+            }
+            cap = max(0, get_paid_steve_package_config(fields).monthly_credit_pool)
+        except Exception:
+            cap = 0
+        used = ai_usage.community_monthly_steve_pool_usage(community_id) if cap > 0 else 0
+
+        days_left: Optional[int] = None
+        trial_total_days: Optional[int] = None
+        if is_trial:
+            trial_total_days = int(community_billing.steve_package_trial_days())
+            period_end_raw = state.get("steve_package_current_period_end")
+            try:
+                period_end = datetime.fromisoformat(str(period_end_raw))
+                if period_end.tzinfo is None:
+                    period_end = period_end.replace(tzinfo=timezone.utc)
+                remaining = (period_end - datetime.now(timezone.utc)).total_seconds()
+                # Ceiling: "ends in 2 days" until it actually doesn't.
+                days_left = max(0, math.ceil(remaining / 86400))
+            except Exception:
+                days_left = None
+
+        return {
+            "is_trial": is_trial,
+            "trial_days_left": days_left,
+            "trial_total_days": trial_total_days,
+            "pool_cap": cap,
+            "pool_used": used,
+            "pool_remaining": max(0, cap - used) if cap > 0 else None,
+            "wau": wau,
+        }
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("_steve_package_value failed for %s: %s", community_id, exc)
+        return None
+
+
 def _steve_actions(*, cap_warning: bool, member_cap: Any, members: int,
                    invites_sent: int, invites_accepted: int,
-                   activation: Optional[Dict[str, int]], wau: int, wau_prev: int) -> List[Dict[str, Any]]:
+                   activation: Optional[Dict[str, int]], wau: int, wau_prev: int,
+                   steve_value: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     """At most two one-line actions for Steve to suggest, priority-ordered:
-    cap (revenue moment) > invite nudge > low activation > celebrate. Copy is
-    payoff-first and aimed at what the OWNER can do — never at what members
-    failed to do."""
+    trial ending / cap (revenue moments) > invite nudge > low activation >
+    celebrate. Copy is payoff-first and aimed at what the OWNER can do —
+    never at what members failed to do."""
     actions: List[Dict[str, Any]] = []
+    # Trial ending is THE conversion moment: surface it with what the
+    # community actually consumed, and deep-link to the upgrade flow.
+    if steve_value and steve_value.get("is_trial"):
+        days_left = steve_value.get("trial_days_left")
+        if isinstance(days_left, int) and days_left <= 3:
+            actions.append({"key": "owner.steve.action_trial_ending",
+                            "params": {"days": days_left,
+                                       "used": int(steve_value.get("pool_used") or 0)},
+                            "action": "upgrade_steve"})
     if cap_warning:
         actions.append({"key": "owner.steve.action_cap",
                         "params": {"count": members, "cap": int(member_cap or 0)}})
@@ -896,7 +986,8 @@ def _steve_block(*, low_data: bool, net_new_7d: int, completion: Dict[str, int],
                  cap_warning: bool = False, member_cap: Any = None,
                  invites_sent: int = 0, invites_accepted: int = 0,
                  activation: Optional[Dict[str, int]] = None,
-                 wau_prev: int = 0) -> Dict[str, Any]:
+                 wau_prev: int = 0,
+                 steve_value: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Pick Steve's narration template + params. Copy lives in the i18n
     catalogs; this only chooses which line and supplies the numbers (zero AI
     cost, payoff-first, never deficit-framed). The default read spans growth,
@@ -914,6 +1005,7 @@ def _steve_block(*, low_data: bool, net_new_7d: int, completion: Dict[str, int],
         cap_warning=cap_warning, member_cap=member_cap, members=members,
         invites_sent=invites_sent, invites_accepted=invites_accepted,
         activation=activation, wau=wau, wau_prev=wau_prev,
+        steve_value=steve_value,
     )
     if not viewer_is_owner:
         # Admins get the read but no actions — cap/upgrade and invite nudges

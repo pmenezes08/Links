@@ -1358,3 +1358,34 @@ def api_cron_owner_weekly_pulse():
     except Exception as exc:
         current_app.logger.exception("owner weekly pulse: %s", exc)
         return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@notifications_bp.route(
+    "/api/cron/member-weekly-digest",
+    methods=["POST"],
+    endpoint="api_cron_member_weekly_digest",
+)
+def api_cron_member_weekly_digest():
+    """Weekly digest to community members (Cloud Scheduler, X-Cron-Secret).
+
+    One templated push + in-app row per member per ISO week, recipient-locale,
+    deep-linking to the community feed with ``?source=weekly_digest_push`` for
+    attribution. ``dry_run=1`` lists candidates without sending; real sends
+    additionally require MEMBER_DIGEST_ENABLED (off by default — staging
+    shares the prod DB, so keep it off there). ``max_sends`` throttles a run.
+    """
+    if not _cron_authed():
+        return jsonify({"success": False, "error": "forbidden"}), 403
+    try:
+        from backend.services.member_digest import DEFAULT_MAX_SENDS, run_weekly_digest
+
+        try:
+            max_sends = int(request.args.get("max_sends") or DEFAULT_MAX_SENDS)
+        except (TypeError, ValueError):
+            max_sends = DEFAULT_MAX_SENDS
+        out = run_weekly_digest(dry_run=_bool_arg("dry_run"), max_sends=max_sends)
+        status = 200 if out.get("success") else 409
+        return jsonify(out), status
+    except Exception as exc:
+        current_app.logger.exception("member weekly digest: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
