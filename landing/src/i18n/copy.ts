@@ -21,6 +21,7 @@ export type Lang = "en" | "pt";
 const en = {
   nav: {
     links: [
+      { label: "For organisations", href: "/for-community-owners" },
       { label: "Why C-Point", href: "#why-cpoint" },
       { label: "Who it's for", href: "#audiences" },
       { label: "Steve", href: "#steve" },
@@ -48,6 +49,180 @@ const en = {
     footnote:
       "Invitation-only communities — from alumni and associations to the circles that matter in your life.",
     bgAlt: "People connecting",
+  },
+  ownerLanding: {
+    metaTitle: "Private Community Platform for Organisations | C-Point",
+    metaDescription:
+      "Run an invitation-only community with a durable feed, chat, member tools, and optional Steve intelligence. Start free for up to 25 members.",
+    nav: {
+      problem: "Why C-Point",
+      features: "Owner tools",
+      analytics: "Analytics",
+      steve: "Steve",
+      pricing: "Pricing",
+      faq: "FAQ",
+      start: "Start free",
+    },
+    hero: {
+      badge: "Built for community owners",
+      title: "Run your community on a private platform — not another group chat.",
+      body:
+        "Give members one invitation-only home for conversations, shared memory, events, and useful resources. Start free, then grow with community plans and optional Steve intelligence.",
+      primary: "Start your community free",
+      secondary: "See plans",
+      proof: "Free up to 25 members · Paid plans from €49.99/month · 14-day trial",
+    },
+    problem: {
+      kicker: "Keep the context",
+      title: "Chat for speed. Feed for memory.",
+      intro:
+        "Fast conversations matter, but a community needs somewhere for decisions, knowledge, and relationships to keep their value.",
+      cards: [
+        {
+          title: "Stop losing decisions",
+          body: "Keep important posts, links, and updates threaded and findable instead of buried in yesterday's chat.",
+        },
+        {
+          title: "Give members one private home",
+          body: "Bring the feed, direct messages, group chat, events, polls, files, and useful links into one invitation-only network.",
+        },
+        {
+          title: "Structure growth",
+          body: "Use roles and sub-communities for chapters, committees, projects, or cohorts without splitting the organisation across tools.",
+        },
+      ],
+    },
+    features: {
+      kicker: "Owner toolkit",
+      title: "The infrastructure behind an active community.",
+      intro:
+        "Create a private network, invite the right people, and give members clear places to participate and find what matters.",
+      cards: [
+        {
+          title: "Invitation and member controls",
+          body: "Keep membership intentional with invitation-led access, approvals, and clear owner, admin, and member roles.",
+        },
+        {
+          title: "Feed and conversations",
+          body: "Use durable community posts for shared memory and chat for fast day-to-day coordination.",
+        },
+        {
+          title: "Events, polls, and resources",
+          body: "Plan gatherings, make decisions, and keep files, links, and key posts next to the conversation.",
+        },
+        {
+          title: "Parent and sub-communities",
+          body: "Organise chapters, committees, or projects under one community structure, within the limits of your plan.",
+        },
+      ],
+    },
+    analytics: {
+      kicker: "Owner analytics",
+      title: "See what's working — and the one thing to do next.",
+      intro:
+        "The Owner Dashboard turns community activity into a clear picture of growth and participation, narrated for you — with suggested next moves, never a wall of numbers.",
+      metrics: [
+        {
+          title: "Active members",
+          body: "Daily, weekly, and monthly active members, with week-over-week movement, so you know if momentum is building.",
+        },
+        {
+          title: "Invitation funnel",
+          body: "Invitations sent and accepted at a glance. Drill into unanswered invites and follow up personally, right from the dashboard.",
+        },
+        {
+          title: "Participation signals",
+          body: "See how many members are talking to each other and who is creating momentum — your champions, named and celebrated.",
+        },
+        {
+          title: "Space health",
+          body: "Every space labelled thriving, active, quiet, or dormant based on recent participation — so you know which room needs a nudge before it goes cold.",
+        },
+      ],
+      action:
+        "Insight comes with the action attached: follow up on unanswered invitations, thank a community champion, and make room before you reach your member cap.",
+      paidNote:
+        "Paid plans add new-member activation tracking and a whole-network rollup across all your sub-communities.",
+      privacy:
+        "Privacy-aware by design: member-level data never leaves the server. Owners see aggregates; named lists only ever celebrate visible contributions such as posts, replies, and reactions.",
+      cta: "Start understanding your community",
+    },
+    steve: {
+      kicker: "Optional intelligence",
+      title: "Add Steve when your paid community is ready.",
+      intro:
+        "The Steve Community Package gives members a shared intelligent presence in the community feed, groups, and chats. New communities can try the package free for 14 days.",
+      bullets: [
+        "200 shared Steve credits per month",
+        "One allowance shared across community members",
+        "Available as a €49.99/month add-on for paid communities",
+      ],
+      trial: "14-day free Steve trial for new communities",
+    },
+    pricing: {
+      kicker: "Simple community tiers",
+      title: "Start small. Upgrade when membership grows.",
+      intro:
+        "Community plans are based on member capacity. Add the Steve Community Package separately when you want shared AI for the whole space.",
+      planNames: {
+        free: "Free",
+        paid_l1: "Community L1",
+        paid_l2: "Community L2",
+        paid_l3: "Community L3",
+        enterprise: "Enterprise",
+      },
+      free: "Free",
+      perMonth: "/month",
+      upTo: "Up to",
+      members: "members",
+      contact: "Contact sales",
+      recommended: "Popular",
+      start: "Start free",
+      choose: "Choose this plan",
+      steveTitle: "Steve Community Package",
+      steveBody:
+        "€49.99/month for 200 shared credits. Available as an add-on after a community moves to a paid tier.",
+      footnote: "Checkout and full plan details are shown in the app after signup.",
+      trialFootnote: "Paid-community plans include a 14-day trial, limited to one per customer.",
+    },
+    faq: {
+      kicker: "Questions from owners",
+      title: "Know what happens before you invite everyone.",
+      items: [
+        {
+          question: "Can I start without paying?",
+          answer:
+            "Yes. A free community supports up to 25 members. You can move to a paid tier when you need more capacity.",
+        },
+        {
+          question: "What happens when my community reaches its member limit?",
+          answer:
+            "The owner is prompted to move to the next community tier before adding members beyond the current plan's cap.",
+        },
+        {
+          question: "Is Steve included in every plan?",
+          answer:
+            "No. New communities receive a 14-day Steve Community Package trial. After the trial, the package is a €49.99/month add-on available to paid communities.",
+        },
+        {
+          question: "Who can see what members share?",
+          answer:
+            "Communities are invitation-only. Access is controlled by community membership and roles rather than a public feed.",
+        },
+        {
+          question: "Can larger organisations use C-Point?",
+          answer:
+            "Yes. Published plans support communities up to 250 members. Contact us for an Enterprise plan if you need more capacity.",
+        },
+      ],
+    },
+    finalCta: {
+      kicker: "Create your community",
+      title: "Give your members a private place worth returning to.",
+      body: "Start with up to 25 members for free and add a paid community tier when you are ready to grow.",
+      primary: "Start your community free",
+      secondary: "Talk to us",
+    },
   },
   manifesto: {
     kicker: "C-Point manifesto",
@@ -121,10 +296,10 @@ const en = {
   },
   steve: {
     kicker: "Meet Steve",
-    h2Pre: "Intelligent presence in",
-    h2Highlight: "every community.",
+    h2Pre: "Intelligence available for",
+    h2Highlight: "your community.",
     intro:
-      "Steve isn't bolted-on support — he lives inside each private network to bridge gaps, summarise what matters, and help members connect when it makes sense.",
+      "With an eligible plan, add Steve as a shared intelligent presence that helps bridge gaps, summarise what matters, and connect members when it makes sense.",
     cards: [
       {
         title: "Steve in DMs & group chats",
@@ -321,6 +496,7 @@ export type SiteCopy = typeof en;
 const pt: SiteCopy = {
   nav: {
     links: [
+      { label: "Para organizações", href: "/for-community-owners" },
       { label: "Porquê a C-Point", href: "#why-cpoint" },
       { label: "Para quem é", href: "#audiences" },
       { label: "Steve", href: "#steve" },
@@ -349,6 +525,180 @@ const pt: SiteCopy = {
     footnote:
       "Comunidades apenas por convite — dos antigos alunos e associações aos círculos que importam na sua vida.",
     bgAlt: "Pessoas a ligarem-se",
+  },
+  ownerLanding: {
+    metaTitle: "Plataforma de comunidades privadas para organizações | C-Point",
+    metaDescription:
+      "Gira uma comunidade por convite com feed duradouro, chat, ferramentas para membros e inteligência Steve opcional. Comece grátis até 25 membros.",
+    nav: {
+      problem: "Porquê a C-Point",
+      features: "Ferramentas",
+      analytics: "Analítica",
+      steve: "Steve",
+      pricing: "Preços",
+      faq: "Perguntas",
+      start: "Começar grátis",
+    },
+    hero: {
+      badge: "Criada para donos de comunidades",
+      title: "Gira a sua comunidade numa plataforma privada — não noutro chat de grupo.",
+      body:
+        "Dê aos membros uma casa por convite para conversas, memória partilhada, eventos e recursos úteis. Comece grátis e cresça com planos de comunidade e inteligência Steve opcional.",
+      primary: "Criar a sua comunidade grátis",
+      secondary: "Ver planos",
+      proof: "Grátis até 25 membros · Planos pagos desde €49,99/mês · 14 dias de teste",
+    },
+    problem: {
+      kicker: "Guarde o contexto",
+      title: "Chat para a velocidade. Feed para a memória.",
+      intro:
+        "As conversas rápidas importam, mas uma comunidade precisa de um lugar onde decisões, conhecimento e relações mantenham o seu valor.",
+      cards: [
+        {
+          title: "Não perca decisões",
+          body: "Mantenha publicações, links e atualizações importantes organizados e fáceis de encontrar, em vez de enterrados no chat de ontem.",
+        },
+        {
+          title: "Dê aos membros uma casa privada",
+          body: "Junte feed, mensagens diretas, chat de grupo, eventos, sondagens, ficheiros e links úteis numa rede apenas por convite.",
+        },
+        {
+          title: "Estruture o crescimento",
+          body: "Use funções e subcomunidades para núcleos, comissões, projetos ou turmas sem dispersar a organização por várias ferramentas.",
+        },
+      ],
+    },
+    features: {
+      kicker: "Ferramentas para donos",
+      title: "A infraestrutura por detrás de uma comunidade ativa.",
+      intro:
+        "Crie uma rede privada, convide as pessoas certas e dê aos membros lugares claros para participar e encontrar o que importa.",
+      cards: [
+        {
+          title: "Convites e controlo de membros",
+          body: "Mantenha a adesão intencional com acesso por convite, aprovações e funções claras de dono, administrador e membro.",
+        },
+        {
+          title: "Feed e conversas",
+          body: "Use publicações duradouras como memória partilhada e chat para a coordenação rápida do dia a dia.",
+        },
+        {
+          title: "Eventos, sondagens e recursos",
+          body: "Planeie encontros, tome decisões e mantenha ficheiros, links e publicações-chave junto da conversa.",
+        },
+        {
+          title: "Comunidades-mãe e subcomunidades",
+          body: "Organize núcleos, comissões ou projetos numa só estrutura, dentro dos limites do seu plano.",
+        },
+      ],
+    },
+    analytics: {
+      kicker: "Analítica para donos",
+      title: "Veja o que está a funcionar — e o próximo passo a dar.",
+      intro:
+        "O Painel do Dono transforma a atividade da comunidade numa imagem clara do crescimento e da participação, narrada para si — com próximos passos sugeridos, nunca um mural de números.",
+      metrics: [
+        {
+          title: "Membros ativos",
+          body: "Membros ativos por dia, semana e mês, com a evolução face à semana anterior, para saber se a dinâmica está a crescer.",
+        },
+        {
+          title: "Funil de convites",
+          body: "Convites enviados e aceites num relance. Abra os convites sem resposta e faça o acompanhamento pessoalmente, a partir do painel.",
+        },
+        {
+          title: "Sinais de participação",
+          body: "Veja quantos membros comunicam entre si e quem está a criar dinâmica — os seus campeões, com nome e reconhecimento.",
+        },
+        {
+          title: "Saúde dos espaços",
+          body: "Cada espaço classificado como próspero, ativo, calmo ou inativo com base na participação recente — para saber que sala precisa de atenção antes de esfriar.",
+        },
+      ],
+      action:
+        "A informação chega com a ação incluída: acompanhe convites sem resposta, agradeça a um campeão da comunidade e liberte espaço antes de atingir o limite de membros.",
+      paidNote:
+        "Os planos pagos acrescentam a ativação de novos membros e uma visão agregada de toda a rede de subcomunidades.",
+      privacy:
+        "Privacidade desde a origem: os dados individuais nunca saem do servidor. Os donos veem agregados; as listas com nomes celebram apenas contribuições visíveis, como publicações, respostas e reações.",
+      cta: "Começar a compreender a sua comunidade",
+    },
+    steve: {
+      kicker: "Inteligência opcional",
+      title: "Adicione o Steve quando a sua comunidade paga estiver pronta.",
+      intro:
+        "O Steve Community Package dá aos membros uma presença inteligente partilhada no feed, nos grupos e nos chats. As novas comunidades podem experimentar o pacote gratuitamente durante 14 dias.",
+      bullets: [
+        "200 créditos Steve partilhados por mês",
+        "Uma quota partilhada por todos os membros da comunidade",
+        "Disponível como extra de €49,99/mês para comunidades pagas",
+      ],
+      trial: "14 dias de teste gratuito do Steve para novas comunidades",
+    },
+    pricing: {
+      kicker: "Escalões simples",
+      title: "Comece pequeno. Suba de plano quando crescer.",
+      intro:
+        "Os planos de comunidade baseiam-se na capacidade de membros. Adicione o Steve Community Package separadamente quando quiser IA partilhada para todo o espaço.",
+      planNames: {
+        free: "Grátis",
+        paid_l1: "Comunidade L1",
+        paid_l2: "Comunidade L2",
+        paid_l3: "Comunidade L3",
+        enterprise: "Enterprise",
+      },
+      free: "Grátis",
+      perMonth: "/mês",
+      upTo: "Até",
+      members: "membros",
+      contact: "Falar com vendas",
+      recommended: "Popular",
+      start: "Começar grátis",
+      choose: "Escolher este plano",
+      steveTitle: "Steve Community Package",
+      steveBody:
+        "€49,99/mês por 200 créditos partilhados. Disponível como extra depois de a comunidade passar para um plano pago.",
+      footnote: "O checkout e os detalhes completos do plano aparecem na app depois do registo.",
+      trialFootnote: "Os planos pagos de comunidade incluem 14 dias de teste, limitados a um por cliente.",
+    },
+    faq: {
+      kicker: "Perguntas de donos",
+      title: "Saiba o que acontece antes de convidar toda a gente.",
+      items: [
+        {
+          question: "Posso começar sem pagar?",
+          answer:
+            "Sim. Uma comunidade grátis suporta até 25 membros. Pode passar para um plano pago quando precisar de mais capacidade.",
+        },
+        {
+          question: "O que acontece quando a comunidade atinge o limite de membros?",
+          answer:
+            "O dono recebe um pedido para passar ao escalão seguinte antes de adicionar membros além do limite do plano atual.",
+        },
+        {
+          question: "O Steve está incluído em todos os planos?",
+          answer:
+            "Não. As novas comunidades recebem 14 dias de teste do Steve Community Package. Depois, o pacote é um extra de €49,99/mês disponível para comunidades pagas.",
+        },
+        {
+          question: "Quem pode ver o que os membros partilham?",
+          answer:
+            "As comunidades são apenas por convite. O acesso é controlado pela adesão e pelas funções da comunidade, não por um feed público.",
+        },
+        {
+          question: "As organizações maiores podem usar a C-Point?",
+          answer:
+            "Sim. Os planos publicados suportam comunidades até 250 membros. Fale connosco sobre Enterprise se precisar de mais capacidade.",
+        },
+      ],
+    },
+    finalCta: {
+      kicker: "Crie a sua comunidade",
+      title: "Dê aos membros um lugar privado ao qual vale a pena voltar.",
+      body: "Comece gratuitamente com até 25 membros e adicione um plano pago quando estiver pronto para crescer.",
+      primary: "Criar a sua comunidade grátis",
+      secondary: "Falar connosco",
+    },
   },
   manifesto: {
     kicker: "Manifesto C-Point",
@@ -438,10 +788,10 @@ Este é o seu mundo. Venha ligar-se a ele.`,
   },
   steve: {
     kicker: "Conheça o Steve",
-    h2Pre: "Presença inteligente em",
-    h2Highlight: "cada comunidade.",
+    h2Pre: "Inteligência disponível para",
+    h2Highlight: "a sua comunidade.",
     intro:
-      "O Steve não é um suporte acrescentado — vive dentro de cada rede privada para aproximar pessoas, resumir o que importa e ajudar os membros a ligarem-se quando faz sentido.",
+      "Com um plano elegível, adicione o Steve como presença inteligente partilhada para aproximar pessoas, resumir o que importa e ajudar os membros a ligarem-se quando faz sentido.",
     cards: [
       {
         title: "Steve nas mensagens e chats de grupo",
