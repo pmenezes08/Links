@@ -1784,6 +1784,8 @@
       "tier_free": "Estás no plano Gratuito.",
       "title_premium_required": "O Steve vem com os planos de comunidade",
       "title_daily_cap": "Limite de 24 horas atingido",
+      "title_upload_daily_limit": "Limite diário de multimédia atingido",
+      "title_upload_size_limit": "O ficheiro é demasiado grande",
       "title_monthly_steve_cap": "Limite mensal do Steve atingido",
       "title_monthly_whisper_cap": "Limite de transcrição de voz atingido",
       "title_community_pool_exhausted": "Pool do Steve da comunidade esgotado",

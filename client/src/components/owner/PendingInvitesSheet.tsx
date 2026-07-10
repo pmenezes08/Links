@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { SkeletonList } from '../SkeletonRow'
+import { useModalUX } from '../../hooks/useModalUX'
 import { triggerHaptic } from '../../utils/haptics'
 import type { OwnerPendingInvitee } from './types'
 
@@ -22,6 +23,9 @@ export default function PendingInvitesSheet({ open, communityId, scope, onClose 
   const navigate = useNavigate()
   const [invitees, setInvitees] = useState<OwnerPendingInvitee[] | null>(null)
   const [revoking, setRevoking] = useState<string | null>(null)
+  const sheetRef = useRef<HTMLDivElement>(null)
+
+  useModalUX({ open, onClose, containerRef: sheetRef })
 
   const revoke = async (inv: OwnerPendingInvitee) => {
     void triggerHaptic('warning')
@@ -79,6 +83,7 @@ export default function PendingInvitesSheet({ open, communityId, scope, onClose 
       aria-hidden={!open}
     >
       <div
+        ref={sheetRef}
         role="dialog"
         aria-modal="true"
         className={`max-h-[75dvh] w-full overflow-y-auto overscroll-contain rounded-t-[2rem] border border-c-border bg-c-bg-elevated px-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] pt-3 text-c-text-primary shadow-[0_-28px_80px_rgba(0,0,0,0.72)] transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${

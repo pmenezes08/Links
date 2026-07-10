@@ -1,8 +1,9 @@
-import { useEffect } from 'react'
+import { useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import MemberMatchCard, { type MatchCardMember } from './MemberMatchCard'
 import { CPOINT_EASE_OUT } from '../../design/motion'
+import { useModalUX } from '../../hooks/useModalUX'
 
 /**
  * "Introductions" bottom sheet — Steve's recommended members live here,
@@ -30,20 +31,9 @@ export default function MatchesSheet({
   onClose: () => void
 }) {
   const { t } = useTranslation()
+  const sheetRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (!open) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', onKeyDown)
-      document.body.style.overflow = previousOverflow
-    }
-  }, [open, onClose])
+  useModalUX({ open, onClose, containerRef: sheetRef, lockScroll: true })
 
   return (
     <div
@@ -54,6 +44,7 @@ export default function MatchesSheet({
       aria-label={t('networking.matches_sheet_title')}
     >
       <div
+        ref={sheetRef}
         className={`w-full max-w-xl max-h-[75dvh] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-c-border bg-c-bg-elevated px-4 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] transition-transform duration-[250ms] ${open ? 'translate-y-0' : 'translate-y-full'} sm:mb-4 sm:rounded-2xl sm:border`}
         style={{ transitionTimingFunction: CPOINT_EASE_OUT }}
         onClick={e => e.stopPropagation()}

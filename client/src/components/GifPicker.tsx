@@ -8,6 +8,7 @@ import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useTranslation } from 'react-i18next'
 import { CPOINT_EASE_OUT, PAGE_TRANSITION_MS, REDUCED_MOTION_FADE_MS } from '../design/motion'
 import { hapticImpactLight, hapticSelection } from '../utils/haptics'
+import { useModalUX } from '../hooks/useModalUX'
 import { NativeIconButton } from './NativeIconButton'
 
 export type GifSelection = {
@@ -151,18 +152,9 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
     return Math.max(SHEET_MIN_HEIGHT_PX, vvHeight)
   }, [vvHeight])
 
-  // ESC key dismiss
-  useEffect(() => {
-    if (!isOpen) return
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === 'Escape'){
-        event.preventDefault()
-        onClose()
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [isOpen, onClose])
+  // ESC + Android hardware back dismiss. Focus restore stays bespoke below —
+  // it is timed to the exit animation, which the shared hook can't know about.
+  useModalUX({ open: isOpen, onClose, restoreFocus: false })
 
   // Reset query/results on open
   useEffect(() => {

@@ -27,6 +27,7 @@ import { ThemeProvider } from './contexts/ThemeContext'
 import { NetworkProvider } from './contexts/NetworkContext'
 import { BadgeProvider } from './contexts/BadgeContext'
 import OfflineBanner from './components/OfflineBanner'
+import LiveAnnouncer, { announce } from './components/LiveAnnouncer'
 import OutboxDrainer from './components/OutboxDrainer'
 import BrandAssetsInit from './components/BrandAssetsInit'
 import BiometricLockGate from './components/BiometricLockGate'
@@ -864,6 +865,7 @@ function AppRoutes(){
 
   useEffect(() => {
     if (!uploadStatusToast) return
+    announce(uploadStatusToast)
     const id = window.setTimeout(() => setUploadStatusToast(null), 3500)
     return () => window.clearTimeout(id)
   }, [uploadStatusToast])
@@ -945,8 +947,9 @@ function AppRoutes(){
         {showHeader && (
           <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} titleAccessory={titleAccessory} />
         )}
+        <LiveAnnouncer />
         {uploadStatusToast ? (
-          <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+1rem)] z-[1500] -translate-x-1/2 rounded-full border border-c-border bg-c-bg-elevated/95 px-4 py-2 text-sm font-semibold text-c-text-primary shadow-2xl backdrop-blur">
+          <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+1rem)] z-[var(--z-toast)] -translate-x-1/2 rounded-full border border-c-border bg-c-bg-elevated/95 px-4 py-2 text-sm font-semibold text-c-text-primary shadow-2xl backdrop-blur">
             {uploadStatusToast}
           </div>
         ) : null}

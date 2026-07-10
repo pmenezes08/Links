@@ -15,7 +15,7 @@ export const Hero = () => {
           alt={c.bgAlt}
           className="w-full h-full object-cover"
         />
-        <div className="absolute inset-0 bg-[#4db6ac]/85" />
+        <div className="absolute inset-0 bg-[#00CEC8]/85" />
       </div>
 
       <div className="relative z-10 max-w-5xl mx-auto px-6 text-center">
