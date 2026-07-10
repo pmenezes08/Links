@@ -362,6 +362,19 @@ textarea {
   color: var(--c-text-primary);
   caret-color: var(--c-text-primary);
 }
+/* Text fields were left at UA appearance:auto (Tailwind preflight does not
+   reset it). Recent iOS WebKit paints its own native field chrome — bezel,
+   fill, and accent focus ring — over such inputs on focus, so bare inputs
+   inside styled wrappers (GIF search, composers) showed a second misaligned
+   rectangle no app CSS could remove. Opting out of UA rendering is the only
+   reliable fix. Text-like types only: date/time/month keep their native
+   pickers (appearance:none blanks their value display on iOS), and
+   checkbox/radio/range/file/color keep their native looks. */
+input:where([type='text'], [type='search'], [type='email'], [type='password'], [type='url'], [type='tel'], [type='number'], :not([type])),
+textarea {
+  -webkit-appearance: none;
+  appearance: none;
+}
 /* iOS WebKit renders the collapsed <select> text with UA colors derived
    from color-scheme on some versions, ignoring `color`. text-fill-color
    wins over that UA painting unconditionally. */
