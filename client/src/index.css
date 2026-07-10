@@ -84,8 +84,14 @@
   /* Global keyboard-focus indicator (WCAG 2.4.7). Box-shadow (not outline)
      so `focus:outline-none` utilities can't strip it, while elements that
      declare their own `focus-visible:ring-*` utilities still win the
-     cascade. :where() keeps specificity at (0,1,0) for easy overrides. */
-  :where(a, button, input, textarea, select, summary, [role='button'], [tabindex]):focus-visible {
+     cascade. :where() keeps specificity at (0,1,0) for easy overrides.
+     Text-entry fields are deliberately excluded: they indicate focus with
+     the caret + their container's focus-within border, and on iOS tapping
+     a text field fires :focus-visible — a ring on the bare inner <input>
+     of composed fields (chat composer, GIF search) draws a misaligned
+     second rectangle over the styled wrapper. */
+  :where(a, button, select, summary, [role='button'], [tabindex]):focus-visible,
+  :where(input[type='checkbox'], input[type='radio'], input[type='range'], input[type='file'], input[type='button'], input[type='submit']):focus-visible {
     box-shadow: var(--c-focus-ring);
   }
 
