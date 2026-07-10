@@ -180,7 +180,9 @@ def run_weekly_pulse(*, dry_run: bool = False) -> Dict[str, Any]:
                 delta = numbers["wau"] - numbers["wau_prev"]
                 event = "owner_pulse_up" if delta > 0 else "owner_pulse"
                 params = {"community": cand["name"], "wau": numbers["wau"], "delta": delta}
-                url = f"/community/{cand['community_id']}/owner"
+                # ?source= feeds the retention_events sink client-side, so
+                # pulse tap-through is measurable against sends.
+                url = f"/community/{cand['community_id']}/owner?source=owner_pulse_push"
 
                 payload = notification_copy.push_payload(event, locale, **params)
                 send_push_to_user(owner, {

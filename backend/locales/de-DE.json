@@ -180,6 +180,11 @@
       "body": "{wau} Mitglieder diese Woche in {community} aktiv — {delta} mehr als letzte Woche. Stark.",
       "message": "Wochenpuls: {wau} aktiv in {community}, {delta} mehr als letzte Woche"
     },
+    "member_digest": {
+      "title": "Diese Woche in {community}",
+      "body": "{posts} neue Beiträge diese Woche in {community} — schau, was du verpasst hast.",
+      "message": "Diese Woche in {community}: {posts} neue Beiträge — schau, was du verpasst hast"
+    },
     "owner_cta_steve_trial_ending": {
       "title": "Steve Community Package: Testphase endet bald",
       "body": "Die kostenlose Testphase für {community} endet am {date}. Füge das Steve Community Package hinzu, damit Steve für deine Mitglieder verfügbar bleibt.",

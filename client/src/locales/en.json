@@ -396,6 +396,10 @@
     "spaces_groups": "Groups",
     "spaces_members": "{{n}} members",
     "spaces_empty": "No spaces or groups yet.",
+    "steve_trial_days_left": "Trial — {{days}} of {{total}} days left",
+    "steve_pool_used": "of {{cap}} Steve moments used this month",
+    "steve_value_context": "{{wau}} members were active this week — Steve is part of what they came back for.",
+    "steve_keep_cta": "Keep Steve for your members",
     "metric": {
       "members": "Members",
       "active": "Active members",
@@ -405,12 +409,14 @@
       "activation": "New-member activation",
       "activation_hint": "How many new people start posting",
       "communicating": "Members talking to each other",
-      "leaderboards": "Top contributors"
+      "leaderboards": "Top contributors",
+      "steve_value": "Steve in your community"
     },
     "steve": {
       "greeting": "Here's how {{community}} is doing — I've been keeping an eye on it.",
       "read_default": "You're up {{delta}} this week — {{wau}} active in the last 7 days, {{mau}} over the month, and {{communicating}} have messaged another member. {{complete}} of {{total}} have filled in their profile.",
       "read_default_admin": "You're up {{delta}} this week — {{wau}} active in the last 7 days and {{mau}} over the month.",
+      "action_trial_ending": "Your Steve trial ends in {{days}} days — your members have already used {{used}} Steve moments. Keep him around.",
       "action_cap": "You're at {{count}} of {{cap}} members — a bigger plan keeps the door open for the next person.",
       "action_invite": "{{n}} invites haven't been answered yet — tap to see who's still waiting.",
       "action_activation": "{{count}} of {{total}} new members have jumped in so far — a welcome post greeting the newcomers usually brings more along.",

@@ -396,6 +396,10 @@
     "spaces_groups": "Grupos",
     "spaces_members": "{{n}} membros",
     "spaces_empty": "Ainda não há espaços nem grupos.",
+    "steve_trial_days_left": "Período de teste — faltam {{days}} de {{total}} dias",
+    "steve_pool_used": "de {{cap}} momentos Steve usados este mês",
+    "steve_value_context": "{{wau}} membros estiveram ativos esta semana — o Steve faz parte do que os trouxe de volta.",
+    "steve_keep_cta": "Mantém o Steve para os teus membros",
     "metric": {
       "members": "Membros",
       "active": "Membros ativos",
@@ -405,12 +409,14 @@
       "activation": "Ativação de novos membros",
       "activation_hint": "Quantos novos membros começam a publicar",
       "communicating": "Membros que falam entre si",
-      "leaderboards": "Maiores contribuidores"
+      "leaderboards": "Maiores contribuidores",
+      "steve_value": "O Steve na tua comunidade"
     },
     "steve": {
       "greeting": "Eis como vai {{community}} — tenho estado de olho.",
       "read_default": "Estás a crescer +{{delta}} esta semana — {{wau}} ativos nos últimos 7 dias, {{mau}} no último mês, e {{communicating}} já falaram com outro membro. {{complete}} de {{total}} preencheram o perfil.",
       "read_default_admin": "Estás a crescer +{{delta}} esta semana — {{wau}} ativos nos últimos 7 dias e {{mau}} no último mês.",
+      "action_trial_ending": "O teu período de teste do Steve termina em {{days}} dias — os teus membros já usaram {{used}} momentos Steve. Mantém-no por perto.",
       "action_cap": "Estás com {{count}} de {{cap}} membros — um plano maior mantém a porta aberta para o próximo.",
       "action_invite": "{{n}} convites ainda estão sem resposta — toca para ver quem falta.",
       "action_activation": "{{count}} de {{total}} novos membros já participaram — uma publicação a dar as boas-vindas aos recém-chegados costuma trazer mais.",

@@ -396,6 +396,10 @@
     "spaces_groups": "Gruppen",
     "spaces_members": "{{n}} Mitglieder",
     "spaces_empty": "Noch keine Spaces oder Gruppen.",
+    "steve_trial_days_left": "Testphase — noch {{days}} von {{total}} Tagen",
+    "steve_pool_used": "von {{cap}} Steve-Momenten diesen Monat genutzt",
+    "steve_value_context": "{{wau}} Mitglieder waren diese Woche aktiv — Steve ist Teil dessen, wofür sie zurückkommen.",
+    "steve_keep_cta": "Behalte Steve für deine Mitglieder",
     "metric": {
       "members": "Mitglieder",
       "active": "Aktive Mitglieder",
@@ -405,12 +409,14 @@
       "activation": "Aktivierung neuer Mitglieder",
       "activation_hint": "Wie viele neue Mitglieder anfangen zu posten",
       "communicating": "Mitglieder im Austausch",
-      "leaderboards": "Top-Beitragende"
+      "leaderboards": "Top-Beitragende",
+      "steve_value": "Steve in deiner Community"
     },
     "steve": {
       "greeting": "So läuft es bei {{community}} — ich hab's im Blick.",
       "read_default": "Du bist um {{delta}} gestiegen — {{wau}} aktiv in den letzten 7 Tagen, {{mau}} im Monatsverlauf, und {{communicating}} haben einem anderen Mitglied geschrieben. {{complete}} von {{total}} haben ihr Profil ausgefüllt.",
       "read_default_admin": "Du bist um {{delta}} gestiegen — {{wau}} aktiv in den letzten 7 Tagen und {{mau}} im Monatsverlauf.",
+      "action_trial_ending": "Deine Steve-Testphase endet in {{days}} Tagen — deine Mitglieder haben schon {{used}} Steve-Momente genutzt. Behalte ihn.",
       "action_cap": "Du bist bei {{count}} von {{cap}} Mitgliedern — ein größerer Plan hält die Tür für die Nächsten offen.",
       "action_invite": "{{n}} Einladungen sind noch unbeantwortet — tippe, um zu sehen, wer noch fehlt.",
       "action_activation": "{{count}} von {{total}} neuen Mitgliedern sind schon dabei — ein Willkommens-Post für die Neuen bringt meist mehr dazu.",

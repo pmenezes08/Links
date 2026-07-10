@@ -934,3 +934,17 @@ notifications, or creation playback. Maps to the `runner=manual` Tests row
 - [ ] Play the creation from `/builds` and from the community feed. Expected: both paths load the same artifact and preserve the sandbox/`CPoint` bridge behavior.
 - [ ] Iterate the creation. Expected: the new version loads, old HTML is not served from cache, and the previous R2 object is cleaned up best-effort.
 - [ ] Delete the build. Expected: the DB row, `creation_data`, `builder_jobs`, linked post, and private R2 object are removed or no longer retrievable.
+
+## §18 — Conversion + retention MVP (trial value, digest, attribution)
+
+Run after any change to the Steve trial metric, member digest, retention
+events, or checkout attribution. See `docs/PRODUCT_JOURNEYS.md` § Member
+weekly digest / Retention attribution.
+
+- [ ] **Steve trial card (owner)**: as the owner of a fresh root community (trial active), open `/community/<id>/owner`. Expected: a "Steve in your community" card shows trial days left (KB-driven total, `community-tiers.steve_package_trial_days`), pool usage out of the KB pool cap, and a "Keep Steve for your members" CTA that opens `ManageMembershipModal`.
+- [ ] **Trial card hidden for admins**: as a delegated admin of the same community, open the dashboard. Expected: no `steve_trial` card, and Steve's read carries no billing action rows.
+- [ ] **Trial-ending action**: with a trial ending in ≤ 3 days (adjust `steve_package_current_period_end` on staging data), the Steve panel shows the "trial ends in N days" action row; tapping it opens the membership modal and writes an `owner_action_tapped` row to `retention_events`.
+- [ ] **Member digest dry-run**: `POST /api/cron/member-weekly-digest?dry_run=1` with `X-Cron-Secret`. Expected: 200 with candidate list, zero rows in `member_digest_sends`, zero pushes. A real run without `MEMBER_DIGEST_ENABLED` returns 409.
+- [ ] **Digest attribution round-trip** (only where the flag is on): after a real digest send, tap the push. Expected: land on `/community_feed_react/<id>?source=weekly_digest_push` and a `digest_opened` row appears in `retention_events` next to the cron's `digest_sent` row.
+- [ ] **Checkout intent audit**: start (don't complete) a community-tier checkout from the Owner Dashboard upgrade CTA. Expected: one `community_tier_checkout_started` row in `subscription_audit_log` with `metadata.source` from the closed vocabulary; no purchase rows until the webhook fires.
+- [ ] **Landing pricing parity**: `python scripts/generate_landing_pricing.py --check` passes; `landing/src/generated/pricing.json` matches the KB seed prices shown in-app.

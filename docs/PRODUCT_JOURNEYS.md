@@ -457,3 +457,35 @@ dashboard (handled in `PushInit.tsx`). Quiet weeks are skipped; multi-network
 owners get one pulse for their largest network; kill-switch
 `OWNER_PULSE_ENABLED`. Zero AI cost — Steve's voice is i18n templates over
 numbers computed at send time.
+
+**Member weekly digest (the member-side return loop):** the pulse's sibling,
+`POST /api/cron/member-weekly-digest` (`docs/cloud-scheduler-cron.md` §13,
+service `backend/services/member_digest.py`). One recipient-locale push +
+in-app row per member per ISO week for their most active community (≥ 3 new
+posts by others; own posts don't count; owners excluded). **Off by default**
+(`MEMBER_DIGEST_ENABLED`); dedup table `member_digest_sends`; `max_sends`
+throttle. Deep links carry `?source=weekly_digest_push`.
+
+**Retention attribution + checkout intent:** the return loops are measured
+end-to-end. Digest/pulse deep links carry `?source=`, which the client
+(`useRetentionAttribution`, `CommunityFeed`, `OwnerDashboard`, Steve action
+rows in `OverviewTab`) posts to `POST /api/retention/event` — an append-only
+`retention_events` table with a closed event/source vocabulary
+(`digest_sent/opened`, `owner_pulse_opened`, `owner_action_tapped`), never
+message content or other members' identities. On the conversion side,
+`POST /api/stripe/create_checkout_session` writes one
+`<plan>_checkout_started` row to `subscription_audit_log` (with the CTA
+`source` from a closed vocabulary in `subscription_audit.CHECKOUT_SOURCES`);
+purchases stay webhook-driven, so starts vs completions = funnel abandonment.
+
+**Steve trial → paid conversion moment:** the Owner Dashboard overview
+includes an owner-only `steve_trial` metric (trial days left, shared-pool
+usage, weekly actives — aggregates only) while the synthetic Steve package
+trial or a paid package is active on the billing root, plus a Steve
+`action_trial_ending` row (final 3 days) that opens `ManageMembershipModal`.
+Trial length is KB-driven (`community-tiers.steve_package_trial_days`,
+read via `community_billing.steve_package_trial_days()`), so operators can
+tune it without a deploy. Landing pricing is generated from the same KB
+seeds (`scripts/generate_landing_pricing.py` →
+`landing/src/generated/pricing.json`, drift-checked by
+`tests/test_landing_pricing_parity.py`).
