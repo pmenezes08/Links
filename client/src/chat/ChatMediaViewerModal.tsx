@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import ZoomableImage from '../components/ZoomableImage'
+import { useModalUX } from '../hooks/useModalUX'
 import { useImmersiveStatusBar } from '../hooks/useNativeStatusBar'
 import { isNativeMediaPlatform, saveToGalleryNative } from '../utils/nativeMediaPicker'
 import { nativeToast } from '../utils/nativeUi'
@@ -34,6 +35,7 @@ export function ChatMediaViewerModal({
   const [videoError, setVideoError] = useState(false)
   const [saving, setSaving] = useState(false)
   useImmersiveStatusBar(!!viewer)
+  useModalUX({ open: !!viewer, onClose })
   const currentUrl = viewer ? viewer.urls[viewer.index] : ''
 
   useEffect(() => {

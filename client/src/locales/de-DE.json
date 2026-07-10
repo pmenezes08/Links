@@ -1790,6 +1790,8 @@
       "tier_free": "Du nutzt den kostenlosen Plan.",
       "title_premium_required": "Steve kommt mit Community-Plänen",
       "title_daily_cap": "24-Stunden-Limit erreicht",
+      "title_upload_daily_limit": "Tägliches Medienlimit erreicht",
+      "title_upload_size_limit": "Die Datei ist zu groß",
       "title_monthly_steve_cap": "Monatliches Steve-Kontingent erreicht",
       "title_monthly_whisper_cap": "Limit für Sprachtranskription erreicht",
       "title_community_pool_exhausted": "Steve-Pool der Community aufgebraucht",

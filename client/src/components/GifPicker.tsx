@@ -8,6 +8,7 @@ import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useTranslation } from 'react-i18next'
 import { CPOINT_EASE_OUT, PAGE_TRANSITION_MS, REDUCED_MOTION_FADE_MS } from '../design/motion'
 import { hapticImpactLight, hapticSelection } from '../utils/haptics'
+import { useModalUX } from '../hooks/useModalUX'
 import { NativeIconButton } from './NativeIconButton'
 
 export type GifSelection = {
@@ -132,6 +133,14 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
   const dragTransitionTimerRef = useRef<number | null>(null)
   const pluginKeyboardLiftRef = useRef(0)
   const visualKeyboardLiftRef = useRef(0)
+  // Seeded lift held as a FLOOR during the open transition. Callers that
+  // hide the keyboard before opening (CreatePost) otherwise produce:
+  // mount at seeded height → viewport says "keyboard gone" → sheet drops
+  // to the bottom → search autofocus re-opens the keyboard OVER the sheet
+  // → keyboardWillShow finally lifts it back. Holding the seed until the
+  // keyboard reports shown (or a short timeout) keeps the sheet parked
+  // above where the keyboard will land — no dip, no jump.
+  const seedLiftFloorRef = useRef(0)
   const dragStateRef = useRef<{
     startY: number
     lastY: number
@@ -151,18 +160,9 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
     return Math.max(SHEET_MIN_HEIGHT_PX, vvHeight)
   }, [vvHeight])
 
-  // ESC key dismiss
-  useEffect(() => {
-    if (!isOpen) return
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === 'Escape'){
-        event.preventDefault()
-        onClose()
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [isOpen, onClose])
+  // ESC + Android hardware back dismiss. Focus restore stays bespoke below —
+  // it is timed to the exit animation, which the shared hook can't know about.
+  useModalUX({ open: isOpen, onClose, restoreFocus: false })
 
   // Reset query/results on open
   useEffect(() => {
@@ -299,6 +299,7 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
       previousFocusRef.current =
         typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null
       const seedLift = getSeedKeyboardLift(initialKeyboardLift)
+      seedLiftFloorRef.current = seedLift
       const seedHeight = Math.max(0, (window.innerHeight || getInitialViewportHeight()) - seedLift)
       setKeyboardLift(prev => (Math.abs(prev - seedLift) < 1 ? prev : seedLift))
       setVvHeight(prev => (Math.abs(prev - seedHeight) < 1 ? prev : seedHeight))
@@ -336,6 +337,7 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
     if (!isOpen || typeof window === 'undefined') {
       pluginKeyboardLiftRef.current = 0
       visualKeyboardLiftRef.current = 0
+      seedLiftFloorRef.current = 0
       setKeyboardLift(0)
       return
     }
@@ -348,6 +350,7 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
         pluginKeyboardLiftRef.current,
         visualKeyboardLiftRef.current,
         getGlobalKeyboardLift(),
+        seedLiftFloorRef.current,
       )
       const nextH = Math.max(0, (window.innerHeight || getInitialViewportHeight()) - lift)
       setKeyboardLift(prev => (Math.abs(prev - lift) < 1 ? prev : lift))
@@ -359,6 +362,15 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
       const subs: PluginListenerHandle[] = []
       const viewport = window.visualViewport
       let rafId: number | null = null
+      // Once the keyboard reports shown (or after a grace window with no
+      // show event — e.g. tablets with hardware keyboards), live values own
+      // the layout and the seeded floor is released.
+      const releaseSeedFloor = () => {
+        if (seedLiftFloorRef.current === 0) return
+        seedLiftFloorRef.current = 0
+        setNativeViewportState()
+      }
+      const seedFloorTimer = window.setTimeout(releaseSeedFloor, 2500)
       const updateVisualViewportLift = () => {
         visualKeyboardLiftRef.current = getVisualViewportKeyboardLift()
         setNativeViewportState()
@@ -370,6 +382,7 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
       const onShow = (info: KeyboardInfo) => {
         pluginKeyboardLiftRef.current = norm(info?.keyboardHeight ?? 0)
         visualKeyboardLiftRef.current = getVisualViewportKeyboardLift()
+        seedLiftFloorRef.current = 0
         setNativeViewportState()
       }
       const onHide = () => {
@@ -401,6 +414,7 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
       return () => {
         disposed = true
         if (rafId !== null) cancelAnimationFrame(rafId)
+        window.clearTimeout(seedFloorTimer)
         if (viewport) {
           viewport.removeEventListener('resize', scheduleVisualViewportLift)
           viewport.removeEventListener('scroll', scheduleVisualViewportLift)
@@ -408,6 +422,7 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
         subs.forEach(sub => sub.remove())
         pluginKeyboardLiftRef.current = 0
         visualKeyboardLiftRef.current = 0
+        seedLiftFloorRef.current = 0
         setKeyboardLift(0)
         setVvHeight(window.innerHeight)
       }

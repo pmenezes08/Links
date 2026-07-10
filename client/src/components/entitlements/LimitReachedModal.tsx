@@ -1,6 +1,7 @@
-import { useEffect } from 'react'
+import { useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
+import { useModalUX } from '../../hooks/useModalUX'
 import type { EntitlementsError } from '../../utils/entitlementsError'
 import { subscriptionPlansCtaUrl } from '../../utils/entitlementsError'
 
@@ -79,22 +80,9 @@ function CommunityPlanBenefitsList({ err }: { err: EntitlementsError }) {
 export default function LimitReachedModal({ err, onClose, communityId }: Props) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const dialogRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = prev
-    }
-  }, [])
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  useModalUX({ open: true, onClose, containerRef: dialogRef, lockScroll: true })
 
   const handleCta = () => {
     const url = err.cta?.url
@@ -113,9 +101,9 @@ export default function LimitReachedModal({ err, onClose, communityId }: Props) 
       case 'daily_cap':
         return t('entitlements.limit_modal.title_daily_cap')
       case 'upload_daily_limit':
-        return 'Daily media limit reached'
+        return t('entitlements.limit_modal.title_upload_daily_limit')
       case 'upload_size_limit':
-        return 'Media is too large'
+        return t('entitlements.limit_modal.title_upload_size_limit')
       case 'monthly_steve_cap':
         return t('entitlements.limit_modal.title_monthly_steve_cap')
       case 'monthly_whisper_cap':
@@ -253,6 +241,7 @@ export default function LimitReachedModal({ err, onClose, communityId }: Props) 
         }}
       />
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         style={{

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import SteveAvatar from './SteveAvatar'
 import { getKnownSummary, rememberSummary, type KnownSummary } from './steveSummaryStore'
 import { useEntitlementsHandler } from '../../contexts/EntitlementsContext'
+import { useModalUX } from '../../hooks/useModalUX'
 import { renderTextWithSourceLinks } from '../../utils/linkUtils'
 import { CPOINT_EASE_OUT, TAB_CROSSFADE_MS } from '../../design/motion'
 
@@ -69,24 +70,14 @@ export default function SteveSummarySheet({
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<KnownSummary | null>(() => getKnownSummary(postId) ?? null)
   const [wasCached, setWasCached] = useState(() => Boolean(getKnownSummary(postId)))
+  const sheetRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setShown(true))
     return () => cancelAnimationFrame(frame)
   }, [])
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', onKeyDown)
-      document.body.style.overflow = previousOverflow
-    }
-  }, [onClose])
+  useModalUX({ open: true, onClose, containerRef: sheetRef, lockScroll: true })
 
   const fetchSummary = useCallback(async () => {
     setLoading(true)
@@ -151,6 +142,7 @@ export default function SteveSummarySheet({
       aria-label={t('feed.steve_summary')}
     >
       <div
+        ref={sheetRef}
         className={`w-full max-w-xl min-h-[30dvh] max-h-[75dvh] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-c-border bg-c-bg-elevated px-4 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] transition-transform duration-[250ms] ${shown ? 'translate-y-0' : 'translate-y-full'} sm:mb-4 sm:rounded-2xl sm:border`}
         style={{ transitionTimingFunction: CPOINT_EASE_OUT }}
         onClick={e => e.stopPropagation()}

@@ -1790,6 +1790,8 @@
       "tier_free": "You're on the Free plan.",
       "title_premium_required": "Steve comes with community plans",
       "title_daily_cap": "24-hour limit reached",
+      "title_upload_daily_limit": "Daily media limit reached",
+      "title_upload_size_limit": "Media is too large",
       "title_monthly_steve_cap": "Monthly Steve allowance reached",
       "title_monthly_whisper_cap": "Voice transcription limit reached",
       "title_community_pool_exhausted": "Community Steve pool exhausted",

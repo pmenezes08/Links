@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { App } from '@capacitor/app'
+import { hasOpenModalBackHandler } from './useModalUX'
 
 export interface UseAndroidBackButtonOptions {
   enabled?: boolean
@@ -13,6 +14,9 @@ export interface UseAndroidBackButtonOptions {
 
 /**
  * Android hardware back: blur composer → exit selection → navigate back.
+ * Yields while any modal/sheet is open — the useModalUX stack owns the
+ * press then (Capacitor fires every backButton listener, so without this
+ * guard one press would both close the sheet AND navigate).
  */
 export function useAndroidBackButton({
   enabled = true,
@@ -26,6 +30,8 @@ export function useAndroidBackButton({
     let handle: PluginListenerHandle | undefined
 
     void App.addListener('backButton', () => {
+      if (hasOpenModalBackHandler()) return
+
       const active = document.activeElement
       if (textareaRef?.current && active === textareaRef.current) {
         textareaRef.current.blur()

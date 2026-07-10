@@ -15,10 +15,11 @@
  * method", then redirects to the returned Stripe-hosted URL.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Capacitor } from '@capacitor/core'
 import { useEntitlements } from '../../hooks/useEntitlements'
+import { useModalUX } from '../../hooks/useModalUX'
 import {
   openExternalBillingUrl,
   providerBadge,
@@ -122,20 +123,13 @@ const TABS: { id: MembershipTab; labelKey: string; icon: string }[] = [
 export default function ManageMembershipModal({ open, onClose, initialTab = 'plan' }: Props) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<MembershipTab>(initialTab)
+  const dialogRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (open) setTab(initialTab)
   }, [open, initialTab])
 
-  // Close on Escape.
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [open, onClose])
+  useModalUX({ open, onClose, containerRef: dialogRef })
 
   if (!open) return null
 
@@ -148,6 +142,7 @@ export default function ManageMembershipModal({ open, onClose, initialTab = 'pla
         aria-hidden
       />
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={t('billing.modal_title')}

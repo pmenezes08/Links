@@ -7,7 +7,7 @@ export const Footer = () => {
   const nav = copy.nav;
 
   return (
-    <footer className="bg-[#4db6ac] py-12">
+    <footer className="bg-[#00CEC8] py-12">
       <div className="max-w-6xl mx-auto px-6">
         <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
           <div className="text-center lg:text-left">

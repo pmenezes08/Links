@@ -30,7 +30,7 @@ export function LegalDocumentPage({ pageId, locale, showAgeBanner = false }: Pro
     <div className="min-h-screen bg-black text-white">
       <header className="border-b border-white/10">
         <div className="container mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4">
-          <Link to="/" className="text-2xl font-bold text-[#4db6ac]">
+          <Link to="/" className="text-2xl font-bold text-[#00CEC8]">
             C-Point
           </Link>
           <div className="flex items-center gap-3 text-sm">
@@ -41,7 +41,7 @@ export function LegalDocumentPage({ pageId, locale, showAgeBanner = false }: Pro
             <span className="text-white/30">|</span>
             <Link
               to={legalPath(`/${pageId}`, otherLocale)}
-              className="text-[#4db6ac] hover:underline"
+              className="text-[#00CEC8] hover:underline"
             >
               {page.switchToOther}
             </Link>
@@ -56,7 +56,7 @@ export function LegalDocumentPage({ pageId, locale, showAgeBanner = false }: Pro
         {locale === 'en' && (
           <p className="text-sm text-white/55 mb-6">
             {page.alsoAvailableIn}{' '}
-            <Link to={legalPath(`/${pageId}`, 'pt-PT')} className="text-[#4db6ac] hover:underline">
+            <Link to={legalPath(`/${pageId}`, 'pt-PT')} className="text-[#00CEC8] hover:underline">
               Português (Portugal)
             </Link>
             .
@@ -69,7 +69,7 @@ export function LegalDocumentPage({ pageId, locale, showAgeBanner = false }: Pro
             className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 mb-8 text-sm text-white/85 leading-relaxed"
           >
             {page.disclaimer}{' '}
-            <Link to={legalPath(`/${pageId}`, 'en')} className="text-[#4db6ac] hover:underline font-medium">
+            <Link to={legalPath(`/${pageId}`, 'en')} className="text-[#00CEC8] hover:underline font-medium">
               Versão em inglês
             </Link>
             .
@@ -77,8 +77,8 @@ export function LegalDocumentPage({ pageId, locale, showAgeBanner = false }: Pro
         )}
 
         {showAgeBanner && labels.ageBannerTitle && (
-          <div className="bg-[#4db6ac]/10 border border-[#4db6ac]/30 rounded-lg p-4 mb-8">
-            <p className="text-[#4db6ac] font-semibold">{labels.ageBannerTitle}</p>
+          <div className="bg-[#00CEC8]/10 border border-[#00CEC8]/30 rounded-lg p-4 mb-8">
+            <p className="text-[#00CEC8] font-semibold">{labels.ageBannerTitle}</p>
             <p className="text-white/70 text-sm">{labels.ageBannerBody}</p>
           </div>
         )}
@@ -88,7 +88,7 @@ export function LegalDocumentPage({ pageId, locale, showAgeBanner = false }: Pro
             remarkPlugins={[remarkGfm]}
             components={{
               h2: ({ children }) => (
-                <h2 className="text-2xl font-semibold mb-4 mt-10 text-[#4db6ac] first:mt-0">{children}</h2>
+                <h2 className="text-2xl font-semibold mb-4 mt-10 text-[#00CEC8] first:mt-0">{children}</h2>
               ),
               h3: ({ children }) => <h3 className="text-xl font-medium mb-3 mt-6 text-white">{children}</h3>,
               p: ({ children }) => <p className="text-white/80 leading-relaxed mb-4">{children}</p>,
@@ -100,7 +100,7 @@ export function LegalDocumentPage({ pageId, locale, showAgeBanner = false }: Pro
                 const resolved = resolveHref(href);
                 if (resolved?.startsWith('/')) {
                   return (
-                    <Link to={resolved} className="text-[#4db6ac] hover:underline">
+                    <Link to={resolved} className="text-[#00CEC8] hover:underline">
                       {children}
                     </Link>
                   );
@@ -108,7 +108,7 @@ export function LegalDocumentPage({ pageId, locale, showAgeBanner = false }: Pro
                 return (
                   <a
                     href={resolved}
-                    className="text-[#4db6ac] hover:underline"
+                    className="text-[#00CEC8] hover:underline"
                     target="_blank"
                     rel="noopener noreferrer"
                   >
@@ -130,19 +130,19 @@ export function LegalDocumentPage({ pageId, locale, showAgeBanner = false }: Pro
             © {new Date().getFullYear()} C-Point. {page.footerRights}
           </p>
           <div className="flex flex-wrap justify-center gap-6 mt-4">
-            <Link to="/" className="hover:text-[#4db6ac]">
+            <Link to="/" className="hover:text-[#00CEC8]">
               {page.footerHome}
             </Link>
-            <Link to={legalPath('/privacy', locale)} className="hover:text-[#4db6ac]">
+            <Link to={legalPath('/privacy', locale)} className="hover:text-[#00CEC8]">
               {page.footerPrivacy}
             </Link>
-            <Link to={legalPath('/terms', locale)} className="hover:text-[#4db6ac]">
+            <Link to={legalPath('/terms', locale)} className="hover:text-[#00CEC8]">
               {page.footerTerms}
             </Link>
-            <Link to={legalPath('/safety', locale)} className="hover:text-[#4db6ac]">
+            <Link to={legalPath('/safety', locale)} className="hover:text-[#00CEC8]">
               {page.footerSafety}
             </Link>
-            <Link to="/support" className="hover:text-[#4db6ac]">
+            <Link to="/support" className="hover:text-[#00CEC8]">
               {page.footerSupport}
             </Link>
           </div>
