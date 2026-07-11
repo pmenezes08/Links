@@ -70,6 +70,26 @@ describe('chat thread inverted-list invariants', () => {
     expect(src).toMatch(/handleContentPointerMove/)
   })
 
+  it('useTouchDismiss never arms on interactive targets (inline edit editor must keep the keyboard)', () => {
+    const src = readFileSync(join(repoRoot, 'client', 'src', 'chat', 'hooks.ts'), 'utf8')
+    // Taps starting on textarea/buttons/links inside the list must not call
+    // Keyboard.hide() mid-gesture — it collapses the inverted-list inset and
+    // swallows the click (inline message editor Save/Cancel, cursor placement).
+    expect(src).toMatch(/touchDismissTargetIsInteractive/)
+    expect(src).toMatch(/touchDismissTargetIsInteractive\(event\.target\)/)
+  })
+
+  it('inline message editors isolate pointer events and prevent blur on save/cancel', () => {
+    for (const file of ['MessageBubble.tsx', 'GroupMessageRow.tsx']) {
+      const src = readFileSync(join(repoRoot, 'client', 'src', 'chat', file), 'utf8')
+      // Editor container must not let pointer events reach the list-level
+      // touch-dismiss handlers.
+      expect(src).toMatch(/onPointerDown=\{\(?e\)? => e\.stopPropagation\(\)\}/)
+      // Save/Cancel must not blur the edit textarea before their click lands.
+      expect(src).toMatch(/onMouseDown=\{\(?e\)? => e\.preventDefault\(\)\}/)
+    }
+  })
+
   it('thread pages wire scroll-to-dismiss pointer move on the list', () => {
     for (const page of ['ChatThread.tsx', 'GroupChatThread.tsx']) {
       const src = readFileSync(join(repoRoot, 'client', 'src', 'pages', page), 'utf8')
