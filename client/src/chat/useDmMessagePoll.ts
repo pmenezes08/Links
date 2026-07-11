@@ -1,7 +1,13 @@
 import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { getAllMessageReactions } from './utils'
-import { DM_FULL_SYNC_EVERY_N_POLL, DM_POLL_INTERVAL_MS, nextPollBackoffMs } from './constants'
-import { shouldDeltaPoll } from './pollSync'
+import {
+  CHAT_HOT_POLL_INTERVAL_MS,
+  CHAT_HOT_WINDOW_MS,
+  DM_FULL_SYNC_EVERY_N_POLL,
+  DM_POLL_INTERVAL_MS,
+  nextPollBackoffMs,
+} from './constants'
+import { pollIsHot, shouldDeltaPoll } from './pollSync'
 import { mergePolledDmMessages, type DmIdBridge } from '../utils/dmPollMergeMessages'
 import type { MessageMeta } from './utils'
 import { cacheMessages } from '../utils/offlineDb'
@@ -46,7 +52,7 @@ export function useDmMessagePoll<T extends object>({
   setSteveIsTyping,
   setTyping,
 }: UseDmMessagePollOptions<T>) {
-  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pollInFlightLocal = useRef(false)
   const pollCountLocal = useRef(0)
   const pollInFlight = pollInFlightExternal ?? pollInFlightLocal
@@ -54,6 +60,9 @@ export function useDmMessagePoll<T extends object>({
   // Adaptive backoff: consecutive failures widen the effective poll gap (reset on success).
   const pollErrorCountRef = useRef(0)
   const nextPollAtRef = useRef(0)
+  // Hot-thread cadence: last time messages actually flowed (delta rows / recent send).
+  const lastActivityAtRef = useRef(0)
+  const peerTypingRef = useRef(false)
 
   useEffect(() => {
     if (!username || !otherUserId) return
@@ -65,6 +74,9 @@ export function useDmMessagePoll<T extends object>({
     // of waiting for the periodic full sync (~9s). Resets per thread open (closure) and
     // on return-to-foreground.
     let didFullSync = false
+    // True once the server has piggybacked peer_is_typing on a poll response —
+    // from then on the separate /api/typing fetch is redundant.
+    let typingViaPoll = false
 
     async function poll() {
       if (!navigator.onLine) return
@@ -92,6 +104,7 @@ export function useDmMessagePoll<T extends object>({
           if (useDelta) {
             fd.append('since_id', String(lastKnownMessageIdRef.current))
           }
+          fd.append('include_typing', '1')
 
           const r = await fetch('/get_messages', {
             method: 'POST',
@@ -105,9 +118,20 @@ export function useDmMessagePoll<T extends object>({
           nextPollAtRef.current = 0
           if (gen !== threadGenerationRef.current) return
           setSteveIsTyping(Boolean(j?.steve_is_typing))
+          // Piggybacked human-peer typing state (servers without it fall back to
+          // the periodic /api/typing fetch below).
+          if (typeof j?.peer_is_typing === 'boolean') {
+            typingViaPoll = true
+            peerTypingRef.current = j.peer_is_typing
+            setTyping(j.peer_is_typing)
+          }
           if (j?.success && !useDelta) didFullSync = true // a full page has now landed
 
           if (j?.success && Array.isArray(j.messages)) {
+            // Delta rows = messages actively flowing → switch to the hot cadence.
+            if (useDelta && j.messages.length > 0) {
+              lastActivityAtRef.current = Date.now()
+            }
             let maxId = lastKnownMessageIdRef.current
             j.messages.forEach((m: { id?: number | string }) => {
               const msgId = typeof m.id === 'number' ? m.id : parseInt(String(m.id), 10)
@@ -145,13 +169,19 @@ export function useDmMessagePoll<T extends object>({
         // Presence/typing are auxiliary — fire-and-forget (no await) so a slow typing/active_chat
         // request on a weak network never holds pollInFlight and delays the next message poll.
         // (The group poll hook already drives presence off its critical path the same way.)
-        if (pollTick % 5 === 0 && username) {
+        // Typing normally rides along on /get_messages (peer_is_typing); this periodic
+        // fetch only covers servers that don't send the field yet (deploy skew).
+        if (!typingViaPoll && pollTick % 5 === 0 && username) {
           fetch(`/api/typing?peer=${encodeURIComponent(username)}`, {
             credentials: 'include',
             headers: { Accept: 'application/json' },
           })
             .then(t => t.json())
-            .then(tj => { if (gen === threadGenerationRef.current) setTyping(!!tj?.is_typing) })
+            .then(tj => {
+              if (gen !== threadGenerationRef.current) return
+              peerTypingRef.current = !!tj?.is_typing
+              setTyping(!!tj?.is_typing)
+            })
             .catch(() => { /* ignore */ })
         }
 
@@ -168,8 +198,27 @@ export function useDmMessagePoll<T extends object>({
       }
     }
 
-    void poll()
-    pollTimer.current = setInterval(poll, DM_POLL_INTERVAL_MS)
+    // Self-scheduling cadence: recent sends (recentOptimistic), delta rows, or a
+    // typing peer switch the thread to the hot interval so replies land sub-second.
+    let disposed = false
+    const threadIsHot = (): boolean => {
+      const now = Date.now()
+      if (pollIsHot(now, lastActivityAtRef.current, peerTypingRef.current, CHAT_HOT_WINDOW_MS)) {
+        return true
+      }
+      for (const entry of recentOptimisticRef.current.values()) {
+        if (now - entry.timestamp < CHAT_HOT_WINDOW_MS) return true
+      }
+      return false
+    }
+    const scheduleNext = () => {
+      if (disposed) return
+      const delay = threadIsHot() ? CHAT_HOT_POLL_INTERVAL_MS : DM_POLL_INTERVAL_MS
+      pollTimer.current = setTimeout(() => {
+        void poll().finally(scheduleNext)
+      }, delay)
+    }
+    void poll().finally(scheduleNext)
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
@@ -181,7 +230,8 @@ export function useDmMessagePoll<T extends object>({
     document.addEventListener('visibilitychange', handleVisibility)
 
     return () => {
-      if (pollTimer.current) clearInterval(pollTimer.current)
+      disposed = true
+      if (pollTimer.current) clearTimeout(pollTimer.current)
       document.removeEventListener('visibilitychange', handleVisibility)
     }
   }, [

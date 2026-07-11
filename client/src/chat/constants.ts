@@ -6,6 +6,12 @@ export const CHAT_KEYBOARD_ANIMATION_MS = 250
 /** DM thread poll interval (ms). */
 export const DM_POLL_INTERVAL_MS = 1500
 
+/** Fast poll cadence while a thread is hot (recent send/receive or peer typing). */
+export const CHAT_HOT_POLL_INTERVAL_MS = 600
+
+/** How long after the last send/receive a thread keeps polling at the hot cadence. */
+export const CHAT_HOT_WINDOW_MS = 60_000
+
 /** Every Nth poll omits since_id for a full page sync (reactions, edits on existing rows). */
 export const DM_FULL_SYNC_EVERY_N_POLL = 6
 

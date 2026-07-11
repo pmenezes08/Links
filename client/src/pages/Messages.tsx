@@ -19,6 +19,8 @@ import {
   dmConversationOfflineKey,
   chatMessagesDeviceCacheKey,
   chatProfileDeviceCacheKey,
+  THREADS_LIST_CACHE_VERSION,
+  THREADS_LIST_CACHE_TTL_MS,
 } from '../utils/chatThreadsCache'
 import { cacheConversations, getCachedConversations, cacheKeyVal, getCachedKeyVal, clearConversationMessages, deleteCachedConversationRow } from '../utils/offlineDb'
 import { mergeGroupChatLists, mergeThreadLists } from '../utils/chatThreadListMerge'
@@ -44,9 +46,10 @@ type CommunityNode = {
   children: CommunityNode[]
 }
 
-// Cache settings (keys are viewer-scoped — see chatThreadsCache.ts)
-const CACHE_VERSION = 'v1'
-const CACHE_TTL_MS = 10 * 60 * 1000 // 10 minutes
+// Cache settings (keys are viewer-scoped — see chatThreadsCache.ts). Shared with
+// the thread pages' write-through preview bumps (chat/threadListPreview.ts).
+const CACHE_VERSION = THREADS_LIST_CACHE_VERSION
+const CACHE_TTL_MS = THREADS_LIST_CACHE_TTL_MS
 
 // Format last message for preview - handles story replies, regular replies, and media labels
 function formatLastMessagePreview(text: string | null, t: TFunction): string {
