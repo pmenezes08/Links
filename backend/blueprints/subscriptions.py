@@ -848,13 +848,18 @@ def _preflight_community_tier(
         owner = decision.owner
         provider = owner.provider if owner else billing_provider
         if decision.decision == billing_ownership.DECISION_ALREADY_ACTIVE_SAME_PROVIDER:
+            # payload() carries its own ``reason`` — spread it FIRST so the
+            # canonical ``already_subscribed`` wins; the client matches that
+            # exact value to route the owner into the Stripe portal flow
+            # (SubscriptionPlans.tsx). The raw decision stays available as
+            # ``billing_ownership_decision``.
             return (
                 {"success": False,
                  "error": "This community already has an active subscription. Use Stripe to change or renew it.",
+                 **decision.payload(),
                  "reason": "already_subscribed",
                  "community_id": community_id,
-                 "portal_required": True,
-                 **decision.payload()},
+                 "portal_required": True},
                 409,
             )
         billing_ownership.log_conflict(
