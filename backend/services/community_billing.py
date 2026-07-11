@@ -78,6 +78,54 @@ def steve_package_trial_days() -> int:
     return STEVE_PACKAGE_TRIAL_DAYS
 
 
+def community_tier_trial_days(username: str) -> int:
+    """Stripe trial days a community-tier checkout may attach for this
+    customer, 0 for none.
+
+    Implements the KB trial policy (community-tiers page):
+    ``paid_trial_duration_days`` gated by ``paid_trial_one_per_customer``
+    — one trial per billing customer across *all* communities they own.
+    The forever marker is the webhook-written
+    ``community_tier_trial_started`` audit row (written only when a trial
+    subscription actually starts, so an abandoned checkout never burns
+    the trial).
+    """
+    days = 0
+    one_per_customer = True
+    try:
+        from backend.services import knowledge_base as kb
+
+        page = kb.get_page("community-tiers") or {}
+        for f in page.get("fields") or []:
+            name = f.get("name")
+            if name == "paid_trial_duration_days":
+                try:
+                    days = int(f.get("value") or 0)
+                except (TypeError, ValueError):
+                    days = 0
+            elif name == "paid_trial_one_per_customer":
+                raw = f.get("value")
+                if isinstance(raw, bool):
+                    one_per_customer = raw
+                else:
+                    one_per_customer = str(raw).strip().lower() not in (
+                        "0", "false", "no", "off", "",
+                    )
+    except Exception:
+        logger.debug("community_tier_trial_days: KB read failed", exc_info=True)
+        return 0
+    if days <= 0:
+        return 0
+    if one_per_customer:
+        from backend.services import subscription_audit
+
+        if subscription_audit.has_action(
+            username=username, action="community_tier_trial_started"
+        ):
+            return 0
+    return days
+
+
 def is_synthetic_steve_package_trial(state: Optional[Dict[str, Any]]) -> bool:
     """True when the package columns hold our synthetic trial, not Stripe."""
     sub_id = str((state or {}).get("steve_package_stripe_subscription_id") or "")

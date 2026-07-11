@@ -15,7 +15,7 @@ gate beyond login, no ai_usage rows, no paid calls.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
@@ -28,12 +28,24 @@ EVENT_TYPES = {
     "digest_opened",        # member landed on the digest deep link
     "owner_pulse_opened",   # owner landed on the dashboard from the pulse
     "owner_action_tapped",  # owner tapped a Steve action row on the dashboard
+    "owner_dashboard_opened",       # any Owner Dashboard open (guardrail denominator)
+    # Owner upgrade surface funnel. `detail` carries the trigger cohort
+    # (e.g. "cohort:cap_pressure", "tier:paid_l1", "mode:explicit").
+    # Conversion truth is NOT a client event — it's the Stripe webhook →
+    # subscription_audit join; these rows measure the funnel up to
+    # checkout start. `upgrade_page_shown` doubles as the 14-day
+    # frequency-window record (owner_upgrade_prompt.recently_shown).
+    "upgrade_page_shown",
+    "upgrade_page_tier_viewed",
+    "upgrade_page_dismissed",
+    "upgrade_page_checkout_started",
 }
 SOURCES = {
     "weekly_digest_cron",   # server-side send marker
     "weekly_digest_push",   # client tap-through from push / in-app row
     "owner_pulse_push",     # client tap-through from the owner pulse
     "owner_dashboard",      # action rows on the Owner Dashboard
+    "upgrade_interstitial", # taps originating on the owner upgrade surface
     "direct",               # opened with no source param
 }
 
@@ -118,6 +130,47 @@ def normalize_event(
         "group_id": _int_or_none(group_id),
         "detail": (str(detail or "").strip()[:_MAX_DETAIL_LEN] or None),
     }
+
+
+def recently_recorded(
+    username: str,
+    *,
+    event_type: str,
+    within_days: int,
+) -> bool:
+    """True if ``username`` has an ``event_type`` row in the last N days.
+
+    Used as the durable frequency window for interruptive surfaces (e.g.
+    the owner upgrade interstitial shows at most once per 14 days, keyed
+    on its own ``upgrade_page_shown`` rows — measurement and gating share
+    one record). Fail-open: a query failure reads as "not recently", the
+    same degrade direction as :mod:`rate_limit`.
+    """
+    user = str(username or "").strip()
+    etype = str(event_type or "").strip().lower()
+    if not user or etype not in EVENT_TYPES or within_days <= 0:
+        return False
+    try:
+        ensure_events_table()
+        ph = get_sql_placeholder()
+        cutoff = datetime.utcnow() - timedelta(days=int(within_days))
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"""
+                SELECT 1 FROM retention_events
+                WHERE username = {ph} AND event_type = {ph} AND created_at >= {ph}
+                LIMIT 1
+                """,
+                (user, etype, cutoff.strftime("%Y-%m-%d %H:%M:%S")),
+            )
+            return c.fetchone() is not None
+    except Exception:
+        logger.warning(
+            "retention_events.recently_recorded failed for %s/%s", user, etype,
+            exc_info=True,
+        )
+        return False
 
 
 def record_event(

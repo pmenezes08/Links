@@ -478,6 +478,28 @@ message content or other members' identities. On the conversion side,
 `source` from a closed vocabulary in `subscription_audit.CHECKOUT_SOURCES`);
 purchases stay webhook-driven, so starts vs completions = funnel abandonment.
 
+**Owner upgrade surface (backend, page ships separately):** the
+"Grow your community" pitch is gated server-side by
+`GET /api/owner/upgrade_prompt?community_id=…`
+(`backend/services/owner_upgrade_prompt.py`): owner-only with the
+non-enumerating 404 (delegated admins never see it — they can't act on
+billing), root-normalized, free-tier-only, honoring the durable
+`communities.owner_upgrade_prompt_dismissed_at` dismiss flag
+(`POST /api/owner/upgrade_prompt/dismiss`) and a 14-day interstitial
+window keyed on the owner's own `upgrade_page_shown` retention events
+(voluntary paths are never gated). Evidence carried: members vs KB cap
+with the dashboard's ≥80% `cap_warning`, and blocked-Steve demand —
+`ai_usage.community_blocked_steve_members_30d`, distinct members denied
+`premium_required`/`community_pool_exhausted`, floored below 2 so weak
+numbers never render as anti-evidence; members are counted, never named.
+`trial_eligible`/`trial_days` read the same
+`community_billing.community_tier_trial_days` policy as checkout so the
+CTA label can't promise a trial checkout won't grant. Funnel events:
+`upgrade_page_shown/tier_viewed/dismissed/checkout_started` (+
+`owner_dashboard_opened` guardrail denominator) with source
+`upgrade_interstitial`; conversion truth stays the Stripe webhook →
+`subscription_audit` join.
+
 **Community-tier 14-day trial (Stripe-level, one per customer):**
 `community_tier` checkout attaches `subscription_data.trial_period_days`
 from KB `community-tiers.paid_trial_duration_days` (default 14) — the card

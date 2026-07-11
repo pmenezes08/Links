@@ -117,6 +117,7 @@ jobs:
             tests/test_stripe_webhook_hardening.py \
             tests/test_stripe_community_checkout.py \
             tests/test_community_membership_limit.py \
+            tests/test_owner_upgrade_prompt.py \
             tests/test_onboarding_session.py \
             tests/test_onboarding_llm.py \
             tests/test_onboarding_ai_metering.py \

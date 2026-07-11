@@ -112,6 +112,7 @@ CHECKOUT_SOURCES = {
     "subscription_plans",   # SubscriptionPlans page (burger menu / generic)
     "edit_community",       # Manage Community → Manage Subscription
     "limit_modal",          # LimitReachedModal / LimitReachedBubble CTA
+    "upgrade_interstitial", # owner upgrade page/interstitial CTA
     "direct",               # no source provided
 }
 

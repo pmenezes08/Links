@@ -263,29 +263,9 @@ def _resolve_community_tier_price(tier_code: str) -> str:
 
 
 def _community_tier_trial_days(username: str) -> int:
-    """Stripe trial days to attach to a community-tier checkout, 0 for none.
-
-    Implements the KB trial policy (community-tiers page):
-    ``paid_trial_duration_days`` gated by ``paid_trial_one_per_customer`` —
-    one trial per billing customer across *all* communities they own, so
-    an owner can't cycle trials by cancelling and re-creating. The forever
-    marker is the webhook-written ``community_tier_trial_started`` audit
-    row (written only when a trial subscription actually starts, so an
-    abandoned checkout never burns the trial).
-    """
-    fields = _kb_field_map("community-tiers")
-    try:
-        days = int(fields.get("paid_trial_duration_days") or 0)
-    except (TypeError, ValueError):
-        days = 0
-    if days <= 0:
-        return 0
-    if _kb_truthy(fields, "paid_trial_one_per_customer", default=True):
-        if subscription_audit.has_action(
-            username=username, action="community_tier_trial_started"
-        ):
-            return 0
-    return days
+    """KB trial policy — delegated to the service so the owner upgrade
+    surface (owner_upgrade_prompt) reads the same truth as checkout."""
+    return community_billing.community_tier_trial_days(username)
 
 
 # ── /api/stripe/config ──────────────────────────────────────────────────
