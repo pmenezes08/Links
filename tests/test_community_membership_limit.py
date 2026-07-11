@@ -10,9 +10,10 @@ Locks in three contracts exercised by the refactor:
      ``str(exc)`` payload never ends up in the client response anymore.
 
   2. :func:`~backend.services.community.render_member_cap_error` branches
-     on ownership — owners see the "paid tiers coming soon" copy,
-     invitees see the neutral "reach out to the owner/admin" message,
-     and never sees the word "Upgrade".
+     on ownership — owners see the upgrade CTA copy plus the
+     ``show_upgrade``/``upgrade_url`` fields the client renders, invitees
+     see the neutral "reach out to the owner/admin" message and never
+     see the word "Upgrade".
 
   3. :func:`~backend.services.notifications.notify_community_member_blocked`
      inserts a single in-app notification for the community owner on
@@ -194,13 +195,18 @@ class TestRenderMemberCapError:
             creator_username="owner_a",
         )
 
-    def test_owner_sees_coming_soon(self, exc):
+    def test_owner_sees_upgrade_cta(self, exc):
         payload, status = render_member_cap_error(exc, session_username="owner_a")
         assert status == 403
         assert payload["reason_code"] == "community_member_limit"
         assert payload["community_id"] == 42
-        assert "coming soon" in payload["error"].lower()
+        assert "upgrade" in payload["error"].lower()
         assert "25" in payload["error"]
+        # The structured CTA fields mirror the invite-path cap error so
+        # the client's existing show_upgrade handling works here too.
+        assert payload["show_upgrade"] is True
+        assert payload["max_members"] == 25
+        assert payload["upgrade_url"] == "/subscription_plans?community_id=42"
 
     def test_invitee_sees_neutral_copy_no_upgrade_cta(self, exc):
         payload, status = render_member_cap_error(exc, session_username="invitee_bob")
@@ -209,13 +215,15 @@ class TestRenderMemberCapError:
         # Critical: the word "upgrade" must never reach a non-owner.
         # That was the original bug — it leaked a CTA the invitee can't act on.
         assert "upgrade" not in payload["error"].lower()
+        assert "show_upgrade" not in payload
+        assert "upgrade_url" not in payload
         assert "owner" in payload["error"].lower() or "admin" in payload["error"].lower()
 
     def test_owner_check_is_case_insensitive(self, exc):
         """Session names come through with their stored casing; we lowercase
         on both sides before comparing so ``Owner_A`` / ``owner_a`` match."""
         payload_lower, _ = render_member_cap_error(exc, session_username="OWNER_A")
-        assert "coming soon" in payload_lower["error"].lower()
+        assert payload_lower.get("show_upgrade") is True
 
     def test_anon_session_falls_through_to_invitee_copy(self, exc):
         """Missing session username is treated as "not the owner"."""
@@ -303,9 +311,62 @@ class TestNotifyCommunityMemberBlocked:
         assert "eve_spammer" in msg
         assert "My Community" in msg
         assert "25" in msg
-        assert "coming soon" in msg.lower()
-        # No link in this release — paid-tier upgrade surface ships later.
-        assert link is None or link == ""
+        # The creator's notification carries the upgrade CTA + deep link
+        # into the community-plans surface (paid tiers are live).
+        assert "upgrade" in msg.lower()
+        assert link == f"/subscription_plans?community_id={cid}"
+
+    def test_admin_recipient_gets_neutral_copy_without_upgrade_link(self, mysql_dsn):
+        """Only the creator can act on an upgrade CTA — a community admin
+        gets the heads-up without the word 'upgrade' and without a link."""
+        make_user("owner_n4", subscription="free", created_at=days_ago(60))
+        cid = _make_free_community(owner="owner_n4", name="Split Copy")
+
+        ph = get_sql_placeholder()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"INSERT INTO users (username, email, subscription) "
+                f"VALUES ({ph}, {ph}, 'free')",
+                ("admin_helper", "admin_helper@test.local"),
+            )
+            admin_uid = int(c.lastrowid)
+            c.execute(
+                f"INSERT INTO user_communities (user_id, community_id, role) "
+                f"VALUES ({ph}, {ph}, 'admin')",
+                (admin_uid, cid),
+            )
+            notify_community_member_blocked(
+                c,
+                community_id=cid,
+                community_name="Split Copy",
+                attempted_username="invitee_27",
+                cap=25,
+            )
+            conn.commit()
+
+            c.execute(
+                f"SELECT user_id, message, link FROM notifications "
+                f"WHERE community_id = {ph} AND type = 'member_blocked'",
+                (cid,),
+            )
+            rows = c.fetchall() or []
+
+        by_user = {}
+        for r in rows:
+            if hasattr(r, "keys"):
+                by_user[r["user_id"]] = (r["message"], r["link"])
+            else:
+                by_user[r[0]] = (r[1], r[2])
+
+        assert set(by_user) == {"owner_n4", "admin_helper"}
+        owner_msg, owner_link = by_user["owner_n4"]
+        admin_msg, admin_link = by_user["admin_helper"]
+        assert "upgrade" in owner_msg.lower()
+        assert owner_link == f"/subscription_plans?community_id={cid}"
+        assert "upgrade" not in admin_msg.lower()
+        assert admin_link is None or admin_link == ""
+        assert "invitee_27" in admin_msg
 
     def test_end_to_end_block_fires_notification(self, mysql_dsn):
         """The enforcement helper calls the notifier automatically on raise."""

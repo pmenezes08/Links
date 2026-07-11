@@ -241,7 +241,9 @@ def render_member_cap_error(
     to duplicate the owner-vs-invitee branch.
 
     * **Owner** (``session_username`` matches the community creator) —
-      "coming soon" copy; no promise of a ship date.
+      upgrade copy plus the ``show_upgrade``/``upgrade_url`` fields the
+      client already renders for the invite-path cap error
+      (:func:`backend.services.community_invites._member_cap_payload`).
     * **Everyone else** — neutral "reach out to the owner/admin"; no
       upgrade CTA, because they can't act on one.
     """
@@ -250,26 +252,30 @@ def render_member_cap_error(
     current = (session_username or "").strip().lower()
     is_owner = bool(creator) and creator == current
 
+    payload: Dict[str, Any] = {
+        "success": False,
+        "reason_code": "community_member_limit",
+        "community_id": exc.community_id,
+    }
+
     if is_owner:
-        msg = (
-            f"This community is at its {cap}-member cap. Paid community "
-            f"tiers are coming soon."
+        payload["error"] = (
+            f"This community is at its {cap}-member limit. Upgrade your "
+            f"community plan to make room for more members."
         )
+        payload["max_members"] = cap
+        payload["show_upgrade"] = True
+        if exc.community_id:
+            payload["upgrade_url"] = (
+                f"/subscription_plans?community_id={int(exc.community_id)}"
+            )
     else:
-        msg = (
-            f"This community has reached its member limit. Please reach "
-            f"out to the community owner or an admin for further context."
+        payload["error"] = (
+            "This community has reached its member limit. Please reach "
+            "out to the community owner or an admin for further context."
         )
 
-    return (
-        {
-            "success": False,
-            "error": msg,
-            "reason_code": "community_member_limit",
-            "community_id": exc.community_id,
-        },
-        403,
-    )
+    return payload, 403
 
 
 def insert_new_community_row(

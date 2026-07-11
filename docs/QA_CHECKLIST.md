@@ -286,14 +286,19 @@ Expected: `36 PASS, 0 FAIL` against a healthy staging DB.
       must not appear** — that was the bug this release fixes.
 - [ ] As the **community owner** (`test_free`), attempt the same 26th
       add from the admin-web or the community settings. The client
-      must show `"This community is at its 25-member cap. Paid
-      community tiers are coming soon."` and the API must return
-      `403` with the same `reason_code`.
+      must show `"This community is at its 25-member limit. Upgrade
+      your community plan to make room for more members."` and the
+      API must return `403` with the same `reason_code` plus
+      `show_upgrade: true` and an `upgrade_url` pointing at
+      `/subscription_plans?community_id=<id>`.
 - [ ] While logged in as the owner, open the notifications bell. You
       must see a single in-app notification of the form
       `"<invitee_username> tried to join \"<community>\" but it's at
-      the 25-member limit. Paid community tiers are coming soon —
-      we'll email you when upgrade is available."`. Trigger two more
+      the 25-member limit. Upgrade your community plan to make room
+      for more members."` that deep-links to
+      `/subscription_plans?community_id=<id>`. A community **admin**
+      (non-creator) must instead get the neutral heads-up without
+      the word "Upgrade" and without a link. Trigger two more
       blocked attempts from different accounts **within 24 h** — the
       bell must **not** accumulate duplicates for the same
       community (dedupe window).
