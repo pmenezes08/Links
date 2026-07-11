@@ -153,7 +153,10 @@ def test_basic_pair_preview_unread_and_sort(needs_mysql):
     assert t1["last_message_text"] == "newest from p1"
     assert t1["last_sender"] == "ctb_p1"
     assert t1["unread_count"] == 2
-    assert t1["last_activity_time"] == "2026-07-10T09:02:00"
+    # The shared CI `messages` table's timestamp column type depends on which
+    # suite created it first (DATETIME → ISO "T", TEXT → stored spelling), so
+    # compare normalized.
+    assert str(t1["last_activity_time"]).replace(" ", "T") == "2026-07-10T09:02:00"
 
     t2 = threads["ctb_p2"]
     assert t2["last_message_text"] == "p2 newest"
