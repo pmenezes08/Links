@@ -412,6 +412,19 @@ _TRUNCATE_TABLES: List[str] = [
     "fcm_tokens",
     "push_tokens",
     "push_subscriptions",
+    # Chat tables are shared across suites (DM suites, owner analytics'
+    # members-communicating metric) but created by whichever test file — or
+    # the monolith's background add_missing_tables() — runs first. Truncate
+    # them so one suite's rows never leak into another's aggregates. TRUNCATE
+    # on a not-yet-created table is swallowed below.
+    "messages",
+    "group_chats",
+    "group_chat_members",
+    "group_chat_messages",
+    "group_chat_read_receipts",
+    "community_visit_history",
+    "group_posts",
+    "group_replies",
 ]
 
 

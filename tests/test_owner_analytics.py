@@ -139,6 +139,18 @@ def _by_id(body):
     return {m["id"]: m for m in body["metrics"]}
 
 
+def _drop_overview_cache(community_id: int) -> None:
+    """The overview endpoint caches per (community, scope, role) for 5 minutes;
+    a test that mutates server state and re-reads within one run must drop
+    those entries (prod invalidates only on invite revocation)."""
+    from backend.blueprints.owner_analytics import _overview_cache_key
+    from redis_cache import cache
+
+    for scope in ("network", "self"):
+        for is_owner in (True, False):
+            cache.delete(_overview_cache_key(community_id, scope, is_owner))
+
+
 def test_overview_requires_login(mysql_dsn):
     import bodybuilding_app
 
@@ -336,9 +348,13 @@ CREATE TABLE community_invitations (
     token VARCHAR(255) NULL,
     status VARCHAR(50) DEFAULT 'pending',
     used TINYINT(1) DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    invited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 """
+# NOTE: prod's column is ``invited_at`` (bodybuilding_app's
+# ensure_community_invitations_table), and list_pending_invitees ORDERs by it.
+# A fixture ``created_at`` once made the drill-in query throw (unknown column),
+# which the defensive except turned into a silently-empty invitee list.
 
 
 def _seed_invitations(community_id, rows):
@@ -626,9 +642,17 @@ def test_members_communicating_counts_member_to_member(mysql_dsn):
     ph = get_sql_placeholder()
     with get_db_connection() as conn:
         c = conn.cursor()
-        # alice <-> bob (both members); carol DMs a non-member (must not count)
+        # alice <-> bob (both members); carol DMs a non-member (must not count).
+        # Timestamp is explicit: when a suite that imported the monolith runs
+        # first, `messages` already exists as `timestamp TEXT NOT NULL` with no
+        # default (see bodybuilding_app.add_missing_tables), so our CREATE IF
+        # NOT EXISTS above is a no-op and an omitted value is rejected (1364).
         for s, r in (("alice", "bob"), ("bob", "alice"), ("carol", "stranger")):
-            c.execute(f"INSERT INTO messages (sender, receiver, message) VALUES ({ph}, {ph}, {ph})", (s, r, "hi"))
+            c.execute(
+                f"INSERT INTO messages (sender, receiver, message, timestamp) "
+                f"VALUES ({ph}, {ph}, {ph}, NOW())",
+                (s, r, "hi"),
+            )
         try:
             conn.commit()
         except Exception:
@@ -774,6 +798,21 @@ def test_delegated_admin_never_receives_owner_only_metrics(mysql_dsn):
     _add_member("modA", A, role="admin")
     _add_member("m1", A)
 
+    # One post so the community is past the low-data greeting: 2 members and
+    # zero posts would trip ``low_data`` and both viewers would get
+    # ``read_empty`` — masking the owner_only gate this test pins.
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"INSERT INTO posts (community_id, username, content) VALUES ({ph}, {ph}, {ph})",
+            (A, "m1", "hello"),
+        )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
     # Owner sees the full payload.
     _login(client, "ownerA")
     owner_metrics = _by_id(_overview(client, A).get_json())
@@ -869,6 +908,7 @@ def test_cap_warning_threshold(mysql_dsn, monkeypatch):
         return {"tier": "free", "is_paid": False, "member_cap": 100}
 
     monkeypatch.setattr(community_analytics, "_resolve_tier", fake_tier_big)
+    _drop_overview_cache(a)   # the 5-min payload cache would serve the old tier
     members = _by_id(_overview(client, a).get_json())["members"]["value"]
     assert members["cap_warning"] is False  # 8 < 80
 
@@ -876,6 +916,7 @@ def test_cap_warning_threshold(mysql_dsn, monkeypatch):
         return {"tier": "free", "is_paid": False, "member_cap": None}
 
     monkeypatch.setattr(community_analytics, "_resolve_tier", fake_tier_nocap)
+    _drop_overview_cache(a)
     members = _by_id(_overview(client, a).get_json())["members"]["value"]
     assert members["cap_warning"] is False  # no cap → never warns
 
