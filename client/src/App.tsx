@@ -101,11 +101,7 @@ import CommentReply from './pages/CommentReply'
 import ShareIncomingRouteRedirect from './pages/ShareIncomingRouteRedirect'
 import { isOnboardingFullscreenOverlayActive } from './utils/fullscreenOverlay'
 import { ensureAccountIsolationForUsername } from './utils/accountStateReset'
-import {
-  GOOGLE_ANDROID_CLIENT_ID,
-  GOOGLE_IOS_CLIENT_ID,
-  GOOGLE_WEB_CLIENT_ID,
-} from './constants/googleOAuth'
+import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './constants/googleOAuth'
 
 // Weak-network-friendly defaults for the (few) react-query consumers: retry
 // transient failures with backoff, revalidate on reconnect, and serve cached
@@ -1075,13 +1071,14 @@ export default function App() {
           grantOfflineAccess: false,
         }
 
-        // IMPORTANT: On Android, it MUST use the Android OAuth Client ID (linked to SHA-1)
-        // as the clientId to identify the specific app to Google Play Services.
-        // It MUST use the Web OAuth Client ID as the serverClientId to return an ID Token.
+        // IMPORTANT: On Android, clientId feeds GoogleSignInOptions.requestIdToken(), whose
+        // audience MUST be the WEB OAuth client ID — Play Services identifies the app itself
+        // via package name + signing SHA-1, never via the Android client ID. The plugin's
+        // Android code ignores serverClientId entirely; passing the Android client ID here
+        // fails every sign-in with DEVELOPER_ERROR (ApiException 10).
         if (platform === 'android') {
-          console.log('[GoogleAuth] Using Android + Web Client IDs for Android initialization')
-          opts.clientId = GOOGLE_ANDROID_CLIENT_ID
-          opts.serverClientId = GOOGLE_WEB_CLIENT_ID
+          console.log('[GoogleAuth] Using Web Client ID as Android idToken audience')
+          opts.clientId = GOOGLE_WEB_CLIENT_ID
         } else {
           console.log('[GoogleAuth] Using iOS Client ID for iOS initialization')
           opts.clientId = GOOGLE_IOS_CLIENT_ID
