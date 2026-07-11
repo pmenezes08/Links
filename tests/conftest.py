@@ -178,12 +178,19 @@ CREATE TABLE IF NOT EXISTS communities (
 # by community_id, and a handful of existing suites touch posts for smoke
 # tests. We deliberately keep this thin so adding a column to the real
 # ``posts`` table in the monolith doesn't force a test-schema edit.
+# Exception: columns a shared SERVICE reads belong here — the deletion
+# cascade (backend/services/post_deletion._fetch_post) selects image_path /
+# video_path / is_system_post in both its projections, so without them every
+# delete path 500s.
 _POSTS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS posts (
     id INT PRIMARY KEY AUTO_INCREMENT,
     community_id INT,
     username VARCHAR(191),
     content TEXT,
+    image_path TEXT NULL,
+    video_path TEXT NULL,
+    is_system_post TINYINT(1) DEFAULT 0,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_posts_community_ts (community_id, timestamp)
 )
