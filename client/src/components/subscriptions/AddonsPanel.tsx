@@ -62,13 +62,49 @@ export default function AddonsPanel({
       <p className="text-sm text-c-text-tertiary">{t('subscriptions.addons_optional')}</p>
 
       <PanelCard>
-        <AddonDetailRow
-          name={steve.name}
-          tagline={steve.tagline}
-          price={`${formatEur(steve.price_eur)}${priceIsKnown(steve.price_eur) ? t('subscriptions.per_month') : ''}`}
-          badge={steveComingSoon ? t('subscriptions.coming_soon') : t('subscriptions.live')}
-          action={
-            steveComingSoon ? (
+        {/* Steve gets a full pitch card (benefits from the i18n catalogs, not
+            the payload's English `features`) — the name stays the untranslated
+            proper noun "Steve Community Package" from the KB payload. */}
+        <div className="px-4 py-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-base font-semibold text-c-text-primary">{steve.name}</div>
+              <p className="mt-0.5 text-sm text-c-text-tertiary">
+                {t('subscriptions.steve_addon_one_liner')}
+              </p>
+            </div>
+            <span className="shrink-0 rounded-full border border-c-border px-2 py-0.5 text-[10px] uppercase tracking-wider text-c-text-tertiary">
+              {steveComingSoon ? t('subscriptions.coming_soon') : t('subscriptions.live')}
+            </span>
+          </div>
+          <ul className="mt-3 space-y-2">
+            {[
+              t('subscriptions.steve_addon_benefit_1'),
+              t('subscriptions.steve_addon_benefit_2'),
+              t('subscriptions.steve_addon_benefit_3'),
+              t('subscriptions.steve_addon_benefit_4'),
+            ].map(benefit => (
+              <li key={benefit} className="flex items-start gap-2.5 text-sm text-c-text-secondary">
+                <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-cpoint-turquoise" />
+                <span>{benefit}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <p className="text-sm font-medium text-c-text-secondary">
+              {`${formatEur(steve.price_eur)}${priceIsKnown(steve.price_eur) ? t('subscriptions.per_month') : ''}`}
+            </p>
+            <span className="rounded-full border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-2.5 py-0.5 text-[11px] font-semibold text-cpoint-turquoise">
+              {t('subscriptions.steve_trial_pill')}
+            </span>
+          </div>
+          {typeof steve.credit_pool === 'number' && steve.credit_pool > 0 ? (
+            <p className="mt-1 text-xs text-c-text-tertiary">
+              {t('subscriptions.steve_credit_pool', { count: steve.credit_pool })}
+            </p>
+          ) : null}
+          <div className="mt-4">
+            {steveComingSoon ? (
               <a
                 href={`mailto:${SALES_EMAIL}?subject=${encodeURIComponent(t('subscriptions.mailto_notify_steve'))}`}
                 className="flex w-full items-center justify-center rounded-2xl border border-c-border px-4 py-3 text-sm font-bold text-c-text-primary active:bg-c-active-bg"
@@ -93,11 +129,11 @@ export default function AddonsPanel({
                     ? t('subscriptions.subscribe_with_provider', {
                         provider: providerLabel(storeProvider),
                       })
-                    : t('subscriptions.subscribe')}
+                    : t('subscriptions.steve_addon_cta')}
               </button>
-            )
-          }
-        />
+            )}
+          </div>
+        </div>
         <SettingsDivider />
         <AddonDetailRow
           name={networking.name}

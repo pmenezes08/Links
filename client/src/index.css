@@ -81,6 +81,20 @@
     -webkit-tap-highlight-color: transparent;
   }
 
+  /* Global keyboard-focus indicator (WCAG 2.4.7). Box-shadow (not outline)
+     so `focus:outline-none` utilities can't strip it, while elements that
+     declare their own `focus-visible:ring-*` utilities still win the
+     cascade. :where() keeps specificity at (0,1,0) for easy overrides.
+     Text-entry fields are deliberately excluded: they indicate focus with
+     the caret + their container's focus-within border, and on iOS tapping
+     a text field fires :focus-visible — a ring on the bare inner <input>
+     of composed fields (chat composer, GIF search) draws a misaligned
+     second rectangle over the styled wrapper. */
+  :where(a, button, select, summary, [role='button'], [tabindex]):focus-visible,
+  :where(input[type='checkbox'], input[type='radio'], input[type='range'], input[type='file'], input[type='button'], input[type='submit']):focus-visible {
+    box-shadow: var(--c-focus-ring);
+  }
+
   #root {
     width: 100%;
     height: 100%;
@@ -134,6 +148,11 @@
   --c-bg-surface: rgba(18, 20, 24, 0.78);
   --c-bg-recessed: rgba(18, 18, 22, 0.8);
   --c-bg-overlay: rgba(0, 0, 0, 0.6);
+  /* Fully opaque sheet fill. Glass surfaces carry no backdrop blur
+     (Phase 0 scroll perf) and their fills are translucent, so full-screen
+     sheets (GIF picker) need this to keep page chrome — composers, focused
+     inputs — from bleeding through sharply. */
+  --c-bg-sheet-opaque: #101014;
 
   /* Text */
   --c-text-primary: #FFFFFF;
@@ -217,6 +236,16 @@
   --app-feed-nav-float-gap: 20px;
   --app-feed-bottom-nav-height: calc(3.5rem + var(--app-feed-nav-float-gap) + var(--sab-px));
   --app-feed-content-pad-bottom: calc(var(--app-feed-bottom-nav-height) + 12px);
+
+  /* ===== Layering tokens =====
+     Semantic z-index layers — new fixed/portaled chrome should consume
+     these instead of minting fresh literals. Existing literals migrate
+     opportunistically (do not renumber them in drive-by changes; relative
+     order between legacy surfaces is load-bearing). */
+  --z-nav: 900;       /* bottom navs, fixed page chrome */
+  --z-modal: 1300;    /* dialogs, sheets, drawers */
+  --z-toast: 1500;    /* transient toasts/banners above modals */
+  --z-emergency: 999999; /* compliance/system prompts that outrank everything */
 }
 
 :root[data-theme='light'] {
@@ -247,6 +276,7 @@
   --c-bg-surface: #FFFFFF;
   --c-bg-recessed: #E4E7EC;
   --c-bg-overlay: rgba(15, 20, 25, 0.42);
+  --c-bg-sheet-opaque: #FFFFFF;
 
   /* Text */
   --c-text-primary: #0F1419;
@@ -332,6 +362,19 @@ textarea {
   color: var(--c-text-primary);
   caret-color: var(--c-text-primary);
 }
+/* Text fields were left at UA appearance:auto (Tailwind preflight does not
+   reset it). Recent iOS WebKit paints its own native field chrome — bezel,
+   fill, and accent focus ring — over such inputs on focus, so bare inputs
+   inside styled wrappers (GIF search, composers) showed a second misaligned
+   rectangle no app CSS could remove. Opting out of UA rendering is the only
+   reliable fix. Text-like types only: date/time/month keep their native
+   pickers (appearance:none blanks their value display on iOS), and
+   checkbox/radio/range/file/color keep their native looks. */
+input:where([type='text'], [type='search'], [type='email'], [type='password'], [type='url'], [type='tel'], [type='number'], :not([type])),
+textarea {
+  -webkit-appearance: none;
+  appearance: none;
+}
 /* iOS WebKit renders the collapsed <select> text with UA colors derived
    from color-scheme on some versions, ignoring `color`. text-fill-color
    wins over that UA painting unconditionally. */
@@ -350,6 +393,7 @@ textarea::placeholder {
   --c-bg-surface: rgba(18, 20, 24, 0.78);
   --c-bg-recessed: rgba(18, 18, 22, 0.8);
   --c-bg-overlay: rgba(0, 0, 0, 0.6);
+  --c-bg-sheet-opaque: #101014;
   --c-text-primary: #FFFFFF;
   --c-text-secondary: rgba(255, 255, 255, 0.7);
   --c-text-tertiary: rgba(255, 255, 255, 0.45);

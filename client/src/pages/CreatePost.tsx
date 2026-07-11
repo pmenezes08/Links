@@ -60,17 +60,14 @@ export default function CreatePost(){
   }
 
   const openGifPicker = () => {
+    // Keep the keyboard up: the sheet parks above it via the seeded lift and
+    // the picker's own search focus takes over without a hide→re-show round
+    // trip. Blurring + Keyboard.hide() here raced iOS — the picker's search
+    // focus landed mid keyboard-hide animation and was swallowed, so the
+    // keyboard never returned and the sheet dropped once the seeded floor
+    // expired. (GifPicker still blurs on Android itself, where keyboard
+    // focus is deferred until the enter animation completes.)
     setGifPickerInitialKeyboardLift(Math.max(keyboardLift, readCssPxVar('--keyboard-offset')))
-
-    const active = typeof document !== 'undefined' ? document.activeElement : null
-    if (active instanceof HTMLElement) {
-      active.blur()
-    }
-
-    if (Capacitor.getPlatform() !== 'web') {
-      void Keyboard.hide().catch(() => {})
-    }
-
     requestAnimationFrame(() => setGifPickerOpen(true))
   }
 

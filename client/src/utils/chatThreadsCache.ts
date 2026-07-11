@@ -15,6 +15,10 @@ export const VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES: readonly string[] = [
   'chat-reactions:',
 ]
 
+/** Version + TTL for the DM threads-list device cache (Messages page seed + write-through bumps). */
+export const THREADS_LIST_CACHE_VERSION = 'v1'
+export const THREADS_LIST_CACHE_TTL_MS = 10 * 60 * 1000 // 10 minutes
+
 export function threadsListCacheKey(viewerUsername: string): string {
   return `chat-threads-list:${viewerUsername}`
 }

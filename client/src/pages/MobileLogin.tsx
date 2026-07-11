@@ -15,6 +15,7 @@ import {
 } from '../utils/googleIdentityWeb'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import BrandLogo from '../components/BrandLogo'
+import { trackSignupConversion } from '../lib/adsConversion'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
 const APPLE_CLIENT_ID = 'co.cpoint.app'
@@ -143,6 +144,9 @@ export default function MobileLogin() {
         } catch {
           /* ignore */
         }
+      }
+      if (j.is_new === true && j.username) {
+        trackSignupConversion(j.username)
       }
       await (window as any).__reregisterPushToken?.()
       await triggerDashboardServerPull()

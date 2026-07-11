@@ -230,6 +230,131 @@ def test_free_member_pool_gate_blocks_without_community_context(monkeypatch):
     assert payload and payload.get("reason") == "premium_required"
 
 
+# ── premium_required CTA reroute (paid tier, no Steve package) ──────────
+
+
+def test_paid_tier_without_package_reroutes_cta_to_addon_panel(monkeypatch):
+    """Member of a paid-tier community without the Steve Community Package
+    must be sent to the add-on panel, not the tier picker they already own."""
+    from backend.services import entitlements_gate as gate
+
+    monkeypatch.setattr(gate, "resolve_entitlements", lambda username: _free_entitlements())
+    monkeypatch.setattr(gate, "_community_tiers_field_map", lambda: {})
+    monkeypatch.setattr(gate, "_user_member_community", lambda username, community_id: True)
+    monkeypatch.setattr(gate.community_svc, "resolve_root_community_id", lambda cid: (123, True))
+    monkeypatch.setattr(gate.community_billing, "has_active_steve_package", lambda root_id: False)
+    monkeypatch.setattr(
+        gate.community_billing,
+        "get_billing_state",
+        lambda root_id: {"tier": "paid_l1", "steve_package_subscription_active": False},
+    )
+    monkeypatch.setattr(gate.ai_usage, "log_block", lambda *args, **kwargs: None)
+
+    allowed, payload, status, _ent = gate.check_steve_access(
+        "JohnDoe",
+        ai_usage.SURFACE_FEED,
+        community_id=456,
+    )
+
+    assert allowed is False
+    assert status == 402
+    assert payload and payload.get("reason") == "premium_required"
+    assert payload["cta"]["url"] == "/subscription_plans?open=community_addons&community_id=123"
+    assert payload["cta"]["type"] == "upgrade"
+    assert payload["message_key"] == "entitlements.premium_required.addon_message"
+    assert "Steve Community Package" in payload["message"]
+
+
+def test_free_tier_community_keeps_tier_picker_cta(monkeypatch):
+    """Free communities keep the existing tier pitch — bare /subscription_plans
+    (the client appends open=community_plans for bare URLs)."""
+    from backend.services import entitlements_gate as gate
+
+    monkeypatch.setattr(gate, "resolve_entitlements", lambda username: _free_entitlements())
+    monkeypatch.setattr(gate, "_community_tiers_field_map", lambda: {})
+    monkeypatch.setattr(gate, "_user_member_community", lambda username, community_id: True)
+    monkeypatch.setattr(gate.community_svc, "resolve_root_community_id", lambda cid: (123, True))
+    monkeypatch.setattr(gate.community_billing, "has_active_steve_package", lambda root_id: False)
+    monkeypatch.setattr(
+        gate.community_billing,
+        "get_billing_state",
+        lambda root_id: {"tier": "free", "steve_package_subscription_active": False},
+    )
+    monkeypatch.setattr(gate.ai_usage, "log_block", lambda *args, **kwargs: None)
+
+    allowed, payload, status, _ent = gate.check_steve_access(
+        "JohnDoe",
+        ai_usage.SURFACE_FEED,
+        community_id=456,
+    )
+
+    assert allowed is False
+    assert status == 402
+    assert payload and payload.get("reason") == "premium_required"
+    assert payload["cta"]["url"] == "/subscription_plans"
+    assert payload["message_key"] == "entitlements.premium_required.message"
+
+
+def test_personal_context_keeps_tier_picker_cta(monkeypatch):
+    """No community context (DM / personal) — behaviour unchanged."""
+    from backend.services import entitlements_gate as gate
+
+    monkeypatch.setattr(gate, "resolve_entitlements", lambda username: _free_entitlements())
+    monkeypatch.setattr(gate, "_community_tiers_field_map", lambda: {})
+    monkeypatch.setattr(gate.ai_usage, "log_block", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        gate.community_billing,
+        "get_billing_state",
+        lambda root_id: (_ for _ in ()).throw(AssertionError("billing state read without community context")),
+    )
+
+    allowed, payload, status, _ent = gate.check_steve_access(
+        "JohnDoe",
+        ai_usage.SURFACE_FEED,
+    )
+
+    assert allowed is False
+    assert payload and payload.get("reason") == "premium_required"
+    assert payload["cta"]["url"] == "/subscription_plans"
+    assert payload["message_key"] == "entitlements.premium_required.message"
+
+
+def test_paid_tier_with_active_package_never_hits_premium_required(monkeypatch):
+    """Package-active community: member is allowed via the pool, so the
+    reroute (and its billing-state read) never runs."""
+    from backend.services import entitlements_gate as gate
+
+    monkeypatch.setattr(gate, "resolve_entitlements", lambda username: _free_entitlements())
+    monkeypatch.setattr(
+        gate,
+        "_community_tiers_field_map",
+        lambda: {
+            "paid_steve_package_free_member_access": True,
+            "paid_steve_package_monthly_credit_pool": 300,
+        },
+    )
+    monkeypatch.setattr(gate, "_user_member_community", lambda username, community_id: True)
+    monkeypatch.setattr(gate.community_svc, "resolve_root_community_id", lambda cid: (123, True))
+    monkeypatch.setattr(gate.community_billing, "has_active_steve_package", lambda root_id: True)
+    monkeypatch.setattr(gate.ai_usage, "community_monthly_steve_pool_usage", lambda root_id: 0)
+    monkeypatch.setattr(gate.ai_usage, "monthly_community_spend_usd", lambda root_id: 0.0)
+    monkeypatch.setattr(
+        gate.community_billing,
+        "get_billing_state",
+        lambda root_id: (_ for _ in ()).throw(AssertionError("reroute ran despite active package")),
+    )
+
+    allowed, payload, status, _ent = gate.check_steve_access(
+        "JohnDoe",
+        ai_usage.SURFACE_FEED,
+        community_id=456,
+    )
+
+    assert allowed is True
+    assert payload is None
+    assert status is None
+
+
 def _add_member(username: str, community_id: int) -> None:
     ph = get_sql_placeholder()
     with get_db_connection() as conn:

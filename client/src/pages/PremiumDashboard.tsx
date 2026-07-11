@@ -11,7 +11,7 @@ import JoinByHandlePanel from '../components/community/JoinByHandlePanel'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { readDeviceCacheStale, writeDeviceCache } from '../utils/deviceCache'
-import { trackCommunityCreatedConversion } from '../lib/adsConversion'
+import { trackCommunityCreatedConversion, trackPendingSignupConversion } from '../lib/adsConversion'
 import { cacheKeyVal, deleteCachedKeyVal, getCachedKeyVal } from '../utils/offlineDb'
 import {
   DASHBOARD_CACHE_TTL_MS,
@@ -663,6 +663,7 @@ export default function PremiumDashboard() {
         applyProfileFromServer(me.profile as Record<string, unknown>)
       }
       if (me?.success && me.profile) {
+        trackPendingSignupConversion(me.profile.username || '')
         setEmailVerified(!!me.profile.email_verified)
         setEmailVerifiedAt(me.profile.email_verified_at || null)
         setUsername(me.profile.username || '')

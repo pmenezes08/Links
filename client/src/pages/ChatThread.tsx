@@ -40,6 +40,7 @@ import { handleBasicProfileRequired } from '../utils/basicProfileGate'
 import { isNativeMediaPlatform, pickFromLibraryNative, capturePhotoNative } from '../utils/nativeMediaPicker'
 import { comparableMediaUrl, consumeDeletedMedia, mediaDeleteScopeForDm, type DeletedMediaItem } from '../chat/mediaDeletionEvents'
 import ChatThreadSearch from '../chat/ChatThreadSearch'
+import { bumpDmThreadPreview } from '../chat/threadListPreview'
 import type { ChatMessage } from '../types/chat'
 
 // Import utilities and components from chat module
@@ -192,6 +193,25 @@ export default function ChatThread(){
     return () => window.removeEventListener('chat-media-deleted', onDeleted)
   }, [username])
   const [loading, setLoading] = useState(false)
+
+  // Write-through to the Messages inbox caches: whenever the newest message
+  // changes (send or receive), bump the thread's preview + zero its unread so
+  // returning to /user_chat paints fresh on the first frame instead of waiting
+  // for /api/chat_threads.
+  const lastPreviewBumpRef = useRef('')
+  useEffect(() => {
+    if (!viewer || !username || messages.length === 0) return
+    const newest = messages[messages.length - 1]
+    const bumpKey = `${username}|${String(newest.id)}|${newest.text || ''}`
+    if (lastPreviewBumpRef.current === bumpKey) return
+    lastPreviewBumpRef.current = bumpKey
+    bumpDmThreadPreview(viewer, username, {
+      text: newest.text,
+      time: newest.time,
+      sentByViewer: !!newest.sent,
+    })
+  }, [viewer, username, messages])
+
   const [steveIsTyping, setSteveIsTyping] = useState(false)
   const [editingId, setEditingId] = useState<number|string| null>(null)
   const [editText, setEditText] = useState('')

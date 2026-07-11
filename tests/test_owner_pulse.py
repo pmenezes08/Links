@@ -139,7 +139,8 @@ def test_real_run_sends_once_then_dedups(mysql_dsn, monkeypatch):
     assert body["sent"] == 1
     pulse_pushes = [s for s in sent if s["username"] == "pulse_owner"]
     assert len(pulse_pushes) == 1
-    assert pulse_pushes[0]["url"] == f"/community/{a}/owner"
+    # ?source= feeds the retention attribution sink on tap-through.
+    assert pulse_pushes[0]["url"] == f"/community/{a}/owner?source=owner_pulse_push"
 
     # In-app row exists and deep-links to the dashboard.
     ph = get_sql_placeholder()
@@ -152,7 +153,7 @@ def test_real_run_sends_once_then_dedups(mysql_dsn, monkeypatch):
         row = c.fetchone()
     assert row is not None
     link = row["link"] if hasattr(row, "keys") else row[0]
-    assert link == f"/community/{a}/owner"
+    assert link == f"/community/{a}/owner?source=owner_pulse_push"
 
     # Same week again → dedup, no second push.
     resp2 = _run(client)
@@ -216,7 +217,7 @@ def test_multi_root_owner_gets_one_pulse_for_largest_network(mysql_dsn, monkeypa
     pushes = [s for s in sent if s["username"] == "multi_owner"]
     assert body["sent"] >= 1
     assert len(pushes) == 1
-    assert pushes[0]["url"] == f"/community/{big}/owner"
+    assert pushes[0]["url"] == f"/community/{big}/owner?source=owner_pulse_push"
 
 
 def test_recipient_locale_copy(mysql_dsn, monkeypatch):

@@ -24,10 +24,29 @@ export default function OverviewTab({ data, onUpgrade, isOwner = false, communit
   const actions = steve.actions ?? []
   const [invitesOpen, setInvitesOpen] = useState(false)
 
+  // Fire-and-forget attribution: which Steve action rows actually get tapped.
+  // Loss must never affect the tap itself (same doctrine as Networking.tsx).
+  const recordActionTap = (a: OwnerSteveAction) => {
+    fetch('/api/retention/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        event_type: 'owner_action_tapped',
+        source: 'owner_dashboard',
+        community_id: communityId ?? undefined,
+        detail: a.key,
+      }),
+    }).catch(() => {})
+  }
+
   // Steve actions with a behavior id are tappable drill-ins.
   const actionHandler = (a: OwnerSteveAction): (() => void) | null => {
     if (a.action === 'pending_invites' && isOwner && communityId != null) {
-      return () => setInvitesOpen(true)
+      return () => { recordActionTap(a); setInvitesOpen(true) }
+    }
+    if (a.action === 'upgrade_steve' && isOwner) {
+      return () => { recordActionTap(a); onUpgrade() }
     }
     return null
   }

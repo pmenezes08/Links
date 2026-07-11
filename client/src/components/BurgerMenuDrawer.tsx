@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import Avatar from './Avatar'
 import { useLogoutRequest } from '../contexts/LogoutPromptContext'
+import { useModalUX } from '../hooks/useModalUX'
 import { triggerHaptic } from '../utils/haptics'
 import { getCachedDashboardSnapshot, refreshDashboardCommunities } from '../utils/dashboardCache'
 
@@ -98,12 +99,19 @@ export default function BurgerMenuDrawer({
     onClose()
   }
 
+  const sheetRef = useRef<HTMLDivElement>(null)
+  useModalUX({ open: true, onClose: closeDrawer, containerRef: sheetRef })
+
   return (
     <div
       className={`burger-menu-backdrop fixed inset-0 ${zIndexClass} flex bg-black/55`}
       onClick={(e) => e.currentTarget === e.target && closeDrawer()}
     >
       <div
+        ref={sheetRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('navigation.menu', { defaultValue: 'Menu' })}
         className="burger-menu-sheet h-full w-[90%] max-w-sm overflow-y-auto overscroll-contain border-r border-c-border bg-c-bg-elevated p-4 text-c-text-primary shadow-[24px_0_70px_rgba(0,0,0,0.72)] backdrop-blur-md"
         style={{
           paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)',

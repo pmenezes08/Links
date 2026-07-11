@@ -500,6 +500,8 @@ function MessageBubbleInner({
               className="w-full"
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onPointerUp={(e) => e.stopPropagation()}
             >
               <textarea
                 className="w-full bg-c-bg-recessed border border-c-border rounded-lg px-3 py-2 text-sm text-c-text-primary placeholder-c-text-tertiary focus:outline-none focus:border-cpoint-turquoise resize-none overscroll-contain max-h-[40vh]"
@@ -513,6 +515,7 @@ function MessageBubbleInner({
               <div className="flex gap-2 justify-end mt-1.5">
                 <button
                   className="px-2.5 py-1 text-xs text-c-text-tertiary hover:text-c-text-secondary transition-colors"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={onCancelEdit}
                 >
                   {t('chat.cancel')}
@@ -523,6 +526,7 @@ function MessageBubbleInner({
                       ? 'bg-gray-600 text-gray-300'
                       : 'bg-cpoint-turquoise text-black hover:brightness-110'
                   }`}
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={editingSaving ? undefined : onCommitEdit}
                   disabled={editingSaving}
                 >

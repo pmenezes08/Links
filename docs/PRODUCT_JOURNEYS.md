@@ -131,6 +131,7 @@ From **Manage Community → Manage Subscription** (paid/customer state on the bi
 - The hidden provider-cost ceiling is enforced before community-pool spend using `ai_usage.monthly_community_spend_usd(root_id)` plus a KB reservation estimate. If the cost ceiling is exhausted, free members are blocked as pool exhausted; Premium members may fall back to personal usage when the KB fallback toggle allows it.
 - **Networking (Steve people-search) is B2B-gated to the Steve Package.** `/api/networking/steve_match` and `/api/networking/steve_auto_match` require the searched community's billing **root** to have an active Steve Package (paid **or** the synthetic 14-day trial), decided by **`backend.services.networking_billing.networking_gate_decision`** (reuses `community_billing.get_billing_state`, which root-normalizes). No package → `403 steve_package_required`. Trial communities get a reduced per-user weekly cap (KB `networking_trial_weekly_prompts`, default **5**) vs the paid cap (`weekly_prompts_per_user`, default **20**); the requirement itself is KB-toggleable (`networking_requires_steve_package`) — all on the **`networking-ai`** KB page. App admins, the founder, and **Special** users are exempt (unlimited) via `networking_cap_exempt`. Unlike feed/group Steve, networking is **not** in `STEVE_SURFACES`, so it does **not** draw the shared credit pool — it keeps its own per-user rolling-7-day counter (`ai_usage.networking_prompts_last_7_days`); pool-billing is deferred (networking measured at ~12× a chat reply, needs context cost-bounding first). Existing root communities were backfilled with trials at rollout via **`scripts/grant_networking_trials_to_existing_communities.py`**.
 - Burger-menu visits to `/subscription_plans` stay generic. Focused single-community copy/actions only appear when Manage Community links include `community_id=<id>`.
+- **Owner CTA notifications** (**`backend/services/owner_billing_ctas.py`**): owners get localized push + in-app rows (types `owner_cta:*`, deep link `/subscription_plans?open=community_addons&community_id=<id>`) when their Steve package trial is ending/ended (daily cron **`/api/cron/steve-trial-lifecycle`**, once per community ever via `subscription_audit_log`), when a member is blocked in a paid package-less community (gate side-channel, ≤1/community/7 days, member never named), and when the shared pool empties (≤1/community/cycle month). Fail-open, audited (`owner_cta_steve_*` actions), kill switch `OWNER_BILLING_CTAS_ENABLED`.
 
 ### Stripe renewal repair (offline)
 
@@ -456,3 +457,35 @@ dashboard (handled in `PushInit.tsx`). Quiet weeks are skipped; multi-network
 owners get one pulse for their largest network; kill-switch
 `OWNER_PULSE_ENABLED`. Zero AI cost — Steve's voice is i18n templates over
 numbers computed at send time.
+
+**Member weekly digest (the member-side return loop):** the pulse's sibling,
+`POST /api/cron/member-weekly-digest` (`docs/cloud-scheduler-cron.md` §13,
+service `backend/services/member_digest.py`). One recipient-locale push +
+in-app row per member per ISO week for their most active community (≥ 3 new
+posts by others; own posts don't count; owners excluded). **Off by default**
+(`MEMBER_DIGEST_ENABLED`); dedup table `member_digest_sends`; `max_sends`
+throttle. Deep links carry `?source=weekly_digest_push`.
+
+**Retention attribution + checkout intent:** the return loops are measured
+end-to-end. Digest/pulse deep links carry `?source=`, which the client
+(`useRetentionAttribution`, `CommunityFeed`, `OwnerDashboard`, Steve action
+rows in `OverviewTab`) posts to `POST /api/retention/event` — an append-only
+`retention_events` table with a closed event/source vocabulary
+(`digest_sent/opened`, `owner_pulse_opened`, `owner_action_tapped`), never
+message content or other members' identities. On the conversion side,
+`POST /api/stripe/create_checkout_session` writes one
+`<plan>_checkout_started` row to `subscription_audit_log` (with the CTA
+`source` from a closed vocabulary in `subscription_audit.CHECKOUT_SOURCES`);
+purchases stay webhook-driven, so starts vs completions = funnel abandonment.
+
+**Steve trial → paid conversion moment:** the Owner Dashboard overview
+includes an owner-only `steve_trial` metric (trial days left, shared-pool
+usage, weekly actives — aggregates only) while the synthetic Steve package
+trial or a paid package is active on the billing root, plus a Steve
+`action_trial_ending` row (final 3 days) that opens `ManageMembershipModal`.
+Trial length is KB-driven (`community-tiers.steve_package_trial_days`,
+read via `community_billing.steve_package_trial_days()`), so operators can
+tune it without a deploy. Landing pricing is generated from the same KB
+seeds (`scripts/generate_landing_pricing.py` →
+`landing/src/generated/pricing.json`, drift-checked by
+`tests/test_landing_pricing_parity.py`).

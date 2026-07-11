@@ -56,7 +56,26 @@ logger = logging.getLogger(__name__)
 # real package simply overwrites these columns through the normal webhook
 # path.
 STEVE_PACKAGE_TRIAL_SUB_PREFIX = "trial_pkg_"
-STEVE_PACKAGE_TRIAL_DAYS = 14
+STEVE_PACKAGE_TRIAL_DAYS = 14  # fallback when the KB field is unreadable
+
+
+def steve_package_trial_days() -> int:
+    """Trial length in days — KB ``community-tiers.steve_package_trial_days``
+    is the source of truth; the module constant is only the safety net when
+    the KB is unreachable (fresh install, KB not seeded yet)."""
+    try:
+        from backend.services import knowledge_base as kb
+
+        page = kb.get_page("community-tiers") or {}
+        for f in page.get("fields") or []:
+            if f.get("name") == "steve_package_trial_days":
+                value = int(f.get("value") or 0)
+                if value > 0:
+                    return value
+                break
+    except Exception:
+        logger.debug("steve_package_trial_days: KB read failed", exc_info=True)
+    return STEVE_PACKAGE_TRIAL_DAYS
 
 
 def is_synthetic_steve_package_trial(state: Optional[Dict[str, Any]]) -> bool:
@@ -68,7 +87,7 @@ def is_synthetic_steve_package_trial(state: Optional[Dict[str, Any]]) -> bool:
 def grant_steve_package_trial(
     community_id: int,
     *,
-    trial_days: int = STEVE_PACKAGE_TRIAL_DAYS,
+    trial_days: Optional[int] = None,
 ) -> bool:
     """Activate the Steve Community Package as a one-off trial for a new
     root community.
@@ -87,6 +106,8 @@ def grant_steve_package_trial(
         state = get_billing_state(community_id) or {}
         if state.get("steve_package_stripe_subscription_id"):
             return False
+        if trial_days is None:
+            trial_days = steve_package_trial_days()
         period_end = datetime.utcnow() + timedelta(days=int(trial_days))
         granted = mark_steve_package_subscription(
             community_id,

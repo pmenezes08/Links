@@ -92,7 +92,9 @@ export default function LongPressActionable({
     const rect = containerRef.current.getBoundingClientRect()
     const viewportHeight = window.innerHeight
     const viewportWidth = window.innerWidth
-    const menuHeight = 260
+    // Estimated menu height: 44px quick-reaction row + 4-6 × 44px action rows
+    // + padding. Clamped to the safe area either way; only used for placement.
+    const menuHeight = 340
     const padding = 12
     const safeAreaTop = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sat') || '0') || 50
     const safeAreaBottom = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sab') || '0') || 80
@@ -210,34 +212,35 @@ export default function LongPressActionable({
             className="bg-c-bg-surface border border-c-border rounded-lg shadow-xl px-2 py-2"
             style={menuStyle}
           >
-            <div className="flex items-center justify-between gap-1 px-1 pb-2 border-b border-c-border overflow-hidden">
+            <div className="flex items-center justify-between gap-0.5 px-1 pb-1 border-b border-c-border overflow-hidden">
               {QUICK_REACTIONS.map(e => (
                 <button 
                   key={e} 
-                  className="text-[17px] flex-shrink-0 hover:scale-110 transition-transform" 
+                  className="text-[17px] flex-1 min-w-0 h-11 flex items-center justify-center hover:scale-110 transition-transform" 
                   onClick={() => safeAction(() => { chatHapticReaction(); setShowMenu(false); setShowEmojiPicker(false); onReact(e) })}
                 >
                   {e}
                 </button>
               ))}
               <button 
-                className="w-6 h-6 flex-shrink-0 flex items-center justify-center text-c-text-tertiary hover:text-white hover:bg-c-hover-bg rounded-full transition-colors"
+                className="w-8 h-11 flex-shrink-0 flex items-center justify-center text-c-text-tertiary hover:text-white hover:bg-c-hover-bg rounded-full transition-colors"
                 onClick={() => safeAction(() => setShowEmojiPicker(true))}
                 title="More reactions"
+                aria-label="More reactions"
               >
                 <i className="fa-solid fa-plus text-xs" />
               </button>
             </div>
             <div className="pt-2 flex flex-col">
               <button 
-                className="text-left px-2 py-1 text-sm hover:bg-c-hover-bg rounded" 
+                className="text-left px-2 py-1 min-h-[44px] flex items-center text-sm hover:bg-c-hover-bg rounded" 
                 onClick={() => safeAction(() => { setShowMenu(false); setShowEmojiPicker(false); onReply() })}
               >
                 <i className="fa-solid fa-reply mr-2 text-xs opacity-60" />
                 {t('chat.action_reply')}
               </button>
               <button 
-                className="text-left px-2 py-1 text-sm hover:bg-c-hover-bg rounded" 
+                className="text-left px-2 py-1 min-h-[44px] flex items-center text-sm hover:bg-c-hover-bg rounded" 
                 onClick={() => safeAction(() => { setShowMenu(false); setShowEmojiPicker(false); onCopy() })}
               >
                 <i className="fa-regular fa-copy mr-2 text-xs opacity-60" />
@@ -245,7 +248,7 @@ export default function LongPressActionable({
               </button>
               {onEdit && (
                 <button 
-                  className="text-left px-2 py-1 text-sm hover:bg-c-hover-bg rounded" 
+                  className="text-left px-2 py-1 min-h-[44px] flex items-center text-sm hover:bg-c-hover-bg rounded" 
                   onClick={() => safeAction(() => { setShowMenu(false); setShowEmojiPicker(false); onEdit() })}
                 >
                   <i className="fa-regular fa-pen-to-square mr-2 text-xs opacity-60" />
@@ -254,7 +257,7 @@ export default function LongPressActionable({
               )}
               {onSelect && (
                 <button 
-                  className="text-left px-2 py-1 text-sm hover:bg-c-hover-bg rounded" 
+                  className="text-left px-2 py-1 min-h-[44px] flex items-center text-sm hover:bg-c-hover-bg rounded" 
                   onClick={() => safeAction(() => { setShowMenu(false); setShowEmojiPicker(false); onSelect() })}
                 >
                   <i className="fa-regular fa-square-check mr-2 text-xs opacity-60" />
@@ -265,7 +268,7 @@ export default function LongPressActionable({
                 <button
                   key={idx}
                   type="button"
-                  className={`text-left px-2 py-1 text-sm hover:bg-c-hover-bg rounded ${
+                  className={`text-left px-2 py-1 min-h-[44px] flex items-center text-sm hover:bg-c-hover-bg rounded ${
                     a.danger ? 'text-orange-300' : ''
                   }`}
                   onClick={() =>
@@ -285,7 +288,7 @@ export default function LongPressActionable({
                 </button>
               ))}
               <button 
-                className="text-left px-2 py-1 text-sm text-red-400 hover:bg-c-hover-bg rounded" 
+                className="text-left px-2 py-1 min-h-[44px] flex items-center text-sm text-red-400 hover:bg-c-hover-bg rounded" 
                 onClick={() => safeAction(() => { setShowMenu(false); setShowEmojiPicker(false); onDelete() })}
               >
                 <i className="fa-regular fa-trash-can mr-2 text-xs" />

@@ -55,7 +55,9 @@
   "entitlements": {
     "premium_required": {
       "message": "Steve wird über den bezahlten Plan einer Community freigeschaltet. Communities mit einem Bezahl-Tarif können das Steve Community Package hinzufügen, damit alle Mitglieder Steve im Feed, in Gruppen und in Chats bekommen.",
-      "cta_label": "Community-Pläne ansehen"
+      "cta_label": "Community-Pläne ansehen",
+      "addon_message": "Diese Community hat bereits einen Bezahl-Tarif — mit dem Steve Community Package wird Steve für alle Mitglieder freigeschaltet.",
+      "addon_cta_label": "Steve Community Package hinzufügen"
     },
     "daily_cap": {
       "message": "Du hast heute dein Steve-Limit von {ai_daily_limit} Anfragen erreicht. Es wird um {resets_at_daily} zurückgesetzt.",
@@ -177,6 +179,31 @@
       "title": "Steves Wochenpuls",
       "body": "{wau} Mitglieder diese Woche in {community} aktiv — {delta} mehr als letzte Woche. Stark.",
       "message": "Wochenpuls: {wau} aktiv in {community}, {delta} mehr als letzte Woche"
+    },
+    "member_digest": {
+      "title": "Diese Woche in {community}",
+      "body": "{posts} neue Beiträge diese Woche in {community} — schau, was du verpasst hast.",
+      "message": "Diese Woche in {community}: {posts} neue Beiträge — schau, was du verpasst hast"
+    },
+    "owner_cta_steve_trial_ending": {
+      "title": "Steve Community Package: Testphase endet bald",
+      "body": "Die kostenlose Testphase für {community} endet am {date}. Füge das Steve Community Package hinzu, damit Steve für deine Mitglieder verfügbar bleibt.",
+      "message": "Die Testphase des Steve Community Package für {community} endet am {date}. Füge das Paket hinzu, damit Steve für deine Mitglieder verfügbar bleibt."
+    },
+    "owner_cta_steve_trial_expired": {
+      "title": "Steve Community Package: Testphase beendet",
+      "body": "Die kostenlose Testphase für {community} ist beendet, daher ist Steve für Mitglieder nicht mehr verfügbar. Du kannst das Steve Community Package hinzufügen, um Steve wieder zu aktivieren.",
+      "message": "Die Testphase des Steve Community Package für {community} ist beendet. Füge das Paket hinzu, um Steve wieder für deine Mitglieder verfügbar zu machen."
+    },
+    "owner_cta_steve_member_blocked": {
+      "title": "Mitglieder fragen nach Steve",
+      "body": "Mitglieder versuchen, Steve in {community} zu nutzen — er ist hier noch nicht aktiv. Mit dem Steve Community Package wird Steve für alle Mitglieder verfügbar.",
+      "message": "Mitglieder versuchen, Steve in {community} zu nutzen — er ist hier noch nicht aktiv. Füge das Steve Community Package hinzu, um ihn zu aktivieren."
+    },
+    "owner_cta_steve_pool_exhausted": {
+      "title": "Steve-Pool in {community} aufgebraucht",
+      "body": "{community} hat den gemeinsamen Steve-Pool für diesen Monat komplett aufgebraucht. Er füllt sich im nächsten Abrechnungszyklus wieder — die Plan-Optionen der Community kannst du jederzeit ansehen.",
+      "message": "{community} hat den gemeinsamen Steve-Pool für diesen Monat komplett aufgebraucht. Er füllt sich im nächsten Abrechnungszyklus wieder — die Plan-Optionen kannst du jederzeit ansehen."
     },
     "owner_report": {
       "title": "Etwas wurde gemeldet",

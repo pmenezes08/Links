@@ -58,6 +58,7 @@ import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/de
 import { cacheFeed, getCachedFeed } from '../utils/offlineDb'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { useBadges } from '../contexts/BadgeContext'
+import { useRetentionAttribution } from '../hooks/useRetentionAttribution'
 import { openExternalInApp } from '../utils/openExternalInApp'
 import {
   buildClientPremiumRequiredError,
@@ -212,6 +213,8 @@ export default function CommunityFeed() {
   }
   const navigate = useNavigate()
   const routerLocation = useLocation()
+  // Weekly digest deep links land here with ?source= — record tap-through.
+  useRetentionAttribution('digest_opened', community_id ? Number(community_id) : null)
   const { unreadMsgs, unreadNotifs, refreshBadges } = useBadges()
   const {
     entitlements: feedEntitlements,
@@ -4566,12 +4569,12 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
   }, [onMarkViewed, post.id, post.has_viewed])
   const [childReplyGif, setChildReplyGif] = useState<GifSelection | null>(null)
   const [sendingChildReply, setSendingChildReply] = useState(false)
+  // The inline reply composers stay MOUNTED while the per-post GIF picker is
+  // open: the sheet is opaque (no bleed-through), and unmounting would blur
+  // the focused textarea, dismiss the keyboard mid-open, and strand the
+  // picker below where the keyboard lands (iOS won't re-summon a keyboard
+  // from a programmatic focus).
   const [gifPickerTarget, setGifPickerTarget] = useState<'main' | number | null>(null)
-  // Hide inline reply composers while the per-post GIF picker is open so the
-  // translucent glass sheet does not show composer chrome through it. The
-  // composer remounts as soon as the user selects or dismisses (target is
-  // reset to null in those paths).
-  const isGifPickerOpen = gifPickerTarget !== null
   const [personalStarred, setPersonalStarred] = useState(!!post.is_starred)
   const [communityStarred, setCommunityStarred] = useState(!!post.is_community_starred)
 
@@ -5467,7 +5470,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
                     </button>
                   </div>
 
-                  {activeChildReplyFor === r.id && !isGifPickerOpen && (
+                  {activeChildReplyFor === r.id && (
                     <div className="mt-2 rounded-lg border border-c-border bg-c-hover-bg px-2 pt-2 pb-2 space-y-2" onClick={(e)=> e.stopPropagation()}>
                       <MentionTextarea
                         value={childReplyText}
@@ -5571,8 +5574,8 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
         </div>
       )}
       {/* Inline quick reply composer - sleek, full-width, low-distraction */}
-      {/* Hidden when child reply is active or the GIF picker is open */}
-      {!post.poll && activeChildReplyFor === null && !isGifPickerOpen && (
+      {/* Hidden when child reply is active */}
+      {!post.poll && activeChildReplyFor === null && (
         <div
           className="px-3 pb-3"
           onClick={(e)=> e.stopPropagation()}

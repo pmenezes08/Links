@@ -18,6 +18,11 @@ on:
     branches: [main, staging]
   workflow_dispatch:
 
+# Least privilege: this workflow only reads the repo to run tests. Without an
+# explicit block, GitHub grants the broad default token scope.
+permissions:
+  contents: read
+
 concurrency:
   group: tests-${{ github.ref }}
   cancel-in-progress: true
@@ -123,11 +128,18 @@ jobs:
             tests/test_redis_cache_resilience.py \
             tests/test_dm_unread_counts.py \
             tests/test_dm_audio_idempotency.py \
+            tests/test_dm_typing.py \
+            tests/test_chat_threads_batch.py \
             tests/test_http_conditional.py \
             tests/test_vision_judge_unit.py \
             tests/test_owner_analytics.py \
             tests/test_owner_moderation.py \
             tests/test_owner_pulse.py \
+            tests/test_owner_billing_ctas.py \
+            tests/test_owner_steve_trial_value.py \
+            tests/test_member_digest.py \
+            tests/test_retention_events.py \
+            tests/test_landing_pricing_parity.py \
             tests/test_rate_limit.py \
             -v --tb=short --maxfail=5
 

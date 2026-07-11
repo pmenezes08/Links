@@ -13,6 +13,7 @@ import PrivacyPt from "./pages/legal/PrivacyPt";
 import TermsPt from "./pages/legal/TermsPt";
 import SafetyPt from "./pages/legal/SafetyPt";
 import AdminLogin from "./pages/AdminLogin";
+import ForCommunityOwners from "./pages/ForCommunityOwners";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -33,6 +34,7 @@ const App = () => (
           <Route path="/pt/privacy" element={<PrivacyPt />} />
           <Route path="/pt/terms" element={<TermsPt />} />
           <Route path="/pt/safety" element={<SafetyPt />} />
+          <Route path="/for-community-owners" element={<ForCommunityOwners />} />
           <Route path="/admin" element={<AdminLogin />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { CPOINT_EASE_OUT } from '../../design/motion'
+import { useModalUX } from '../../hooks/useModalUX'
 
 export type SteveSessionSummary = { id: number; created_at: string; first_message: string }
 
@@ -29,23 +30,13 @@ export default function HistorySheet({
 }) {
   const { t } = useTranslation()
   const [confirmingId, setConfirmingId] = useState<number | null>(null)
+  const sheetRef = useRef<HTMLDivElement>(null)
+
+  useModalUX({ open, onClose, containerRef: sheetRef, lockScroll: true })
 
   useEffect(() => {
-    if (!open) {
-      setConfirmingId(null)
-      return
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', onKeyDown)
-      document.body.style.overflow = previousOverflow
-    }
-  }, [open, onClose])
+    if (!open) setConfirmingId(null)
+  }, [open])
 
   // Deleting the last session removes the trigger's reason to exist —
   // close so the member is not left staring at an empty sheet.
@@ -62,6 +53,7 @@ export default function HistorySheet({
       aria-label={t('networking.history_sheet_title')}
     >
       <div
+        ref={sheetRef}
         className={`w-full max-w-xl max-h-[75dvh] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-c-border bg-c-bg-elevated px-4 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] transition-transform duration-[250ms] ${open ? 'translate-y-0' : 'translate-y-full'} sm:mb-4 sm:rounded-2xl sm:border`}
         style={{ transitionTimingFunction: CPOINT_EASE_OUT }}
         onClick={e => e.stopPropagation()}
