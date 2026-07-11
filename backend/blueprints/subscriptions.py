@@ -262,6 +262,32 @@ def _resolve_community_tier_price(tier_code: str) -> str:
     return _price_id_from_kb("community-tiers", base)
 
 
+def _community_tier_trial_days(username: str) -> int:
+    """Stripe trial days to attach to a community-tier checkout, 0 for none.
+
+    Implements the KB trial policy (community-tiers page):
+    ``paid_trial_duration_days`` gated by ``paid_trial_one_per_customer`` —
+    one trial per billing customer across *all* communities they own, so
+    an owner can't cycle trials by cancelling and re-creating. The forever
+    marker is the webhook-written ``community_tier_trial_started`` audit
+    row (written only when a trial subscription actually starts, so an
+    abandoned checkout never burns the trial).
+    """
+    fields = _kb_field_map("community-tiers")
+    try:
+        days = int(fields.get("paid_trial_duration_days") or 0)
+    except (TypeError, ValueError):
+        days = 0
+    if days <= 0:
+        return 0
+    if _kb_truthy(fields, "paid_trial_one_per_customer", default=True):
+        if subscription_audit.has_action(
+            username=username, action="community_tier_trial_started"
+        ):
+            return 0
+    return days
+
+
 # ── /api/stripe/config ──────────────────────────────────────────────────
 
 
@@ -1529,6 +1555,7 @@ def api_stripe_create_checkout_session():
     client_reference_id: Optional[str] = None
     price_id: str = ""
     subscription_description: Optional[str] = None
+    trial_days = 0
 
     if plan_id == "premium":
         billing_cycle = str(payload.get("billing_cycle") or "monthly").strip().lower()
@@ -1567,6 +1594,12 @@ def api_stripe_create_checkout_session():
         community_name = _fetch_community_name(community_id)
         metadata["community_id"] = str(community_id)
         metadata["tier_code"] = tier_code
+        # KB trial policy: 14 days (paid_trial_duration_days), once per
+        # customer. The metadata flag is how the webhook knows to write
+        # the one-per-customer marker when the trial actually starts.
+        trial_days = _community_tier_trial_days(username)
+        if trial_days > 0:
+            metadata["trial_days"] = str(trial_days)
         if community_name:
             metadata["community_name"] = _stripe_metadata_value(community_name)
             subscription_description = (
@@ -1631,6 +1664,10 @@ def api_stripe_create_checkout_session():
         "subscription_data": {
             "metadata": metadata,
             **({"description": subscription_description} if subscription_description else {}),
+            # Community-tier trial (KB paid_trial_duration_days, one per
+            # customer). Checkout still collects the card up front and
+            # auto-converts at trial end (KB paid_trial_auto_convert).
+            **({"trial_period_days": trial_days} if trial_days > 0 else {}),
         },
     }
     if email_value:

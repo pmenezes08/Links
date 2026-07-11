@@ -95,6 +95,12 @@ ACTIONS = {
     "premium_checkout_started",
     "community_tier_checkout_started",
     "steve_package_checkout_started",
+    # Community-tier Stripe trial actually began (webhook-confirmed). This
+    # row doubles as the forever one-per-customer marker the KB policy
+    # (community-tiers.paid_trial_one_per_customer) is enforced against —
+    # checkout creation checks it via has_action() before attaching
+    # trial_period_days.
+    "community_tier_trial_started",
 }
 
 # Closed vocabulary for where a checkout was started from. Unknown values
@@ -217,6 +223,38 @@ def log(
                 pass
     except Exception:
         logger.exception("subscription_audit.log failed (non-fatal)")
+
+
+def has_action(*, username: str, action: str) -> bool:
+    """True if any audit row exists for ``(username, action)``.
+
+    Used for forever markers (e.g. the one-per-customer community-tier
+    trial). Fail-open like ``owner_billing_ctas._audit_exists``: a missing
+    table or query failure reads as "no row yet" — for the trial marker
+    that errs toward honouring the customer-facing promise.
+    """
+    if not username or not action:
+        return False
+    try:
+        ensure_tables()
+        ph = get_sql_placeholder()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"""
+                SELECT 1 FROM subscription_audit_log
+                WHERE username = {ph} AND action = {ph}
+                LIMIT 1
+                """,
+                (username, action),
+            )
+            return c.fetchone() is not None
+    except Exception:
+        logger.warning(
+            "subscription_audit.has_action failed for %s/%s (treating as absent)",
+            username, action, exc_info=True,
+        )
+        return False
 
 
 def list_for_user(username: str, limit: int = 100) -> List[Dict[str, Any]]:

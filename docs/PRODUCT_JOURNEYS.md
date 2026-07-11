@@ -478,6 +478,21 @@ message content or other members' identities. On the conversion side,
 `source` from a closed vocabulary in `subscription_audit.CHECKOUT_SOURCES`);
 purchases stay webhook-driven, so starts vs completions = funnel abandonment.
 
+**Community-tier 14-day trial (Stripe-level, one per customer):**
+`community_tier` checkout attaches `subscription_data.trial_period_days`
+from KB `community-tiers.paid_trial_duration_days` (default 14) — the card
+is collected up front and auto-converts at trial end. One trial per
+customer across all communities they own (KB
+`paid_trial_one_per_customer`): the forever marker is the
+`community_tier_trial_started` `subscription_audit_log` row, written by
+the webhook only when the trial subscription actually starts (an
+abandoned checkout never burns it) and checked at checkout creation via
+`subscription_audit.has_action`. The webhook stores the truthful
+`trialing` status — enforcement, health, and analytics already treat
+trialing as active — and the trial→paid flip lands via
+`customer.subscription.updated`. This is the same 14-day promise the
+landing publishes from the KB seeds.
+
 **Steve trial → paid conversion moment:** the Owner Dashboard overview
 includes an owner-only `steve_trial` metric (trial days left, shared-pool
 usage, weekly actives — aggregates only) while the synthetic Steve package

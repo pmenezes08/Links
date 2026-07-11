@@ -27,6 +27,7 @@ from flask import Flask
 
 from backend.blueprints.subscriptions import subscriptions_bp
 from backend.services import community_billing, knowledge_base as kb
+from backend.services import subscription_audit
 
 from tests.fixtures import (
     fill_community_members,
@@ -84,14 +85,20 @@ def _login(client, username: str) -> None:
         sess["username"] = username
 
 
-def _seed_kb_with_l1_price(price_id: str = "price_l1_from_kb") -> None:
-    """Seed the community-tiers page with a real L1 Stripe price ID."""
+def _seed_kb_with_l1_price(price_id: str = "price_l1_from_kb", **field_overrides) -> None:
+    """Seed the community-tiers page with a real L1 Stripe price ID.
+
+    ``field_overrides`` sets additional community-tiers fields by name
+    (e.g. ``paid_trial_duration_days=0``).
+    """
     kb.seed_default_pages(force=True)
     page = kb.get_page("community-tiers") or {}
     fields = list(page.get("fields") or [])
     for f in fields:
         if f.get("name") == "paid_l1_stripe_price_id_test":
             f["value"] = price_id
+        elif f.get("name") in field_overrides:
+            f["value"] = field_overrides[f.get("name")]
     kb.save_page(
         "community-tiers",
         fields=fields,
@@ -359,6 +366,95 @@ class TestMetadata:
         # preselect.
         assert str(cid) in kwargs["cancel_url"]
         assert "status=cancelled" in kwargs["cancel_url"]
+
+
+# ── 7b. KB trial policy (paid_trial_duration_days, one per customer) ────
+
+
+class TestTrialPeriod:
+    """The landing page and KB promise a 14-day paid-community trial,
+    limited to one per customer. Checkout must attach the KB-sourced
+    ``trial_period_days`` for first-time customers and never for anyone
+    who already started one (forever marker:
+    ``community_tier_trial_started`` audit row, written by the webhook
+    when the trial subscription actually begins)."""
+
+    def test_first_time_owner_gets_kb_trial(self, client):
+        make_user("trial_owner", subscription="free")
+        cid = make_community("c-trial", tier="free",
+                             creator_username="trial_owner")
+        _seed_kb_with_l1_price("price_trial")  # KB default: 14 days
+        _login(client, "trial_owner")
+
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": cid,
+                                 "tier_code": "paid_l1"})
+        assert resp.status_code == 200, resp.get_json()
+        kwargs = client._captured["kwargs"]
+        assert kwargs["subscription_data"]["trial_period_days"] == 14
+        # The webhook reads this flag to write the one-per-customer marker.
+        assert kwargs["metadata"]["trial_days"] == "14"
+
+    def test_prior_trial_marker_blocks_second_trial(self, client):
+        make_user("retrial_owner", subscription="free")
+        cid = make_community("c-retrial", tier="free",
+                             creator_username="retrial_owner")
+        _seed_kb_with_l1_price("price_retrial")
+        # The owner already consumed their one trial (on any community).
+        subscription_audit.log(
+            username="retrial_owner",
+            action="community_tier_trial_started",
+            source="stripe",
+        )
+        _login(client, "retrial_owner")
+
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": cid,
+                                 "tier_code": "paid_l1"})
+        assert resp.status_code == 200, resp.get_json()
+        kwargs = client._captured["kwargs"]
+        assert "trial_period_days" not in kwargs["subscription_data"]
+        assert "trial_days" not in kwargs["metadata"]
+
+    def test_kb_zero_days_disables_trial(self, client):
+        make_user("notrial_owner", subscription="free")
+        cid = make_community("c-notrial", tier="free",
+                             creator_username="notrial_owner")
+        _seed_kb_with_l1_price("price_notrial", paid_trial_duration_days=0)
+        _login(client, "notrial_owner")
+
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": cid,
+                                 "tier_code": "paid_l1"})
+        assert resp.status_code == 200, resp.get_json()
+        kwargs = client._captured["kwargs"]
+        assert "trial_period_days" not in kwargs["subscription_data"]
+        assert "trial_days" not in kwargs["metadata"]
+
+    def test_one_per_customer_flag_off_allows_repeat_trial(self, client):
+        """KB can turn the once-only rule off without a deploy."""
+        make_user("repeat_owner", subscription="free")
+        cid = make_community("c-repeat", tier="free",
+                             creator_username="repeat_owner")
+        _seed_kb_with_l1_price("price_repeat",
+                               paid_trial_one_per_customer=False)
+        subscription_audit.log(
+            username="repeat_owner",
+            action="community_tier_trial_started",
+            source="stripe",
+        )
+        _login(client, "repeat_owner")
+
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": cid,
+                                 "tier_code": "paid_l1"})
+        assert resp.status_code == 200, resp.get_json()
+        kwargs = client._captured["kwargs"]
+        assert kwargs["subscription_data"]["trial_period_days"] == 14
 
 
 # ── 8. Parent-community guard (root-only billing) ──────────────────────

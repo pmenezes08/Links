@@ -413,13 +413,24 @@ def _handle_community_tier_event(
                 community_id=community_id,
             )
             return
+        # A checkout created with the KB trial attaches
+        # ``trial_period_days`` — the subscription arrives as ``trialing``.
+        # Store that status truthfully (everything downstream treats
+        # trialing as active); the trial→paid transition lands via the
+        # later ``customer.subscription.updated`` event.
+        snapshot_status = str(
+            subscription_snapshot.get("status") or ""
+        ).strip().lower()
+        is_trial_start = snapshot_status == "trialing" or bool(
+            _merged_metadata(obj).get("trial_days")
+        )
         _require(
             community_billing.mark_subscription(
                 community_id,
                 tier_code=tier_code,
                 subscription_id=subscription_id,
                 customer_id=customer_id,
-                status="active",
+                status="trialing" if snapshot_status == "trialing" else "active",
                 current_period_end=subscription_snapshot.get("current_period_end"),
                 cancel_at_period_end=False,
                 stripe_mode=_stripe_mode(),
@@ -436,6 +447,23 @@ def _handle_community_tier_event(
                       "subscription_id": subscription_id,
                       "customer": customer_id},
         )
+        if is_trial_start:
+            # Forever one-per-customer marker (KB
+            # paid_trial_one_per_customer) — checkout creation checks this
+            # row via subscription_audit.has_action before attaching a
+            # trial. Written only here, when a trial actually starts, so
+            # an abandoned checkout never burns the customer's one trial.
+            subscription_audit.log(
+                username=username or "",
+                action="community_tier_trial_started",
+                source="stripe",
+                community_id=community_id,
+                metadata={"event_type": event_type,
+                          "tier_code": tier_code,
+                          "subscription_id": subscription_id,
+                          "trial_end": subscription_snapshot.get("trial_end"),
+                          "customer": customer_id},
+            )
     elif event_type == "customer.subscription.deleted":
         # DB write first: if it fails we raise (Stripe retries) before any
         # notification goes out, so a retry can't double-notify the owner.
