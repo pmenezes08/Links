@@ -13,7 +13,13 @@ import { prepareCreationHtml } from '../../utils/creationHtml'
  *   re-mount on scroll doesn't refetch.
  */
 
-type Props = { html?: string; creationId?: number }
+type Props = {
+  html?: string
+  creationId?: number
+  /** Wrapper paint while the HTML resolves. Explore cards pass 'transparent'
+   * so their gradient cover stays visible until the live preview is ready. */
+  background?: string
+}
 
 const htmlCache = new Map<number, string>()
 
@@ -23,7 +29,7 @@ export function clearCreationCache(id: number) {
   htmlCache.delete(id)
 }
 
-export default function CreationPreview({ html, creationId }: Props) {
+export default function CreationPreview({ html, creationId, background = '#0b0b0b' }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const [resolved, setResolved] = useState<string | null>(
     html ? html : (creationId != null ? htmlCache.get(creationId) ?? null : null),
@@ -33,6 +39,7 @@ export default function CreationPreview({ html, creationId }: Props) {
   // Lazy: only fetch/mount once the card scrolls near the viewport.
   useEffect(() => {
     if (html || resolved || creationId == null) return
+    if (typeof IntersectionObserver === 'undefined') return
     const el = wrapRef.current
     if (!el) return
     const io = new IntersectionObserver((entries) => {
@@ -57,7 +64,7 @@ export default function CreationPreview({ html, creationId }: Props) {
   }, [inView, resolved, html, creationId])
 
   return (
-    <div ref={wrapRef} style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#0b0b0b' }}>
+    <div ref={wrapRef} style={{ position: 'absolute', inset: 0, overflow: 'hidden', background }}>
       {resolved && (
         <iframe
           title="preview"

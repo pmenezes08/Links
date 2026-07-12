@@ -77,6 +77,55 @@ _WEBSITE_KIND_HINTS = {
     "website", "site", "landing page", "portfolio", "homepage", "marketing page",
     "menu", "brochure", "guide", "page",
 }
+# Explore gallery sub-category taxonomy. This is display vocabulary (like the
+# kind hints above), not KB material — the KB invariant covers pricing, caps,
+# and policy. Slugs are the stored values; the client resolves slug → localized
+# label via i18n catalogs and receives this map through /api/builder/explore's
+# `taxonomy` block, so the backend stays the single source of truth.
+BUILDER_CATEGORIES: Dict[str, List[str]] = {
+    "website": ["business", "portfolio", "event", "landing", "blog", "directory"],
+    "app": ["productivity", "fitness", "finance", "travel", "health", "learning", "community"],
+    "game": ["arcade", "puzzle", "board", "trivia", "word", "sports"],
+}
+# Keyword → sub-category hints, checked in declaration order within the
+# creation's resolved section only (a "travel game" is a game first, so it can
+# never land in app/travel). No match → None: an untagged creation lists under
+# its section with no chip — never a visible "Other" shelf, never hidden.
+_CATEGORY_HINTS: Dict[str, Dict[str, tuple]] = {
+    "website": {
+        "portfolio": ("portfolio", "photograph", "artist", "designer", "my work", "resume", "cv"),
+        "event": ("wedding", "conference", "meetup", "festival", "invitation", "rsvp", "event"),
+        "blog": ("blog", "newsletter", "magazine", "journal", "article"),
+        "directory": ("directory", "listing", "catalog"),
+        "landing": ("landing", "waitlist", "launch", "coming soon", "product page", "signup page"),
+        "business": ("restaurant", "cafe", "café", "shop", "store", "salon", "clinic", "agency",
+                     "studio", "company", "business", "menu", "booking", "barber", "gym website"),
+    },
+    "app": {
+        "travel": ("travel", "trip", "itinerary", "packing", "flight", "vacation", "holiday", "city guide"),
+        "fitness": ("workout", "gym", "fitness", "exercise", "training plan", "reps", "running log"),
+        "health": ("health", "sleep", "meditation", "water intake", "calorie", "nutrition", "wellness", "mood"),
+        "finance": ("budget", "expense", "finance", "money", "savings", "invoice", "split the bill",
+                    "tip calculator", "currency"),
+        "learning": ("quiz", "flashcard", "study", "learn", "vocabulary", "practice test", "revision"),
+        "community": ("poll", "voting", "vote", "signup sheet", "sign-up sheet", "roster", "club",
+                      "community", "member"),
+        "productivity": ("todo", "to-do", "task", "planner", "notes", "checklist", "habit",
+                         "pomodoro", "calendar", "organizer", "tracker", "dashboard"),
+    },
+    "game": {
+        "board": ("chess", "checkers", "backgammon", "battleship", "dominoes", "card game", "cards",
+                  "solitaire", "poker", "blackjack", "connect four", "connect-4", "tic-tac-toe",
+                  "tictactoe", "board game"),
+        "word": ("wordle", "word game", "hangman", "crossword", "anagram", "spelling", "word search"),
+        "trivia": ("trivia", "quiz game", "guessing game", "guess the"),
+        "puzzle": ("puzzle", "sudoku", "minesweeper", "memory match", "sliding", "maze", "sokoban", "2048"),
+        "sports": ("football", "soccer", "basketball", "golf", "tennis", "racing", "penalty",
+                   "bowling", "darts", "pool game"),
+        "arcade": ("arcade", "snake", "pong", "breakout", "runner", "platformer", "shooter",
+                   "flappy", "asteroids", "space invaders", "tetris", "jump"),
+    },
+}
 # Output ceiling. Kept well above what a rich single-file artifact needs so the
 # 400KB byte limit (not the token budget) is the real ceiling — a low ceiling
 # silently truncates ambitious builds mid-document (and truncation often does
@@ -376,6 +425,9 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
             ("gallery_reviewed_by", "VARCHAR(191)" if USE_MYSQL else "TEXT"),
             ("gallery_rejection_reason", "VARCHAR(255)" if USE_MYSQL else "TEXT"),
             ("capsule_recipes_json", "MEDIUMTEXT" if USE_MYSQL else "TEXT"),
+            # Explore gallery sub-category slug (see BUILDER_CATEGORIES). NULL =
+            # untagged; untagged rows still list under their section.
+            ("category", "VARCHAR(48)" if USE_MYSQL else "TEXT"),
         ):
             try:
                 cursor.execute(f"ALTER TABLE creations ADD COLUMN {column} {ddl}")
@@ -887,6 +939,22 @@ def infer_creation_kind(prompt: Any, title: Any = None) -> str:
     if any(hint in text for hint in _WEBSITE_KIND_HINTS):
         return "website"
     return "website"
+
+
+def infer_creation_category(prompt: Any, title: Any = None, kind: Any = None) -> Optional[str]:
+    """Best-effort sub-category within the creation's resolved section.
+
+    Free (no model call). The section is resolved first and only that section's
+    hint map is consulted, so cross-section misfiles are impossible. Returns
+    None when nothing matches — untagged creations list under their section.
+    """
+    section = _public_kind(kind) if kind else _public_kind(infer_creation_kind(prompt, title))
+    hints = _CATEGORY_HINTS.get(section) or {}
+    text = f"{prompt or ''} {title or ''}".lower()
+    for slug, needles in hints.items():
+        if any(needle in text for needle in needles):
+            return slug
+    return None
 
 
 def public_bridge_and_branding_script(*, slug: str, title: str) -> str:
@@ -1860,6 +1928,7 @@ def create_creation(*, username: str, community_id: Optional[int], prompt: str,
     report_progress(92, "saving")
     resolved_title = (title or _extract_title(html, prompt))[:200]
     creation_kind = "game" if _has_multiplayer_wiring(html) else build_kind
+    category = infer_creation_category(prompt, resolved_title, kind=creation_kind)
     history = _append_history(None, prompt)
     capsule_recipes_json = _capsule_recipes_json_from_html(html)
     now = _now()
@@ -1870,11 +1939,12 @@ def create_creation(*, username: str, community_id: Optional[int], prompt: str,
             f"""
             INSERT INTO creations
                 (community_id, created_by, title, kind, html_content,
-                 prompt_history, status, created_at, updated_at, capsule_recipes_json)
-            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                 prompt_history, status, created_at, updated_at, capsule_recipes_json,
+                 category)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
             """,
             (community_id, username, resolved_title, creation_kind, html,
-             history, "draft", now, now, capsule_recipes_json),
+             history, "draft", now, now, capsule_recipes_json, category),
         )
         creation_id = c.lastrowid
         conn.commit()
@@ -1891,7 +1961,8 @@ def create_creation(*, username: str, community_id: Optional[int], prompt: str,
         except Exception:
             logger.warning("builder: failed to store R2 artifact key for creation %s", creation_id, exc_info=True)
     return {"id": creation_id, "title": resolved_title, "html": html, "status": "draft",
-            "kind": creation_kind, "community_id": community_id, "model": model_used,
+            "kind": creation_kind, "category": category, "community_id": community_id,
+            "model": model_used,
             "capsule_recipes": builder_capsules.loads_recipes(capsule_recipes_json)}
 
 
@@ -2771,18 +2842,23 @@ def update_gallery_status(*, creation_id: int, username: str, action: str,
     }
 
 
-def list_explore_creations(*, limit: int = 30) -> List[Dict[str, Any]]:
+_EXPLORE_SECTION_ORDER = ("game", "app", "website")
+_EXPLORE_MAX_ROWS = 300  # generous read cap; supply is approval-gated and small
+_EXPLORE_SECTION_CAP = 24  # per-section shelf cap so one hot kind can't starve others
+
+
+def _explore_rows(cap: int = _EXPLORE_MAX_ROWS) -> List[Dict[str, Any]]:
     ph = get_sql_placeholder()
-    limit = max(1, min(int(limit or 30), 60))
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute(
-            f"""SELECT id, title, kind, public_slug, public_kind, public_published_at, play_count
+            f"""SELECT id, title, kind, public_slug, public_kind, public_published_at,
+                       play_count, category
                 FROM creations
                 WHERE gallery_status = 'approved'
                 ORDER BY COALESCE(gallery_reviewed_at, public_published_at, updated_at) DESC
                 LIMIT {ph}""",
-            (limit,),
+            (max(1, int(cap)),),
         )
         rows = c.fetchall() or []
     return [{
@@ -2794,8 +2870,64 @@ def list_explore_creations(*, limit: int = 30) -> List[Dict[str, Any]]:
         "public_kind": _cell(r, 4),
         "public_published_at": str(_cell(r, 5)) if _cell(r, 5) is not None else None,
         "plays": int(_cell(r, 6) or 0),
+        "category": _cell(r, 7),
         "label": "Made with Steve",
     } for r in rows]
+
+
+def _explore_section_of(item: Dict[str, Any]) -> str:
+    return _public_kind(item.get("public_kind") or item.get("kind"))
+
+
+def list_explore_creations(*, limit: int = 30, kind: Optional[str] = None,
+                           category: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Flat approved-gallery list, optionally filtered by section/sub-category.
+
+    An unknown ``kind``/``category`` yields an empty list rather than an error;
+    NULL-category rows are only excluded when a category filter is explicit.
+    """
+    limit = max(1, min(int(limit or 30), 60))
+    section = _public_kind(kind) if kind else None
+    wanted_category = str(category).strip().lower() if category else None
+    out: List[Dict[str, Any]] = []
+    for item in _explore_rows():
+        if section and _explore_section_of(item) != section:
+            continue
+        if wanted_category and (item.get("category") or "") != wanted_category:
+            continue
+        out.append(item)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def explore_sections() -> Dict[str, Any]:
+    """Grouped view of the approved gallery for the sectioned Explore page.
+
+    Sections are ordered game → app → website (most immediately playable
+    first), each capped at _EXPLORE_SECTION_CAP items with true totals and
+    per-category counts so the client can hide empty chips without a second
+    request. Untagged (NULL-category) creations are always included in their
+    section.
+    """
+    grouped: Dict[str, List[Dict[str, Any]]] = {k: [] for k in _EXPLORE_SECTION_ORDER}
+    for item in _explore_rows():
+        grouped.setdefault(_explore_section_of(item), []).append(item)
+    sections = []
+    for section_kind in _EXPLORE_SECTION_ORDER:
+        items = grouped.get(section_kind) or []
+        counts: Dict[str, int] = {}
+        for item in items:
+            slug = item.get("category")
+            if slug:
+                counts[slug] = counts.get(slug, 0) + 1
+        sections.append({
+            "kind": section_kind,
+            "total": len(items),
+            "categories": counts,
+            "creations": items[:_EXPLORE_SECTION_CAP],
+        })
+    return {"sections": sections, "taxonomy": BUILDER_CATEGORIES}
 
 
 def public_creation_for_slug(slug: str) -> Optional[Dict[str, Any]]:

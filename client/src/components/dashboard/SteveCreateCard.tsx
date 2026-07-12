@@ -26,7 +26,7 @@ export default function SteveCreateCard({ onCreate, onExplore }: Props) {
             onClick={onExplore}
             className="rounded-xl border border-c-border bg-c-hover-bg px-4 py-2 text-sm font-semibold text-c-text-primary transition hover:border-cpoint-turquoise/40 active:scale-[0.99]"
           >
-            Explore Creations
+            Made with Steve
           </button>
         </div>
       </div>

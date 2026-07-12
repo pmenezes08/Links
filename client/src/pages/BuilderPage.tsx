@@ -174,6 +174,8 @@ export default function BuilderPage() {
   }
 
   // Push/in-app notifications deep-link here after Steve finishes a build.
+  // Explore's "Build your own" hands off an editable prompt via ?seed= —
+  // prefilled, never auto-sent, so the user stays in control of the ask.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search || '')
     const creationId = Number(params.get('creation_id') || 0)
@@ -182,6 +184,9 @@ export default function BuilderPage() {
       loadCreation(creationId)
     } else if (jobId > 0) {
       watchJob(jobId)
+    } else {
+      const seed = (params.get('seed') || '').trim()
+      if (seed) setInput(seed.slice(0, 600))
     }
   }, [loadCreation, watchJob])
 

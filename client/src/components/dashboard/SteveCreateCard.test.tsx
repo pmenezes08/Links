@@ -14,7 +14,7 @@ describe('SteveCreateCard', () => {
     expect(getByText('Describe what you want. Steve makes it real: apps, websites, games, and tools you can share with your communities.')).toBeTruthy()
 
     fireEvent.click(getByText('Create with Steve'))
-    fireEvent.click(getByText('Explore Creations'))
+    fireEvent.click(getByText('Made with Steve'))
 
     expect(onCreate).toHaveBeenCalledTimes(1)
     expect(onExplore).toHaveBeenCalledTimes(1)

@@ -249,13 +249,16 @@ Public web publishing is V1-scoped to websites and lightweight apps. Games remai
 - Branding: the platform injects a fast C-Point loading splash and a persistent "Built with C-Point" badge linking to `https://www.c-point.co`.
 - Unpublish/delete: `DELETE /api/builder/<id>/publish-web` removes the manifest and artifact copy; deleting a build also deletes any public manifest/artifact.
 
-### Explore Creations
+### Explore Creations ("Made with Steve" gallery)
 
-Explore Creations is an anonymous, opt-in gallery for creations inside C-Point:
+Explore Creations is an anonymous, opt-in gallery for creations inside C-Point. The client page is titled **Made with Steve** (`/explore-creations`):
 
 - Public URL and gallery listing are separate. `public_status='published'` means the owner has an external shareable URL; `gallery_status='approved'` means the owner opted into Explore and signed-in C-Point members may open it at `/creation/<id>`.
 - Owners opt in or remove listing with `POST /api/builder/<id>/gallery`. App admins can still approve/reject/delist with `POST /api/admin/builder/<id>/gallery`.
-- `GET /api/builder/explore` returns only privacy-safe fields: title, kind, in-platform play URL, optional public URL, play count, and generic "Made with Steve" label. It never returns creator username, avatar, profile path, community id/name, or post id.
+- `GET /api/builder/explore` returns only privacy-safe fields: title, kind, sub-category slug, in-platform play URL, optional public URL, play count, and generic "Made with Steve" label. It never returns creator username, avatar, profile path, community id/name, or post id.
+- **Sections and sub-categories.** Every creation has a section (`_public_kind`: website/app/game) and an optional `category` slug inferred at build time by the free keyword classifier `infer_creation_category` (no model call) within its resolved section — a "travel game" can never land in app/travel. The closed taxonomy lives in `builder.BUILDER_CATEGORIES` (a display vocabulary constant, deliberately NOT in the Knowledge Base, which is scoped to pricing/caps/policy) and is served to clients in the explore payload's `taxonomy` block. `category` may be NULL (untagged); untagged creations always still list under their section — there is no "Other" bucket and nothing is ever hidden for lacking a tag.
+- With no filters, the explore payload also includes `sections` (game → app → website, per-section item cap, true totals, per-category counts) so clients can render shelves and hide empty chips without a second request. `?kind=` and `?category=` filter the flat list. The response carries `Cache-Control: public, max-age=60, stale-while-revalidate=300` — the payload is identical for every viewer, and the client no longer sends a cache-buster (the "I just listed mine" case is handled by the optimistic sessionStorage handoff).
+- The client renders App-Store-style horizontal shelves when supply is rich (every section ≥ 3 items and ≥ 12 total) and collapses to a single mixed grid below that, so thin supply never reads as empty shelves. Play counts render only at ≥ 10 ("social-proof floor"). Cards carry a ghost **"Build your own"** hook that seeds the builder composer via `/builder?seed=` with public data only (localized template + title) — prefilled, never auto-sent.
 - Public-web publishing is optional and limited to eligible websites/apps; games and other session-bound creations can still appear in Explore through the in-platform play route.
 
 ### Persistence contract (save slots)

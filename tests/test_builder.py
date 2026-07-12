@@ -536,6 +536,75 @@ def test_leaderboards_are_scoped_by_community(monkeypatch):
     assert [int(e["value"]) for e in second_board["entries"]] == [900]
 
 
+def test_infer_creation_category_maps_prompts_within_section():
+    # Section resolved first: a travel game is a game, never app/travel.
+    assert builder.infer_creation_category("a travel trivia game", kind="game") == "trivia"
+    assert builder.infer_creation_category("trip itinerary planner app", kind="app") == "travel"
+    assert builder.infer_creation_category("build me a chess game", kind="game") == "board"
+    assert builder.infer_creation_category("landing page with a waitlist", kind="website") == "landing"
+    assert builder.infer_creation_category("website for my café with a menu", kind="website") == "business"
+    assert builder.infer_creation_category("workout tracker", kind="app") == "fitness"
+    # No hint match → None (untagged), never a fabricated bucket.
+    assert builder.infer_creation_category("something abstract and strange", kind="app") is None
+    # Every hint slug must exist in the served taxonomy so chips resolve.
+    for section, hints in builder._CATEGORY_HINTS.items():
+        for slug in hints:
+            assert slug in builder.BUILDER_CATEGORIES[section]
+
+
+def test_create_persists_inferred_category(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    created = builder.create_creation(username="maker", community_id=cid, prompt="build a sudoku puzzle game")
+    assert created["kind"] == "game"
+    assert created["category"] == "puzzle"
+
+
+def test_explore_filters_by_kind_and_category(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    game = builder.create_creation(username="maker", community_id=cid, prompt="a snake arcade game")
+    site = builder.create_creation(username="maker", community_id=cid, prompt="a portfolio website for my photography")
+    for creation in (game, site):
+        builder.update_gallery_status(creation_id=creation["id"], username="maker", action="request")
+
+    games = builder.list_explore_creations(kind="game")
+    assert [i["id"] for i in games] == [game["id"]]
+    assert games[0]["category"] == "arcade"
+    assert builder.list_explore_creations(kind="website", category="portfolio")[0]["id"] == site["id"]
+    assert builder.list_explore_creations(kind="website", category="blog") == []
+    assert builder.list_explore_creations(kind="nonsense") == []
+
+
+def test_explore_sections_shape_and_untagged_rows_kept(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    tagged = builder.create_creation(username="maker", community_id=cid, prompt="a tetris arcade game")
+    untagged = builder.create_creation(username="maker", community_id=cid,
+                                       prompt="an app for something unclassifiable")
+    for creation in (tagged, untagged):
+        builder.update_gallery_status(creation_id=creation["id"], username="maker", action="request")
+
+    out = builder.explore_sections()
+    assert out["taxonomy"] == builder.BUILDER_CATEGORIES
+    by_kind = {s["kind"]: s for s in out["sections"]}
+    assert list(by_kind) == ["game", "app", "website"]
+    assert by_kind["game"]["total"] == 1
+    assert by_kind["game"]["categories"] == {"arcade": 1}
+    # Untagged rows must never be dropped from their section.
+    app_ids = [i["id"] for i in by_kind["app"]["creations"]]
+    assert untagged["id"] in app_ids
+    assert by_kind["app"]["categories"] == {}
+    # Anonymity contract holds through the sectioned payload too.
+    for section in out["sections"]:
+        for item in section["creations"]:
+            assert "created_by" not in item
+            assert "community_id" not in item
+
+
 def test_gallery_explore_lists_owner_approved_creations_anonymous(monkeypatch):
     monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: "<!doctype html><html><body>site</body></html>")
     _make_user("maker")

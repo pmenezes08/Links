@@ -115,16 +115,16 @@ export default function CreationActionsSheet({
 
         <div className="space-y-3">
           <section className="rounded-2xl border border-c-border bg-c-hover-bg p-3">
-            <div className="mb-2 text-sm font-semibold text-c-text-primary">Explore Creations</div>
+            <div className="mb-2 text-sm font-semibold text-c-text-primary">Made with Steve gallery</div>
             <button
               type="button"
               onClick={() => { void onGallery(creation, isListed ? 'unlist' : 'request') }}
               disabled={galleryWorking}
               className="w-full rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-2 text-left text-sm font-semibold text-cpoint-turquoise transition hover:bg-cpoint-turquoise/15 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {galleryWorking ? 'Working...' : isListed ? 'Remove from Explore' : 'List in Explore Creations'}
+              {galleryWorking ? 'Working...' : isListed ? 'Remove from the gallery' : 'List in the gallery'}
             </button>
-            <p className="mt-2 text-xs text-c-text-tertiary">Explore listings are anonymous: your name, profile, and community are not shown.</p>
+            <p className="mt-2 text-xs text-c-text-tertiary">Gallery listings are anonymous: your name, profile, and community are not shown.</p>
           </section>
 
           <section className="rounded-2xl border border-c-border bg-c-hover-bg p-3">

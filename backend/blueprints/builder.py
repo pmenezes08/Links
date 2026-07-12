@@ -481,8 +481,20 @@ def builder_unpublish_web(creation_id: int):
 
 @builder_bp.route("/api/builder/explore", methods=["GET"])
 def builder_explore():
+    """Anonymous approved-gallery catalog. Identical payload for every viewer
+    (no creator/community fields), so short shared caching is safe."""
     limit = _safe_int(request.args.get("limit")) or 30
-    return jsonify({"success": True, "creations": builder_svc.list_explore_creations(limit=limit)})
+    kind = (request.args.get("kind") or "").strip().lower() or None
+    category = (request.args.get("category") or "").strip().lower() or None
+    payload = {
+        "success": True,
+        "creations": builder_svc.list_explore_creations(limit=limit, kind=kind, category=category),
+    }
+    if not kind and not category:
+        payload.update(builder_svc.explore_sections())
+    resp = jsonify(payload)
+    resp.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=300"
+    return resp
 
 
 @builder_bp.route("/api/builder/<int:creation_id>/gallery", methods=["POST"])
