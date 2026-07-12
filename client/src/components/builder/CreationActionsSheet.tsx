@@ -163,13 +163,17 @@ function CreationCategoryField({ creation }: { creation: SheetCreation }) {
   const locked = source === 'admin'
   const save = async (slug: string) => {
     if (locked || state === 'saving') return
-    const next = slug === selected ? null : slug  // tap the active chip to clear
+    // Tapping a chip always SETS it — tapping the suggested chip CONFIRMS it
+    // as the creator's choice. Never toggle-clear: founder QA 2026-07-12
+    // tapped the pre-selected suggestion to confirm it and the old toggle
+    // silently un-categorized the build.
+    if (slug === selected && source === 'creator') return
     const prev = { selected, source }
-    setSelected(next); setSource(next ? 'creator' : null); setState('saving')
+    setSelected(slug); setSource('creator'); setState('saving')
     try {
       const res = await fetch(`/api/builder/${creation.id}/category`, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category: next }),
+        body: JSON.stringify({ category: slug }),
       })
       const data = await res.json().catch(() => null)
       if (res.ok && data?.success) { setState('idle'); return }
