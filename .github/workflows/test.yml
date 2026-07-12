@@ -139,6 +139,7 @@ jobs:
             tests/test_builder_verify_unit.py \
             tests/test_vision_judge_unit.py \
             tests/test_builder_images_unit.py \
+            tests/test_builder.py \
             tests/test_owner_analytics.py \
             tests/test_owner_moderation.py \
             tests/test_owner_pulse.py \
