@@ -22,6 +22,8 @@ export type ExploreCreation = {
   kind?: string | null
   public_kind?: string | null
   category?: string | null
+  /** Steve-voiced one-liner written at gallery listing time. */
+  hook?: string | null
   play_url?: string | null
   public_url?: string | null
   plays?: number | null
@@ -63,6 +65,7 @@ function safeOptimisticCreation(value: unknown): ExploreCreation | null {
     kind: raw.kind || null,
     public_kind: raw.public_kind || null,
     category: raw.category || null,
+    hook: raw.hook || null,
     play_url: raw.play_url || `/creation/${id}`,
     public_url: raw.public_url || null,
     plays: Number(raw.plays || 0),

@@ -330,6 +330,11 @@
       "body": "Tippe, um es erneut zu versuchen, wenn du bereit bist.",
       "message": "Steve konnte deinen Build nicht fertigstellen. Tippe, um es erneut zu versuchen."
     },
+    "builder_plays_digest": {
+      "title": "Deine Kreation kommt an",
+      "body": "{title} wurde diese Woche {count}-mal geöffnet.",
+      "message": "{title} wurde diese Woche {count}-mal geöffnet. Bau weiter."
+    },
     "profile_section_professional": {
       "title": "Eine Frage von Steve",
       "body": "Was machst du? Ich kann niemanden vorstellen, den ich nicht kenne.",

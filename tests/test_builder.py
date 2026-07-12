@@ -626,6 +626,119 @@ def test_gallery_explore_lists_owner_approved_creations_anonymous(monkeypatch):
     assert "post_id" not in listed[0]
 
 
+def test_remix_creates_new_creation_with_privacy_boundaries(monkeypatch):
+    """Remix reuses ONLY the public artifact HTML: fresh history, no creator or
+    community carry-over, lineage recorded in parent_creation_id."""
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker"); _make_user("remixer")
+    cid = _make_community()
+    source = builder.create_creation(username="maker", community_id=cid,
+                                     prompt="a snake arcade game with secret sauce")
+    builder.update_gallery_status(creation_id=source["id"], username="maker", action="request")
+
+    remix = builder.remix_creation(source_creation_id=source["id"], username="remixer",
+                                   message="make it neon and faster")
+    assert remix["id"] != source["id"]
+    assert remix["parent_creation_id"] == source["id"]
+    assert remix["community_id"] is None
+
+    row = builder.get_creation(remix["id"])
+    assert row["created_by"] == "remixer"
+    assert int(row["parent_creation_id"]) == int(source["id"])
+    assert row["community_id"] is None
+    # Fresh history: the remixer's message only — never the source's prompts.
+    assert "make it neon and faster" in (row["prompt_history"] or "")
+    assert "secret sauce" not in (row["prompt_history"] or "")
+
+
+def test_remix_rejects_non_public_sources(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker"); _make_user("stranger")
+    cid = _make_community()
+    draft = builder.create_creation(username="maker", community_id=cid, prompt="a private draft game")
+
+    with pytest.raises(PermissionError):
+        builder.remix_creation(source_creation_id=draft["id"], username="stranger", message="copy it")
+    # The owner can always remix their own draft.
+    own = builder.remix_creation(source_creation_id=draft["id"], username="maker", message="a variant")
+    assert own["parent_creation_id"] == draft["id"]
+
+
+def test_gallery_approval_runs_metered_classify_and_hook_once(monkeypatch):
+    calls = {"n": 0}
+
+    def fake_meta_llm(*a, **k):
+        calls["n"] += 1
+        return '{"category": "arcade", "hook": "A neon breakout you will rage-replay"}'
+
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    # Prompt chosen so the free keyword classifier leaves category NULL.
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a game")
+    assert builder.get_creation(created["id"])["category"] is None
+
+    monkeypatch.setattr(builder.llm, "generate_text", fake_meta_llm)
+    result = builder.update_gallery_status(creation_id=created["id"], username="maker", action="request")
+    assert result["category"] == "arcade"
+    assert result["gallery_hook"] == "A neon breakout you will rage-replay"
+    assert calls["n"] == 1
+
+    # Idempotent: re-approving spends nothing once category + hook exist.
+    builder.update_gallery_status(creation_id=created["id"], username="maker", action="request")
+    assert calls["n"] == 1
+
+    # The hook flows into the explore payload.
+    listed = builder.list_explore_creations()
+    assert listed[0]["hook"] == "A neon breakout you will rage-replay"
+
+
+def test_admin_category_override_validates_against_section(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a game")
+
+    with pytest.raises(ValueError):
+        builder.update_gallery_status(creation_id=created["id"], username="admin",
+                                      action="approve", reviewer="admin", category="travel")
+
+    result = builder.update_gallery_status(creation_id=created["id"], username="admin",
+                                           action="approve", reviewer="admin", category="arcade")
+    assert result["category"] == "arcade"
+
+
+def test_play_digest_notifies_creators_and_is_idempotent(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a snake arcade game")
+    builder.update_gallery_status(creation_id=created["id"], username="maker", action="request")
+
+    sent = []
+    from backend.services import notifications as notif_mod
+    monkeypatch.setattr(notif_mod, "create_notification",
+                        lambda **kw: sent.append(kw) or 1)
+    monkeypatch.setattr(notif_mod, "send_push_to_user", lambda *a, **k: None)
+
+    # Below the floor: no digest.
+    builder.record_play(created["id"])
+    assert builder.send_play_digests()["owners_notified"] == 0
+    assert sent == []
+
+    builder.record_play(created["id"])
+    builder.record_play(created["id"])
+    out = builder.send_play_digests()
+    assert out["owners_notified"] == 1
+    assert len(sent) == 1
+    assert sent[0]["user_id"] == "maker"
+    assert sent[0]["notification_type"] == "builder_plays_digest"
+
+    # Snapshot advanced: same counts, second run is a no-op.
+    assert builder.send_play_digests()["owners_notified"] == 0
+    assert len(sent) == 1
+
+
 def test_submit_score_repeats_are_atomic_and_keep_max(monkeypatch):
     """Regression: repeated submits for the same (creation, key, user) must NOT
     raise an IntegrityError on the unique key and must keep the best — the old

@@ -91,6 +91,10 @@ export function useBuilder(communityId: string) {
   useEffect(() => { try { localStorage.setItem('cp_builder_agent', agentMode) } catch { /* ignore */ } }, [agentMode])
   // Set when Steve has proposed a plan and is asking to start building.
   const [proposal, setProposal] = useState<{ brief: string } | null>(null)
+  // Explore's "Build your own": the first build of this session seeds from a
+  // public creation via POST /api/builder/<id>/remix instead of /create.
+  // Cleared implicitly once a creation exists (builds then iterate on it).
+  const [remixSourceId, setRemixSourceId] = useState<number | null>(null)
 
   const abortRef = useRef<AbortController | null>(null)
   const lastBriefRef = useRef<string>('')
@@ -221,8 +225,14 @@ export function useBuilder(communityId: string) {
     const ctrl = new AbortController(); abortRef.current = ctrl
     const isIteration = !!creation
     try {
-      const url = creation ? `/api/builder/${creation.id}/iterate` : '/api/builder/create'
-      const body = creation ? { message: text, tier } : { ...communityPayload, prompt: text, tier }
+      const url = creation
+        ? `/api/builder/${creation.id}/iterate`
+        : remixSourceId
+          ? `/api/builder/${remixSourceId}/remix`
+          : '/api/builder/create'
+      const body = creation || remixSourceId
+        ? { message: text, tier }
+        : { ...communityPayload, prompt: text, tier }
       const res = await fetch(url, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body), signal: ctrl.signal,
@@ -257,7 +267,7 @@ export function useBuilder(communityId: string) {
     } finally {
       setBuilding(false); abortRef.current = null
     }
-  }, [loading, building, creation, tier, communityPayload, activeJobKey])
+  }, [loading, building, creation, remixSourceId, tier, communityPayload, activeJobKey])
 
   // User confirmed Steve's proposal — build it.
   const confirmBuild = useCallback(() => {
@@ -418,5 +428,6 @@ export function useBuilder(communityId: string) {
     creation, messages, loading, building, busy, activeJob, error, limit, rev,
     tier, setTier, mode, setMode, agentMode, setAgentMode, proposal,
     chat, build, confirmBuild, retry, stop, cancelBuild, publish, publishWeb, unpublishWeb, loadCreation, watchJob,
+    setRemixSource: setRemixSourceId,
   }
 }

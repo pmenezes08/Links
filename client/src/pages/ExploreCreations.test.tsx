@@ -108,7 +108,7 @@ describe('ExploreCreations', () => {
     expect(sectioned.queryByText('Fresh from the community')).toBeNull()
   })
 
-  it('seeds the builder from "Build your own" with public data only', async () => {
+  it('hands "Build your own" to the builder with the remix source and an editable seed', async () => {
     vi.stubGlobal('fetch', mockFetchOnce({
       success: true,
       creations: [creation(7, 'game', { title: 'Neon Breakout' })],
@@ -120,8 +120,48 @@ describe('ExploreCreations', () => {
     fireEvent.click(getAllByText('Build your own')[0])
     expect(navigate).toHaveBeenCalledTimes(1)
     const target = String(navigate.mock.calls[0][0])
-    expect(target.startsWith('/builder?seed=')).toBe(true)
+    expect(target.startsWith('/builder?remix=7&seed=')).toBe(true)
     expect(decodeURIComponent(target)).toContain('Neon Breakout')
+  })
+
+  it('shows the Steve-voiced hook on cards when present', async () => {
+    vi.stubGlobal('fetch', mockFetchOnce({
+      success: true,
+      creations: [creation(5, 'game', { title: 'Hooked Game', hook: 'A neon breakout you will rage-replay' })],
+    }))
+
+    const { getByText } = render(<ExploreCreations />)
+    await waitFor(() => expect(getByText('Hooked Game')).toBeTruthy())
+    expect(getByText('A neon breakout you will rage-replay')).toBeTruthy()
+  })
+
+  it('renders supply-gated sub-category chips that filter a shelf in place', async () => {
+    // Games shelf: 6 items across 2 categories → chips render; Apps/Websites
+    // get 4 uncategorised items each so the page is sectioned but their
+    // shelves stay chip-free (supply gate).
+    const rich = [
+      ...[1, 2, 3].map(i => creation(i, 'game', { title: `Arcade ${i}`, category: 'arcade' })),
+      ...[4, 5, 6].map(i => creation(i, 'game', { title: `Puzzle ${i}`, category: 'puzzle' })),
+      ...[7, 8, 9, 10].map(i => creation(i, 'app')),
+      ...[11, 12, 13, 14].map(i => creation(i, 'website')),
+    ]
+    vi.stubGlobal('fetch', mockFetchOnce({ success: true, creations: rich }))
+
+    const { getByText, queryByText, getByRole, getAllByRole } = render(<ExploreCreations />)
+    await waitFor(() => expect(getByText('Arcade 1')).toBeTruthy())
+
+    // Chips exist for the Games shelf only (chips are buttons; the card's
+    // category label is plain text).
+    expect(getByRole('button', { name: 'Arcade' })).toBeTruthy()
+    expect(getByRole('button', { name: 'Puzzle' })).toBeTruthy()
+
+    fireEvent.click(getByRole('button', { name: 'Puzzle' }))
+    expect(queryByText('Arcade 1')).toBeNull()
+    expect(getByText('Puzzle 4')).toBeTruthy()
+
+    // Toggle back to all.
+    fireEvent.click(getAllByRole('button', { name: 'All creations' })[0])
+    expect(getByText('Arcade 1')).toBeTruthy()
   })
 
   it('shows a just-listed creation immediately while the network refresh catches up', async () => {

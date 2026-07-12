@@ -99,6 +99,7 @@ export default function BuilderPage() {
     creation, messages, loading, building, busy, activeJob, error, limit,
     tier, setTier, mode, setMode, agentMode, setAgentMode, proposal,
     chat, build, confirmBuild, retry, stop, cancelBuild, loadCreation, watchJob,
+    setRemixSource,
   } = useBuilder(cid)
   const [input, setInput] = useState('')
   const [playingCreation, setPlayingCreation] = useState<Creation | null>(null)
@@ -174,8 +175,9 @@ export default function BuilderPage() {
   }
 
   // Push/in-app notifications deep-link here after Steve finishes a build.
-  // Explore's "Build your own" hands off an editable prompt via ?seed= —
-  // prefilled, never auto-sent, so the user stays in control of the ask.
+  // Explore's "Build your own" hands off ?seed= (an editable prompt —
+  // prefilled, never auto-sent) and ?remix= (the public source creation the
+  // first build seeds from, via the privacy-scoped remix route).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search || '')
     const creationId = Number(params.get('creation_id') || 0)
@@ -187,8 +189,10 @@ export default function BuilderPage() {
     } else {
       const seed = (params.get('seed') || '').trim()
       if (seed) setInput(seed.slice(0, 600))
+      const remixId = Number(params.get('remix') || 0)
+      if (remixId > 0) setRemixSource(remixId)
     }
-  }, [loadCreation, watchJob])
+  }, [loadCreation, watchJob, setRemixSource])
 
   const showEmpty = messages.length === 0 && !creation && !busy
 

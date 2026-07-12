@@ -311,7 +311,8 @@ _CREATION_COLS = [
     "public_status", "public_html_r2_key", "public_published_at",
     "public_unpublished_at", "public_kind", "gallery_status",
     "gallery_requested_at", "gallery_reviewed_at", "gallery_reviewed_by",
-    "gallery_rejection_reason", "capsule_recipes_json",
+    "gallery_rejection_reason", "capsule_recipes_json", "category",
+    "gallery_hook",
 ]
 
 _JOB_COLS = [
@@ -428,6 +429,13 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
             # Explore gallery sub-category slug (see BUILDER_CATEGORIES). NULL =
             # untagged; untagged rows still list under their section.
             ("category", "VARCHAR(48)" if USE_MYSQL else "TEXT"),
+            # Steve-voiced one-liner for the gallery card, written by the
+            # metered classify+hook pass at gallery listing time.
+            ("gallery_hook", "VARCHAR(200)" if USE_MYSQL else "TEXT"),
+            # Creator play-digest snapshot: play_count already notified about,
+            # and when. The weekly digest notifies only on growth past this.
+            ("plays_digest_count", "INTEGER" if USE_MYSQL else "INTEGER"),
+            ("plays_digest_at", "DATETIME" if USE_MYSQL else "TEXT"),
         ):
             try:
                 cursor.execute(f"ALTER TABLE creations ADD COLUMN {column} {ddl}")
@@ -1978,7 +1986,8 @@ def get_creation(creation_id: int) -> Optional[Dict[str, Any]]:
                    public_status, public_html_r2_key, public_published_at,
                    public_unpublished_at, public_kind, gallery_status,
                    gallery_requested_at, gallery_reviewed_at, gallery_reviewed_by,
-                   gallery_rejection_reason, capsule_recipes_json
+                   gallery_rejection_reason, capsule_recipes_json, category,
+                   gallery_hook
             FROM creations WHERE id = {ph}
             """,
             (creation_id,),
@@ -2036,6 +2045,76 @@ def iterate_creation(*, creation_id: int, username: str, message: str, tier: str
             "capsule_recipes": builder_capsules.loads_recipes(capsule_recipes_json)}
 
 
+def remix_creation(*, source_creation_id: int, username: str, message: str,
+                   tier: str = "fast", verify: bool = False) -> Dict[str, Any]:
+    """Build a NEW creation for ``username`` seeded from another member's
+    public creation — the Explore browse→build loop.
+
+    Privacy contract (Explore is anonymous, non-negotiable):
+    - Source must be gallery-approved or web-published (owners can always
+      remix their own). Anything else raises the non-enumerating not-found.
+    - The remixer's build reuses ONLY the rendered artifact HTML. The source's
+      ``prompt_history``, ``chat_history``, creator identity, and community
+      never cross over; the new row starts a fresh history.
+    - Lineage is recorded in ``parent_creation_id`` for the roadmap's remix
+      graph but is not exposed on any owner-facing "who remixed you" surface.
+    The result is a personal creation (``community_id NULL``) the remixer can
+    iterate on and share like any other build.
+    """
+    source = get_creation(source_creation_id)
+    if not source:
+        raise PermissionError("creation not found")
+    is_owner = source.get("created_by") == username
+    is_public = source.get("gallery_status") == "approved" or source.get("public_status") == "published"
+    if not (is_owner or is_public):
+        raise PermissionError("creation not found")
+    prior = source.get("html_content") or ""
+    remix_kind = "game" if _has_multiplayer_wiring(prior) else _public_kind(source.get("kind"))
+    html, model_used = _generate_with_fallback(
+        message, prior_html=prior, temperature=0.5, model=resolve_model(tier),
+        verify=verify, username=username, community_id=None, kind=remix_kind, tier=tier)
+    report_progress(92, "saving")
+    resolved_title = _extract_title(html, message)[:200]
+    creation_kind = "game" if _has_multiplayer_wiring(html) else remix_kind
+    category = (infer_creation_category(message, resolved_title, kind=creation_kind)
+                or source.get("category"))
+    history = _append_history(None, message)  # fresh — never the source's history
+    capsule_recipes_json = _capsule_recipes_json_from_html(html)
+    now = _now()
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""
+            INSERT INTO creations
+                (community_id, created_by, title, kind, html_content,
+                 prompt_history, parent_creation_id, status, created_at,
+                 updated_at, capsule_recipes_json, category)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """,
+            (None, username, resolved_title, creation_kind, html, history,
+             source_creation_id, "draft", now, now, capsule_recipes_json, category),
+        )
+        creation_id = c.lastrowid
+        conn.commit()
+    html_r2_key = store_artifact_html(int(creation_id), html, updated_at=now)
+    if html_r2_key:
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                c.execute(
+                    f"UPDATE creations SET html_r2_key = {ph}, html_content = {ph} WHERE id = {ph}",
+                    (html_r2_key, "", creation_id),
+                )
+                conn.commit()
+        except Exception:
+            logger.warning("builder: failed to store R2 artifact key for remix %s", creation_id, exc_info=True)
+    return {"id": creation_id, "title": resolved_title, "html": html, "status": "draft",
+            "kind": creation_kind, "category": category, "community_id": None,
+            "parent_creation_id": source_creation_id, "model": model_used,
+            "capsule_recipes": builder_capsules.loads_recipes(capsule_recipes_json)}
+
+
 # --- Async build jobs ---------------------------------------------------------
 
 _ACTIVE_JOB_STATUSES = ("queued", "running")
@@ -2048,11 +2127,13 @@ def create_build_job(*, username: str, community_id: Optional[int], prompt: str,
                      kind: str = "create", creation_id: Optional[int] = None) -> Dict[str, Any]:
     """Persist a build request so generation can continue after the client leaves.
 
-    ``kind`` is ``create`` for a new artifact or ``iterate`` for updating an
-    existing creation. The actual model call runs later via ``run_build_job``.
+    ``kind`` is ``create`` for a new artifact, ``iterate`` for updating an
+    existing creation, or ``remix`` for a new creation seeded from another
+    member's public creation (``creation_id`` = the SOURCE). The actual model
+    call runs later via ``run_build_job``.
     """
     ensure_tables()
-    k = kind if kind in ("create", "iterate") else "create"
+    k = kind if kind in ("create", "iterate", "remix") else "create"
     now = _now()
     ph = get_sql_placeholder()
     with get_db_connection() as conn:
@@ -2402,7 +2483,7 @@ def run_build_job(job_id: int) -> Dict[str, Any]:
     prompt = str(job.get("prompt") or "")
     tier = str(job.get("tier") or _DEFAULT_TIER)
     creation_id = job.get("creation_id")
-    request_type = "builder_iterate" if kind == "iterate" else "builder_create"
+    request_type = {"iterate": "builder_iterate", "remix": "builder_remix"}.get(kind, "builder_create")
 
     progress_token = _progress_job.set(job_id_int)
     # Build-global deadline: the quality pass and pre-pass repairs key off this
@@ -2423,6 +2504,11 @@ def run_build_job(job_id: int) -> Dict[str, Any]:
                 creation = iterate_creation(
                     creation_id=int(creation_id), username=username, message=prompt, tier=tier,
                     verify=True,
+                )
+            elif kind == "remix":
+                creation = remix_creation(
+                    source_creation_id=int(creation_id), username=username, message=prompt,
+                    tier=tier, verify=True,
                 )
             else:
                 creation = create_creation(
@@ -2794,10 +2880,27 @@ def unpublish_creation_from_web(*, creation_id: int, username: str) -> Dict[str,
 _GALLERY_STATUSES = {"not_listed", "pending", "approved", "rejected", "delisted"}
 
 
+def _valid_category_for(row: Dict[str, Any], category: Optional[str]) -> Optional[str]:
+    """Validate a category slug against the creation's section enum."""
+    if not category:
+        return None
+    slug = str(category).strip().lower()
+    section = _public_kind(row.get("public_kind") or row.get("kind"))
+    return slug if slug in (BUILDER_CATEGORIES.get(section) or []) else None
+
+
 def update_gallery_status(*, creation_id: int, username: str, action: str,
                           reviewer: Optional[str] = None,
-                          reason: Optional[str] = None) -> Dict[str, Any]:
-    """Owner request/unlist and app-admin review state for Explore Creations."""
+                          reason: Optional[str] = None,
+                          category: Optional[str] = None) -> Dict[str, Any]:
+    """Owner request/unlist and app-admin review state for Explore Creations.
+
+    ``category`` (admin ``approve`` only) overrides the creation's sub-category
+    in the same review tap; it must be a valid slug for the creation's section
+    or it raises. On any transition to ``approved`` a best-effort, metered
+    classify+hook pass fills the missing sub-category/card hook (see
+    ``builder_gallery_meta``) — listing NEVER fails on that call.
+    """
     row = get_creation(creation_id)
     if not row:
         raise PermissionError("creation not found")
@@ -2805,6 +2908,7 @@ def update_gallery_status(*, creation_id: int, username: str, action: str,
     now = _now()
     action_key = (action or "").strip().lower()
     ph = get_sql_placeholder()
+    admin_category = None
     if action_key == "request":
         if not actor_is_owner:
             raise PermissionError("creation not found")
@@ -2823,22 +2927,43 @@ def update_gallery_status(*, creation_id: int, username: str, action: str,
         params = (status, now, creation_id, username)
     elif action_key in ("approve", "reject", "delist"):
         status = "approved" if action_key == "approve" else ("rejected" if action_key == "reject" else "delisted")
-        sql = f"""UPDATE creations SET gallery_status = {ph}, gallery_reviewed_at = {ph},
-                  gallery_reviewed_by = {ph}, gallery_rejection_reason = {ph}, updated_at = {ph}
-                  WHERE id = {ph}"""
-        params = (status, now, reviewer or username, (reason or "")[:255] if status == "rejected" else None, now, creation_id)
+        if action_key == "approve" and category is not None:
+            admin_category = _valid_category_for(row, category)
+            if admin_category is None:
+                raise ValueError("invalid_category")
+        if admin_category:
+            sql = f"""UPDATE creations SET gallery_status = {ph}, gallery_reviewed_at = {ph},
+                      gallery_reviewed_by = {ph}, gallery_rejection_reason = {ph},
+                      category = {ph}, updated_at = {ph}
+                      WHERE id = {ph}"""
+            params = (status, now, reviewer or username, None, admin_category, now, creation_id)
+        else:
+            sql = f"""UPDATE creations SET gallery_status = {ph}, gallery_reviewed_at = {ph},
+                      gallery_reviewed_by = {ph}, gallery_rejection_reason = {ph}, updated_at = {ph}
+                      WHERE id = {ph}"""
+            params = (status, now, reviewer or username, (reason or "")[:255] if status == "rejected" else None, now, creation_id)
     else:
         raise ValueError("invalid_gallery_action")
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute(sql, params)
         conn.commit()
+    if status == "approved":
+        # Curation pass: one cheap metered call fills sub-category + card hook.
+        # Best-effort by contract — listing must never fail on an AI call.
+        try:
+            from backend.services import builder_gallery_meta
+            builder_gallery_meta.ensure_gallery_meta(creation_id)
+        except Exception:
+            logger.warning("builder: gallery classify+hook pass failed for %s", creation_id, exc_info=True)
     updated = get_creation(creation_id) or {}
     return {
         "gallery_status": updated.get("gallery_status") or status,
         "gallery_requested_at": str(updated.get("gallery_requested_at")) if updated.get("gallery_requested_at") else None,
         "gallery_reviewed_at": str(updated.get("gallery_reviewed_at")) if updated.get("gallery_reviewed_at") else None,
         "gallery_rejection_reason": updated.get("gallery_rejection_reason"),
+        "category": updated.get("category"),
+        "gallery_hook": updated.get("gallery_hook"),
     }
 
 
@@ -2853,7 +2978,7 @@ def _explore_rows(cap: int = _EXPLORE_MAX_ROWS) -> List[Dict[str, Any]]:
         c = conn.cursor()
         c.execute(
             f"""SELECT id, title, kind, public_slug, public_kind, public_published_at,
-                       play_count, category
+                       play_count, category, gallery_hook
                 FROM creations
                 WHERE gallery_status = 'approved'
                 ORDER BY COALESCE(gallery_reviewed_at, public_published_at, updated_at) DESC
@@ -2871,6 +2996,7 @@ def _explore_rows(cap: int = _EXPLORE_MAX_ROWS) -> List[Dict[str, Any]]:
         "public_published_at": str(_cell(r, 5)) if _cell(r, 5) is not None else None,
         "plays": int(_cell(r, 6) or 0),
         "category": _cell(r, 7),
+        "hook": _cell(r, 8),
         "label": "Made with Steve",
     } for r in rows]
 
@@ -2930,6 +3056,93 @@ def explore_sections() -> Dict[str, Any]:
     return {"sections": sections, "taxonomy": BUILDER_CATEGORIES}
 
 
+# Creator-side return loop: don't ping for every play, and never for counts so
+# low they read as unpopular ("1 person played...").
+_PLAY_DIGEST_MIN_NEW_PLAYS = 3
+
+
+def send_play_digests(*, limit: int = 500) -> Dict[str, Any]:
+    """Weekly creator digest: "N people opened your creation this week."
+
+    Cron-driven and idempotent: each gallery-listed creation snapshots the
+    play_count it was last notified about (``plays_digest_count``); a digest
+    only fires on growth of ≥ _PLAY_DIGEST_MIN_NEW_PLAYS past the snapshot,
+    and the snapshot advances in the same pass, so at-least-once scheduler
+    delivery can't double-notify. One notification per owner per run
+    (their most-played creation headlines it). No LLM involved.
+    """
+    ensure_tables()
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""SELECT id, created_by, title, play_count, plays_digest_count
+                FROM creations
+                WHERE gallery_status = 'approved'
+                  AND play_count - COALESCE(plays_digest_count, 0) >= {ph}
+                ORDER BY play_count - COALESCE(plays_digest_count, 0) DESC
+                LIMIT {ph}""",
+            (_PLAY_DIGEST_MIN_NEW_PLAYS, max(1, int(limit))),
+        )
+        rows = c.fetchall() or []
+
+    by_owner: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        owner = str(_cell(r, 1) or "")
+        if not owner:
+            continue
+        delta = int(_cell(r, 3) or 0) - int(_cell(r, 4) or 0)
+        entry = by_owner.setdefault(owner, {"new_plays": 0, "top_title": None, "top_delta": -1,
+                                            "top_creation_id": None, "creation_ids": []})
+        entry["new_plays"] += delta
+        entry["creation_ids"].append((int(_cell(r, 0)), int(_cell(r, 3) or 0)))
+        if delta > entry["top_delta"]:
+            entry["top_delta"] = delta
+            entry["top_title"] = str(_cell(r, 2) or "Untitled")
+            entry["top_creation_id"] = int(_cell(r, 0))
+
+    now = _now()
+    notified = 0
+    for owner, entry in by_owner.items():
+        try:
+            from backend.services import notification_copy
+            from backend.services.notifications import create_notification, send_push_to_user
+
+            locale = notification_copy.recipient_locale(owner)
+            params = {"count": entry["new_plays"], "title": (entry["top_title"] or "Untitled")[:120]}
+            link = f"/builds?highlight={entry['top_creation_id']}" if entry.get("top_creation_id") else "/builds"
+            create_notification(
+                user_id=owner,
+                from_user="steve",
+                notification_type="builder_plays_digest",
+                community_id=None,
+                message=notification_copy.in_app_text("builder_plays_digest", locale, **params),
+                link=link,
+            )
+            payload = notification_copy.push_payload("builder_plays_digest", locale, **params)
+            payload.update({"url": link, "tag": f"builder:plays:{owner}"})
+            send_push_to_user(owner, payload)
+            notified += 1
+        except Exception:
+            logger.warning("builder: play digest notification failed for %s", owner, exc_info=True)
+            continue
+        # Advance snapshots only after a successful notification so a failed
+        # send retries next run instead of silently swallowing the delta.
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                for creation_id, play_count in entry["creation_ids"]:
+                    c.execute(
+                        f"""UPDATE creations SET plays_digest_count = {ph}, plays_digest_at = {ph}
+                            WHERE id = {ph}""",
+                        (play_count, now, creation_id),
+                    )
+                conn.commit()
+        except Exception:
+            logger.warning("builder: play digest snapshot update failed for %s", owner, exc_info=True)
+    return {"owners_notified": notified, "creations_considered": len(rows)}
+
+
 def public_creation_for_slug(slug: str) -> Optional[Dict[str, Any]]:
     cleaned = re.sub(r"[^a-z0-9-]+", "", str(slug or "").lower())[:96]
     if not cleaned:
@@ -2945,7 +3158,8 @@ def public_creation_for_slug(slug: str) -> Optional[Dict[str, Any]]:
                    public_status, public_html_r2_key, public_published_at,
                    public_unpublished_at, public_kind, gallery_status,
                    gallery_requested_at, gallery_reviewed_at, gallery_reviewed_by,
-                   gallery_rejection_reason, capsule_recipes_json
+                   gallery_rejection_reason, capsule_recipes_json, category,
+                   gallery_hook
             FROM creations
             WHERE public_slug = {ph} AND public_status = 'published'
             """,

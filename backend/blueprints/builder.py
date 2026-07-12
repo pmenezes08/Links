@@ -327,6 +327,62 @@ def builder_iterate(creation_id: int):
     }), 202
 
 
+@builder_bp.route("/api/builder/<int:creation_id>/remix", methods=["POST"])
+def builder_remix(creation_id: int):
+    """Build a NEW creation seeded from another member's public creation
+    (Explore's browse→build loop). Consumes a normal build turn: same gate,
+    same one-in-flight guard, same async job metering as create/iterate.
+
+    Source authorization is public-visibility based, not ownership: the source
+    must be gallery-approved or web-published (owners can remix their own
+    drafts). Non-eligible sources return the non-enumerating not-found. Only
+    the rendered artifact HTML seeds the build — never the source's prompt
+    history, creator identity, or community (see builder.remix_creation)."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+
+    data = request.get_json(silent=True) or {}
+    message = (data.get("message") or "").strip()
+    if not message:
+        return jsonify({"success": False, "error": "message is required"}), 400
+    if len(message) > _MAX_BUILD_REQUEST_CHARS:
+        return jsonify({"success": False, "error": "message too long"}), 400
+    tier = _safe_tier(data.get("tier"))
+
+    source = builder_svc.get_creation(creation_id)
+    source_ok = bool(source) and (
+        source.get("created_by") == username
+        or source.get("gallery_status") == "approved"
+        or source.get("public_status") == "published"
+    )
+    if not source_ok:
+        return jsonify({"success": False, "error": "not_found"}), 404
+
+    allowed, reason, ent = gate_builder_or_reason(username, community_id=None)
+    if not allowed:
+        ai_usage.log_block(username, surface=ai_usage.SURFACE_BUILDER,
+                           reason=reason or "builder_monthly_cap", community_id=None)
+        return _limit_response(ent, reason)
+    tier = _clamped_tier(tier, ent)
+
+    if builder_svc.user_has_active_job(username):
+        return _active_job_response()
+
+    job = builder_svc.create_build_job(
+        username=username, community_id=None, creation_id=creation_id,
+        prompt=message, tier=tier, kind="remix",
+    )
+    queued_with_cloud_tasks = builder_svc.enqueue_build_job(int(job["id"]))
+    return jsonify({
+        "success": True,
+        "queued": True,
+        "job": _job_payload(job),
+        "queued_with_cloud_tasks": queued_with_cloud_tasks,
+        "message": "Steve is building your own take on it now. You can leave this screen — we'll notify you when it's ready.",
+    }), 202
+
+
 @builder_bp.route("/api/builder/jobs/<int:job_id>", methods=["GET"])
 def builder_job_get(job_id: int):
     username = session.get("username")
@@ -380,6 +436,16 @@ def builder_sweep_cron():
     if not cron_authed(request):
         return jsonify({"success": False, "error": "forbidden"}), 403
     result = builder_svc.sweep_build_jobs()
+    return jsonify({"success": True, **result})
+
+
+@builder_bp.route("/api/cron/builder/play-digest", methods=["POST"])
+def builder_play_digest_cron():
+    """Weekly creator digest: "N people opened your creation". Zero-LLM,
+    snapshot-idempotent (safe for at-least-once scheduler delivery)."""
+    if not cron_authed(request):
+        return jsonify({"success": False, "error": "forbidden"}), 403
+    result = builder_svc.send_play_digests()
     return jsonify({"success": True, **result})
 
 
@@ -526,9 +592,11 @@ def builder_admin_gallery_update(creation_id: int):
     data = request.get_json(silent=True) or {}
     action = str(data.get("action") or "")
     reason = (data.get("reason") or "").strip() or None
+    category = (data.get("category") or "").strip().lower() or None
     try:
         result = builder_svc.update_gallery_status(
-            creation_id=creation_id, username=username, action=action, reviewer=username, reason=reason,
+            creation_id=creation_id, username=username, action=action, reviewer=username,
+            reason=reason, category=category,
         )
     except ValueError as exc:
         return jsonify({"success": False, "error": str(exc)}), 400

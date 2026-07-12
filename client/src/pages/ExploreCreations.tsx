@@ -57,11 +57,12 @@ export default function ExploreCreations() {
   }, [navigate])
 
   // The explore→build hook: seed the builder composer with an editable,
-  // kind-aware prompt. Only public data (title + kind) crosses over — never
-  // the creator's prompt history or identity.
+  // kind-aware prompt AND the remix source, so the first build seeds from the
+  // creation's public HTML (privacy-scoped server-side). Only public data
+  // crosses over — never the creator's prompt history or identity.
   const buildYourOwn = useCallback((item: ExploreCreation) => {
     const seed = t(`explore.seed_${sectionOf(item)}`, { title: item.title || '' })
-    navigate(`/builder?seed=${encodeURIComponent(seed)}`)
+    navigate(`/builder?remix=${item.id}&seed=${encodeURIComponent(seed)}`)
   }, [navigate, t])
 
   const filteredItems = filterKind ? (sections.find(s => s.kind === filterKind)?.items ?? []) : items
@@ -149,6 +150,7 @@ export default function ExploreCreations() {
                     key={kind}
                     kind={kind}
                     items={section.items}
+                    categories={section.categories}
                     previewBudgetStart={start}
                     previewBudget={PREVIEW_BUDGET}
                     onOpen={openCreation}

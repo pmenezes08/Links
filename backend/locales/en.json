@@ -330,6 +330,11 @@
       "body": "Tap to retry when you're ready.",
       "message": "Steve could not finish your build. Tap to retry."
     },
+    "builder_plays_digest": {
+      "title": "Your creation is getting played",
+      "body": "{title} was opened {count} times this week.",
+      "message": "{title} was opened {count} times this week. Keep building."
+    },
     "profile_section_professional": {
       "title": "A question from Steve",
       "body": "What do you do? I can't introduce someone I don't know.",

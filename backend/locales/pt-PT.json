@@ -330,6 +330,11 @@
       "body": "Toca para tentar outra vez quando estiveres pronto.",
       "message": "O Steve não conseguiu terminar a tua criação. Toca para tentar outra vez."
     },
+    "builder_plays_digest": {
+      "title": "A tua criação está a ser aberta",
+      "body": "{title} teve {count} visualizações esta semana.",
+      "message": "{title} teve {count} visualizações esta semana. Continua a criar."
+    },
     "profile_section_professional": {
       "title": "Uma pergunta do Steve",
       "body": "O que fazes? Não consigo apresentar quem não conheço.",

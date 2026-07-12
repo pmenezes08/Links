@@ -84,11 +84,14 @@ export default function ExploreCard({ item, withPreview, onOpen, onBuildYourOwn,
       </div>
       <div className="flex flex-1 flex-col p-3">
         <h3 className="line-clamp-2 text-[15px] font-semibold text-c-text-primary">{item.title || 'Untitled creation'}</h3>
+        {item.hook && (
+          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-c-text-secondary">{item.hook}</p>
+        )}
         <p className="mt-1 flex items-center gap-1.5 text-xs text-c-text-tertiary">
           {categoryLabel && <span>{categoryLabel}</span>}
           {categoryLabel && plays >= PLAYS_FLOOR && <span aria-hidden="true">·</span>}
           {plays >= PLAYS_FLOOR && <span>{t('explore.opens', { count: plays })}</span>}
-          {!categoryLabel && plays < PLAYS_FLOOR && <span>{item.label || t('explore.made_with_steve')}</span>}
+          {!categoryLabel && plays < PLAYS_FLOOR && !item.hook && <span>{item.label || t('explore.made_with_steve')}</span>}
         </p>
         <div className="mt-3 flex flex-1 items-end justify-between gap-2">
           <button

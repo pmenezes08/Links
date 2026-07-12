@@ -276,6 +276,22 @@ gcloud scheduler jobs create http builder-sweep \
   --attempt-deadline=120s
 ```
 
+```bash
+# Builder creator play-digest — weekly "N people opened your creation"
+# notification for gallery-listed creations. Zero-LLM (nothing to retry-burn),
+# snapshot-idempotent (plays_digest_count advances only after a successful
+# send), so at-least-once delivery is safe.
+#   curl -X POST "$BASE/api/cron/builder/play-digest" -H "X-Cron-Secret: $SECRET"
+gcloud scheduler jobs create http builder-play-digest \
+  --location=europe-west1 \
+  --schedule="0 17 * * 5" \
+  --time-zone=UTC \
+  --uri="$BASE/api/cron/builder/play-digest" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=120s
+```
+
 Note: the builder worker callback `/api/internal/builder/jobs/<id>/run` is
 invoked by **Cloud Tasks** (not Scheduler) and accepts either `X-Cron-Secret`
 (`CRON_SHARED_SECRET`) or a dedicated `X-Builder-Job-Secret` (`BUILDER_JOB_SECRET`).
