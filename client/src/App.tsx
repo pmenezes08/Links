@@ -891,6 +891,11 @@ function AppRoutes(){
     currentPathName.startsWith('/community_feed_react/') ||
     currentPathName.startsWith('/group_feed_react/') ||
     currentPathName === '/builder' ||
+    // Creation play surfaces are fixed fullscreen overlays with their own
+    // chrome (close button top-left) — the global header would float above
+    // and swallow the taps meant for it. Covers BOTH play routes: the
+    // community one and the standalone /creation/<id> Explore/deep-link one.
+    currentPathName.startsWith('/creation/') ||
     (currentPathName.startsWith('/community/') && (currentPathName.includes('/builder') || currentPathName.includes('/creation/'))) ||
     currentPathName.startsWith('/community/') && currentPathName.includes('/feed')
   const showHeader = authLoaded && !hideHeader && !headerHiddenOverride
