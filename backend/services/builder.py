@@ -83,17 +83,26 @@ _WEBSITE_KIND_HINTS = {
 # and policy. Slugs are the stored values; the client resolves slug → localized
 # label via i18n catalogs and receives this map through /api/builder/explore's
 # `taxonomy` block, so the backend stays the single source of truth.
+# Founder call 2026-07-12 (round 2): categories are TOPICS, orthogonal to the
+# form — a travel website, a music app, and a sports game are all real. Every
+# section gets the universal topic list; games add genres and websites add
+# site types on top. Slugs are append-only — existing ones never renamed
+# (they are stored values and i18n keys).
+_UNIVERSAL_TOPICS: List[str] = [
+    "travel", "music", "sports", "food", "health", "fitness", "finance",
+    "productivity", "learning", "entertainment", "photos", "shopping",
+    "social", "news", "weather", "business", "event", "lifestyle",
+    "utilities", "community", "art", "education",
+]
+_GAME_GENRES: List[str] = [
+    "arcade", "puzzle", "board", "trivia", "word", "action", "adventure",
+    "strategy", "racing", "simulation", "casual", "retro",
+]
+_WEBSITE_TYPES: List[str] = ["portfolio", "landing", "blog", "directory", "personal", "shop"]
 BUILDER_CATEGORIES: Dict[str, List[str]] = {
-    # Founder call 2026-07-12: a full, App-Store-familiar predefined list per
-    # section (the earlier 6-7 read as arbitrary). Slugs are append-only —
-    # existing ones never renamed (they are stored values and i18n keys).
-    "website": ["business", "portfolio", "event", "landing", "blog", "directory",
-                "personal", "shop", "education", "community"],
-    "app": ["productivity", "travel", "fitness", "health", "finance", "learning",
-            "food", "lifestyle", "entertainment", "music", "photos", "shopping",
-            "social", "sports", "utilities", "news", "weather", "community"],
-    "game": ["arcade", "puzzle", "board", "trivia", "word", "sports", "action",
-             "adventure", "strategy", "racing", "simulation", "casual", "retro"],
+    "website": _WEBSITE_TYPES + _UNIVERSAL_TOPICS,
+    "app": _UNIVERSAL_TOPICS,
+    "game": _GAME_GENRES + _UNIVERSAL_TOPICS,
 }
 # Keyword → sub-category hints, checked in declaration order within the
 # creation's resolved section only (a "travel game" is a game first, so it can
@@ -1284,11 +1293,12 @@ _CONVERSE_JSON = (
 # slug is dropped at parse time and re-validated against the FINAL kind in
 # create_creation.
 _CONVERSE_CATEGORY = (
-    "Gallery shelf (NEW builds only): the finished creation can be listed in the anonymous 'Made with Steve' "
-    "gallery. When you propose the plan (ready=true), pick the ONE shelf slug that best fits from — "
-    + "; ".join(f"{section}s: {', '.join(slugs)}" for section, slugs in BUILDER_CATEGORIES.items())
-    + ". Mention the shelf naturally in your reply (e.g. \"it'll sit under Apps › Travel in the gallery — easy to "
-    "change later\") — one light line, never a question that blocks the build. Put the slug in the category field; "
+    "Gallery category (NEW builds only): the finished creation can be listed in the anonymous 'Made with Steve' "
+    "gallery. When you propose the plan (ready=true), pick the ONE category slug that best fits — topics: "
+    + ", ".join(_UNIVERSAL_TOPICS) + "; game genres: " + ", ".join(_GAME_GENRES)
+    + "; website types: " + ", ".join(_WEBSITE_TYPES)
+    + ". Mention it naturally in your reply (e.g. \"it'll show under Travel in the gallery — easy to change "
+    "later\") — one light line, never a question that blocks the build. Put the slug in the category field; "
     "leave it empty when unsure or when revising an existing build.\n"
 )
 _CONVERSE_ALL_CATEGORY_SLUGS = {slug for slugs in BUILDER_CATEGORIES.values() for slug in slugs}

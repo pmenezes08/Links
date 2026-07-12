@@ -123,18 +123,29 @@ function BuilderPseudonymField() {
   )
 }
 
-// Section → category slugs. Mirrors builder.BUILDER_CATEGORIES (the backend
-// re-validates every write, so drift here can never misfile a creation — it
-// would only hide/show an option). Labels stay in lockstep with the gallery's
-// i18n catalog entries.
-const SECTION_CATEGORIES: Record<string, string[]> = {
-  website: ['business', 'portfolio', 'event', 'landing', 'blog', 'directory',
-    'personal', 'shop', 'education', 'community'],
-  app: ['productivity', 'travel', 'fitness', 'health', 'finance', 'learning',
-    'food', 'lifestyle', 'entertainment', 'music', 'photos', 'shopping',
-    'social', 'sports', 'utilities', 'news', 'weather', 'community'],
-  game: ['arcade', 'puzzle', 'board', 'trivia', 'word', 'sports', 'action',
-    'adventure', 'strategy', 'racing', 'simulation', 'casual', 'retro'],
+// Categories are TOPICS, orthogonal to the creation's form (founder call
+// 2026-07-12): every creation gets the universal topic list; games add genres
+// and websites add site types, rendered as dropdown groups. Mirrors
+// builder.BUILDER_CATEGORIES (the backend re-validates every write, so drift
+// here can never misfile a creation). Labels stay in lockstep with the
+// gallery's i18n catalog entries.
+const UNIVERSAL_TOPICS = ['travel', 'music', 'sports', 'food', 'health', 'fitness',
+  'finance', 'productivity', 'learning', 'entertainment', 'photos', 'shopping',
+  'social', 'news', 'weather', 'business', 'event', 'lifestyle', 'utilities',
+  'community', 'art', 'education']
+const GAME_GENRES = ['arcade', 'puzzle', 'board', 'trivia', 'word', 'action',
+  'adventure', 'strategy', 'racing', 'simulation', 'casual', 'retro']
+const WEBSITE_TYPES = ['portfolio', 'landing', 'blog', 'directory', 'personal', 'shop']
+const SECTION_GROUPS: Record<string, { label: string; slugs: string[] }[]> = {
+  website: [
+    { label: 'Website types', slugs: WEBSITE_TYPES },
+    { label: 'Topics', slugs: UNIVERSAL_TOPICS },
+  ],
+  app: [{ label: 'Topics', slugs: UNIVERSAL_TOPICS }],
+  game: [
+    { label: 'Game genres', slugs: GAME_GENRES },
+    { label: 'Topics', slugs: UNIVERSAL_TOPICS },
+  ],
 }
 const CATEGORY_LABELS: Record<string, string> = {
   business: 'Business', portfolio: 'Portfolio', event: 'Events', landing: 'Landing page',
@@ -144,10 +155,10 @@ const CATEGORY_LABELS: Record<string, string> = {
   food: 'Food & drink', lifestyle: 'Lifestyle', entertainment: 'Entertainment',
   music: 'Music', photos: 'Photo & video', shopping: 'Shopping', social: 'Social',
   utilities: 'Utilities', news: 'News', weather: 'Weather', community: 'Community',
-  arcade: 'Arcade', puzzle: 'Puzzle', board: 'Board & cards', trivia: 'Trivia',
-  word: 'Word games', sports: 'Sports', action: 'Action', adventure: 'Adventure',
-  strategy: 'Strategy', racing: 'Racing', simulation: 'Simulation',
-  casual: 'Casual', retro: 'Retro',
+  art: 'Art & design', arcade: 'Arcade', puzzle: 'Puzzle', board: 'Board & cards',
+  trivia: 'Trivia', word: 'Word games', sports: 'Sports', action: 'Action',
+  adventure: 'Adventure', strategy: 'Strategy', racing: 'Racing',
+  simulation: 'Simulation', casual: 'Casual', retro: 'Retro',
 }
 
 /**
@@ -159,7 +170,7 @@ const CATEGORY_LABELS: Record<string, string> = {
  */
 function CreationCategoryField({ creation }: { creation: SheetCreation }) {
   const section = sectionOf({ kind: creation.kind, public_kind: creation.public_kind })
-  const slugs = SECTION_CATEGORIES[section] ?? []
+  const groups = SECTION_GROUPS[section] ?? []
   const [selected, setSelected] = useState<string | null>(creation.category || null)
   const [source, setSource] = useState<string | null>(creation.category_source || null)
   const [state, setState] = useState<'idle' | 'saving' | 'error'>('idle')
@@ -191,7 +202,7 @@ function CreationCategoryField({ creation }: { creation: SheetCreation }) {
     }
   }
 
-  if (slugs.length === 0) return null
+  if (groups.length === 0) return null
   const suggested = selected && source !== 'creator' && source !== 'admin'
   return (
     <div className="mt-3 border-t border-c-border pt-3">
@@ -209,8 +220,12 @@ function CreationCategoryField({ creation }: { creation: SheetCreation }) {
         className="mt-2 w-full appearance-none rounded-xl border border-c-border bg-c-bg-elevated px-3 py-2.5 text-sm text-c-text-primary outline-none focus:border-cpoint-turquoise/50 disabled:opacity-50"
       >
         <option value="">No category</option>
-        {slugs.map(slug => (
-          <option key={slug} value={slug}>{CATEGORY_LABELS[slug] || slug}</option>
+        {groups.map(group => (
+          <optgroup key={group.label} label={group.label}>
+            {group.slugs.map(slug => (
+              <option key={slug} value={slug}>{CATEGORY_LABELS[slug] || slug}</option>
+            ))}
+          </optgroup>
         ))}
       </select>
       <p className="mt-1.5 text-xs text-c-text-tertiary">
