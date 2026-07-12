@@ -282,6 +282,71 @@ describe('MyBuilds', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  it('drafts category changes behind Save and guards close while dirty', async () => {
+    const fetchMock = vi.fn((url: RequestInfo | URL, opts?: RequestInit) => {
+      const u = String(url)
+      if (u.startsWith('/api/builder/mine')) {
+        return Promise.resolve({ ok: true, json: async () => ({ success: true, creations: [
+          { id: 9, title: 'Tiny Tool', kind: 'app', status: 'draft', community_id: null,
+            published_post_id: null, updated_at: null, plays: 0,
+            category: 'travel', category_source: 'keyword' },
+        ]}) } as Response)
+      }
+      if (u === '/api/builder/9/category' && opts?.method === 'POST') {
+        return Promise.resolve({ ok: true, json: async () => ({ success: true, category: 'music', category_source: 'creator' }) } as Response)
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ success: true, communities: [] }) } as Response)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { getByText, getByLabelText, queryByText } = render(<MyBuilds />)
+    await waitFor(() => expect(getByText('Tiny Tool')).toBeTruthy())
+    fireEvent.click(getByLabelText('Open options for Tiny Tool'))
+    await waitFor(() => expect(getByText('Build options')).toBeTruthy())
+
+    // Changing the dropdown is a DRAFT — nothing posts until Save.
+    fireEvent.change(getByLabelText(/Category/), { target: { value: 'music' } })
+    expect(getByText('Unsaved changes')).toBeTruthy()
+    expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/category'))).toBe(false)
+
+    // Closing while dirty asks first (founder rule: never lose a pick silently).
+    fireEvent.click(getByLabelText('Close build options'))
+    expect(getByText('You have unsaved changes.')).toBeTruthy()
+    expect(getByText('Build options')).toBeTruthy()
+
+    // Save & close persists the draft, then closes.
+    fireEvent.click(getByText('Save & close'))
+    await waitFor(() => expect(queryByText('Build options')).toBeNull())
+    const post = fetchMock.mock.calls.find(c => String(c[0]) === '/api/builder/9/category')
+    expect(post).toBeTruthy()
+    expect(JSON.parse(String(post![1]!.body))).toEqual({ category: 'music' })
+  })
+
+  it('discards unsaved category drafts on request without posting', async () => {
+    const fetchMock = vi.fn((url: RequestInfo | URL) => {
+      const u = String(url)
+      if (u.startsWith('/api/builder/mine')) {
+        return Promise.resolve({ ok: true, json: async () => ({ success: true, creations: [
+          { id: 9, title: 'Tiny Tool', kind: 'app', status: 'draft', community_id: null,
+            published_post_id: null, updated_at: null, plays: 0, category: null, category_source: null },
+        ]}) } as Response)
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ success: true, communities: [] }) } as Response)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { getByText, getByLabelText, queryByText } = render(<MyBuilds />)
+    await waitFor(() => expect(getByText('Tiny Tool')).toBeTruthy())
+    fireEvent.click(getByLabelText('Open options for Tiny Tool'))
+    await waitFor(() => expect(getByText('Build options')).toBeTruthy())
+
+    fireEvent.change(getByLabelText(/Category/), { target: { value: 'travel' } })
+    fireEvent.click(getByLabelText('Close build options'))
+    fireEvent.click(getByText('Discard changes'))
+    await waitFor(() => expect(queryByText('Build options')).toBeNull())
+    expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/category'))).toBe(false)
+  })
+
   it('shares through the root-to-sub-community picker and marks shared targets', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({

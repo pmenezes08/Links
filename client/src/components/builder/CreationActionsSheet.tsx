@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import CommunitySharePicker from './CommunitySharePicker'
 import { sectionOf } from '../../hooks/useExploreCreations'
@@ -38,89 +38,13 @@ type Props = {
   onUnpublishWeb: (creation: SheetCreation) => Promise<void>
   /** Open with the Share section already expanded (deep links, Share buttons). */
   initialShareOpen?: boolean
+  /** Propagate a saved category into the caller's list so reopening the
+   * sheet shows the persisted value, not stale payload data. */
+  onCategorySaved?: (creationId: number, category: string | null, source: string | null) => void
 }
 
 function titleFor(creation: SheetCreation): string {
   return creation.title?.trim() || 'Untitled build'
-}
-
-/**
- * Opt-in Explore builder handle. Self-contained (GET/POST /api/builder/pseudonym):
- * privacy-sensitive validation (no username collisions, uniqueness) lives
- * server-side; this control only reads/writes the caller's own handle.
- */
-function BuilderPseudonymField() {
-  const [value, setValue] = useState('')
-  const [saved, setSaved] = useState<string | null>(null)
-  const [state, setState] = useState<'idle' | 'saving' | 'error' | 'done'>('idle')
-
-  useEffect(() => {
-    let alive = true
-    fetch('/api/builder/pseudonym', { credentials: 'include', headers: { Accept: 'application/json' } })
-      .then(r => r.json())
-      .then(d => {
-        if (alive && d?.success) { setSaved(d.pseudonym || null); setValue(d.pseudonym || '') }
-      })
-      .catch(() => { /* field stays editable; save reports errors */ })
-    return () => { alive = false }
-  }, [])
-
-  const dirty = value.trim() !== (saved || '')
-  const save = async () => {
-    setState('saving')
-    try {
-      const res = await fetch('/api/builder/pseudonym', {
-        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pseudonym: value.trim() || null }),
-      })
-      const data = await res.json().catch(() => null)
-      if (res.ok && data?.success) {
-        setSaved(data.pseudonym || null)
-        setValue(data.pseudonym || '')
-        setState('done')
-        return
-      }
-      setState('error')
-    } catch {
-      setState('error')
-    }
-  }
-
-  return (
-    <div className="mt-3 border-t border-c-border pt-3">
-      <label htmlFor="builder-pseudonym" className="block text-xs font-semibold text-c-text-secondary">
-        Builder name (optional)
-      </label>
-      <p className="mt-0.5 text-xs text-c-text-tertiary">
-        Shown on your gallery cards instead of staying anonymous. Never links to your profile.
-      </p>
-      <div className="mt-2 flex gap-2">
-        <input
-          id="builder-pseudonym"
-          type="text"
-          value={value}
-          maxLength={32}
-          onChange={(e) => { setValue(e.target.value); setState('idle') }}
-          placeholder="e.g. NightOwl Builds"
-          className="min-w-0 flex-1 rounded-xl border border-c-border bg-c-bg-elevated px-3 py-2 text-sm text-c-text-primary outline-none placeholder:text-c-text-tertiary focus:border-cpoint-turquoise/50"
-        />
-        <button
-          type="button"
-          onClick={() => void save()}
-          disabled={!dirty || state === 'saving'}
-          className="rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-2 text-sm font-semibold text-cpoint-turquoise transition disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {state === 'saving' ? 'Saving...' : 'Save'}
-        </button>
-      </div>
-      {state === 'error' && (
-        <p className="mt-1.5 text-xs text-red-400">That name is unavailable — try another.</p>
-      )}
-      {state === 'done' && (
-        <p className="mt-1.5 text-xs text-c-text-tertiary">{saved ? `Cards will show "by ${saved}".` : 'Back to anonymous.'}</p>
-      )}
-    </div>
-  )
 }
 
 // Categories are TOPICS, orthogonal to the creation's form (founder call
@@ -162,48 +86,92 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 /**
- * Creator category picker (founder-ratified precedence: admin locks > creator
- * > Steve's automation). Confirm-or-correct, never a chore: Steve's current
- * assignment renders pre-selected as "Suggested"; one tap saves. An
- * admin-locked category renders read-only. Fetch-free on mount — current
- * value/source ride the /api/builder/mine payload.
+ * Gallery metadata form — category (every creation) + builder name (listed
+ * only) behind ONE explicit Save (founder call 2026-07-12: auto-save on
+ * change lost picks silently on device; changes are drafts until saved, and
+ * the sheet guards close while dirty). Precedence unchanged: admin locks >
+ * creator > Steve's automation; the backend re-validates every write.
  */
-function CreationCategoryField({ creation }: { creation: SheetCreation }) {
+function GalleryMetaForm({ creation, showPseudonym, onDirtyChange, saveRef, onCategorySaved }: {
+  creation: SheetCreation
+  showPseudonym: boolean
+  onDirtyChange: (dirty: boolean) => void
+  saveRef: React.MutableRefObject<(() => Promise<boolean>) | null>
+  onCategorySaved?: (creationId: number, category: string | null, source: string | null) => void
+}) {
   const section = sectionOf({ kind: creation.kind, public_kind: creation.public_kind })
   const groups = SECTION_GROUPS[section] ?? []
-  const [selected, setSelected] = useState<string | null>(creation.category || null)
-  const [source, setSource] = useState<string | null>(creation.category_source || null)
-  const [state, setState] = useState<'idle' | 'saving' | 'error'>('idle')
+  const [savedCat, setSavedCat] = useState(creation.category || '')
+  const [savedSource, setSavedSource] = useState<string | null>(creation.category_source || null)
+  const [draftCat, setDraftCat] = useState(creation.category || '')
+  const [savedName, setSavedName] = useState('')
+  const [draftName, setDraftName] = useState('')
+  const [state, setState] = useState<'idle' | 'saving' | 'error' | 'done'>('idle')
 
   useEffect(() => {
-    setSelected(creation.category || null)
-    setSource(creation.category_source || null)
-    setState('idle')
+    setSavedCat(creation.category || ''); setDraftCat(creation.category || '')
+    setSavedSource(creation.category_source || null); setState('idle')
   }, [creation.id, creation.category, creation.category_source])
 
-  const locked = source === 'admin'
-  const save = async (slug: string | null) => {
-    if (locked || state === 'saving') return
-    if (slug === selected) return
-    const prev = { selected, source }
-    // Choosing from the dropdown is always an explicit creator action —
-    // including "No category" (a deliberate clear, unlike the old toggle).
-    setSelected(slug); setSource(slug ? 'creator' : null); setState('saving')
-    try {
-      const res = await fetch(`/api/builder/${creation.id}/category`, {
-        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category: slug }),
-      })
-      const data = await res.json().catch(() => null)
-      if (res.ok && data?.success) { setState('idle'); return }
-      setSelected(prev.selected); setSource(prev.source); setState('error')
-    } catch {
-      setSelected(prev.selected); setSource(prev.source); setState('error')
-    }
-  }
+  useEffect(() => {
+    if (!showPseudonym) return
+    let alive = true
+    // Promise.resolve wrapper: a stubbed/failing fetch must never throw
+    // synchronously in the effect — the field degrades to editable-empty.
+    Promise.resolve(fetch('/api/builder/pseudonym', { credentials: 'include', headers: { Accept: 'application/json' } }))
+      .then(r => r!.json())
+      .then(d => { if (alive && d?.success) { setSavedName(d.pseudonym || ''); setDraftName(d.pseudonym || '') } })
+      .catch(() => { /* editable; save reports errors */ })
+    return () => { alive = false }
+  }, [showPseudonym])
 
-  if (groups.length === 0) return null
-  const suggested = selected && source !== 'creator' && source !== 'admin'
+  const locked = savedSource === 'admin'
+  const catDirty = !locked && draftCat !== savedCat
+  const nameDirty = showPseudonym && draftName.trim() !== savedName
+  const dirty = catDirty || nameDirty
+  useEffect(() => { onDirtyChange(dirty) }, [dirty, onDirtyChange])
+  // Unmount must never leave the sheet's close guard wedged on.
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange])
+
+  const save = useCallback(async (): Promise<boolean> => {
+    if (!dirty) return true
+    setState('saving')
+    try {
+      if (catDirty) {
+        const res = await fetch(`/api/builder/${creation.id}/category`, {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category: draftCat || null }),
+        })
+        const data = await res.json().catch(() => null)
+        if (!res.ok || !data?.success) { setState('error'); return false }
+        setSavedCat(draftCat)
+        setSavedSource(draftCat ? 'creator' : null)
+        onCategorySaved?.(creation.id, draftCat || null, draftCat ? 'creator' : null)
+      }
+      if (nameDirty) {
+        const res = await fetch('/api/builder/pseudonym', {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pseudonym: draftName.trim() || null }),
+        })
+        const data = await res.json().catch(() => null)
+        if (!res.ok || !data?.success) { setState('error'); return false }
+        setSavedName(data.pseudonym || ''); setDraftName(data.pseudonym || '')
+      }
+      setState('done')
+      return true
+    } catch {
+      setState('error')
+      return false
+    }
+  }, [dirty, catDirty, nameDirty, draftCat, draftName, creation.id, onCategorySaved])
+
+  useEffect(() => {
+    saveRef.current = save
+    return () => { saveRef.current = null }
+  }, [save, saveRef])
+
+  if (groups.length === 0 && !showPseudonym) return null
+  const suggested = savedCat && draftCat === savedCat && savedSource !== 'creator' && savedSource !== 'admin'
   return (
     <div className="mt-3 border-t border-c-border pt-3">
       <label htmlFor={`creation-category-${creation.id}`} className="flex items-baseline gap-2">
@@ -214,9 +182,9 @@ function CreationCategoryField({ creation }: { creation: SheetCreation }) {
       </label>
       <select
         id={`creation-category-${creation.id}`}
-        value={selected ?? ''}
+        value={draftCat}
         disabled={locked}
-        onChange={(e) => void save(e.target.value || null)}
+        onChange={(e) => { setDraftCat(e.target.value); setState('idle') }}
         className="mt-2 w-full appearance-none rounded-xl border border-c-border bg-c-bg-elevated px-3 py-2.5 text-sm text-c-text-primary outline-none focus:border-cpoint-turquoise/50 disabled:opacity-50"
       >
         <option value="">No category</option>
@@ -229,15 +197,46 @@ function CreationCategoryField({ creation }: { creation: SheetCreation }) {
         ))}
       </select>
       <p className="mt-1.5 text-xs text-c-text-tertiary">
-        {locked
-          ? 'Set by the review team.'
-          : selected
-            ? `Shown under "${CATEGORY_LABELS[selected] || selected}" in the gallery.`
-            : 'Helps people find it in the gallery (optional).'}
+        {locked ? 'Set by the review team.' : 'Helps people find it in the gallery (optional).'}
       </p>
-      {state === 'error' && (
-        <p className="mt-1.5 text-xs text-red-400">Couldn't save — try again.</p>
+      {showPseudonym && (
+        <>
+          <label htmlFor="builder-pseudonym" className="mt-3 block text-xs font-semibold text-c-text-secondary">
+            Builder name (optional)
+          </label>
+          <p className="mt-0.5 text-xs text-c-text-tertiary">
+            Shown on your gallery cards instead of staying anonymous. Never links to your profile.
+          </p>
+          <input
+            id="builder-pseudonym"
+            type="text"
+            value={draftName}
+            maxLength={32}
+            onChange={(e) => { setDraftName(e.target.value); setState('idle') }}
+            placeholder="e.g. NightOwl Builds"
+            className="mt-2 w-full rounded-xl border border-c-border bg-c-bg-elevated px-3 py-2 text-sm text-c-text-primary outline-none placeholder:text-c-text-tertiary focus:border-cpoint-turquoise/50"
+          />
+        </>
       )}
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <p className="min-w-0 text-xs" aria-live="polite">
+          {state === 'error' ? (
+            <span className="text-red-400">Couldn't save — try again.</span>
+          ) : dirty ? (
+            <span className="text-amber-300">Unsaved changes</span>
+          ) : state === 'done' ? (
+            <span className="text-c-text-tertiary">Saved.</span>
+          ) : null}
+        </p>
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={!dirty || state === 'saving'}
+          className="shrink-0 rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-4 py-2 text-sm font-semibold text-cpoint-turquoise transition disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {state === 'saving' ? 'Saving...' : 'Save'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -258,15 +257,22 @@ export default function CreationActionsSheet({
   onShared,
   onUnpublishWeb,
   initialShareOpen = false,
+  onCategorySaved,
 }: Props) {
   const [shareOpen, setShareOpen] = useState(initialShareOpen)
   // Destructive actions confirm in-sheet (two taps), never via window.confirm.
   const [armed, setArmed] = useState<'delete' | 'unpublish' | null>(null)
+  // Unsaved gallery-meta drafts guard the close (same in-sheet-confirm house
+  // pattern as destructive actions — never window.confirm).
+  const [metaDirty, setMetaDirty] = useState(false)
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const metaSaveRef = useRef<(() => Promise<boolean>) | null>(null)
   const creationId = creation?.id ?? null
   useEffect(() => {
     // Re-arm defaults each time the sheet opens for a (different) creation.
     setShareOpen(creationId != null ? initialShareOpen : false)
     setArmed(null)
+    setConfirmDiscard(false)
   }, [creationId, initialShareOpen])
   useEffect(() => {
     if (!armed) return
@@ -277,6 +283,13 @@ export default function CreationActionsSheet({
   const isListed = creation.gallery_status === 'pending' || creation.gallery_status === 'approved'
   const isPublic = creation.public_status === 'published' && !!creation.public_url
   const sharedIds = creation.shared_community_ids || []
+
+  // Founder rule 2026-07-12: closing with unsaved gallery-meta drafts must ask
+  // first — otherwise a picked category silently evaporates.
+  const requestClose = () => {
+    if (metaDirty) { setConfirmDiscard(true); return }
+    onClose()
+  }
 
   // Portaled to <body>: page-transition containers carry CSS transforms, which
   // re-anchor position:fixed to the PAGE instead of the screen — the sheet's
@@ -290,7 +303,7 @@ export default function CreationActionsSheet({
       role="dialog"
       aria-modal="true"
       aria-label={`Options for ${titleFor(creation)}`}
-      onClick={onClose}
+      onClick={requestClose}
     >
       <div
         // backdrop-blur: --c-bg-elevated is translucent in dark theme; without
@@ -306,13 +319,39 @@ export default function CreationActionsSheet({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             aria-label="Close build options"
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-c-border bg-c-hover-bg text-c-text-tertiary transition hover:text-c-text-primary"
           >
             <i className="fa-solid fa-xmark text-sm" aria-hidden="true" />
           </button>
         </div>
+
+        {confirmDiscard && (
+          <div className="mb-3 rounded-2xl border border-amber-400/40 bg-amber-400/10 p-3">
+            <p className="text-sm font-medium text-c-text-primary">You have unsaved changes.</p>
+            <div className="mt-2.5 flex gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  const ok = await (metaSaveRef.current ? metaSaveRef.current() : Promise.resolve(true))
+                  setConfirmDiscard(false)
+                  if (ok) onClose()
+                }}
+                className="rounded-xl bg-cpoint-turquoise px-4 py-2 text-sm font-semibold text-black transition hover:brightness-110"
+              >
+                Save & close
+              </button>
+              <button
+                type="button"
+                onClick={() => { setConfirmDiscard(false); setMetaDirty(false); onClose() }}
+                className="rounded-xl border border-c-border px-4 py-2 text-sm font-semibold text-c-text-secondary transition hover:text-c-text-primary"
+              >
+                Discard changes
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="space-y-3">
           <section className="rounded-2xl border border-c-border bg-c-hover-bg p-3">
@@ -329,9 +368,14 @@ export default function CreationActionsSheet({
             {/* Category is useful pre-listing too (founder QA feedback
                 2026-07-12): show it always so a draft can be filed before the
                 creator ever lists. The pseudonym stays listing-only — it is
-                purely a gallery credit. */}
-            <CreationCategoryField creation={creation} />
-            {isListed && <BuilderPseudonymField />}
+                purely a gallery credit. One shared Save persists both. */}
+            <GalleryMetaForm
+              creation={creation}
+              showPseudonym={isListed}
+              onDirtyChange={setMetaDirty}
+              saveRef={metaSaveRef}
+              onCategorySaved={onCategorySaved}
+            />
           </section>
 
           <section className="rounded-2xl border border-c-border bg-c-hover-bg p-3">

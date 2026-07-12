@@ -17,6 +17,8 @@ type Creation = {
   public_url?: string | null
   public_kind?: string | null
   gallery_status?: string | null
+  category?: string | null
+  category_source?: string | null
   shared_community_ids?: number[]
 }
 
@@ -457,6 +459,13 @@ export default function MyBuilds() {
           onPublishWeb={publishWeb}
           onShared={updateSharedCommunity}
           onUnpublishWeb={unpublishWeb}
+          onCategorySaved={(creationId, category, source) => {
+            // Keep the list in sync so reopening the sheet shows the saved
+            // value instead of the stale /mine payload.
+            setCreations(prev => prev.map(c => c.id === creationId
+              ? { ...c, category, category_source: source }
+              : c))
+          }}
         />
       </div>
     </div>
