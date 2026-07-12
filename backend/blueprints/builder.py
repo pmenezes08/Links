@@ -593,6 +593,29 @@ def builder_taxonomy():
     return resp
 
 
+@builder_bp.route("/api/builder/<int:creation_id>/kind", methods=["POST"])
+def builder_set_kind(creation_id: int):
+    """Creator-corrected creation type (website/app/game) — see
+    builder.set_creation_kind for the guards (multiplayer lock, web-publish
+    conflict, category revalidation)."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    data = request.get_json(silent=True) or {}
+    try:
+        result = builder_svc.set_creation_kind(
+            creation_id=creation_id, username=username, kind=str(data.get("kind") or ""))
+    except PermissionError:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    except ValueError as exc:
+        status = 409 if str(exc) in ("kind_locked_multiplayer", "unpublish_web_first") else 400
+        return jsonify({"success": False, "error": str(exc)}), status
+    except Exception:
+        logger.exception("builder: set kind failed")
+        return jsonify({"success": False, "error": "kind_update_failed"}), 500
+    return jsonify({"success": True, **result})
+
+
 @builder_bp.route("/api/builder/<int:creation_id>/category", methods=["POST"])
 def builder_set_category(creation_id: int):
     """Creator-set gallery category. Precedence: admin (locks) > creator >

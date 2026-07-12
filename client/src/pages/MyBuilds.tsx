@@ -466,6 +466,13 @@ export default function MyBuilds() {
               ? { ...c, category, category_source: source }
               : c))
           }}
+          onKindSaved={(creationId, kind) => {
+            // kind drives publish-web eligibility and the gallery shelf, so
+            // the list (and the sheet's props, derived from it) must follow.
+            setCreations(prev => prev.map(c => c.id === creationId
+              ? { ...c, kind, public_kind: c.public_kind ? kind : c.public_kind }
+              : c))
+          }}
         />
       </div>
     </div>

@@ -41,6 +41,8 @@ type Props = {
   /** Propagate a saved category into the caller's list so reopening the
    * sheet shows the persisted value, not stale payload data. */
   onCategorySaved?: (creationId: number, category: string | null, source: string | null) => void
+  /** Same, for a creator-corrected type (website/app/game). */
+  onKindSaved?: (creationId: number, kind: string) => void
 }
 
 function titleFor(creation: SheetCreation): string {
@@ -92,26 +94,38 @@ const CATEGORY_LABELS: Record<string, string> = {
  * the sheet guards close while dirty). Precedence unchanged: admin locks >
  * creator > Steve's automation; the backend re-validates every write.
  */
-function GalleryMetaForm({ creation, showPseudonym, onDirtyChange, saveRef, onCategorySaved }: {
+const KIND_OPTIONS: { value: string; label: string; hint: string }[] = [
+  { value: 'website', label: 'Website', hint: 'a page people read' },
+  { value: 'app', label: 'App', hint: 'a tool that keeps their data' },
+  { value: 'game', label: 'Game', hint: 'something they play' },
+]
+
+function GalleryMetaForm({ creation, showPseudonym, onDirtyChange, saveRef, onCategorySaved, onKindSaved }: {
   creation: SheetCreation
   showPseudonym: boolean
   onDirtyChange: (dirty: boolean) => void
   saveRef: React.MutableRefObject<(() => Promise<boolean>) | null>
   onCategorySaved?: (creationId: number, category: string | null, source: string | null) => void
+  onKindSaved?: (creationId: number, kind: string) => void
 }) {
-  const section = sectionOf({ kind: creation.kind, public_kind: creation.public_kind })
-  const groups = SECTION_GROUPS[section] ?? []
+  const initialKind = sectionOf({ kind: creation.kind, public_kind: creation.public_kind })
+  const [savedKind, setSavedKind] = useState<string>(initialKind)
+  const [draftKind, setDraftKind] = useState<string>(initialKind)
+  const groups = SECTION_GROUPS[draftKind] ?? []
   const [savedCat, setSavedCat] = useState(creation.category || '')
   const [savedSource, setSavedSource] = useState<string | null>(creation.category_source || null)
   const [draftCat, setDraftCat] = useState(creation.category || '')
   const [savedName, setSavedName] = useState('')
   const [draftName, setDraftName] = useState('')
   const [state, setState] = useState<'idle' | 'saving' | 'error' | 'done'>('idle')
+  const [errorText, setErrorText] = useState<string>("Couldn't save — try again.")
 
   useEffect(() => {
+    const section = sectionOf({ kind: creation.kind, public_kind: creation.public_kind })
+    setSavedKind(section); setDraftKind(section)
     setSavedCat(creation.category || ''); setDraftCat(creation.category || '')
     setSavedSource(creation.category_source || null); setState('idle')
-  }, [creation.id, creation.category, creation.category_source])
+  }, [creation.id, creation.kind, creation.public_kind, creation.category, creation.category_source])
 
   useEffect(() => {
     if (!showPseudonym) return
@@ -126,9 +140,10 @@ function GalleryMetaForm({ creation, showPseudonym, onDirtyChange, saveRef, onCa
   }, [showPseudonym])
 
   const locked = savedSource === 'admin'
+  const kindDirty = draftKind !== savedKind
   const catDirty = !locked && draftCat !== savedCat
   const nameDirty = showPseudonym && draftName.trim() !== savedName
-  const dirty = catDirty || nameDirty
+  const dirty = kindDirty || catDirty || nameDirty
   useEffect(() => { onDirtyChange(dirty) }, [dirty, onDirtyChange])
   // Unmount must never leave the sheet's close guard wedged on.
   useEffect(() => () => onDirtyChange(false), [onDirtyChange])
@@ -136,8 +151,31 @@ function GalleryMetaForm({ creation, showPseudonym, onDirtyChange, saveRef, onCa
   const save = useCallback(async (): Promise<boolean> => {
     if (!dirty) return true
     setState('saving')
+    setErrorText("Couldn't save — try again.")
     try {
-      if (catDirty) {
+      // Kind first: the server revalidates the category against the NEW
+      // section, and the category POST below re-applies the (still valid)
+      // draft on top.
+      let catAfterKind = savedCat
+      if (kindDirty) {
+        const res = await fetch(`/api/builder/${creation.id}/kind`, {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kind: draftKind }),
+        })
+        const data = await res.json().catch(() => null)
+        if (!res.ok || !data?.success) {
+          if (data?.error === 'unpublish_web_first') setErrorText('Unpublish the web link first — games stay inside C-Point.')
+          if (data?.error === 'kind_locked_multiplayer') setErrorText('Multiplayer creations are always games.')
+          setState('error'); return false
+        }
+        setSavedKind(draftKind)
+        catAfterKind = data.category || ''
+        setSavedCat(catAfterKind)
+        setSavedSource(data.category_source || null)
+        onKindSaved?.(creation.id, draftKind)
+        onCategorySaved?.(creation.id, data.category || null, data.category_source || null)
+      }
+      if (!locked && draftCat !== catAfterKind) {
         const res = await fetch(`/api/builder/${creation.id}/category`, {
           method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ category: draftCat || null }),
@@ -154,7 +192,10 @@ function GalleryMetaForm({ creation, showPseudonym, onDirtyChange, saveRef, onCa
           body: JSON.stringify({ pseudonym: draftName.trim() || null }),
         })
         const data = await res.json().catch(() => null)
-        if (!res.ok || !data?.success) { setState('error'); return false }
+        if (!res.ok || !data?.success) {
+          setErrorText('That name is unavailable — try another.')
+          setState('error'); return false
+        }
         setSavedName(data.pseudonym || ''); setDraftName(data.pseudonym || '')
       }
       setState('done')
@@ -163,7 +204,7 @@ function GalleryMetaForm({ creation, showPseudonym, onDirtyChange, saveRef, onCa
       setState('error')
       return false
     }
-  }, [dirty, catDirty, nameDirty, draftCat, draftName, creation.id, onCategorySaved])
+  }, [dirty, kindDirty, locked, savedCat, draftKind, nameDirty, draftCat, draftName, creation.id, onCategorySaved, onKindSaved])
 
   useEffect(() => {
     saveRef.current = save
@@ -172,9 +213,36 @@ function GalleryMetaForm({ creation, showPseudonym, onDirtyChange, saveRef, onCa
 
   if (groups.length === 0 && !showPseudonym) return null
   const suggested = savedCat && draftCat === savedCat && savedSource !== 'creator' && savedSource !== 'admin'
+  const kindHint = KIND_OPTIONS.find(k => k.value === draftKind)?.hint
   return (
     <div className="mt-3 border-t border-c-border pt-3">
-      <label htmlFor={`creation-category-${creation.id}`} className="flex items-baseline gap-2">
+      <label htmlFor={`creation-kind-${creation.id}`} className="block text-xs font-semibold text-c-text-secondary">
+        Type
+      </label>
+      <select
+        id={`creation-kind-${creation.id}`}
+        value={draftKind}
+        onChange={(e) => {
+          const next = e.target.value
+          setDraftKind(next)
+          // Keep the category draft coherent with the new section: universal
+          // topics survive, form-specific slugs reset to untagged.
+          const nextSlugs = (SECTION_GROUPS[next] ?? []).flatMap(g => g.slugs)
+          if (draftCat && !nextSlugs.includes(draftCat)) setDraftCat('')
+          setState('idle')
+        }}
+        className="mt-2 w-full appearance-none rounded-xl border border-c-border bg-c-bg-elevated px-3 py-2.5 text-sm text-c-text-primary outline-none focus:border-cpoint-turquoise/50"
+      >
+        {KIND_OPTIONS.map(k => (
+          <option key={k.value} value={k.value}>{k.label}</option>
+        ))}
+      </select>
+      {kindHint && (
+        <p className="mt-1.5 text-xs text-c-text-tertiary">
+          {KIND_OPTIONS.find(k => k.value === draftKind)?.label}: {kindHint}. Everything runs inside C-Point.
+        </p>
+      )}
+      <label htmlFor={`creation-category-${creation.id}`} className="mt-3 flex items-baseline gap-2">
         <span className="text-xs font-semibold text-c-text-secondary">Category</span>
         {suggested && (
           <span className="text-[10px] uppercase tracking-wide text-c-text-tertiary">Suggested by Steve</span>
@@ -221,7 +289,7 @@ function GalleryMetaForm({ creation, showPseudonym, onDirtyChange, saveRef, onCa
       <div className="mt-3 flex items-center justify-between gap-3">
         <p className="min-w-0 text-xs" aria-live="polite">
           {state === 'error' ? (
-            <span className="text-red-400">Couldn't save — try again.</span>
+            <span className="text-red-400">{errorText}</span>
           ) : dirty ? (
             <span className="text-amber-300">Unsaved changes</span>
           ) : state === 'done' ? (
@@ -258,6 +326,7 @@ export default function CreationActionsSheet({
   onUnpublishWeb,
   initialShareOpen = false,
   onCategorySaved,
+  onKindSaved,
 }: Props) {
   const [shareOpen, setShareOpen] = useState(initialShareOpen)
   // Destructive actions confirm in-sheet (two taps), never via window.confirm.
@@ -375,6 +444,7 @@ export default function CreationActionsSheet({
               onDirtyChange={setMetaDirty}
               saveRef={metaSaveRef}
               onCategorySaved={onCategorySaved}
+              onKindSaved={onKindSaved}
             />
           </section>
 

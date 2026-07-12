@@ -57,46 +57,47 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/builder/<int:creation_id>/publish-web` | DELETE | `builder_unpublish_web` | `backend/blueprints/builder.py:537` | builder unpublish web | *(no exact string match — may use helpers)* |
 | `/api/builder/explore` | GET | `builder_explore` | `backend/blueprints/builder.py:552` | builder explore | `client/src/pages/ExploreCreations.test.tsx` (3), `client/src/hooks/useExploreCreations.ts` (2) |
 | `/api/builder/explore/<int:creation_id>/cover` | GET | `builder_explore_cover` | `backend/blueprints/builder.py:573` | builder explore cover | *(no exact string match — may use helpers)* |
-| `/api/builder/taxonomy` | GET | `builder_taxonomy` | `backend/blueprints/builder.py:586` | builder taxonomy | `client/src/components/builder/CreationActionsSheet.tsx` (2) |
-| `/api/builder/<int:creation_id>/category` | POST | `builder_set_category` | `backend/blueprints/builder.py:596` | builder set category | *(no exact string match — may use helpers)* |
-| `/api/builder/pseudonym` | GET, POST | `builder_pseudonym` | `backend/blueprints/builder.py:621` | builder pseudonym | `client/src/components/builder/CreationActionsSheet.tsx` (3) |
-| `/api/builder/<int:creation_id>/gallery` | POST | `builder_gallery_update` | `backend/blueprints/builder.py:641` | builder gallery update | *(no exact string match — may use helpers)* |
-| `/api/admin/builder/<int:creation_id>/gallery` | POST | `builder_admin_gallery_update` | `backend/blueprints/builder.py:660` | builder admin gallery update | *(no exact string match — may use helpers)* |
-| `/api/builder/mine` | GET | `builder_mine` | `backend/blueprints/builder.py:686` | builder mine | `client/src/pages/MyBuilds.tsx` (1) |
-| `/api/builder/<int:creation_id>` | GET | `builder_get` | `backend/blueprints/builder.py:696` | builder get | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>` | DELETE | `builder_delete` | `backend/blueprints/builder.py:725` | builder delete | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/history` | POST | `builder_save_history` | `backend/blueprints/builder.py:735` | builder save history | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/data/score` | POST | `builder_data_score` | `backend/blueprints/builder.py:854` | builder data score | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/data/rate` | POST | `builder_data_rate` | `backend/blueprints/builder.py:879` | builder data rate | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/data/save` | POST | `builder_data_save` | `backend/blueprints/builder.py:903` | builder data save | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/data/load` | GET | `builder_data_load` | `backend/blueprints/builder.py:928` | builder data load | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/data/images` | GET | `builder_data_images` | `backend/blueprints/builder.py:941` | builder data images | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/data/feed` | GET | `builder_data_feed` | `backend/blueprints/builder.py:975` | builder data feed | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/capsules/<name>` | GET | `builder_capsule_get` | `backend/blueprints/builder.py:1005` | builder capsule get | *(no exact string match — may use helpers)* |
-| `/api/builder/public/<slug>/data/images` | GET, OPTIONS | `builder_public_data_images` | `backend/blueprints/builder.py:1038` | builder public data images | *(no exact string match — may use helpers)* |
-| `/api/builder/public/<slug>/data/feed` | GET, OPTIONS | `builder_public_data_feed` | `backend/blueprints/builder.py:1056` | builder public data feed | *(no exact string match — may use helpers)* |
-| `/api/builder/public/<slug>/capsules/<name>` | GET, OPTIONS | `builder_public_capsule_get` | `backend/blueprints/builder.py:1088` | builder public capsule get | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/data/shared` | GET | `builder_data_shared_get` | `backend/blueprints/builder.py:1109` | builder data shared get | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/data/shared` | POST | `builder_data_shared_update` | `backend/blueprints/builder.py:1125` | builder data shared update | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/data/collection/<name>` | GET | `builder_data_collection_list` | `backend/blueprints/builder.py:1151` | builder data collection list | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/data/collection/<name>` | POST | `builder_data_collection_create` | `backend/blueprints/builder.py:1167` | builder data collection create | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/data/collection/<name>/<row_id>` | PATCH | `builder_data_collection_update` | `backend/blueprints/builder.py:1191` | builder data collection update | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/data/collection/<name>/<row_id>` | DELETE | `builder_data_collection_delete` | `backend/blueprints/builder.py:1216` | builder data collection delete | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/data/forms/<name>/submit` | POST | `builder_data_form_submit` | `backend/blueprints/builder.py:1230` | builder data form submit | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/data/leaderboard` | GET | `builder_data_leaderboard` | `backend/blueprints/builder.py:1254` | builder data leaderboard | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/data/results` | GET | `builder_data_results` | `backend/blueprints/builder.py:1269` | builder data results | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/data/summary` | GET | `builder_data_summary` | `backend/blueprints/builder.py:1280` | builder data summary | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/match/opponents` | GET | `builder_match_opponents` | `backend/blueprints/builder.py:1345` | builder match opponents | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/match/list` | GET | `builder_match_list` | `backend/blueprints/builder.py:1353` | builder match list | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/match/create` | POST | `builder_match_create` | `backend/blueprints/builder.py:1362` | builder match create | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/match/<int:match_id>` | GET | `builder_match_get` | `backend/blueprints/builder.py:1378` | builder match get | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/match/<int:match_id>/move` | POST | `builder_match_move` | `backend/blueprints/builder.py:1392` | builder match move | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/match/<int:match_id>/poll` | GET | `builder_match_poll` | `backend/blueprints/builder.py:1409` | builder match poll | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/match/<int:match_id>/accept` | POST | `builder_match_accept` | `backend/blueprints/builder.py:1426` | builder match accept | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/match/<int:match_id>/decline` | POST | `builder_match_decline` | `backend/blueprints/builder.py:1439` | builder match decline | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/match/<int:match_id>/cancel` | POST | `builder_match_cancel` | `backend/blueprints/builder.py:1452` | builder match cancel | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/match/<int:match_id>/resign` | POST | `builder_match_resign` | `backend/blueprints/builder.py:1465` | builder match resign | *(no exact string match — may use helpers)* |
-| `/api/builder/<int:creation_id>/play` | POST | `builder_record_play` | `backend/blueprints/builder.py:1478` | builder record play | *(no exact string match — may use helpers)* |
+| `/api/builder/taxonomy` | GET | `builder_taxonomy` | `backend/blueprints/builder.py:586` | builder taxonomy | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/kind` | POST | `builder_set_kind` | `backend/blueprints/builder.py:596` | builder set kind | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/category` | POST | `builder_set_category` | `backend/blueprints/builder.py:619` | builder set category | *(no exact string match — may use helpers)* |
+| `/api/builder/pseudonym` | GET, POST | `builder_pseudonym` | `backend/blueprints/builder.py:644` | builder pseudonym | `client/src/components/builder/CreationActionsSheet.tsx` (2) |
+| `/api/builder/<int:creation_id>/gallery` | POST | `builder_gallery_update` | `backend/blueprints/builder.py:664` | builder gallery update | *(no exact string match — may use helpers)* |
+| `/api/admin/builder/<int:creation_id>/gallery` | POST | `builder_admin_gallery_update` | `backend/blueprints/builder.py:683` | builder admin gallery update | *(no exact string match — may use helpers)* |
+| `/api/builder/mine` | GET | `builder_mine` | `backend/blueprints/builder.py:709` | builder mine | `client/src/pages/MyBuilds.test.tsx` (3), `client/src/pages/MyBuilds.tsx` (1) |
+| `/api/builder/<int:creation_id>` | GET | `builder_get` | `backend/blueprints/builder.py:719` | builder get | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>` | DELETE | `builder_delete` | `backend/blueprints/builder.py:748` | builder delete | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/history` | POST | `builder_save_history` | `backend/blueprints/builder.py:758` | builder save history | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/data/score` | POST | `builder_data_score` | `backend/blueprints/builder.py:877` | builder data score | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/data/rate` | POST | `builder_data_rate` | `backend/blueprints/builder.py:902` | builder data rate | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/data/save` | POST | `builder_data_save` | `backend/blueprints/builder.py:926` | builder data save | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/data/load` | GET | `builder_data_load` | `backend/blueprints/builder.py:951` | builder data load | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/data/images` | GET | `builder_data_images` | `backend/blueprints/builder.py:964` | builder data images | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/data/feed` | GET | `builder_data_feed` | `backend/blueprints/builder.py:998` | builder data feed | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/capsules/<name>` | GET | `builder_capsule_get` | `backend/blueprints/builder.py:1028` | builder capsule get | *(no exact string match — may use helpers)* |
+| `/api/builder/public/<slug>/data/images` | GET, OPTIONS | `builder_public_data_images` | `backend/blueprints/builder.py:1061` | builder public data images | *(no exact string match — may use helpers)* |
+| `/api/builder/public/<slug>/data/feed` | GET, OPTIONS | `builder_public_data_feed` | `backend/blueprints/builder.py:1079` | builder public data feed | *(no exact string match — may use helpers)* |
+| `/api/builder/public/<slug>/capsules/<name>` | GET, OPTIONS | `builder_public_capsule_get` | `backend/blueprints/builder.py:1111` | builder public capsule get | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/data/shared` | GET | `builder_data_shared_get` | `backend/blueprints/builder.py:1132` | builder data shared get | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/data/shared` | POST | `builder_data_shared_update` | `backend/blueprints/builder.py:1148` | builder data shared update | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/data/collection/<name>` | GET | `builder_data_collection_list` | `backend/blueprints/builder.py:1174` | builder data collection list | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/data/collection/<name>` | POST | `builder_data_collection_create` | `backend/blueprints/builder.py:1190` | builder data collection create | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/data/collection/<name>/<row_id>` | PATCH | `builder_data_collection_update` | `backend/blueprints/builder.py:1214` | builder data collection update | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/data/collection/<name>/<row_id>` | DELETE | `builder_data_collection_delete` | `backend/blueprints/builder.py:1239` | builder data collection delete | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/data/forms/<name>/submit` | POST | `builder_data_form_submit` | `backend/blueprints/builder.py:1253` | builder data form submit | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/data/leaderboard` | GET | `builder_data_leaderboard` | `backend/blueprints/builder.py:1277` | builder data leaderboard | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/data/results` | GET | `builder_data_results` | `backend/blueprints/builder.py:1292` | builder data results | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/data/summary` | GET | `builder_data_summary` | `backend/blueprints/builder.py:1303` | builder data summary | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/match/opponents` | GET | `builder_match_opponents` | `backend/blueprints/builder.py:1368` | builder match opponents | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/match/list` | GET | `builder_match_list` | `backend/blueprints/builder.py:1376` | builder match list | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/match/create` | POST | `builder_match_create` | `backend/blueprints/builder.py:1385` | builder match create | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/match/<int:match_id>` | GET | `builder_match_get` | `backend/blueprints/builder.py:1401` | builder match get | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/match/<int:match_id>/move` | POST | `builder_match_move` | `backend/blueprints/builder.py:1415` | builder match move | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/match/<int:match_id>/poll` | GET | `builder_match_poll` | `backend/blueprints/builder.py:1432` | builder match poll | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/match/<int:match_id>/accept` | POST | `builder_match_accept` | `backend/blueprints/builder.py:1449` | builder match accept | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/match/<int:match_id>/decline` | POST | `builder_match_decline` | `backend/blueprints/builder.py:1462` | builder match decline | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/match/<int:match_id>/cancel` | POST | `builder_match_cancel` | `backend/blueprints/builder.py:1475` | builder match cancel | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/match/<int:match_id>/resign` | POST | `builder_match_resign` | `backend/blueprints/builder.py:1488` | builder match resign | *(no exact string match — may use helpers)* |
+| `/api/builder/<int:creation_id>/play` | POST | `builder_record_play` | `backend/blueprints/builder.py:1501` | builder record play | *(no exact string match — may use helpers)* |
 | `/api/chat/uploads/init` | POST | `api_chat_uploads_init` | `backend/blueprints/chat_uploads.py:28` | api chat uploads init | `client/src/chat/upload/multipartUploader.ts` (1) |
 | `/api/chat/uploads/part-url` | POST | `api_chat_uploads_part_url` | `backend/blueprints/chat_uploads.py:45` | api chat uploads part url | `client/src/chat/upload/multipartUploader.test.ts` (1), `client/src/chat/upload/multipartUploader.ts` (1) |
 | `/api/chat/uploads/complete` | POST | `api_chat_uploads_complete` | `backend/blueprints/chat_uploads.py:62` | api chat uploads complete | `client/src/chat/upload/multipartUploader.test.ts` (1), `client/src/chat/upload/multipartUploader.ts` (1) |

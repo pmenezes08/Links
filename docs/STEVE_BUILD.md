@@ -40,6 +40,7 @@ Backend routes:
 - `GET /api/builder/explore` - anonymous approved in-platform Explore listings (kind/category/builder filters + sectioned payload).
 - `GET /api/builder/explore/<id>/cover` - poster image for an APPROVED gallery creation (sanitized-render capture; anonymous-safe, edge-cacheable).
 - `GET|POST /api/builder/pseudonym` - the caller's opt-in Explore builder handle (see Builder pseudonyms below).
+- `POST /api/builder/<id>/kind` - creator-corrected creation type (website/app/game). The build-time keyword guess is fallible, so owners fix it from the build-options sheet; guards: multiplayer wiring locks kind=game, a web-published creation can't become a game (unpublish first), and the category revalidates against the new section (universal topics survive, form-specific slugs clear). The user-facing definition (also spoken by Steve in one plain line when proposing a build): **website = a page people read, app = a tool that keeps their data, game = something they play** — all three run inside C-Point; "app" is an interaction model, never an app-store promise.
 - `POST /api/builder/<id>/remix` - build a NEW creation seeded from a gallery-approved/web-published creation's public HTML (a normal build turn; see Remix below).
 - `POST /api/builder/<id>/gallery` - owner opt-in/unlist for Explore Creations.
 - `POST /api/admin/builder/<id>/gallery` - app-admin approve/reject/delist review endpoint (approve accepts an optional `category` override validated against the section enum).

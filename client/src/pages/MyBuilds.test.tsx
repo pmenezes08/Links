@@ -322,6 +322,41 @@ describe('MyBuilds', () => {
     expect(JSON.parse(String(post![1]!.body))).toEqual({ category: 'music' })
   })
 
+  it('lets the creator correct the type behind the same Save', async () => {
+    const fetchMock = vi.fn((url: RequestInfo | URL, opts?: RequestInit) => {
+      const u = String(url)
+      if (u.startsWith('/api/builder/mine')) {
+        return Promise.resolve({ ok: true, json: async () => ({ success: true, creations: [
+          { id: 9, title: 'Lisbon Guide', kind: 'web', status: 'draft', community_id: null,
+            published_post_id: null, updated_at: null, plays: 0,
+            category: 'travel', category_source: 'creator' },
+        ]}) } as Response)
+      }
+      if (u === '/api/builder/9/kind' && opts?.method === 'POST') {
+        return Promise.resolve({ ok: true, json: async () => ({ success: true, kind: 'app', category: 'travel', category_source: 'creator' }) } as Response)
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ success: true, communities: [] }) } as Response)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { getByText, getByLabelText } = render(<MyBuilds />)
+    await waitFor(() => expect(getByText('Lisbon Guide')).toBeTruthy())
+    fireEvent.click(getByLabelText('Open options for Lisbon Guide'))
+    await waitFor(() => expect(getByText('Build options')).toBeTruthy())
+
+    const typeSelect = getByLabelText('Type') as HTMLSelectElement
+    expect(typeSelect.value).toBe('website')  // 'web' kind normalizes to the website section
+    fireEvent.change(typeSelect, { target: { value: 'app' } })
+    fireEvent.click(getByText('Save'))
+    await waitFor(() => expect(getByText('Saved.')).toBeTruthy())
+
+    const post = fetchMock.mock.calls.find(c => String(c[0]) === '/api/builder/9/kind')
+    expect(post).toBeTruthy()
+    expect(JSON.parse(String(post![1]!.body))).toEqual({ kind: 'app' })
+    // The universal-topic category survived the flip — no category POST needed.
+    expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/9/category'))).toBe(false)
+  })
+
   it('discards unsaved category drafts on request without posting', async () => {
     const fetchMock = vi.fn((url: RequestInfo | URL) => {
       const u = String(url)

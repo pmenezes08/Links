@@ -1299,7 +1299,10 @@ _CONVERSE_CATEGORY = (
     + "; website types: " + ", ".join(_WEBSITE_TYPES)
     + ". Mention it naturally in your reply (e.g. \"it'll show under Travel in the gallery — easy to change "
     "later\") — one light line, never a question that blocks the build. Put the slug in the category field; "
-    "leave it empty when unsure or when revising an existing build.\n"
+    "leave it empty when unsure or when revising an existing build. In the same breath, say in PLAIN words what "
+    "form you'll build and why — a website (a page people read), an app (a tool that keeps their data), or a "
+    "game (something they play) — e.g. \"I'll make this an app, so your picks are saved between visits.\" "
+    "Never imply an app store or installation; everything runs right inside C-Point.\n"
 )
 _CONVERSE_ALL_CATEGORY_SLUGS = {slug for slugs in BUILDER_CATEGORIES.values() for slug in slugs}
 
@@ -3200,6 +3203,54 @@ def explore_sections() -> Dict[str, Any]:
             "creations": items[:_EXPLORE_SECTION_CAP],
         })
     return {"sections": sections, "taxonomy": BUILDER_CATEGORIES}
+
+
+_VALID_KINDS = ("website", "app", "game")
+
+
+def set_creation_kind(*, creation_id: int, username: str, kind: str) -> Dict[str, Any]:
+    """Creator-corrected creation TYPE (website / app / game).
+
+    The build-time keyword guess is fallible ("city guide" reads as website,
+    "golf scorecard" isn't in the game hints), so owners may correct it —
+    founder call 2026-07-13. Guards:
+    - Multiplayer wiring locks the kind to game (the runtime contract and the
+      games-stay-inside-C-Point rule both key on it).
+    - A web-published creation cannot become a game (games are not publicly
+      publishable) — unpublish first.
+    - The category is revalidated against the new section: universal topics
+      survive, form-specific slugs (site types / game genres) clear to
+      untagged. An admin-locked category that survives stays locked.
+    """
+    row = get_creation(int(creation_id))
+    if not row or row.get("created_by") != username:
+        raise PermissionError("creation not found")
+    new_kind = str(kind or "").strip().lower()
+    if new_kind not in _VALID_KINDS:
+        raise ValueError("invalid_kind")
+    html = row.get("html_content") or ""
+    if _has_multiplayer_wiring(html) and new_kind != "game":
+        raise ValueError("kind_locked_multiplayer")
+    if new_kind == "game" and row.get("public_status") == "published":
+        raise ValueError("unpublish_web_first")
+    category = row.get("category")
+    category_source = row.get("category_source")
+    if category and category not in (BUILDER_CATEGORIES.get(new_kind) or []):
+        category, category_source = None, None
+    ph = get_sql_placeholder()
+    now = _now()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""UPDATE creations
+                SET kind = {ph},
+                    public_kind = CASE WHEN public_kind IS NULL THEN NULL ELSE {ph} END,
+                    category = {ph}, category_source = {ph}, updated_at = {ph}
+                WHERE id = {ph} AND created_by = {ph}""",
+            (new_kind, new_kind, category, category_source, now, creation_id, username),
+        )
+        conn.commit()
+    return {"kind": new_kind, "category": category, "category_source": category_source}
 
 
 def set_creation_category(*, creation_id: int, username: str,

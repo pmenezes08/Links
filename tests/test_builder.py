@@ -837,6 +837,60 @@ def test_suggested_category_applies_only_when_valid_for_final_kind(monkeypatch):
     assert builder.get_build_job(int(job["id"]))["suggested_category"] == "travel"
 
 
+def test_set_creation_kind_corrects_type_and_revalidates_category(monkeypatch):
+    """Founder call 2026-07-13: the keyword guess is fallible ('city guide' →
+    website), so owners correct the type; universal-topic categories survive
+    the flip, form-specific slugs clear."""
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker"); _make_user("stranger")
+    cid = _make_community()
+    # "city guide" classifies as website — the founder's Lisbon case.
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a city guide for Lisbon")
+    assert builder.get_creation(created["id"])["kind"] == "website"
+    builder.set_creation_category(creation_id=created["id"], username="maker", category="travel")
+
+    with pytest.raises(PermissionError):
+        builder.set_creation_kind(creation_id=created["id"], username="stranger", kind="app")
+    with pytest.raises(ValueError):
+        builder.set_creation_kind(creation_id=created["id"], username="maker", kind="poster")
+
+    out = builder.set_creation_kind(creation_id=created["id"], username="maker", kind="app")
+    assert out["kind"] == "app"
+    # Travel is a universal topic → survives, still creator-owned.
+    assert out["category"] == "travel" and out["category_source"] == "creator"
+    row = builder.get_creation(created["id"])
+    assert row["kind"] == "app" and row["category"] == "travel"
+
+    # A form-specific slug clears when the form changes.
+    site = builder.create_creation(username="maker", community_id=cid, prompt="a landing page for my launch")
+    assert builder.get_creation(site["id"])["category"] == "landing"
+    flipped = builder.set_creation_kind(creation_id=site["id"], username="maker", kind="game")
+    assert flipped["kind"] == "game" and flipped["category"] is None
+
+
+def test_set_creation_kind_guards(monkeypatch):
+    monkeypatch.setattr(
+        builder.llm, "generate_text",
+        lambda *a, **k: "<!doctype html><html><body><script>CPoint.turnBasedGame({})</script></body></html>")
+    _make_user("maker")
+    cid = _make_community()
+    multiplayer = builder.create_creation(username="maker", community_id=cid, prompt="chess versus members")
+    with pytest.raises(ValueError, match="kind_locked_multiplayer"):
+        builder.set_creation_kind(creation_id=multiplayer["id"], username="maker", kind="app")
+
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    site = builder.create_creation(username="maker", community_id=cid, prompt="a website for my studio")
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"UPDATE creations SET public_status = 'published' WHERE id = {ph}", (site["id"],))
+        conn.commit()
+    with pytest.raises(ValueError, match="unpublish_web_first"):
+        builder.set_creation_kind(creation_id=site["id"], username="maker", kind="game")
+    # Website ↔ app stays allowed while published (both are web-eligible).
+    assert builder.set_creation_kind(creation_id=site["id"], username="maker", kind="app")["kind"] == "app"
+
+
 def test_builder_pseudonym_validation_and_explore_credit(monkeypatch):
     monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
     _make_user("maker"); _make_user("othermaker"); _make_user("takenname")
