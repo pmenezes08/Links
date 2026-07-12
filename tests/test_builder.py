@@ -745,6 +745,98 @@ def test_play_digest_notifies_creators_and_is_idempotent(monkeypatch):
     assert len(sent) == 1
 
 
+def test_category_precedence_admin_locks_creator_beats_automation(monkeypatch):
+    """Founder-ratified contract: admin (locks) > creator > llm > keyword."""
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker"); _make_user("stranger")
+    cid = _make_community()
+    # Unmatchable prompt → keyword classifier leaves category NULL.
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a game")
+    assert builder.get_creation(created["id"])["category"] is None
+
+    # Non-owner gets the non-enumerating not-found; bad slug is rejected.
+    with pytest.raises(PermissionError):
+        builder.set_creation_category(creation_id=created["id"], username="stranger", category="arcade")
+    with pytest.raises(ValueError):
+        builder.set_creation_category(creation_id=created["id"], username="maker", category="travel")
+
+    out = builder.set_creation_category(creation_id=created["id"], username="maker", category="arcade")
+    assert out == {"category": "arcade", "category_source": "creator"}
+
+    # Automation must not clobber the creator: the listing LLM pass may only
+    # fill the hook.
+    monkeypatch.setattr(builder.llm, "generate_text",
+                        lambda *a, **k: '{"category": "puzzle", "hook": "A hook line"}')
+    builder.update_gallery_status(creation_id=created["id"], username="maker", action="request")
+    row = builder.get_creation(created["id"])
+    assert row["category"] == "arcade"
+    assert row["category_source"] == "creator"
+    assert row["gallery_hook"] == "A hook line"
+
+    # Creator can clear back to untagged (pre-lock).
+    cleared = builder.set_creation_category(creation_id=created["id"], username="maker", category=None)
+    assert cleared == {"category": None, "category_source": None}
+
+    # Explicit admin pick wins and LOCKS.
+    builder.update_gallery_status(creation_id=created["id"], username="admin", action="approve",
+                                  reviewer="admin", category="board", is_admin=True)
+    row = builder.get_creation(created["id"])
+    assert row["category"] == "board" and row["category_source"] == "admin"
+    with pytest.raises(ValueError, match="category_locked"):
+        builder.set_creation_category(creation_id=created["id"], username="maker", category="arcade")
+
+
+def test_keyword_and_llm_writes_stamp_category_source(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    tagged = builder.create_creation(username="maker", community_id=cid, prompt="a sudoku puzzle game")
+    assert builder.get_creation(tagged["id"])["category_source"] == "keyword"
+
+    untagged = builder.create_creation(username="maker", community_id=cid, prompt="a game")
+    monkeypatch.setattr(builder.llm, "generate_text",
+                        lambda *a, **k: '{"category": "arcade", "hook": "Zip zap"}')
+    builder.update_gallery_status(creation_id=untagged["id"], username="maker", action="request")
+    row = builder.get_creation(untagged["id"])
+    assert row["category"] == "arcade" and row["category_source"] == "llm"
+
+
+def test_converse_sidecar_category_is_validated_and_additive(monkeypatch):
+    monkeypatch.setattr(
+        builder.llm, "generate_text",
+        lambda *a, **k: '{"reply": "Plan!", "ready": true, "brief": "A travel planner app", "category": "travel"}')
+    out = builder.converse([], "make me a trip app")
+    assert out["ready"] is True and out["brief"]
+    assert out["category"] == "travel"
+
+    # Out-of-enum slugs are dropped, never invented.
+    monkeypatch.setattr(
+        builder.llm, "generate_text",
+        lambda *a, **k: '{"reply": "Plan!", "ready": true, "brief": "A thing", "category": "spaceships"}')
+    assert builder.converse([], "make me a thing")["category"] == ""
+
+
+def test_suggested_category_applies_only_when_valid_for_final_kind(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    # Valid for the final kind (app) → applied with source 'llm'.
+    good = builder.create_creation(username="maker", community_id=cid,
+                                   prompt="an organizer app", suggested_category="travel")
+    row = builder.get_creation(good["id"])
+    assert row["category"] == "travel" and row["category_source"] == "llm"
+    # A game slug on an app build falls back to the keyword classifier.
+    bad = builder.create_creation(username="maker", community_id=cid,
+                                  prompt="a workout tracker app", suggested_category="arcade")
+    row = builder.get_creation(bad["id"])
+    assert row["category"] == "fitness" and row["category_source"] == "keyword"
+
+    # And it survives the async job row.
+    job = builder.create_build_job(username="maker", community_id=cid, prompt="a trip app",
+                                   tier="fast", suggested_category="Travel ")
+    assert builder.get_build_job(int(job["id"]))["suggested_category"] == "travel"
+
+
 def test_builder_pseudonym_validation_and_explore_credit(monkeypatch):
     monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
     _make_user("maker"); _make_user("othermaker"); _make_user("takenname")

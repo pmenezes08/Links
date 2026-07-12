@@ -233,6 +233,63 @@ describe('ExploreCreations', () => {
     expect(img).toBeTruthy()
   })
 
+  it('filters to a sub-category via ?kind=&category= deep link', async () => {
+    searchParams.current = new URLSearchParams('kind=app&category=travel')
+    vi.stubGlobal('fetch', mockFetchOnce({
+      success: true,
+      creations: [
+        creation(1, 'app', { title: 'Trip Planner', category: 'travel' }),
+        creation(2, 'app', { title: 'Budget App', category: 'finance' }),
+        creation(3, 'game', { title: 'Travel Quiz Game', category: 'trivia' }),
+      ],
+    }))
+
+    const { getByText, queryByText } = render(<ExploreCreations />)
+    await waitFor(() => expect(getByText('Trip Planner')).toBeTruthy())
+    expect(queryByText('Budget App')).toBeNull()
+    expect(queryByText('Travel Quiz Game')).toBeNull()
+    // Header names the narrowing.
+    expect(getByText(/Apps · Travel/)).toBeTruthy()
+  })
+
+  it('shows search only above the supply floor, filters, and nudges on 0-1 results', async () => {
+    // 12 games → deep grid is searchable.
+    const many = Array.from({ length: 12 }, (_, i) =>
+      creation(i + 1, 'game', { title: i === 0 ? 'Chess Blitz' : `Arcade Game ${i}` }))
+    searchParams.current = new URLSearchParams('kind=game')
+    vi.stubGlobal('fetch', mockFetchOnce({ success: true, creations: many }))
+
+    const { getByText, queryByText, getByLabelText } = render(<ExploreCreations />)
+    await waitFor(() => expect(getByText('Chess Blitz')).toBeTruthy())
+
+    const input = getByLabelText('Search these creations…')
+    // One match → nudge INSTEAD of a lonely grid (founder decision).
+    fireEvent.change(input, { target: { value: 'chess' } })
+    expect(queryByText('Chess Blitz')).toBeNull()
+    expect(getByText('No "chess" here yet.')).toBeTruthy()
+    fireEvent.click(getByText('Build it with Steve'))
+    const target = decodeURIComponent(String(navigate.mock.calls.at(-1)?.[0]))
+    expect(target.startsWith('/builder?seed=')).toBe(true)
+    expect(target).toContain('chess')
+
+    // Multiple matches → grid + live count.
+    fireEvent.change(input, { target: { value: 'arcade game' } })
+    expect(getByText('11 results')).toBeTruthy()
+    expect(getByText('Arcade Game 1')).toBeTruthy()
+  })
+
+  it('hides search below the supply floor', async () => {
+    searchParams.current = new URLSearchParams('kind=game')
+    vi.stubGlobal('fetch', mockFetchOnce({
+      success: true,
+      creations: [1, 2, 3].map(i => creation(i, 'game')),
+    }))
+
+    const { getByText, queryByLabelText } = render(<ExploreCreations />)
+    await waitFor(() => expect(getByText('Creation 1')).toBeTruthy())
+    expect(queryByLabelText('Search these creations…')).toBeNull()
+  })
+
   it('filters to one section via ?kind= deep link', async () => {
     searchParams.current = new URLSearchParams('kind=game')
     vi.stubGlobal('fetch', mockFetchOnce({

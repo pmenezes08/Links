@@ -27,7 +27,8 @@ type Props = {
   onOpen: (item: ExploreCreation) => void
   onBuildYourOwn: (item: ExploreCreation) => void
   onBuilderTap?: (builder: string) => void
-  onSeeAll: (kind: ExploreSectionKind) => void
+  /** Carries the active chip so "See all" deep-links the filtered grid. */
+  onSeeAll: (kind: ExploreSectionKind, category?: string | null) => void
 }
 
 export default function ExploreShelf({ kind, items, categories, previewBudgetStart, previewBudget, onOpen, onBuildYourOwn, onBuilderTap, onSeeAll }: Props) {
@@ -46,7 +47,7 @@ export default function ExploreShelf({ kind, items, categories, previewBudgetSta
         {items.length > SEE_ALL_THRESHOLD && (
           <button
             type="button"
-            onClick={() => onSeeAll(kind)}
+            onClick={() => onSeeAll(kind, selected)}
             className="inline-flex min-h-[32px] items-center gap-1 text-sm font-medium text-cpoint-turquoise transition hover:brightness-110"
           >
             {t('explore.see_all')} <i className="fa-solid fa-chevron-right text-[10px]" aria-hidden="true" />

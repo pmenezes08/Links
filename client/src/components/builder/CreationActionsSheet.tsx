@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import CommunitySharePicker from './CommunitySharePicker'
+import { sectionOf } from '../../hooks/useExploreCreations'
 
 export type SheetCreation = {
   id: number
@@ -120,6 +121,113 @@ function BuilderPseudonymField() {
   )
 }
 
+// Section → category slugs, served by /api/builder/taxonomy (backend is the
+// single source of truth). Module-cached: one fetch per session.
+let taxonomyCache: Record<string, string[]> | null = null
+const CATEGORY_LABELS: Record<string, string> = {
+  business: 'Business', portfolio: 'Portfolio', event: 'Events', landing: 'Landing page',
+  blog: 'Blog', directory: 'Directory', productivity: 'Productivity', fitness: 'Fitness',
+  finance: 'Finance', travel: 'Travel', health: 'Health', learning: 'Learning',
+  community: 'Community', arcade: 'Arcade', puzzle: 'Puzzle', board: 'Board & cards',
+  trivia: 'Trivia', word: 'Word games', sports: 'Sports',
+}
+
+/**
+ * Creator category picker (founder-ratified precedence: admin locks > creator
+ * > Steve's automation). Confirm-or-correct, never a chore: Steve's current
+ * assignment renders pre-selected as "Suggested"; one tap saves. An
+ * admin-locked category renders read-only.
+ */
+function CreationCategoryField({ creation }: { creation: SheetCreation }) {
+  const section = sectionOf({ kind: creation.kind, public_kind: creation.public_kind })
+  const [slugs, setSlugs] = useState<string[]>(taxonomyCache?.[section] ?? [])
+  const [selected, setSelected] = useState<string | null>(null)
+  const [source, setSource] = useState<string | null>(null)
+  const [state, setState] = useState<'idle' | 'saving' | 'error'>('idle')
+
+  useEffect(() => {
+    let alive = true
+    if (!taxonomyCache) {
+      fetch('/api/builder/taxonomy', { credentials: 'include', headers: { Accept: 'application/json' } })
+        .then(r => r.json())
+        .then(d => {
+          if (d?.success && d.taxonomy) {
+            taxonomyCache = d.taxonomy
+            if (alive) setSlugs(taxonomyCache?.[section] ?? [])
+          }
+        })
+        .catch(() => { /* chips just don't render */ })
+    }
+    fetch(`/api/builder/${creation.id}`, { credentials: 'include', headers: { Accept: 'application/json' } })
+      .then(r => r.json())
+      .then(d => {
+        if (alive && d?.success && d.creation) {
+          setSelected(d.creation.category || null)
+          setSource(d.creation.category_source || null)
+        }
+      })
+      .catch(() => { /* stays unselected */ })
+    return () => { alive = false }
+  }, [creation.id, section])
+
+  const locked = source === 'admin'
+  const save = async (slug: string) => {
+    if (locked || state === 'saving') return
+    const next = slug === selected ? null : slug  // tap the active chip to clear
+    const prev = { selected, source }
+    setSelected(next); setSource(next ? 'creator' : null); setState('saving')
+    try {
+      const res = await fetch(`/api/builder/${creation.id}/category`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: next }),
+      })
+      const data = await res.json().catch(() => null)
+      if (res.ok && data?.success) { setState('idle'); return }
+      setSelected(prev.selected); setSource(prev.source); setState('error')
+    } catch {
+      setSelected(prev.selected); setSource(prev.source); setState('error')
+    }
+  }
+
+  if (slugs.length === 0) return null
+  const suggested = selected && source !== 'creator' && source !== 'admin'
+  return (
+    <div className="mt-3 border-t border-c-border pt-3">
+      <div className="flex items-baseline gap-2">
+        <span className="text-xs font-semibold text-c-text-secondary">Category</span>
+        {suggested && (
+          <span className="text-[10px] uppercase tracking-wide text-c-text-tertiary">Suggested</span>
+        )}
+      </div>
+      <p className="mt-0.5 text-xs text-c-text-tertiary">
+        {locked
+          ? 'Set by the review team.'
+          : selected
+            ? `Shown under "${CATEGORY_LABELS[selected] || selected}" in the gallery — tap another to change.`
+            : 'Add a category so people can find it (optional).'}
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-label="Category">
+        {slugs.map(slug => (
+          <button
+            key={slug}
+            type="button"
+            role="radio"
+            aria-checked={selected === slug}
+            disabled={locked}
+            onClick={() => void save(slug)}
+            className={`min-h-[44px] rounded-full border px-3.5 text-xs font-medium transition disabled:opacity-50 ${selected === slug ? 'border-cpoint-turquoise bg-cpoint-turquoise text-black' : 'border-c-border text-c-text-secondary hover:text-c-text-primary'}`}
+          >
+            {CATEGORY_LABELS[slug] || slug}
+          </button>
+        ))}
+      </div>
+      {state === 'error' && (
+        <p className="mt-1.5 text-xs text-red-400">Couldn't save — tap to retry.</p>
+      )}
+    </div>
+  )
+}
+
 export default function CreationActionsSheet({
   creation,
   copied,
@@ -204,6 +312,7 @@ export default function CreationActionsSheet({
               {galleryWorking ? 'Working...' : isListed ? 'Remove from the gallery' : 'List in the gallery'}
             </button>
             <p className="mt-2 text-xs text-c-text-tertiary">Gallery listings are anonymous: your name, profile, and community are not shown.</p>
+            {isListed && <CreationCategoryField creation={creation} />}
             {isListed && <BuilderPseudonymField />}
           </section>
 

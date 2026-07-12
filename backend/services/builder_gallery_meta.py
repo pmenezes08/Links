@@ -84,7 +84,12 @@ def ensure_gallery_meta(creation_id: int) -> Optional[Dict[str, Any]]:
     creation = builder.get_creation(int(creation_id))
     if not creation:
         return None
-    has_category = bool(creation.get("category"))
+    # Precedence contract: automation NEVER touches a human-assigned category
+    # (admin > creator > llm > keyword) — even if the field were somehow blank
+    # with a human source, the model may not claim it. The hook has no
+    # human-authorship contract and fills independently.
+    human_owned = (creation.get("category_source") or "") in ("creator", "admin")
+    has_category = bool(creation.get("category")) or human_owned
     has_hook = bool(creation.get("gallery_hook"))
     if has_category and has_hook:
         return {"category": creation.get("category"), "hook": creation.get("gallery_hook"), "spent": False}
@@ -126,6 +131,7 @@ def ensure_gallery_meta(creation_id: int) -> Optional[Dict[str, Any]]:
     if category:
         sets.append(f"category = {ph}")
         params.append(category)
+        sets.append("category_source = 'llm'")
     if hook:
         sets.append(f"gallery_hook = {ph}")
         params.append(hook)

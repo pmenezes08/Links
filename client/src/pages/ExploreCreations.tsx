@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useHeader } from '../contexts/HeaderContext'
@@ -48,6 +48,11 @@ export default function ExploreCreations() {
     kindParam === 'game' || kindParam === 'app' || kindParam === 'website' ? kindParam : null
   // "More from this builder" — filters by the creator's opt-in pseudonym.
   const filterBuilder = (searchParams.get('builder') || '').trim() || null
+  // Deep-linked sub-category grid ("only travel apps"). Unknown slugs simply
+  // match nothing beyond the kind filter — never a blank page.
+  const filterCategory = (searchParams.get('category') || '').trim().toLowerCase() || null
+  // Free-text narrowing ("only chess games") — supply-gated below.
+  const [searchTerm, setSearchTerm] = useState('')
 
   useEffect(() => {
     setTitle(t('explore.title'))
@@ -71,13 +76,31 @@ export default function ExploreCreations() {
     navigate(`/explore-creations?builder=${encodeURIComponent(name)}`)
   }, [navigate])
 
-  const filteredItems = filterBuilder
+  const baseFiltered = filterBuilder
     ? items.filter(i => (i.builder || '') === filterBuilder)
     : filterKind
       ? (sections.find(s => s.kind === filterKind)?.items ?? [])
+          .filter(i => !filterCategory || (i.category || '') === filterCategory)
       : items
   const filterActive = Boolean(filterKind || filterBuilder)
   const featuredItems = items.filter(i => i.featured)
+
+  // Search only earns its place above a supply floor — below it, chips carry
+  // everything and a search box would mostly return lonely results.
+  const searchable = filterActive && baseFiltered.length >= 12
+  const term = searchable ? searchTerm.trim().toLowerCase() : ''
+  const filteredItems = term
+    ? baseFiltered.filter(i =>
+        (i.title || '').toLowerCase().includes(term) || (i.hook || '').toLowerCase().includes(term))
+    : baseFiltered
+  // Founder-ratified: 0-1 matches shows the build-the-first nudge INSTEAD of
+  // a lonely grid (1 is deliberately treated as 0).
+  const showSearchNudge = Boolean(term) && filteredItems.length <= 1
+
+  const buildFromTerm = useCallback(() => {
+    const seed = t('explore.seed_term', { term: searchTerm.trim() })
+    navigate(`/builder?seed=${encodeURIComponent(seed)}`)
+  }, [navigate, t, searchTerm])
 
   return (
     <div className="app-content min-h-screen chat-thread-bg text-c-text-primary">
@@ -132,21 +155,59 @@ export default function ExploreCreations() {
                 <i className="fa-solid fa-chevron-left text-[10px]" aria-hidden="true" /> {t('explore.all_creations')}
               </button>
               <h2 className="text-lg font-semibold text-c-text-primary">
-                {filterBuilder ? t('explore.by_builder', { name: filterBuilder }) : t(`explore.section_${filterKind}`)}
+                {filterBuilder
+                  ? t('explore.by_builder', { name: filterBuilder })
+                  : filterCategory
+                    ? `${t(`explore.section_${filterKind}`)} · ${t(`explore.category.${filterCategory}`, { defaultValue: filterCategory })}`
+                    : t(`explore.section_${filterKind}`)}
               </h2>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredItems.map((item, i) => (
-                <ExploreCard
-                  key={item.id}
-                  item={item}
-                  withPreview={i < PREVIEW_BUDGET}
-                  onOpen={openCreation}
-                  onBuildYourOwn={buildYourOwn}
-                  onBuilderTap={builderTap}
-                />
-              ))}
-            </div>
+            {searchable && (
+              <input
+                type="search"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder={t('explore.search_placeholder')}
+                aria-label={t('explore.search_placeholder')}
+                className="mb-3 w-full rounded-xl border border-c-border bg-c-bg-elevated px-3.5 py-2.5 text-[15px] text-c-text-primary outline-none placeholder:text-c-text-tertiary focus:border-cpoint-turquoise/50"
+              />
+            )}
+            {searchable && term && !showSearchNudge && (
+              <p className="mb-2 text-xs text-c-text-tertiary" aria-live="polite">
+                {t('explore.search_results', { count: filteredItems.length })}
+              </p>
+            )}
+            {showSearchNudge ? (
+              <div className="rounded-2xl border border-c-border bg-c-bg-elevated p-8 text-center" aria-live="polite">
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-cpoint-turquoise/15 text-cpoint-turquoise">
+                  <i className="fa-solid fa-wand-magic-sparkles text-xl" aria-hidden="true" />
+                </div>
+                <h3 className="text-base font-semibold text-c-text-primary">
+                  {t('explore.search_empty_title', { term: searchTerm.trim() })}
+                </h3>
+                <p className="mt-1 text-sm text-c-text-tertiary">{t('explore.search_empty_body')}</p>
+                <button
+                  type="button"
+                  onClick={buildFromTerm}
+                  className="mt-4 rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-sm font-semibold text-black transition hover:brightness-110"
+                >
+                  {t('explore.search_empty_cta')}
+                </button>
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {filteredItems.map((item, i) => (
+                  <ExploreCard
+                    key={item.id}
+                    item={item}
+                    withPreview={i < PREVIEW_BUDGET}
+                    onOpen={openCreation}
+                    onBuildYourOwn={buildYourOwn}
+                    onBuilderTap={builderTap}
+                  />
+                ))}
+              </div>
+            )}
           </section>
         )}
 
@@ -190,7 +251,7 @@ export default function ExploreCreations() {
                     onOpen={openCreation}
                     onBuildYourOwn={buildYourOwn}
                     onBuilderTap={builderTap}
-                    onSeeAll={(k) => navigate(`/explore-creations?kind=${k}`)}
+                    onSeeAll={(k, cat) => navigate(`/explore-creations?kind=${k}${cat ? `&category=${encodeURIComponent(cat)}` : ''}`)}
                   />
                 )
               })

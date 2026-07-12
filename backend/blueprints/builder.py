@@ -194,8 +194,12 @@ def builder_create():
     if builder_svc.user_has_active_job(username):
         return _active_job_response()
 
+    # Steve's in-chat shelf proposal (converse sidecar) — carried through the
+    # async job and re-validated against the FINAL kind in create_creation.
+    suggested_category = (str(data.get("category") or "").strip().lower() or None)
     job = builder_svc.create_build_job(
         username=username, community_id=community_id, prompt=prompt, tier=tier, kind="create",
+        suggested_category=suggested_category,
     )
     queued_with_cloud_tasks = builder_svc.enqueue_build_job(int(job["id"]))
     return jsonify({
@@ -577,6 +581,41 @@ def builder_explore_cover(creation_id: int):
     resp = current_app.response_class(data, mimetype="image/png")
     resp.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400"
     return resp
+
+
+@builder_bp.route("/api/builder/taxonomy", methods=["GET"])
+def builder_taxonomy():
+    """The gallery's section → category-slug vocabulary (display taxonomy).
+    Identical for every viewer; the client resolves slugs to localized labels
+    via i18n catalogs."""
+    resp = jsonify({"success": True, "taxonomy": builder_svc.BUILDER_CATEGORIES})
+    resp.headers["Cache-Control"] = "public, max-age=3600"
+    return resp
+
+
+@builder_bp.route("/api/builder/<int:creation_id>/category", methods=["POST"])
+def builder_set_category(creation_id: int):
+    """Creator-set gallery category. Precedence: admin (locks) > creator >
+    automated — see builder.set_creation_category. Owner-only, section-validated
+    server-side; null clears back to untagged."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    data = request.get_json(silent=True) or {}
+    raw = data.get("category")
+    category = (str(raw).strip().lower() or None) if raw is not None else None
+    try:
+        result = builder_svc.set_creation_category(
+            creation_id=creation_id, username=username, category=category)
+    except PermissionError:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    except ValueError as exc:
+        status = 409 if str(exc) == "category_locked" else 400
+        return jsonify({"success": False, "error": str(exc)}), status
+    except Exception:
+        logger.exception("builder: set category failed")
+        return jsonify({"success": False, "error": "category_update_failed"}), 500
+    return jsonify({"success": True, **result})
 
 
 @builder_bp.route("/api/builder/pseudonym", methods=["GET", "POST"])

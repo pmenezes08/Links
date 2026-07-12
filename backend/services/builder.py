@@ -313,7 +313,7 @@ _CREATION_COLS = [
     "public_unpublished_at", "public_kind", "gallery_status",
     "gallery_requested_at", "gallery_reviewed_at", "gallery_reviewed_by",
     "gallery_rejection_reason", "capsule_recipes_json", "category",
-    "gallery_hook",
+    "gallery_hook", "category_source",
 ]
 
 _JOB_COLS = [
@@ -321,6 +321,7 @@ _JOB_COLS = [
     "status", "result_creation_id", "error", "attempts", "max_attempts",
     "worker_token", "lease_expires_at", "notified_at", "created_at",
     "updated_at", "started_at", "finished_at", "progress", "progress_stage",
+    "suggested_category",
 ]
 
 
@@ -430,6 +431,11 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
             # Explore gallery sub-category slug (see BUILDER_CATEGORIES). NULL =
             # untagged; untagged rows still list under their section.
             ("category", "VARCHAR(48)" if USE_MYSQL else "TEXT"),
+            # Who assigned the category — the precedence contract (founder-
+            # ratified): admin (locks) > creator > llm > keyword. Automated
+            # writers never overwrite a human source; creator writes are
+            # rejected once an admin has locked.
+            ("category_source", "VARCHAR(16)" if USE_MYSQL else "TEXT"),
             # Steve-voiced one-liner for the gallery card, written by the
             # metered classify+hook pass at gallery listing time.
             ("gallery_hook", "VARCHAR(200)" if USE_MYSQL else "TEXT"),
@@ -746,6 +752,9 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
             # Live progress feedback (0-100 + a stage key the client maps to copy).
             f"ALTER TABLE builder_jobs ADD COLUMN progress {_int} NOT NULL DEFAULT 0",
             f"ALTER TABLE builder_jobs ADD COLUMN progress_stage {_txt} NULL",
+            # Steve's in-chat category proposal, carried through the async job
+            # to create_creation (validated again against the FINAL kind there).
+            f"ALTER TABLE builder_jobs ADD COLUMN suggested_category {_txt} NULL",
         ):
             try:
                 cursor.execute(stmt)
@@ -1256,8 +1265,26 @@ _CONVERSE_JSON = (
     "('A chess game where…', 'Change the scoring so…') — ideally under 3000 characters, capturing only the agreed "
     "requirements; never first-person, never addressed to the user, never containing things Steve will say, explain, "
     "or note (that belongs in reply) — only what the app must BE and DO. If the user asked for visible instructions/"
-    'rules copy, state that as a product requirement; otherwise empty>"}'
+    'rules copy, state that as a product requirement; otherwise empty>", '
+    '"category": "<when ready=true AND this is a NEW build: the one gallery shelf slug that best fits, from the '
+    'allowed list; otherwise empty>"}'
 )
+
+# In-chat category capture (founder-ratified, stickiness panel 2026-07-12):
+# when Steve proposes a NEW build he names its Made-with-Steve shelf in the
+# reply and emits the slug as a sidecar field on the SAME metered chat turn —
+# zero extra spend. The sidecar never influences ready/brief; an out-of-enum
+# slug is dropped at parse time and re-validated against the FINAL kind in
+# create_creation.
+_CONVERSE_CATEGORY = (
+    "Gallery shelf (NEW builds only): the finished creation can be listed in the anonymous 'Made with Steve' "
+    "gallery. When you propose the plan (ready=true), pick the ONE shelf slug that best fits from — "
+    + "; ".join(f"{section}s: {', '.join(slugs)}" for section, slugs in BUILDER_CATEGORIES.items())
+    + ". Mention the shelf naturally in your reply (e.g. \"it'll sit under Apps › Travel in the gallery — easy to "
+    "change later\") — one light line, never a question that blocks the build. Put the slug in the category field; "
+    "leave it empty when unsure or when revising an existing build.\n"
+)
+_CONVERSE_ALL_CATEGORY_SLUGS = {slug for slugs in BUILDER_CATEGORIES.values() for slug in slugs}
 
 
 def _converse_system(*, mode: str, agent_mode: bool, has_creation: bool) -> str:
@@ -1271,7 +1298,9 @@ def _converse_system(*, mode: str, agent_mode: bool, has_creation: bool) -> str:
         "look at the code first. When you propose a change (Agent mode), the brief should describe just the "
         "change to make to this existing build.\n"
         if has_creation else "")
-    return _CONVERSE_BASE + capability + register + ctx + _CONVERSE_JSON
+    # The shelf line only applies when Steve can build something NEW.
+    category_block = _CONVERSE_CATEGORY if (agent_mode and not has_creation) else ""
+    return _CONVERSE_BASE + capability + register + ctx + category_block + _CONVERSE_JSON
 
 
 def _parse_converse(raw: str) -> Dict[str, Any]:
@@ -1285,11 +1314,19 @@ def _parse_converse(raw: str) -> Dict[str, Any]:
             obj = json.loads(text[s:e + 1])
             reply = str(obj.get("reply") or "").strip()
             brief = str(obj.get("brief") or "").strip()
+            # Sidecar shelf proposal: purely additive — never influences
+            # ready/brief; out-of-enum slugs are dropped here and the survivor
+            # is re-validated against the final kind at create time.
+            category = str(obj.get("category") or "").strip().lower()
+            if category not in _CONVERSE_ALL_CATEGORY_SLUGS:
+                category = ""
             if reply:
-                return {"reply": reply, "ready": bool(obj.get("ready")) and bool(brief), "brief": brief}
+                return {"reply": reply, "ready": bool(obj.get("ready")) and bool(brief),
+                        "brief": brief, "category": category}
         except Exception:
             pass
-    return {"reply": text or "Tell me a bit more about what you'd like to make.", "ready": False, "brief": ""}
+    return {"reply": text or "Tell me a bit more about what you'd like to make.", "ready": False,
+            "brief": "", "category": ""}
 
 
 def converse(history: List[Dict[str, str]], message: str, *, mode: str = "simple",
@@ -1958,8 +1995,15 @@ def _generate_with_fallback(prompt: str, *, prior_html: Optional[str] = None,
 
 def create_creation(*, username: str, community_id: Optional[int], prompt: str,
                     title: Optional[str] = None, tier: str = "fast",
-                    verify: bool = False) -> Dict[str, Any]:
-    """Generate a first artifact from ``prompt`` and persist it as a draft."""
+                    verify: bool = False,
+                    suggested_category: Optional[str] = None) -> Dict[str, Any]:
+    """Generate a first artifact from ``prompt`` and persist it as a draft.
+
+    ``suggested_category`` is Steve's in-chat proposal (converse sidecar). It
+    was validated against the CHAT's guessed kind, so it is re-validated here
+    against the FINAL creation kind — a mismatch falls back to the keyword
+    classifier rather than misfiling the creation.
+    """
     # Kind is inferred BEFORE codegen (prompt carries the signal; the title
     # doesn't exist yet) so the verify pass can pick per-kind renders/rubric,
     # then upgraded by the artifact signal so pipeline and stored kind agree.
@@ -1971,7 +2015,13 @@ def create_creation(*, username: str, community_id: Optional[int], prompt: str,
     report_progress(92, "saving")
     resolved_title = (title or _extract_title(html, prompt))[:200]
     creation_kind = "game" if _has_multiplayer_wiring(html) else build_kind
-    category = infer_creation_category(prompt, resolved_title, kind=creation_kind)
+    section = _public_kind(creation_kind)
+    proposed = str(suggested_category or "").strip().lower()
+    if proposed and proposed in (BUILDER_CATEGORIES.get(section) or []):
+        category, category_source = proposed, "llm"
+    else:
+        category = infer_creation_category(prompt, resolved_title, kind=creation_kind)
+        category_source = "keyword" if category else None
     history = _append_history(None, prompt)
     capsule_recipes_json = _capsule_recipes_json_from_html(html)
     now = _now()
@@ -1983,11 +2033,11 @@ def create_creation(*, username: str, community_id: Optional[int], prompt: str,
             INSERT INTO creations
                 (community_id, created_by, title, kind, html_content,
                  prompt_history, status, created_at, updated_at, capsule_recipes_json,
-                 category)
-            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                 category, category_source)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
             """,
             (community_id, username, resolved_title, creation_kind, html,
-             history, "draft", now, now, capsule_recipes_json, category),
+             history, "draft", now, now, capsule_recipes_json, category, category_source),
         )
         creation_id = c.lastrowid
         conn.commit()
@@ -2022,7 +2072,7 @@ def get_creation(creation_id: int) -> Optional[Dict[str, Any]]:
                    public_unpublished_at, public_kind, gallery_status,
                    gallery_requested_at, gallery_reviewed_at, gallery_reviewed_by,
                    gallery_rejection_reason, capsule_recipes_json, category,
-                   gallery_hook
+                   gallery_hook, category_source
             FROM creations WHERE id = {ph}
             """,
             (creation_id,),
@@ -2113,6 +2163,7 @@ def remix_creation(*, source_creation_id: int, username: str, message: str,
     creation_kind = "game" if _has_multiplayer_wiring(html) else remix_kind
     category = (infer_creation_category(message, resolved_title, kind=creation_kind)
                 or source.get("category"))
+    category_source = "keyword" if category else None
     history = _append_history(None, message)  # fresh — never the source's history
     capsule_recipes_json = _capsule_recipes_json_from_html(html)
     now = _now()
@@ -2124,11 +2175,12 @@ def remix_creation(*, source_creation_id: int, username: str, message: str,
             INSERT INTO creations
                 (community_id, created_by, title, kind, html_content,
                  prompt_history, parent_creation_id, status, created_at,
-                 updated_at, capsule_recipes_json, category)
-            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                 updated_at, capsule_recipes_json, category, category_source)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
             """,
             (None, username, resolved_title, creation_kind, html, history,
-             source_creation_id, "draft", now, now, capsule_recipes_json, category),
+             source_creation_id, "draft", now, now, capsule_recipes_json, category,
+             category_source),
         )
         creation_id = c.lastrowid
         conn.commit()
@@ -2159,13 +2211,15 @@ _LEASE_SECONDS = 600
 
 
 def create_build_job(*, username: str, community_id: Optional[int], prompt: str, tier: str,
-                     kind: str = "create", creation_id: Optional[int] = None) -> Dict[str, Any]:
+                     kind: str = "create", creation_id: Optional[int] = None,
+                     suggested_category: Optional[str] = None) -> Dict[str, Any]:
     """Persist a build request so generation can continue after the client leaves.
 
     ``kind`` is ``create`` for a new artifact, ``iterate`` for updating an
     existing creation, or ``remix`` for a new creation seeded from another
     member's public creation (``creation_id`` = the SOURCE). The actual model
-    call runs later via ``run_build_job``.
+    call runs later via ``run_build_job``. ``suggested_category`` (create only)
+    is Steve's in-chat proposal, re-validated in create_creation.
     """
     ensure_tables()
     k = kind if kind in ("create", "iterate", "remix") else "create"
@@ -2175,9 +2229,11 @@ def create_build_job(*, username: str, community_id: Optional[int], prompt: str,
         c = conn.cursor()
         c.execute(
             f"""INSERT INTO builder_jobs
-                (username, community_id, creation_id, kind, prompt, tier, status, created_at, updated_at)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, 'queued', {ph}, {ph})""",
-            (username, community_id, creation_id, k, prompt, tier or _DEFAULT_TIER, now, now),
+                (username, community_id, creation_id, kind, prompt, tier, status, created_at,
+                 updated_at, suggested_category)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, 'queued', {ph}, {ph}, {ph})""",
+            (username, community_id, creation_id, k, prompt, tier or _DEFAULT_TIER, now, now,
+             (str(suggested_category).strip().lower()[:48] or None) if suggested_category else None),
         )
         job_id = c.lastrowid
         conn.commit()
@@ -2193,7 +2249,7 @@ def get_build_job(job_id: int) -> Optional[Dict[str, Any]]:
             f"""SELECT id, username, community_id, creation_id, kind, prompt, tier, status,
                        result_creation_id, error, attempts, max_attempts, worker_token,
                        lease_expires_at, notified_at, created_at, updated_at, started_at, finished_at,
-                       progress, progress_stage
+                       progress, progress_stage, suggested_category
                 FROM builder_jobs WHERE id = {ph}""",
             (job_id,),
         )
@@ -2548,7 +2604,7 @@ def run_build_job(job_id: int) -> Dict[str, Any]:
             else:
                 creation = create_creation(
                     username=username, community_id=community_id, prompt=prompt, tier=tier,
-                    verify=True,
+                    verify=True, suggested_category=job.get("suggested_category"),
                 )
         result_id = int(creation["id"])
         report_progress(100, "done")
@@ -2971,9 +3027,12 @@ def update_gallery_status(*, creation_id: int, username: str, action: str,
             if admin_category is None:
                 raise ValueError("invalid_category")
         if admin_category:
+            # Explicit admin pick = moderation: wins over everyone and LOCKS
+            # (source='admin' blocks later creator writes). A no-category
+            # approve never touches an existing assignment.
             sql = f"""UPDATE creations SET gallery_status = {ph}, gallery_reviewed_at = {ph},
                       gallery_reviewed_by = {ph}, gallery_rejection_reason = {ph},
-                      category = {ph}, updated_at = {ph}
+                      category = {ph}, category_source = 'admin', updated_at = {ph}
                       WHERE id = {ph}"""
             params = (status, now, reviewer or username, None, admin_category, now, creation_id)
         else:
@@ -3124,6 +3183,42 @@ def explore_sections() -> Dict[str, Any]:
             "creations": items[:_EXPLORE_SECTION_CAP],
         })
     return {"sections": sections, "taxonomy": BUILDER_CATEGORIES}
+
+
+def set_creation_category(*, creation_id: int, username: str,
+                          category: Optional[str]) -> Dict[str, Any]:
+    """Creator-set gallery category (the build's settings picker).
+
+    Precedence contract (founder-ratified): admin (locks) > creator > llm >
+    keyword. Owner-only with the non-enumerating not-found; the slug must be
+    valid for the creation's section (a 'travel' pick on a game is rejected
+    server-side whatever the client sent). An admin-locked category raises
+    ``ValueError('category_locked')``. ``category=None`` clears the creator's
+    choice back to untagged (automation may then re-fill at listing time).
+    """
+    row = get_creation(int(creation_id))
+    if not row or row.get("created_by") != username:
+        raise PermissionError("creation not found")
+    if (row.get("category_source") or "") == "admin":
+        raise ValueError("category_locked")
+    ph = get_sql_placeholder()
+    now = _now()
+    if category is None or not str(category).strip():
+        new_category, new_source = None, None
+    else:
+        new_category = _valid_category_for(row, category)
+        if new_category is None:
+            raise ValueError("invalid_category")
+        new_source = "creator"
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""UPDATE creations SET category = {ph}, category_source = {ph}, updated_at = {ph}
+                WHERE id = {ph} AND created_by = {ph}""",
+            (new_category, new_source, now, creation_id, username),
+        )
+        conn.commit()
+    return {"category": new_category, "category_source": new_source}
 
 
 # --- Builder pseudonyms (opt-in gallery credit) -------------------------------
@@ -3360,7 +3455,7 @@ def public_creation_for_slug(slug: str) -> Optional[Dict[str, Any]]:
                    public_unpublished_at, public_kind, gallery_status,
                    gallery_requested_at, gallery_reviewed_at, gallery_reviewed_by,
                    gallery_rejection_reason, capsule_recipes_json, category,
-                   gallery_hook
+                   gallery_hook, category_source
             FROM creations
             WHERE public_slug = {ph} AND public_status = 'published'
             """,

@@ -61,7 +61,7 @@ type ApiResult = {
   queued?: boolean
   job?: BuilderJob
 } & PublicPublishResult
-type ChatResult = { success?: boolean; error?: string; reply?: string; ready?: boolean; brief?: string }
+type ChatResult = { success?: boolean; error?: string; reply?: string; ready?: boolean; brief?: string; category?: string }
 
 /**
  * Drives the Steve Builder as a CONVERSATION: the user talks with Steve, who
@@ -98,6 +98,10 @@ export function useBuilder(communityId: string) {
 
   const abortRef = useRef<AbortController | null>(null)
   const lastBriefRef = useRef<string>('')
+  // Steve's in-chat shelf proposal (converse sidecar). Sent with the NEXT
+  // create call so the build lands pre-categorized; the server re-validates
+  // against the final kind, so a stale/mismatched slug is harmless.
+  const suggestedCategoryRef = useRef<string>('')
   const activeJobKey = `cp_builder_active_job:${communityId}`
   const communityPayload = useMemo(() => (communityId ? { community_id: Number(communityId) } : {}), [communityId])
   const busy = loading || building
@@ -126,6 +130,7 @@ export function useBuilder(communityId: string) {
       }
       setMessages((m) => [...m, { role: 'steve', text: data.reply! }])
       if (data.ready && data.brief) setProposal({ brief: data.brief })
+      if (data.category) suggestedCategoryRef.current = data.category
     } catch (e) {
       if ((e as { name?: string })?.name !== 'AbortError') setError('Network error. Please try again.')
     } finally {
@@ -232,7 +237,10 @@ export function useBuilder(communityId: string) {
           : '/api/builder/create'
       const body = creation || remixSourceId
         ? { message: text, tier }
-        : { ...communityPayload, prompt: text, tier }
+        : {
+            ...communityPayload, prompt: text, tier,
+            ...(suggestedCategoryRef.current ? { category: suggestedCategoryRef.current } : {}),
+          }
       const res = await fetch(url, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body), signal: ctrl.signal,
