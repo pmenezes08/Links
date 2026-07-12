@@ -4000,7 +4000,8 @@ def list_creations(username: str, *, limit: int = 50) -> List[Dict[str, Any]]:
             f"""SELECT id, title, kind, status, community_id, published_post_id,
                        updated_at, play_count, public_slug, public_status,
                        public_published_at, public_kind, gallery_status,
-                       gallery_requested_at, gallery_reviewed_at, gallery_rejection_reason
+                       gallery_requested_at, gallery_reviewed_at, gallery_rejection_reason,
+                       category, category_source
                 FROM creations WHERE created_by = {ph}
                 ORDER BY updated_at DESC LIMIT {ph}""",
             (username, limit),
@@ -4035,6 +4036,8 @@ def list_creations(username: str, *, limit: int = 50) -> List[Dict[str, Any]]:
         "gallery_requested_at": str(_cell(r, 13)) if _cell(r, 13) is not None else None,
         "gallery_reviewed_at": str(_cell(r, 14)) if _cell(r, 14) is not None else None,
         "gallery_rejection_reason": _cell(r, 15),
+        "category": _cell(r, 16),
+        "category_source": _cell(r, 17),
         "shared_community_ids": sorted(set(shares_by_creation.get(int(_cell(r, 0) or 0), []))),
     } for r in rows]
 

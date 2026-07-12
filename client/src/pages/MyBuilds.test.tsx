@@ -273,6 +273,12 @@ describe('MyBuilds', () => {
     const explore = getByText('Made with Steve gallery')
     const share = getByText('Share to community')
     expect(explore.compareDocumentPosition(share) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // The category picker must show even for UNLISTED drafts (founder QA
+    // 2026-07-12: gating it on listing made it undiscoverable), with the
+    // section's own chips ('Tiny Tool' is an app).
+    expect(getByText('Category')).toBeTruthy()
+    expect(getByText('Productivity')).toBeTruthy()
+    expect(queryByText('Arcade')).toBeNull()
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 

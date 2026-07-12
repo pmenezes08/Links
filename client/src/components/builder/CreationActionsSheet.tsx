@@ -16,6 +16,8 @@ export type SheetCreation = {
   public_url?: string | null
   public_kind?: string | null
   gallery_status?: string | null
+  category?: string | null
+  category_source?: string | null
   shared_community_ids?: number[]
 }
 
@@ -121,9 +123,15 @@ function BuilderPseudonymField() {
   )
 }
 
-// Section → category slugs, served by /api/builder/taxonomy (backend is the
-// single source of truth). Module-cached: one fetch per session.
-let taxonomyCache: Record<string, string[]> | null = null
+// Section → category slugs. Mirrors builder.BUILDER_CATEGORIES (the backend
+// re-validates every write, so drift here can never misfile a creation — it
+// would only hide/show a chip). Labels stay in lockstep with the gallery's
+// i18n catalog entries.
+const SECTION_CATEGORIES: Record<string, string[]> = {
+  website: ['business', 'portfolio', 'event', 'landing', 'blog', 'directory'],
+  app: ['productivity', 'fitness', 'finance', 'travel', 'health', 'learning', 'community'],
+  game: ['arcade', 'puzzle', 'board', 'trivia', 'word', 'sports'],
+}
 const CATEGORY_LABELS: Record<string, string> = {
   business: 'Business', portfolio: 'Portfolio', event: 'Events', landing: 'Landing page',
   blog: 'Blog', directory: 'Directory', productivity: 'Productivity', fitness: 'Fitness',
@@ -136,39 +144,21 @@ const CATEGORY_LABELS: Record<string, string> = {
  * Creator category picker (founder-ratified precedence: admin locks > creator
  * > Steve's automation). Confirm-or-correct, never a chore: Steve's current
  * assignment renders pre-selected as "Suggested"; one tap saves. An
- * admin-locked category renders read-only.
+ * admin-locked category renders read-only. Fetch-free on mount — current
+ * value/source ride the /api/builder/mine payload.
  */
 function CreationCategoryField({ creation }: { creation: SheetCreation }) {
   const section = sectionOf({ kind: creation.kind, public_kind: creation.public_kind })
-  const [slugs, setSlugs] = useState<string[]>(taxonomyCache?.[section] ?? [])
-  const [selected, setSelected] = useState<string | null>(null)
-  const [source, setSource] = useState<string | null>(null)
+  const slugs = SECTION_CATEGORIES[section] ?? []
+  const [selected, setSelected] = useState<string | null>(creation.category || null)
+  const [source, setSource] = useState<string | null>(creation.category_source || null)
   const [state, setState] = useState<'idle' | 'saving' | 'error'>('idle')
 
   useEffect(() => {
-    let alive = true
-    if (!taxonomyCache) {
-      fetch('/api/builder/taxonomy', { credentials: 'include', headers: { Accept: 'application/json' } })
-        .then(r => r.json())
-        .then(d => {
-          if (d?.success && d.taxonomy) {
-            taxonomyCache = d.taxonomy
-            if (alive) setSlugs(taxonomyCache?.[section] ?? [])
-          }
-        })
-        .catch(() => { /* chips just don't render */ })
-    }
-    fetch(`/api/builder/${creation.id}`, { credentials: 'include', headers: { Accept: 'application/json' } })
-      .then(r => r.json())
-      .then(d => {
-        if (alive && d?.success && d.creation) {
-          setSelected(d.creation.category || null)
-          setSource(d.creation.category_source || null)
-        }
-      })
-      .catch(() => { /* stays unselected */ })
-    return () => { alive = false }
-  }, [creation.id, section])
+    setSelected(creation.category || null)
+    setSource(creation.category_source || null)
+    setState('idle')
+  }, [creation.id, creation.category, creation.category_source])
 
   const locked = source === 'admin'
   const save = async (slug: string) => {
@@ -312,7 +302,11 @@ export default function CreationActionsSheet({
               {galleryWorking ? 'Working...' : isListed ? 'Remove from the gallery' : 'List in the gallery'}
             </button>
             <p className="mt-2 text-xs text-c-text-tertiary">Gallery listings are anonymous: your name, profile, and community are not shown.</p>
-            {isListed && <CreationCategoryField creation={creation} />}
+            {/* Category is useful pre-listing too (founder QA feedback
+                2026-07-12): show it always so a draft can be filed before the
+                creator ever lists. The pseudonym stays listing-only — it is
+                purely a gallery credit. */}
+            <CreationCategoryField creation={creation} />
             {isListed && <BuilderPseudonymField />}
           </section>
 
