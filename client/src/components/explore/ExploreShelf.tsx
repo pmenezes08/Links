@@ -8,15 +8,15 @@ import type { ExploreCreation, ExploreSectionKind } from '../../hooks/useExplore
  * ~1.4 cards peek on mobile so the horizontal scroll affordance is obvious.
  * "See all" only renders when the shelf overflows its visible run.
  *
- * Sub-category chips filter the shelf in place, and are supply-gated so a
- * thin catalog never shows chips over 1-2 items: the row renders only when
- * the section holds ≥ 2 distinct categories AND ≥ 6 items, and only chips
- * with items behind them exist. Untagged items show under "All" only.
+ * Sub-category chips filter the shelf in place. The row renders as soon as
+ * the shelf holds ANY categorized item (founder call 2026-07-12: signal the
+ * categorization feature early rather than waiting for supply), and only
+ * chips with items behind them exist. Untagged items show under "All" only.
  */
 
 const SEE_ALL_THRESHOLD = 6
-const CHIPS_MIN_ITEMS = 6
-const CHIPS_MIN_CATEGORIES = 2
+const CHIPS_MIN_ITEMS = 1
+const CHIPS_MIN_CATEGORIES = 1
 
 type Props = {
   kind: ExploreSectionKind

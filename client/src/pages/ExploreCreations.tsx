@@ -85,9 +85,10 @@ export default function ExploreCreations() {
   const filterActive = Boolean(filterKind || filterBuilder)
   const featuredItems = items.filter(i => i.featured)
 
-  // Search only earns its place above a supply floor — below it, chips carry
-  // everything and a search box would mostly return lonely results.
-  const searchable = filterActive && baseFiltered.length >= 12
+  // Search shows on any deep grid with a couple of items (founder call
+  // 2026-07-12: an empty search is a feature — the 0-match state demos the
+  // "build the first one" nudge).
+  const searchable = filterActive && baseFiltered.length >= 2
   const term = searchable ? searchTerm.trim().toLowerCase() : ''
   const filteredItems = term
     ? baseFiltered.filter(i =>

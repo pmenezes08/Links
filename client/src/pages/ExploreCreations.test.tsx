@@ -82,11 +82,11 @@ describe('ExploreCreations', () => {
     expect(queryByText('3 opens')).toBeNull()
   })
 
-  it('collapses to one mixed grid on thin supply and sections when every shelf has depth', async () => {
-    // Thin: 3 items total → mixed shelf, no per-kind section headers.
+  it('stays a mixed grid for a single-section catalog and sections from two non-empty sections', async () => {
+    // Single section (games only) → mixed shelf, no per-kind headers.
     vi.stubGlobal('fetch', mockFetchOnce({
       success: true,
-      creations: [creation(1, 'game'), creation(2, 'app'), creation(3, 'website')],
+      creations: [creation(1, 'game'), creation(2, 'game'), creation(3, 'game')],
     }))
     const thin = render(<ExploreCreations />)
     await waitFor(() => expect(thin.getByText('Creation 1')).toBeTruthy())
@@ -94,17 +94,16 @@ describe('ExploreCreations', () => {
     expect(thin.queryByRole('heading', { name: 'Games' })).toBeNull()
     thin.unmount()
 
-    // Rich: 4 per kind, 12 total → sectioned shelves in Games→Apps→Websites order.
-    const rich = [
-      ...[1, 2, 3, 4].map(i => creation(i, 'game')),
-      ...[5, 6, 7, 8].map(i => creation(i, 'app')),
-      ...[9, 10, 11, 12].map(i => creation(i, 'website')),
-    ]
-    vi.stubGlobal('fetch', mockFetchOnce({ success: true, creations: rich }))
+    // Two non-empty sections → shelves (demo-scale gate, founder call
+    // 2026-07-12); the empty Websites section is skipped, never shown empty.
+    vi.stubGlobal('fetch', mockFetchOnce({
+      success: true,
+      creations: [creation(1, 'game'), creation(2, 'app')],
+    }))
     const sectioned = render(<ExploreCreations />)
     await waitFor(() => expect(sectioned.getByRole('heading', { name: 'Games' })).toBeTruthy())
     expect(sectioned.getByRole('heading', { name: 'Apps' })).toBeTruthy()
-    expect(sectioned.getByRole('heading', { name: 'Websites' })).toBeTruthy()
+    expect(sectioned.queryByRole('heading', { name: 'Websites' })).toBeNull()
     expect(sectioned.queryByText('Fresh from the community')).toBeNull()
   })
 
@@ -282,7 +281,7 @@ describe('ExploreCreations', () => {
     searchParams.current = new URLSearchParams('kind=game')
     vi.stubGlobal('fetch', mockFetchOnce({
       success: true,
-      creations: [1, 2, 3].map(i => creation(i, 'game')),
+      creations: [creation(1, 'game')],
     }))
 
     const { getByText, queryByLabelText } = render(<ExploreCreations />)

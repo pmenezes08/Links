@@ -10,10 +10,11 @@ import { useLocation } from 'react-router-dom'
  *   handoff below, not by defeating the HTTP cache.
  * - Groups creations into sections (game → app → website) client-side so
  *   optimistic items land in their shelf immediately.
- * - `sectioned` implements the thin-supply collapse rule: shelves only render
- *   when every section holds at least 3 items and the catalog totals 12+;
- *   below that the page shows one mixed grid so sparse supply never reads as
- *   empty shelves.
+ * - `sectioned` implements the thin-supply collapse rule: shelves render as
+ *   soon as TWO sections are non-empty (founder call 2026-07-12: surface the
+ *   structure early to demo/signal the feature; empty sections are simply
+ *   skipped, never shown as empty shelves). A single-section catalog stays a
+ *   mixed grid.
  */
 
 export type ExploreCreation = {
@@ -160,8 +161,10 @@ export function useExploreCreations() {
     })
   }, [items])
 
-  // Thin-supply collapse rule (see module doc).
-  const sectioned = items.length >= 12 && sections.every(s => s.items.length >= 3)
+  // Thin-supply collapse rule (see module doc): two non-empty sections is
+  // enough to graduate to shelves; empty sections never render.
+  const nonEmptySections = sections.filter(s => s.items.length > 0).length
+  const sectioned = nonEmptySections >= 2
 
   return { state, items, sections, sectioned, taxonomy, reload: load }
 }
