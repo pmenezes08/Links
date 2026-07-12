@@ -84,9 +84,16 @@ _WEBSITE_KIND_HINTS = {
 # label via i18n catalogs and receives this map through /api/builder/explore's
 # `taxonomy` block, so the backend stays the single source of truth.
 BUILDER_CATEGORIES: Dict[str, List[str]] = {
-    "website": ["business", "portfolio", "event", "landing", "blog", "directory"],
-    "app": ["productivity", "fitness", "finance", "travel", "health", "learning", "community"],
-    "game": ["arcade", "puzzle", "board", "trivia", "word", "sports"],
+    # Founder call 2026-07-12: a full, App-Store-familiar predefined list per
+    # section (the earlier 6-7 read as arbitrary). Slugs are append-only —
+    # existing ones never renamed (they are stored values and i18n keys).
+    "website": ["business", "portfolio", "event", "landing", "blog", "directory",
+                "personal", "shop", "education", "community"],
+    "app": ["productivity", "travel", "fitness", "health", "finance", "learning",
+            "food", "lifestyle", "entertainment", "music", "photos", "shopping",
+            "social", "sports", "utilities", "news", "weather", "community"],
+    "game": ["arcade", "puzzle", "board", "trivia", "word", "sports", "action",
+             "adventure", "strategy", "racing", "simulation", "casual", "retro"],
 }
 # Keyword → sub-category hints, checked in declaration order within the
 # creation's resolved section only (a "travel game" is a game first, so it can

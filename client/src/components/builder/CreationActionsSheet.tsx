@@ -125,19 +125,29 @@ function BuilderPseudonymField() {
 
 // Section → category slugs. Mirrors builder.BUILDER_CATEGORIES (the backend
 // re-validates every write, so drift here can never misfile a creation — it
-// would only hide/show a chip). Labels stay in lockstep with the gallery's
+// would only hide/show an option). Labels stay in lockstep with the gallery's
 // i18n catalog entries.
 const SECTION_CATEGORIES: Record<string, string[]> = {
-  website: ['business', 'portfolio', 'event', 'landing', 'blog', 'directory'],
-  app: ['productivity', 'fitness', 'finance', 'travel', 'health', 'learning', 'community'],
-  game: ['arcade', 'puzzle', 'board', 'trivia', 'word', 'sports'],
+  website: ['business', 'portfolio', 'event', 'landing', 'blog', 'directory',
+    'personal', 'shop', 'education', 'community'],
+  app: ['productivity', 'travel', 'fitness', 'health', 'finance', 'learning',
+    'food', 'lifestyle', 'entertainment', 'music', 'photos', 'shopping',
+    'social', 'sports', 'utilities', 'news', 'weather', 'community'],
+  game: ['arcade', 'puzzle', 'board', 'trivia', 'word', 'sports', 'action',
+    'adventure', 'strategy', 'racing', 'simulation', 'casual', 'retro'],
 }
 const CATEGORY_LABELS: Record<string, string> = {
   business: 'Business', portfolio: 'Portfolio', event: 'Events', landing: 'Landing page',
-  blog: 'Blog', directory: 'Directory', productivity: 'Productivity', fitness: 'Fitness',
+  blog: 'Blog', directory: 'Directory', personal: 'Personal', shop: 'Online shop',
+  education: 'Education', productivity: 'Productivity', fitness: 'Fitness',
   finance: 'Finance', travel: 'Travel', health: 'Health', learning: 'Learning',
-  community: 'Community', arcade: 'Arcade', puzzle: 'Puzzle', board: 'Board & cards',
-  trivia: 'Trivia', word: 'Word games', sports: 'Sports',
+  food: 'Food & drink', lifestyle: 'Lifestyle', entertainment: 'Entertainment',
+  music: 'Music', photos: 'Photo & video', shopping: 'Shopping', social: 'Social',
+  utilities: 'Utilities', news: 'News', weather: 'Weather', community: 'Community',
+  arcade: 'Arcade', puzzle: 'Puzzle', board: 'Board & cards', trivia: 'Trivia',
+  word: 'Word games', sports: 'Sports', action: 'Action', adventure: 'Adventure',
+  strategy: 'Strategy', racing: 'Racing', simulation: 'Simulation',
+  casual: 'Casual', retro: 'Retro',
 }
 
 /**
@@ -161,15 +171,13 @@ function CreationCategoryField({ creation }: { creation: SheetCreation }) {
   }, [creation.id, creation.category, creation.category_source])
 
   const locked = source === 'admin'
-  const save = async (slug: string) => {
+  const save = async (slug: string | null) => {
     if (locked || state === 'saving') return
-    // Tapping a chip always SETS it — tapping the suggested chip CONFIRMS it
-    // as the creator's choice. Never toggle-clear: founder QA 2026-07-12
-    // tapped the pre-selected suggestion to confirm it and the old toggle
-    // silently un-categorized the build.
-    if (slug === selected && source === 'creator') return
+    if (slug === selected) return
     const prev = { selected, source }
-    setSelected(slug); setSource('creator'); setState('saving')
+    // Choosing from the dropdown is always an explicit creator action —
+    // including "No category" (a deliberate clear, unlike the old toggle).
+    setSelected(slug); setSource(slug ? 'creator' : null); setState('saving')
     try {
       const res = await fetch(`/api/builder/${creation.id}/category`, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
@@ -187,36 +195,33 @@ function CreationCategoryField({ creation }: { creation: SheetCreation }) {
   const suggested = selected && source !== 'creator' && source !== 'admin'
   return (
     <div className="mt-3 border-t border-c-border pt-3">
-      <div className="flex items-baseline gap-2">
+      <label htmlFor={`creation-category-${creation.id}`} className="flex items-baseline gap-2">
         <span className="text-xs font-semibold text-c-text-secondary">Category</span>
         {suggested && (
-          <span className="text-[10px] uppercase tracking-wide text-c-text-tertiary">Suggested</span>
+          <span className="text-[10px] uppercase tracking-wide text-c-text-tertiary">Suggested by Steve</span>
         )}
-      </div>
-      <p className="mt-0.5 text-xs text-c-text-tertiary">
+      </label>
+      <select
+        id={`creation-category-${creation.id}`}
+        value={selected ?? ''}
+        disabled={locked}
+        onChange={(e) => void save(e.target.value || null)}
+        className="mt-2 w-full appearance-none rounded-xl border border-c-border bg-c-bg-elevated px-3 py-2.5 text-sm text-c-text-primary outline-none focus:border-cpoint-turquoise/50 disabled:opacity-50"
+      >
+        <option value="">No category</option>
+        {slugs.map(slug => (
+          <option key={slug} value={slug}>{CATEGORY_LABELS[slug] || slug}</option>
+        ))}
+      </select>
+      <p className="mt-1.5 text-xs text-c-text-tertiary">
         {locked
           ? 'Set by the review team.'
           : selected
-            ? `Shown under "${CATEGORY_LABELS[selected] || selected}" in the gallery — tap another to change.`
-            : 'Add a category so people can find it (optional).'}
+            ? `Shown under "${CATEGORY_LABELS[selected] || selected}" in the gallery.`
+            : 'Helps people find it in the gallery (optional).'}
       </p>
-      <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-label="Category">
-        {slugs.map(slug => (
-          <button
-            key={slug}
-            type="button"
-            role="radio"
-            aria-checked={selected === slug}
-            disabled={locked}
-            onClick={() => void save(slug)}
-            className={`min-h-[44px] rounded-full border px-3.5 text-xs font-medium transition disabled:opacity-50 ${selected === slug ? 'border-cpoint-turquoise bg-cpoint-turquoise text-black' : 'border-c-border text-c-text-secondary hover:text-c-text-primary'}`}
-          >
-            {CATEGORY_LABELS[slug] || slug}
-          </button>
-        ))}
-      </div>
       {state === 'error' && (
-        <p className="mt-1.5 text-xs text-red-400">Couldn't save — tap to retry.</p>
+        <p className="mt-1.5 text-xs text-red-400">Couldn't save — try again.</p>
       )}
     </div>
   )
