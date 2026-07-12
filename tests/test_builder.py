@@ -333,6 +333,9 @@ def test_report_progress_is_monotonic_and_scoped_to_the_worker():
     builder.report_progress(50, "coding")
     assert int(builder.get_build_job(job_id)["progress"] or 0) == 0
 
+    # Progress writes are guarded on status='running' (a cancelled job must
+    # stop the pipeline at the next checkpoint) — claim like a worker first.
+    assert builder.claim_build_job(job_id, "tok-progress") is True
     token = builder._progress_job.set(job_id)
     try:
         builder.report_progress(60, "reviewing")
@@ -498,7 +501,10 @@ def test_clamped_tier_helper():
 
 # --- Community interaction data ------------------------------------------------
 
-def _make_creation(cid: int, owner: str = "maker", monkeypatch=None) -> int:
+# NOTE: a second `_make_creation(username, community_id, monkeypatch)` helper
+# is defined further down (save-slot block) and, being later, SHADOWS this one
+# at call time — so this community-first variant carries its own name.
+def _make_creation_in(cid: int, owner: str = "maker", monkeypatch=None) -> int:
     if monkeypatch is not None:
         monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
     return builder.create_creation(username=owner, community_id=cid, prompt="a game")["id"]
@@ -507,7 +513,7 @@ def _make_creation(cid: int, owner: str = "maker", monkeypatch=None) -> int:
 def test_submit_score_keeps_best_and_ranks(monkeypatch):
     _make_user("maker"); _make_user("p2")
     cid = _make_community()
-    crid = _make_creation(cid, monkeypatch=monkeypatch)
+    crid = _make_creation_in(cid, monkeypatch=monkeypatch)
 
     builder.submit_score(creation_id=crid, community_id=cid, username="maker", value=100)
     builder.submit_score(creation_id=crid, community_id=cid, username="maker", value=50)  # lower → ignored
@@ -524,7 +530,7 @@ def test_leaderboards_are_scoped_by_community(monkeypatch):
     _make_user("maker"); _make_user("p2")
     first = _make_community("First")
     second = _make_community("Second")
-    crid = _make_creation(first, monkeypatch=monkeypatch)
+    crid = _make_creation_in(first, monkeypatch=monkeypatch)
 
     builder.submit_score(creation_id=crid, community_id=first, username="maker", value=100)
     builder.submit_score(creation_id=crid, community_id=second, username="p2", value=900)
@@ -819,7 +825,7 @@ def test_submit_score_repeats_are_atomic_and_keep_max(monkeypatch):
     non-atomic SELECT-then-INSERT collided under rapid/concurrent submits."""
     _make_user("maker")
     cid = _make_community()
-    crid = _make_creation(cid, monkeypatch=monkeypatch)
+    crid = _make_creation_in(cid, monkeypatch=monkeypatch)
 
     for v in (100, 50, 175, 175, 30):  # no exception; best wins; single row
         builder.submit_score(creation_id=crid, community_id=cid, username="maker", value=v)
@@ -834,7 +840,7 @@ def test_save_record_repeats_are_atomic_latest_wins(monkeypatch):
     key; latest value wins and stays a single row."""
     _make_user("maker")
     cid = _make_community()
-    crid = _make_creation(cid, monkeypatch=monkeypatch)
+    crid = _make_creation_in(cid, monkeypatch=monkeypatch)
 
     for v in ("a", "bb", "ccc"):
         builder.save_record(creation_id=crid, community_id=cid, username="maker", key="slot1", value=v)
@@ -844,7 +850,7 @@ def test_save_record_repeats_are_atomic_latest_wins(monkeypatch):
 def test_rate_creation_aggregates(monkeypatch):
     _make_user("maker"); _make_user("p2")
     cid = _make_community()
-    crid = _make_creation(cid, monkeypatch=monkeypatch)
+    crid = _make_creation_in(cid, monkeypatch=monkeypatch)
 
     builder.rate_creation(creation_id=crid, community_id=cid, username="maker", value=4)
     builder.rate_creation(creation_id=crid, community_id=cid, username="maker", value=5)  # replaces (latest wins)
@@ -857,7 +863,7 @@ def test_rate_creation_aggregates(monkeypatch):
 def test_play_count_and_summary(monkeypatch):
     _make_user("maker")
     cid = _make_community()
-    crid = _make_creation(cid, monkeypatch=monkeypatch)
+    crid = _make_creation_in(cid, monkeypatch=monkeypatch)
 
     builder.record_play(crid)
     out = builder.record_play(crid)
@@ -1050,7 +1056,7 @@ def test_vision_judge_coerce_verdict_clamps():
 def test_invalid_score_is_rejected(monkeypatch):
     _make_user("maker")
     cid = _make_community()
-    crid = _make_creation(cid, monkeypatch=monkeypatch)
+    crid = _make_creation_in(cid, monkeypatch=monkeypatch)
     for bad in ("not-a-number", float("nan"), float("inf")):
         with pytest.raises(ValueError):
             builder.submit_score(creation_id=crid, community_id=cid, username="maker", value=bad)
