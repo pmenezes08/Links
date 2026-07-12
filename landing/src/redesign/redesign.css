@@ -1,0 +1,603 @@
+/*
+ * Redesign (2026-07) — dark, cinematic, B2B-first marketing site.
+ * Spec: design_handoff_landing_redesign (dc.html prototypes are the source of truth).
+ * Scoped under .rl so the legacy pages (/for-community-owners, /admin) keep their styling.
+ */
+
+.rl {
+  --rl-bg: #0a0d0d;
+  --rl-film-bg: #05080c;
+  --rl-band: #0e1c19;
+  --rl-ink: #f2f5f4;
+  --rl-teal: #4db6ac;
+  --rl-gutter: clamp(20px, 5vw, 48px);
+  background: var(--rl-bg);
+  color: var(--rl-ink);
+  font-family: 'Hanken Grotesk', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+.rl a {
+  color: inherit;
+  text-decoration: none;
+}
+.rl a:hover {
+  color: var(--rl-teal);
+}
+
+/* ---------- scroll reveals ---------- */
+.rl [data-reveal] {
+  opacity: 0;
+  transform: translateY(40px);
+  transition:
+    opacity 1s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 1s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.rl [data-reveal].rv-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+.rl [data-reveal-scale] {
+  opacity: 0;
+  transform: scale(0.94) translateY(40px);
+  transition:
+    opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.rl [data-reveal-scale].rv-in {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+/* phone frames staggered with translateY(48px) keep their offset after reveal */
+.rl [data-reveal-scale].rl-phone-drop {
+  transform: scale(0.94) translateY(88px);
+}
+.rl [data-reveal-scale].rl-phone-drop.rv-in {
+  transform: scale(1) translateY(48px);
+}
+
+@keyframes rl-scroll-cue {
+  0%, 100% { transform: translateY(0); opacity: 0.7; }
+  50% { transform: translateY(8px); opacity: 0.25; }
+}
+.rl-scroll-cue {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1px;
+  height: 36px;
+  background: linear-gradient(to bottom, rgba(242, 245, 244, 0.7), transparent);
+  animation: rl-scroll-cue 2.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rl [data-reveal],
+  .rl [data-reveal-scale] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .rl [data-reveal-scale].rl-phone-drop,
+  .rl [data-reveal-scale].rl-phone-drop.rv-in {
+    transform: translateY(48px);
+  }
+  .rl-scroll-cue {
+    animation: none;
+  }
+}
+
+/* ---------- typography helpers ---------- */
+.rl-eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+
+/* ---------- buttons ---------- */
+.rl-btn {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  padding: 18px 42px;
+  cursor: pointer;
+  border: none;
+  border-radius: 0;
+  font-family: inherit;
+  text-align: center;
+  transition: background 0.3s, color 0.3s, border-color 0.3s;
+}
+.rl-btn--sm {
+  padding: 15px 34px;
+}
+.rl-btn--md {
+  padding: 17px 38px;
+}
+/* ".rl .rl-btn--*" (0,2,0) must outrank ".rl a" (0,1,1), which sets color:inherit */
+.rl .rl-btn--primary {
+  background: var(--rl-teal);
+  color: var(--rl-bg);
+}
+.rl .rl-btn--primary:hover {
+  background: var(--rl-ink);
+  color: var(--rl-bg);
+}
+.rl .rl-btn--ghost {
+  background: transparent;
+  color: var(--rl-ink);
+  border: 1px solid rgba(242, 245, 244, 0.5);
+  padding-top: 17px;
+  padding-bottom: 17px;
+}
+.rl .rl-btn--ghost:hover {
+  background: var(--rl-ink);
+  color: var(--rl-bg);
+}
+.rl .rl-btn--ghost-strong {
+  border-color: rgba(242, 245, 244, 0.9);
+}
+.rl .rl-btn--light {
+  background: var(--rl-ink);
+  color: var(--rl-bg);
+}
+.rl .rl-btn--light:hover {
+  background: var(--rl-teal);
+  color: var(--rl-bg);
+}
+
+/* ---------- nav ---------- */
+.rl-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 26px var(--rl-gutter);
+  transition: background 0.4s, backdrop-filter 0.4s, border-color 0.4s;
+  background: transparent;
+  border-bottom: 1px solid transparent;
+}
+.rl-nav--hero-gradient {
+  background: linear-gradient(to bottom, rgba(10, 13, 13, 0.5), transparent);
+}
+.rl-nav--scrolled,
+.rl-nav--solid {
+  background: rgba(10, 13, 13, 0.8);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom-color: rgba(238, 244, 242, 0.14);
+}
+.rl-nav--solid {
+  background: rgba(10, 13, 13, 0.85);
+}
+.rl-nav-links {
+  display: flex;
+  align-items: center;
+  align-self: center;
+  gap: clamp(16px, 3vw, 40px);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(242, 245, 244, 0.75);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.rl-nav-links .rl-nav-active {
+  color: var(--rl-teal);
+}
+.rl-nav-open-app {
+  color: var(--rl-ink);
+  border-bottom: 1px solid rgba(242, 245, 244, 0.4);
+  padding-bottom: 2px;
+}
+.rl-nav-lang {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.rl-nav-lang:hover {
+  color: var(--rl-teal);
+}
+.rl-nav-wordmark {
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+/* PT "A Plataforma" shortens to "Plataforma" on phones */
+.rl-nav-shortlabel {
+  display: none;
+}
+
+/* language dropdown */
+.rl-lang {
+  position: relative;
+  display: inline-flex;
+}
+.rl-lang-menu {
+  position: absolute;
+  top: calc(100% + 14px);
+  right: -8px;
+  min-width: 160px;
+  background: rgba(10, 13, 13, 0.97);
+  border: 1px solid rgba(242, 245, 244, 0.14);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 20px 60px -20px rgba(0, 0, 0, 0.8);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  z-index: 120;
+}
+.rl-lang-item {
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  text-align: left;
+  color: rgba(242, 245, 244, 0.85);
+  padding: 12px 14px;
+  cursor: pointer;
+}
+.rl-lang-item:hover {
+  background: rgba(242, 245, 244, 0.06);
+  color: var(--rl-ink);
+}
+.rl-lang-item--active {
+  color: var(--rl-teal);
+}
+.rl-lang-menu--up {
+  top: auto;
+  bottom: calc(100% + 14px);
+}
+
+/* phones: logo icon only, everything on ONE row */
+@media (max-width: 719px) {
+  .rl-nav {
+    padding: 16px;
+  }
+  .rl-nav-wordmark {
+    display: none;
+  }
+  .rl-nav-longlabel {
+    display: none;
+  }
+  .rl-nav-shortlabel {
+    display: inline;
+  }
+  .rl-nav-links {
+    flex-wrap: nowrap;
+    gap: clamp(8px, 2.4vw, 14px);
+    font-size: clamp(9.5px, 2.8vw, 11px);
+    letter-spacing: 0.06em;
+  }
+  .rl-nav-links a,
+  .rl-nav-links .rl-lang {
+    white-space: nowrap;
+  }
+  .rl-lang-menu {
+    right: 0;
+  }
+}
+
+/* ---------- footer ---------- */
+.rl-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px 24px;
+  flex-wrap: wrap;
+  padding-top: 28px;
+  border-top: 1px solid rgba(242, 245, 244, 0.08);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(242, 245, 244, 0.35);
+}
+.rl-footer--standalone {
+  padding: 28px var(--rl-gutter) 40px;
+}
+.rl-footer-links {
+  display: flex;
+  gap: 14px 28px;
+  flex-wrap: wrap;
+}
+.rl-footer .rl-nav-lang {
+  font-size: inherit;
+}
+
+/* ---------- phone frames ---------- */
+.rl-phone {
+  border: 8px solid #1b2222;
+  border-radius: 40px;
+  overflow: hidden;
+  background: #000;
+  box-shadow: 0 40px 100px -30px rgba(77, 182, 172, 0.25);
+  flex-shrink: 0;
+}
+.rl-phone img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+.rl-phone--open-top {
+  border-bottom: none;
+  border-radius: 44px 44px 0 0;
+  box-shadow: 0 -30px 120px -30px rgba(77, 182, 172, 0.3);
+}
+.rl-phone-pair {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+@media (max-width: 720px) {
+  .rl-phone {
+    max-width: min(300px, 78vw);
+  }
+  .rl [data-reveal-scale].rl-phone-drop,
+  .rl [data-reveal-scale].rl-phone-drop.rv-in {
+    transform: none;
+  }
+}
+
+/* ---------- section layout helpers ---------- */
+.rl-section-pad {
+  padding: 140px var(--rl-gutter);
+}
+.rl-split {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 64px 96px;
+  align-items: center;
+  justify-content: center;
+  padding: 120px var(--rl-gutter);
+  box-sizing: border-box;
+}
+.rl-split-text {
+  max-width: 520px;
+  flex: 1 1 380px;
+  min-width: min(320px, 100%);
+}
+.rl-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+@media (max-width: 860px) {
+  .rl-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+.rl-border-t {
+  border-top: 1px solid rgba(242, 245, 244, 0.06);
+}
+.rl--pt .rl-border-t {
+  border-top-color: rgba(242, 245, 244, 0.13);
+}
+
+/* home dual panel hover washes (EN design) */
+.rl-dual-left {
+  background: radial-gradient(ellipse 80% 60% at 30% 100%, rgba(77, 182, 172, 0.08), transparent);
+  transition: background 0.5s;
+}
+.rl-dual-left:hover {
+  background: radial-gradient(ellipse 80% 60% at 30% 100%, rgba(77, 182, 172, 0.16), transparent);
+}
+.rl-dual-right {
+  transition: background 0.5s;
+}
+.rl-dual-right:hover {
+  background: rgba(242, 245, 244, 0.02);
+}
+
+/* why-rows: label + text grid that collapses on mobile */
+.rl-why-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 2fr;
+  gap: 24px 64px;
+  padding: 36px 0;
+}
+@media (max-width: 720px) {
+  .rl-why-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
+
+/* support page: two-column grid */
+.rl-support-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 80px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .rl-support-grid {
+    grid-template-columns: 1fr;
+    gap: 64px;
+  }
+}
+.rl-support-row {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 20px;
+  padding: 24px 0;
+}
+@media (max-width: 560px) {
+  .rl-support-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+
+/* form fields (Support) */
+.rl-field {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(242, 245, 244, 0.12);
+  border-radius: 8px;
+  padding: 13px 16px;
+  color: var(--rl-ink);
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+}
+.rl-field:focus {
+  border-color: rgba(77, 182, 172, 0.6);
+}
+.rl-field option {
+  background: #10514c;
+  background: var(--rl-bg);
+  color: var(--rl-ink);
+}
+
+/* legal markdown (dark shell) */
+.rl-legal-doc h2 {
+  font-size: 26px;
+  font-weight: 600;
+  margin: 56px 0 16px;
+  letter-spacing: -0.01em;
+  color: var(--rl-ink);
+}
+.rl-legal-doc h3 {
+  font-size: 19px;
+  font-weight: 600;
+  margin: 32px 0 12px;
+  color: var(--rl-ink);
+}
+.rl-legal-doc p {
+  margin: 0 0 16px;
+  font-size: 16px;
+  line-height: 1.75;
+  color: rgba(242, 245, 244, 0.65);
+}
+.rl-legal-doc ul,
+.rl-legal-doc ol {
+  padding-left: 22px;
+  margin: 0 0 16px;
+}
+.rl-legal-doc li {
+  margin: 0 0 10px;
+  font-size: 16px;
+  line-height: 1.7;
+  color: rgba(242, 245, 244, 0.65);
+}
+.rl-legal-doc a {
+  color: var(--rl-teal);
+  text-decoration: underline;
+}
+.rl-legal-doc strong {
+  color: var(--rl-ink);
+  font-weight: 600;
+}
+.rl-legal-doc table {
+  border-collapse: collapse;
+  margin: 0 0 16px;
+  font-size: 15px;
+  color: rgba(242, 245, 244, 0.65);
+}
+.rl-legal-doc th,
+.rl-legal-doc td {
+  border: 1px solid rgba(242, 245, 244, 0.15);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+/* ---------- mobile adaptations (desktop unchanged) ---------- */
+
+/* iOS zooms into inputs below 16px — bump only on small screens */
+@media (max-width: 767px) {
+  .rl .rl-field {
+    font-size: 16px;
+  }
+}
+
+/* touch devices: grow tap areas to ~44px without moving anything visually */
+@media (pointer: coarse), (max-width: 767px) {
+  .rl-nav-links a,
+  .rl-nav-links .rl-nav-lang {
+    padding: 14px 8px;
+    margin: -14px -8px;
+  }
+  .rl-footer-links a,
+  .rl-footer .rl-nav-lang {
+    display: inline-block;
+    padding: 14px 8px;
+    margin: -14px -8px;
+  }
+}
+
+/* "What is C-Point" cells: uniform stacked layout when the grid collapses
+   (inline styles carry the 3-column padding, hence the !important) */
+/* stacked split sections read text-first on mobile, whatever the DOM order */
+@media (max-width: 720px) {
+  .rl-split > .rl-split-text {
+    order: -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .rl .rl-cell {
+    padding: 28px 0 8px !important;
+    border-right: none !important;
+    border-top: 1px solid rgba(242, 245, 244, 0.1);
+  }
+  .rl--pt .rl-cell {
+    border-top-color: rgba(242, 245, 244, 0.18);
+  }
+  .rl .rl-cell:first-child {
+    border-top: none;
+  }
+  /* tighten the tallest paddings so mobile pages don't feel empty */
+  .rl-split {
+    padding-top: 88px;
+    padding-bottom: 88px;
+    gap: 48px 96px;
+  }
+  .rl-section-pad {
+    padding-top: 96px;
+    padding-bottom: 96px;
+  }
+}
+
+/* FAQ details */
+.rl-faq {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(242, 245, 244, 0.08);
+  border-radius: 8px;
+  padding: 16px 20px;
+}
+.rl--pt .rl-faq {
+  background: rgba(242, 245, 244, 0.03);
+  border-color: rgba(242, 245, 244, 0.15);
+}
+.rl-faq summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 15px;
+}

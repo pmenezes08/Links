@@ -35,6 +35,7 @@ import {
 import { useLang } from "@/i18n/LanguageContext";
 import type { Lang } from "@/i18n/copy";
 import { signupUrlWithAttribution, trackLandingEvent } from "@/lib/track";
+import { usePageChrome } from "@/redesign/hooks";
 
 const problemIcons = [MessagesSquare, LockKeyhole, Layers3];
 const featureIcons = [CircleUserRound, MessageCircle, CalendarDays, UsersRound];
@@ -46,6 +47,7 @@ export default function ForCommunityOwners() {
   const [contactOpen, setContactOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const signupUrl = useMemo(signupUrlWithAttribution, []);
+  usePageChrome("#ffffff"); // light page — keep mobile safe areas white
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 80);
