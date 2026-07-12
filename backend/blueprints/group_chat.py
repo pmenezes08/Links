@@ -3556,6 +3556,7 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         # Only attach images if the user's message explicitly references them
         from backend.services.steve_chat_images import (
             build_grok_user_content,
+            create_response_with_image_fallback,
             parse_reply_media_urls,
             select_image_urls_for_turn,
             vision_focus_context_line,
@@ -3771,7 +3772,8 @@ RESPONSE FORMAT:
             )
             
             started = time.perf_counter()
-            response = client.responses.create(
+            response = create_response_with_image_fallback(
+                client,
                 model=model_config.model,
                 input=[
                     {"role": "system", "content": effective_system},

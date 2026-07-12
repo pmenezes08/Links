@@ -91,6 +91,7 @@ jobs:
         run: |
           pytest \
             tests/test_ai_usage_counters.py \
+            tests/test_steve_chat_images.py \
             tests/test_entitlements_resolve.py \
             tests/test_email_normalization.py \
             tests/test_disposable_email.py \
