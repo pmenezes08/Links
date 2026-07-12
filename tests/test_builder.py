@@ -914,9 +914,13 @@ def test_build_guide_loads_and_has_anchors():
     assert builder._load_build_guide(), "builder_guide.md did not load"
     sp = builder._SYSTEM_PROMPT
     assert sp is not builder._SYSTEM_PROMPT_FALLBACK, "codegen is using the inline fallback, not the guide"
+    # Anchors track the guide's CURRENT multiplayer vocabulary: the runtime
+    # moved from raw controller.submitMove/cancel calls to the turnBasedGame
+    # contract (actions.submitMove / controller.view), so the anchors moved
+    # with it.
     for anchor in (
         "modern", "minimalist", "x.ai", "CPoint.match", "Websites", "Apps", "Games", "sandbox",
-        "matchController", "controller.submitMove", "controller.cancel", "stale_version",
+        "matchController", "turnBasedGame", "actions.submitMove", "controller.view", "stale_version",
     ):
         assert anchor.lower() in sp.lower(), f"build-guide anchor missing: {anchor}"
     caps = builder._CAPS_BLOCK
@@ -2241,7 +2245,11 @@ def test_create_creation_uses_r2_key_when_upload_succeeds(monkeypatch):
 def test_iterate_creation_clears_old_r2_key_when_upload_fails(monkeypatch):
     monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
     monkeypatch.setattr(builder, "store_artifact_html", lambda creation_id, html, *, updated_at=None: "private/old.html")
-    monkeypatch.setattr(builder, "load_artifact_html", lambda creation_id, key, *, updated_at=None: _FAKE_HTML)
+    # Honor the real contract: no R2 key → None, so html_content stays
+    # authoritative. An unconditional stub here masked the very value under
+    # test (get_creation would overwrite the freshly stored v2 fallback).
+    monkeypatch.setattr(builder, "load_artifact_html",
+                        lambda creation_id, key, *, updated_at=None: _FAKE_HTML if key else None)
     deleted = []
     monkeypatch.setattr(builder, "delete_artifact_html", lambda key, **_k: deleted.append(key))
     _make_user("maker")
