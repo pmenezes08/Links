@@ -21035,19 +21035,29 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                 )
                 client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
                 
-                # Build user content - include images if present (Grok supports vision)
-                if has_images:
+                # Build user content - include images if present (Grok supports vision).
+                # xAI only downloads jpeg/png/webp/ico — a gif/svg/octet-stream URL 400s the whole call.
+                from backend.services.steve_chat_images import (
+                    create_response_with_image_fallback,
+                    filter_xai_supported_image_urls,
+                    unviewable_images_note,
+                )
+                viewable_image_urls, unviewable_count = filter_xai_supported_image_urls(
+                    post_image_urls[:steve_config.images_limit]
+                )
+                if viewable_image_urls:
                     user_content = [{"type": "input_text", "text": context}]
-                    for img_url in post_image_urls[:steve_config.images_limit]:
+                    for img_url in viewable_image_urls:
                         user_content.append({"type": "input_image", "image_url": img_url})
+                    user_content[0]["text"] += unviewable_images_note(unviewable_count)
                     if has_video:
                         user_content[0]["text"] += "\n\n[Note: This post also contains a video that you cannot view, but you can see the images above.]"
-                    
+
                     effective_system = system_prompt + "\n\nYou can see images attached to this post. Describe what you see and respond accordingly."
                 else:
-                    user_content = context
+                    user_content = context + unviewable_images_note(unviewable_count)
                     effective_system = system_prompt
-                
+
                 started = time.perf_counter()
                 entitlement_cap = output_cap_for_surface(
                     _ent,
@@ -21058,7 +21068,8 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                     max_output_tokens = min(entitlement_cap, int(steve_config.max_output_tokens or entitlement_cap))
                 else:
                     max_output_tokens = entitlement_cap
-                response = client.responses.create(
+                response = create_response_with_image_fallback(
+                    client,
                     model=steve_config.model,
                     input=[
                         {"role": "system", "content": effective_system},
@@ -21431,16 +21442,25 @@ def _steve_ai_reply_for_group_post(
     system_prompt = append_response_policy(system_prompt, user_message, surface=_ai_usage.SURFACE_GROUP)
     model_to_use = steve_config.model
     client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
-    if has_images:
-        user_content = [{"type": "input_text", "text": context}]
-        for img_url in post_image_urls[: steve_config.images_limit]:
+    # xAI only downloads jpeg/png/webp/ico — a gif/svg/octet-stream URL 400s the whole call.
+    from backend.services.steve_chat_images import (
+        create_response_with_image_fallback,
+        filter_xai_supported_image_urls,
+        unviewable_images_note,
+    )
+    viewable_image_urls, unviewable_count = filter_xai_supported_image_urls(
+        post_image_urls[: steve_config.images_limit]
+    )
+    if viewable_image_urls:
+        user_content = [{"type": "input_text", "text": context + unviewable_images_note(unviewable_count)}]
+        for img_url in viewable_image_urls:
             user_content.append({"type": "input_image", "image_url": img_url})
         effective_system = (
             system_prompt
             + "\n\nYou can see images attached to this post. Describe what you see and respond accordingly."
         )
     else:
-        user_content = context
+        user_content = context + unviewable_images_note(unviewable_count)
         effective_system = system_prompt
     entitlement_cap = output_cap_for_surface(
         _ent,
@@ -21484,7 +21504,8 @@ def _steve_ai_reply_for_group_post(
     )
     effective_system = f"{effective_system}\n\nHOSTED WEB / X (this turn):\n{_hosted_caps_grp}\n"
     started = time.perf_counter()
-    response = client.responses.create(
+    response = create_response_with_image_fallback(
+        client,
         model=model_to_use,
         input=[
             {"role": "system", "content": effective_system},
@@ -22290,19 +22311,29 @@ def ai_steve_reply():
                 )
                 client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
                 
-                # Build user content - include images if present (Grok supports vision)
-                if has_images:
+                # Build user content - include images if present (Grok supports vision).
+                # xAI only downloads jpeg/png/webp/ico — a gif/svg/octet-stream URL 400s the whole call.
+                from backend.services.steve_chat_images import (
+                    create_response_with_image_fallback,
+                    filter_xai_supported_image_urls,
+                    unviewable_images_note,
+                )
+                viewable_image_urls, unviewable_count = filter_xai_supported_image_urls(
+                    post_image_urls[:steve_config.images_limit]
+                )
+                if viewable_image_urls:
                     user_content = [{"type": "input_text", "text": context}]
-                    for img_url in post_image_urls[:steve_config.images_limit]:
+                    for img_url in viewable_image_urls:
                         user_content.append({"type": "input_image", "image_url": img_url})
+                    user_content[0]["text"] += unviewable_images_note(unviewable_count)
                     if has_video:
                         user_content[0]["text"] += "\n\n[Note: This post also contains a video that you cannot view, but you can see the images above.]"
-                    
+
                     effective_system = system_prompt + "\n\nYou can see images attached to this post. Describe what you see and respond accordingly."
                 else:
-                    user_content = context
+                    user_content = context + unviewable_images_note(unviewable_count)
                     effective_system = system_prompt
-                
+
                 started = time.perf_counter()
                 entitlement_cap = output_cap_for_surface(
                     _ent,
@@ -22313,7 +22344,8 @@ def ai_steve_reply():
                     max_output_tokens = min(entitlement_cap, int(steve_config.max_output_tokens or entitlement_cap))
                 else:
                     max_output_tokens = entitlement_cap
-                response = client.responses.create(
+                response = create_response_with_image_fallback(
+                    client,
                     model=model_to_use,
                     input=[
                         {"role": "system", "content": effective_system},

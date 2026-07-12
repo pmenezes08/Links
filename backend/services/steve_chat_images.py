@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Iterable, List, Optional, Sequence
+from typing import Any, Iterable, List, Optional, Sequence, Tuple
+from urllib.parse import urlsplit
+
+logger = logging.getLogger(__name__)
 
 IMAGE_KEYWORDS: tuple[str, ...] = (
     "image",
@@ -25,6 +29,12 @@ IMAGE_KEYWORDS: tuple[str, ...] = (
 )
 
 VIDEO_EXTENSIONS: tuple[str, ...] = (".mp4", ".mov", ".webm", ".m4v", ".avi")
+
+# xAI vision downloads image URLs server-side and rejects the whole request
+# (400) if any resolves to an unsupported content-type. Supported per the API:
+# image/jpeg, image/png, image/webp, image/x-icon. Notably NOT gif or svg, and
+# extension-less R2 keys are served as application/octet-stream.
+XAI_SUPPORTED_IMAGE_EXTENSIONS: tuple[str, ...] = (".jpg", ".jpeg", ".png", ".webp", ".ico")
 
 STEVE_SHARED_PHOTO_USER_MESSAGE = "[User shared a photo]"
 
@@ -81,6 +91,73 @@ def is_http_image_url(url: str) -> bool:
     return True
 
 
+def is_xai_supported_image_url(url: str) -> bool:
+    if not url or not isinstance(url, str):
+        return False
+    try:
+        path = urlsplit(url).path.lower()
+    except ValueError:
+        return False
+    return path.endswith(XAI_SUPPORTED_IMAGE_EXTENSIONS)
+
+
+def filter_xai_supported_image_urls(urls: Iterable[str]) -> Tuple[List[str], int]:
+    """Split image URLs into (attachable, dropped_count) for a Grok vision call."""
+    all_urls = [u for u in urls if u]
+    kept = [u for u in all_urls if is_xai_supported_image_url(u)]
+    return kept, len(all_urls) - len(kept)
+
+
+def unviewable_images_note(count: int) -> str:
+    if count <= 0:
+        return ""
+    return f"\n\n[Note: This also includes {count} image(s) in a format you cannot view.]"
+
+
+def is_image_download_error(err: Exception) -> bool:
+    """True when an xAI error is caused by a rejected/undownloadable image URL."""
+    msg = str(err).lower()
+    return "downloading image" in msg or ("image" in msg and "content-type" in msg)
+
+
+def strip_images_from_user_content(user_content: Any) -> Any:
+    if not isinstance(user_content, list):
+        return user_content
+    texts = [
+        part.get("text", "")
+        for part in user_content
+        if isinstance(part, dict) and part.get("type") == "input_text"
+    ]
+    return "\n\n".join(t for t in texts if t)
+
+
+def create_response_with_image_fallback(client: Any, *, input: List[dict], **kwargs: Any) -> Any:
+    """client.responses.create, retried text-only if xAI rejects an attached image.
+
+    Without this, one bad image URL (wrong content-type, dead link) turns the
+    whole Steve reply into a silent failure instead of a text answer.
+    """
+    try:
+        return client.responses.create(input=input, **kwargs)
+    except Exception as err:
+        has_image_parts = any(
+            isinstance(part, dict) and part.get("type") == "input_image"
+            for msg in input
+            if isinstance(msg, dict) and isinstance(msg.get("content"), list)
+            for part in msg["content"]
+        )
+        if not has_image_parts or not is_image_download_error(err):
+            raise
+        logger.warning("Grok rejected attached image(s), retrying text-only: %s", err)
+        text_only_input = [
+            {**msg, "content": strip_images_from_user_content(msg.get("content"))}
+            if isinstance(msg, dict)
+            else msg
+            for msg in input
+        ]
+        return client.responses.create(input=text_only_input, **kwargs)
+
+
 def append_urls_from_media_paths(raw: Any, out: List[str]) -> None:
     paths: Sequence[str] | None = None
     if isinstance(raw, list):
@@ -127,21 +204,26 @@ def select_image_urls_for_turn(
 ) -> ImageSelection:
     # Reply-target photo takes precedence (even without vision keywords in body)
     target = extract_reply_target_image(user_message)
-    if target:
+    if target and is_xai_supported_image_url(target):
         # Accept http or relative /uploads paths; normalization handled upstream or in todo 3
         if target.startswith("http") or target.startswith("/"):
             return ImageSelection(urls=[target], reply_targeted=True, specific_image=True)
-    capped = dedupe_and_cap_image_urls(collected, max_count=max_count)
+    supported, _dropped = filter_xai_supported_image_urls(collected)
+    capped = dedupe_and_cap_image_urls(supported, max_count=max_count)
     if not wants_images(user_message, force=force):
         return ImageSelection(urls=[])
     return ImageSelection(urls=capped)
 
 
 def build_grok_user_content(context_text: str, image_urls: Sequence[str]) -> Any:
-    if not image_urls:
-        return context_text
-    user_content: List[dict[str, str]] = [{"type": "input_text", "text": context_text}]
-    for img_url in image_urls:
+    # Last line of defense: an unsupported image URL 400s the whole xAI call.
+    supported, dropped = filter_xai_supported_image_urls(image_urls)
+    if not supported:
+        return context_text + unviewable_images_note(dropped)
+    user_content: List[dict[str, str]] = [
+        {"type": "input_text", "text": context_text + unviewable_images_note(dropped)}
+    ]
+    for img_url in supported:
         user_content.append({"type": "input_image", "image_url": img_url})
     return user_content
 
