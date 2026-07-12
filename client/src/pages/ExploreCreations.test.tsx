@@ -186,6 +186,53 @@ describe('ExploreCreations', () => {
     expect(navigate).toHaveBeenCalledWith('/builder')
   })
 
+  it('renders a Featured shelf first when admin picks exist', async () => {
+    vi.stubGlobal('fetch', mockFetchOnce({
+      success: true,
+      creations: [
+        creation(1, 'game', { title: 'Star Pick', featured: true }),
+        creation(2, 'app', { title: 'Regular App' }),
+      ],
+    }))
+
+    const { getAllByText, getByRole } = render(<ExploreCreations />)
+    // Featured is a highlight: the item shows in the Featured shelf AND in
+    // the regular catalog below.
+    await waitFor(() => expect(getAllByText('Star Pick').length).toBeGreaterThan(0))
+    expect(getByRole('heading', { name: 'Featured' })).toBeTruthy()
+  })
+
+  it('shows the opt-in builder credit and filters by builder on tap', async () => {
+    vi.stubGlobal('fetch', mockFetchOnce({
+      success: true,
+      creations: [
+        creation(1, 'game', { title: 'Credited Game', builder: 'NightOwl Builds' }),
+        creation(2, 'game', { title: 'Anonymous Game' }),
+      ],
+    }))
+
+    const { getByText, queryByText } = render(<ExploreCreations />)
+    await waitFor(() => expect(getByText('Credited Game')).toBeTruthy())
+    expect(getByText('by NightOwl Builds')).toBeTruthy()
+    // The anonymous card carries no credit line.
+    expect(queryByText(/^by (?!NightOwl)/)).toBeNull()
+
+    fireEvent.click(getByText('by NightOwl Builds'))
+    expect(navigate).toHaveBeenCalledWith('/explore-creations?builder=NightOwl%20Builds')
+  })
+
+  it('prefers a persisted cover image over the gradient', async () => {
+    vi.stubGlobal('fetch', mockFetchOnce({
+      success: true,
+      creations: [creation(9, 'website', { title: 'Covered Site', cover_url: '/api/builder/explore/9/cover' })],
+    }))
+
+    const { getByText, container } = render(<ExploreCreations />)
+    await waitFor(() => expect(getByText('Covered Site')).toBeTruthy())
+    const img = container.querySelector('img[src="/api/builder/explore/9/cover"]')
+    expect(img).toBeTruthy()
+  })
+
   it('filters to one section via ?kind= deep link', async () => {
     searchParams.current = new URLSearchParams('kind=game')
     vi.stubGlobal('fetch', mockFetchOnce({

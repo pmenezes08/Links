@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import logging
 
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, current_app, jsonify, request, session
 
 from backend.services import ai_usage
 from backend.services import builder as builder_svc
@@ -548,19 +548,55 @@ def builder_unpublish_web(creation_id: int):
 @builder_bp.route("/api/builder/explore", methods=["GET"])
 def builder_explore():
     """Anonymous approved-gallery catalog. Identical payload for every viewer
-    (no creator/community fields), so short shared caching is safe."""
+    (no creator/community fields; `builder` is an opt-in pseudonym only), so
+    short shared caching is safe."""
     limit = _safe_int(request.args.get("limit")) or 30
     kind = (request.args.get("kind") or "").strip().lower() or None
     category = (request.args.get("category") or "").strip().lower() or None
+    builder_handle = (request.args.get("builder") or "").strip() or None
     payload = {
         "success": True,
-        "creations": builder_svc.list_explore_creations(limit=limit, kind=kind, category=category),
+        "creations": builder_svc.list_explore_creations(limit=limit, kind=kind, category=category,
+                                                        builder=builder_handle),
     }
-    if not kind and not category:
+    if not kind and not category and not builder_handle:
         payload.update(builder_svc.explore_sections())
     resp = jsonify(payload)
     resp.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=300"
     return resp
+
+
+@builder_bp.route("/api/builder/explore/<int:creation_id>/cover", methods=["GET"])
+def builder_explore_cover(creation_id: int):
+    """Poster image for an APPROVED gallery creation (404 otherwise). The image
+    is captured from the sanitized render stub at listing time, so it carries
+    no identity or session data — safe to serve without a session."""
+    data = builder_svc.get_gallery_cover_bytes(creation_id)
+    if not data:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    resp = current_app.response_class(data, mimetype="image/png")
+    resp.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400"
+    return resp
+
+
+@builder_bp.route("/api/builder/pseudonym", methods=["GET", "POST"])
+def builder_pseudonym():
+    """The caller's opt-in Explore builder handle. Never resolves to a profile;
+    setting an empty value clears it (back to fully anonymous listings)."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "auth_required"}), 401
+    if request.method == "GET":
+        return jsonify({"success": True, "pseudonym": builder_svc.get_builder_pseudonym(username)})
+    data = request.get_json(silent=True) or {}
+    try:
+        value = builder_svc.set_builder_pseudonym(username, data.get("pseudonym"))
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except Exception:
+        logger.exception("builder: pseudonym update failed")
+        return jsonify({"success": False, "error": "pseudonym_update_failed"}), 500
+    return jsonify({"success": True, "pseudonym": value})
 
 
 @builder_bp.route("/api/builder/<int:creation_id>/gallery", methods=["POST"])
@@ -596,7 +632,7 @@ def builder_admin_gallery_update(creation_id: int):
     try:
         result = builder_svc.update_gallery_status(
             creation_id=creation_id, username=username, action=action, reviewer=username,
-            reason=reason, category=category,
+            reason=reason, category=category, is_admin=True,
         )
     except ValueError as exc:
         return jsonify({"success": False, "error": str(exc)}), 400

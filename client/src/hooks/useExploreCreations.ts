@@ -24,6 +24,12 @@ export type ExploreCreation = {
   category?: string | null
   /** Steve-voiced one-liner written at gallery listing time. */
   hook?: string | null
+  /** Admin-picked Featured shelf flag. */
+  featured?: boolean | null
+  /** Poster screenshot (sanitized render) served by the approved-only cover route. */
+  cover_url?: string | null
+  /** Creator's OPT-IN Explore pseudonym — never a username; null = anonymous. */
+  builder?: string | null
   play_url?: string | null
   public_url?: string | null
   plays?: number | null
@@ -66,6 +72,9 @@ function safeOptimisticCreation(value: unknown): ExploreCreation | null {
     public_kind: raw.public_kind || null,
     category: raw.category || null,
     hook: raw.hook || null,
+    featured: Boolean(raw.featured),
+    cover_url: raw.cover_url || null,
+    builder: raw.builder || null,
     play_url: raw.play_url || `/creation/${id}`,
     public_url: raw.public_url || null,
     plays: Number(raw.plays || 0),

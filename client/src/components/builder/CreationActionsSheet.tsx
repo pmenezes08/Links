@@ -41,6 +41,85 @@ function titleFor(creation: SheetCreation): string {
   return creation.title?.trim() || 'Untitled build'
 }
 
+/**
+ * Opt-in Explore builder handle. Self-contained (GET/POST /api/builder/pseudonym):
+ * privacy-sensitive validation (no username collisions, uniqueness) lives
+ * server-side; this control only reads/writes the caller's own handle.
+ */
+function BuilderPseudonymField() {
+  const [value, setValue] = useState('')
+  const [saved, setSaved] = useState<string | null>(null)
+  const [state, setState] = useState<'idle' | 'saving' | 'error' | 'done'>('idle')
+
+  useEffect(() => {
+    let alive = true
+    fetch('/api/builder/pseudonym', { credentials: 'include', headers: { Accept: 'application/json' } })
+      .then(r => r.json())
+      .then(d => {
+        if (alive && d?.success) { setSaved(d.pseudonym || null); setValue(d.pseudonym || '') }
+      })
+      .catch(() => { /* field stays editable; save reports errors */ })
+    return () => { alive = false }
+  }, [])
+
+  const dirty = value.trim() !== (saved || '')
+  const save = async () => {
+    setState('saving')
+    try {
+      const res = await fetch('/api/builder/pseudonym', {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pseudonym: value.trim() || null }),
+      })
+      const data = await res.json().catch(() => null)
+      if (res.ok && data?.success) {
+        setSaved(data.pseudonym || null)
+        setValue(data.pseudonym || '')
+        setState('done')
+        return
+      }
+      setState('error')
+    } catch {
+      setState('error')
+    }
+  }
+
+  return (
+    <div className="mt-3 border-t border-c-border pt-3">
+      <label htmlFor="builder-pseudonym" className="block text-xs font-semibold text-c-text-secondary">
+        Builder name (optional)
+      </label>
+      <p className="mt-0.5 text-xs text-c-text-tertiary">
+        Shown on your gallery cards instead of staying anonymous. Never links to your profile.
+      </p>
+      <div className="mt-2 flex gap-2">
+        <input
+          id="builder-pseudonym"
+          type="text"
+          value={value}
+          maxLength={32}
+          onChange={(e) => { setValue(e.target.value); setState('idle') }}
+          placeholder="e.g. NightOwl Builds"
+          className="min-w-0 flex-1 rounded-xl border border-c-border bg-c-bg-elevated px-3 py-2 text-sm text-c-text-primary outline-none placeholder:text-c-text-tertiary focus:border-cpoint-turquoise/50"
+        />
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={!dirty || state === 'saving'}
+          className="rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-2 text-sm font-semibold text-cpoint-turquoise transition disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {state === 'saving' ? 'Saving...' : 'Save'}
+        </button>
+      </div>
+      {state === 'error' && (
+        <p className="mt-1.5 text-xs text-red-400">That name is unavailable — try another.</p>
+      )}
+      {state === 'done' && (
+        <p className="mt-1.5 text-xs text-c-text-tertiary">{saved ? `Cards will show "by ${saved}".` : 'Back to anonymous.'}</p>
+      )}
+    </div>
+  )
+}
+
 export default function CreationActionsSheet({
   creation,
   copied,
@@ -125,6 +204,7 @@ export default function CreationActionsSheet({
               {galleryWorking ? 'Working...' : isListed ? 'Remove from the gallery' : 'List in the gallery'}
             </button>
             <p className="mt-2 text-xs text-c-text-tertiary">Gallery listings are anonymous: your name, profile, and community are not shown.</p>
+            {isListed && <BuilderPseudonymField />}
           </section>
 
           <section className="rounded-2xl border border-c-border bg-c-hover-bg p-3">

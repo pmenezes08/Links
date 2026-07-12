@@ -15,6 +15,7 @@ cookies / storage), which is the staging-safe equivalent of the dedicated
 
 from __future__ import annotations
 
+import base64
 import contextvars
 from concurrent.futures import ThreadPoolExecutor
 import json
@@ -436,6 +437,10 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
             # and when. The weekly digest notifies only on growth past this.
             ("plays_digest_count", "INTEGER" if USE_MYSQL else "INTEGER"),
             ("plays_digest_at", "DATETIME" if USE_MYSQL else "TEXT"),
+            # Persisted gallery poster (private R2 key, served through the
+            # approved-only cover route) + admin-picked featured flag.
+            ("gallery_cover_key", "VARCHAR(512)" if USE_MYSQL else "TEXT"),
+            ("gallery_featured", "INTEGER" if USE_MYSQL else "INTEGER"),
         ):
             try:
                 cursor.execute(f"ALTER TABLE creations ADD COLUMN {column} {ddl}")
@@ -450,6 +455,36 @@ def ensure_tables(cursor: Optional[Any] = None) -> None:
                 cursor.execute(stmt if USE_MYSQL else stmt.replace("CREATE INDEX ", "CREATE INDEX IF NOT EXISTS "))
             except Exception:
                 pass
+        # Opt-in, Explore-scoped builder handle. Deliberately NOT a profile
+        # reference: it never resolves to a username/avatar/profile, exists
+        # only for gallery credit + "more from this builder", and is unique
+        # (case-insensitive via the lower column) so no two builders share an
+        # identity. Explore stays anonymous for everyone who doesn't opt in.
+        if USE_MYSQL:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS builder_pseudonyms (
+                    username VARCHAR(191) PRIMARY KEY,
+                    pseudonym VARCHAR(32) NOT NULL,
+                    pseudonym_lower VARCHAR(32) NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    UNIQUE KEY uq_builder_pseudonym (pseudonym_lower)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS builder_pseudonyms (
+                    username TEXT PRIMARY KEY,
+                    pseudonym TEXT NOT NULL,
+                    pseudonym_lower TEXT NOT NULL UNIQUE,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
         # Community-scoped interaction data (scores, ratings). One row per user
         # per (creation, namespace, key) — UNIQUE makes "one score/rating per
         # user" a DB invariant (upsert). The artifact never writes here directly;
@@ -2892,14 +2927,18 @@ def _valid_category_for(row: Dict[str, Any], category: Optional[str]) -> Optiona
 def update_gallery_status(*, creation_id: int, username: str, action: str,
                           reviewer: Optional[str] = None,
                           reason: Optional[str] = None,
-                          category: Optional[str] = None) -> Dict[str, Any]:
+                          category: Optional[str] = None,
+                          is_admin: bool = False) -> Dict[str, Any]:
     """Owner request/unlist and app-admin review state for Explore Creations.
 
     ``category`` (admin ``approve`` only) overrides the creation's sub-category
     in the same review tap; it must be a valid slug for the creation's section
-    or it raises. On any transition to ``approved`` a best-effort, metered
+    or it raises. ``feature``/``unfeature`` (admin-route only, ``is_admin``)
+    toggle the manual Featured shelf pick — deliberately human-curated, never
+    an LLM cron. On any transition to ``approved`` a best-effort, metered
     classify+hook pass fills the missing sub-category/card hook (see
-    ``builder_gallery_meta``) — listing NEVER fails on that call.
+    ``builder_gallery_meta``) and a poster cover is captured from the sanitized
+    render — listing NEVER fails on either.
     """
     row = get_creation(creation_id)
     if not row:
@@ -2942,13 +2981,20 @@ def update_gallery_status(*, creation_id: int, username: str, action: str,
                       gallery_reviewed_by = {ph}, gallery_rejection_reason = {ph}, updated_at = {ph}
                       WHERE id = {ph}"""
             params = (status, now, reviewer or username, (reason or "")[:255] if status == "rejected" else None, now, creation_id)
+    elif action_key in ("feature", "unfeature"):
+        if not is_admin:
+            raise ValueError("invalid_gallery_action")
+        status = str(row.get("gallery_status") or "not_listed")
+        sql = f"""UPDATE creations SET gallery_featured = {ph}, updated_at = {ph}
+                  WHERE id = {ph} AND gallery_status = 'approved'"""
+        params = (1 if action_key == "feature" else 0, now, creation_id)
     else:
         raise ValueError("invalid_gallery_action")
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute(sql, params)
         conn.commit()
-    if status == "approved":
+    if status == "approved" and action_key in ("request", "approve"):
         # Curation pass: one cheap metered call fills sub-category + card hook.
         # Best-effort by contract — listing must never fail on an AI call.
         try:
@@ -2956,6 +3002,13 @@ def update_gallery_status(*, creation_id: int, username: str, action: str,
             builder_gallery_meta.ensure_gallery_meta(creation_id)
         except Exception:
             logger.warning("builder: gallery classify+hook pass failed for %s", creation_id, exc_info=True)
+        # Poster cover from the sanitized render (best-effort, no-op without
+        # the render service / R2; gradient covers remain the fallback).
+        if not row.get("gallery_cover_key"):
+            try:
+                capture_gallery_cover(creation_id)
+            except Exception:
+                logger.warning("builder: gallery cover capture failed for %s", creation_id, exc_info=True)
     updated = get_creation(creation_id) or {}
     return {
         "gallery_status": updated.get("gallery_status") or status,
@@ -2973,15 +3026,23 @@ _EXPLORE_SECTION_CAP = 24  # per-section shelf cap so one hot kind can't starve 
 
 
 def _explore_rows(cap: int = _EXPLORE_MAX_ROWS) -> List[Dict[str, Any]]:
+    """Privacy-safe gallery rows. ``builder`` is the creator's OPT-IN Explore
+    pseudonym (see builder_pseudonyms) — never a username; without opt-in the
+    field is null and the listing stays fully anonymous. Featured picks sort
+    first within the recency order."""
     ph = get_sql_placeholder()
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute(
-            f"""SELECT id, title, kind, public_slug, public_kind, public_published_at,
-                       play_count, category, gallery_hook
-                FROM creations
-                WHERE gallery_status = 'approved'
-                ORDER BY COALESCE(gallery_reviewed_at, public_published_at, updated_at) DESC
+            f"""SELECT c.id, c.title, c.kind, c.public_slug, c.public_kind,
+                       c.public_published_at, c.play_count, c.category,
+                       c.gallery_hook, c.gallery_featured, c.gallery_cover_key,
+                       p.pseudonym
+                FROM creations c
+                LEFT JOIN builder_pseudonyms p ON p.username = c.created_by
+                WHERE c.gallery_status = 'approved'
+                ORDER BY COALESCE(c.gallery_featured, 0) DESC,
+                         COALESCE(c.gallery_reviewed_at, c.public_published_at, c.updated_at) DESC
                 LIMIT {ph}""",
             (max(1, int(cap)),),
         )
@@ -2997,6 +3058,9 @@ def _explore_rows(cap: int = _EXPLORE_MAX_ROWS) -> List[Dict[str, Any]]:
         "plays": int(_cell(r, 6) or 0),
         "category": _cell(r, 7),
         "hook": _cell(r, 8),
+        "featured": bool(_cell(r, 9)),
+        "cover_url": f"/api/builder/explore/{_cell(r, 0)}/cover" if _cell(r, 10) else None,
+        "builder": _cell(r, 11),
         "label": "Made with Steve",
     } for r in rows]
 
@@ -3006,20 +3070,26 @@ def _explore_section_of(item: Dict[str, Any]) -> str:
 
 
 def list_explore_creations(*, limit: int = 30, kind: Optional[str] = None,
-                           category: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Flat approved-gallery list, optionally filtered by section/sub-category.
+                           category: Optional[str] = None,
+                           builder: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Flat approved-gallery list, optionally filtered by section/sub-category
+    or by an opt-in builder pseudonym ("more from this builder").
 
-    An unknown ``kind``/``category`` yields an empty list rather than an error;
-    NULL-category rows are only excluded when a category filter is explicit.
+    An unknown ``kind``/``category``/``builder`` yields an empty list rather
+    than an error; NULL-category rows are only excluded when a category filter
+    is explicit.
     """
     limit = max(1, min(int(limit or 30), 60))
     section = _public_kind(kind) if kind else None
     wanted_category = str(category).strip().lower() if category else None
+    wanted_builder = str(builder).strip().lower() if builder else None
     out: List[Dict[str, Any]] = []
     for item in _explore_rows():
         if section and _explore_section_of(item) != section:
             continue
         if wanted_category and (item.get("category") or "") != wanted_category:
+            continue
+        if wanted_builder and str(item.get("builder") or "").lower() != wanted_builder:
             continue
         out.append(item)
         if len(out) >= limit:
@@ -3054,6 +3124,137 @@ def explore_sections() -> Dict[str, Any]:
             "creations": items[:_EXPLORE_SECTION_CAP],
         })
     return {"sections": sections, "taxonomy": BUILDER_CATEGORIES}
+
+
+# --- Builder pseudonyms (opt-in gallery credit) -------------------------------
+
+# Display-name shape: 3-32 chars, starts/ends alphanumeric, inner spaces/._-
+_PSEUDONYM_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._\-]{1,30}[A-Za-z0-9]$")
+
+
+def get_builder_pseudonym(username: str) -> Optional[str]:
+    ensure_tables()
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT pseudonym FROM builder_pseudonyms WHERE username = {ph}", (username,))
+        row = c.fetchone()
+    return str(_cell(row, 0)) if row and _cell(row, 0) else None
+
+
+def set_builder_pseudonym(username: str, pseudonym: Optional[str]) -> Optional[str]:
+    """Set (or clear, with None/empty) the caller's Explore builder handle.
+
+    Privacy rules: the handle may not match ANY existing username
+    (case-insensitive) — otherwise a member could impersonate someone or a
+    handle could be mistaken for a real account — and must be unique across
+    pseudonyms. Both failures raise the same non-enumerating
+    ``ValueError('pseudonym_unavailable')``.
+    """
+    ensure_tables()
+    ph = get_sql_placeholder()
+    cleaned = re.sub(r"\s+", " ", str(pseudonym or "")).strip()
+    if not cleaned:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(f"DELETE FROM builder_pseudonyms WHERE username = {ph}", (username,))
+            conn.commit()
+        return None
+    if not _PSEUDONYM_RE.match(cleaned):
+        raise ValueError("invalid_pseudonym")
+    lower = cleaned.lower()
+    now = _now()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT 1 FROM users WHERE LOWER(username) = {ph} LIMIT 1", (lower,))
+        if c.fetchone():
+            raise ValueError("pseudonym_unavailable")
+        c.execute(
+            f"SELECT 1 FROM builder_pseudonyms WHERE pseudonym_lower = {ph} AND username != {ph} LIMIT 1",
+            (lower, username),
+        )
+        if c.fetchone():
+            raise ValueError("pseudonym_unavailable")
+        c.execute(f"DELETE FROM builder_pseudonyms WHERE username = {ph}", (username,))
+        try:
+            c.execute(
+                f"""INSERT INTO builder_pseudonyms (username, pseudonym, pseudonym_lower, created_at, updated_at)
+                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph})""",
+                (username, cleaned, lower, now, now),
+            )
+        except Exception:
+            # Unique race on pseudonym_lower — same non-enumerating answer.
+            raise ValueError("pseudonym_unavailable")
+        conn.commit()
+    return cleaned
+
+
+# --- Gallery covers ------------------------------------------------------------
+
+def gallery_cover_r2_key(creation_id: int) -> str:
+    return f"gallery/covers/{int(creation_id)}.png"
+
+
+def capture_gallery_cover(creation_id: int) -> Optional[str]:
+    """Persist a poster screenshot for a gallery-listed creation (best-effort).
+
+    Renders the SANITIZED render-stub artifact — the exact document the vision
+    judge screenshots, with all CPoint session/community APIs stubbed — so no
+    viewer-specific or identity data can leak into the pixels; the image shows
+    only what any anonymous visitor sees on first paint. Requires the render
+    service; silently returns None when it (or R2) is unavailable, and the
+    client keeps its gradient cover.
+    """
+    from backend.services import render_service
+    from backend.services.r2_storage import upload_private_bytes_to_r2
+
+    if not render_service.is_configured():
+        return None
+    row = get_creation(int(creation_id))
+    if not row:
+        return None
+    html = row.get("html_content") or ""
+    if not html:
+        return None
+    try:
+        shot = render_service.render(_with_render_stub(html), full_page=False, read_timeout=20.0)
+    except Exception:
+        logger.warning("builder: gallery cover render failed for %s", creation_id, exc_info=True)
+        return None
+    b64 = (shot or {}).get("screenshot")
+    if not b64:
+        return None
+    try:
+        data = base64.b64decode(b64)
+    except Exception:
+        return None
+    key = gallery_cover_r2_key(creation_id)
+    if not upload_private_bytes_to_r2(data, key, "image/png"):
+        return None
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"UPDATE creations SET gallery_cover_key = {ph} WHERE id = {ph}", (key, creation_id))
+        conn.commit()
+    return key
+
+
+def get_gallery_cover_bytes(creation_id: int) -> Optional[bytes]:
+    """Cover image for an APPROVED creation only (anonymous-safe by scope)."""
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""SELECT gallery_cover_key FROM creations
+                WHERE id = {ph} AND gallery_status = 'approved'""",
+            (int(creation_id),),
+        )
+        row = c.fetchone()
+    key = str(_cell(row, 0)) if row and _cell(row, 0) else None
+    if not key:
+        return None
+    from backend.services.r2_storage import download_bytes_from_r2
+    return download_bytes_from_r2(key)
 
 
 # Creator-side return loop: don't ping for every play, and never for counts so

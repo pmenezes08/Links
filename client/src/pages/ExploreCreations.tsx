@@ -46,6 +46,8 @@ export default function ExploreCreations() {
   const kindParam = (searchParams.get('kind') || '').toLowerCase()
   const filterKind: ExploreSectionKind | null =
     kindParam === 'game' || kindParam === 'app' || kindParam === 'website' ? kindParam : null
+  // "More from this builder" — filters by the creator's opt-in pseudonym.
+  const filterBuilder = (searchParams.get('builder') || '').trim() || null
 
   useEffect(() => {
     setTitle(t('explore.title'))
@@ -65,7 +67,17 @@ export default function ExploreCreations() {
     navigate(`/builder?remix=${item.id}&seed=${encodeURIComponent(seed)}`)
   }, [navigate, t])
 
-  const filteredItems = filterKind ? (sections.find(s => s.kind === filterKind)?.items ?? []) : items
+  const builderTap = useCallback((name: string) => {
+    navigate(`/explore-creations?builder=${encodeURIComponent(name)}`)
+  }, [navigate])
+
+  const filteredItems = filterBuilder
+    ? items.filter(i => (i.builder || '') === filterBuilder)
+    : filterKind
+      ? (sections.find(s => s.kind === filterKind)?.items ?? [])
+      : items
+  const filterActive = Boolean(filterKind || filterBuilder)
+  const featuredItems = items.filter(i => i.featured)
 
   return (
     <div className="app-content min-h-screen chat-thread-bg text-c-text-primary">
@@ -109,8 +121,8 @@ export default function ExploreCreations() {
           </div>
         )}
 
-        {state === 'ready' && items.length > 0 && filterKind && (
-          <section aria-label={t(`explore.section_${filterKind}`)}>
+        {state === 'ready' && items.length > 0 && filterActive && (
+          <section aria-label={filterBuilder ? t('explore.more_from_builder') : t(`explore.section_${filterKind}`)}>
             <div className="mb-3 flex items-center gap-3">
               <button
                 type="button"
@@ -119,7 +131,9 @@ export default function ExploreCreations() {
               >
                 <i className="fa-solid fa-chevron-left text-[10px]" aria-hidden="true" /> {t('explore.all_creations')}
               </button>
-              <h2 className="text-lg font-semibold text-c-text-primary">{t(`explore.section_${filterKind}`)}</h2>
+              <h2 className="text-lg font-semibold text-c-text-primary">
+                {filterBuilder ? t('explore.by_builder', { name: filterBuilder }) : t(`explore.section_${filterKind}`)}
+              </h2>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {filteredItems.map((item, i) => (
@@ -129,13 +143,33 @@ export default function ExploreCreations() {
                   withPreview={i < PREVIEW_BUDGET}
                   onOpen={openCreation}
                   onBuildYourOwn={buildYourOwn}
+                  onBuilderTap={builderTap}
                 />
               ))}
             </div>
           </section>
         )}
 
-        {state === 'ready' && items.length > 0 && !filterKind && sectioned && (
+        {state === 'ready' && items.length > 0 && !filterActive && featuredItems.length > 0 && (
+          <section className="mb-6" aria-label={t('explore.featured')}>
+            <h2 className="mb-2.5 text-lg font-semibold text-c-text-primary">{t('explore.featured')}</h2>
+            <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {featuredItems.map((item, i) => (
+                <ExploreCard
+                  key={item.id}
+                  item={item}
+                  withPreview={i < 2}
+                  onOpen={openCreation}
+                  onBuildYourOwn={buildYourOwn}
+                  onBuilderTap={builderTap}
+                  className="w-[85vw] max-w-[360px] flex-none snap-start sm:w-80"
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {state === 'ready' && items.length > 0 && !filterActive && sectioned && (
           <div>
             {(() => {
               // Preview budget is page-wide: earlier shelves consume it first.
@@ -155,6 +189,7 @@ export default function ExploreCreations() {
                     previewBudget={PREVIEW_BUDGET}
                     onOpen={openCreation}
                     onBuildYourOwn={buildYourOwn}
+                    onBuilderTap={builderTap}
                     onSeeAll={(k) => navigate(`/explore-creations?kind=${k}`)}
                   />
                 )
@@ -163,7 +198,7 @@ export default function ExploreCreations() {
           </div>
         )}
 
-        {state === 'ready' && items.length > 0 && !filterKind && !sectioned && (
+        {state === 'ready' && items.length > 0 && !filterActive && !sectioned && (
           <section aria-label={t('explore.mixed_shelf')}>
             <h2 className="mb-2.5 text-lg font-semibold text-c-text-primary">{t('explore.mixed_shelf')}</h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -174,6 +209,7 @@ export default function ExploreCreations() {
                   withPreview={i < PREVIEW_BUDGET}
                   onOpen={openCreation}
                   onBuildYourOwn={buildYourOwn}
+                  onBuilderTap={builderTap}
                 />
               ))}
             </div>

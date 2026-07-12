@@ -48,10 +48,11 @@ type Props = {
   withPreview: boolean
   onOpen: (item: ExploreCreation) => void
   onBuildYourOwn: (item: ExploreCreation) => void
+  onBuilderTap?: (builder: string) => void
   className?: string
 }
 
-export default function ExploreCard({ item, withPreview, onOpen, onBuildYourOwn, className = '' }: Props) {
+export default function ExploreCard({ item, withPreview, onOpen, onBuildYourOwn, onBuilderTap, className = '' }: Props) {
   const { t } = useTranslation()
   const section = sectionOf(item)
   const gradients = KIND_GRADIENTS[section]
@@ -60,7 +61,9 @@ export default function ExploreCard({ item, withPreview, onOpen, onBuildYourOwn,
   const openLabel = t(`explore.open_${section}`)
   const plays = Number(item.plays || 0)
   const categoryLabel = item.category ? t(`explore.category.${item.category}`, { defaultValue: '' }) : ''
-  const canPreview = withPreview && typeof IntersectionObserver !== 'undefined'
+  // A persisted poster beats a live iframe (plain cacheable <img>, no CPU);
+  // the live preview only runs for budgeted cards without one.
+  const canPreview = withPreview && !item.cover_url && typeof IntersectionObserver !== 'undefined'
 
   return (
     <div
@@ -76,6 +79,14 @@ export default function ExploreCard({ item, withPreview, onOpen, onBuildYourOwn,
           className={`fa-solid ${KIND_GLYPH[section]} absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-5xl text-white/10`}
           aria-hidden="true"
         />
+        {item.cover_url && (
+          <img
+            src={item.cover_url}
+            alt=""
+            loading="lazy"
+            className="absolute inset-0 h-full w-full object-cover object-top"
+          />
+        )}
         {canPreview && <CreationPreview creationId={item.id} background="transparent" />}
         <span className="absolute left-2 top-2 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-medium text-white backdrop-blur">
           <i className={`fa-solid ${KIND_GLYPH[section]} text-[9px]`} aria-hidden="true" />
@@ -93,6 +104,16 @@ export default function ExploreCard({ item, withPreview, onOpen, onBuildYourOwn,
           {plays >= PLAYS_FLOOR && <span>{t('explore.opens', { count: plays })}</span>}
           {!categoryLabel && plays < PLAYS_FLOOR && !item.hook && <span>{item.label || t('explore.made_with_steve')}</span>}
         </p>
+        {item.builder && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onBuilderTap?.(item.builder!) }}
+            aria-label={t('explore.more_from_builder')}
+            className="mt-0.5 self-start text-xs text-c-text-tertiary transition hover:text-c-text-secondary"
+          >
+            {t('explore.by_builder', { name: item.builder })}
+          </button>
+        )}
         <div className="mt-3 flex flex-1 items-end justify-between gap-2">
           <button
             type="button"

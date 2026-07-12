@@ -26,10 +26,11 @@ type Props = {
   previewBudget: number
   onOpen: (item: ExploreCreation) => void
   onBuildYourOwn: (item: ExploreCreation) => void
+  onBuilderTap?: (builder: string) => void
   onSeeAll: (kind: ExploreSectionKind) => void
 }
 
-export default function ExploreShelf({ kind, items, categories, previewBudgetStart, previewBudget, onOpen, onBuildYourOwn, onSeeAll }: Props) {
+export default function ExploreShelf({ kind, items, categories, previewBudgetStart, previewBudget, onOpen, onBuildYourOwn, onBuilderTap, onSeeAll }: Props) {
   const { t } = useTranslation()
   const [selected, setSelected] = useState<string | null>(null)
   if (items.length === 0) return null
@@ -83,6 +84,7 @@ export default function ExploreShelf({ kind, items, categories, previewBudgetSta
             withPreview={previewBudgetStart + i < previewBudget}
             onOpen={onOpen}
             onBuildYourOwn={onBuildYourOwn}
+            onBuilderTap={onBuilderTap}
             className="w-[68vw] max-w-[280px] flex-none snap-start sm:w-64"
           />
         ))}

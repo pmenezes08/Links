@@ -739,6 +739,80 @@ def test_play_digest_notifies_creators_and_is_idempotent(monkeypatch):
     assert len(sent) == 1
 
 
+def test_builder_pseudonym_validation_and_explore_credit(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker"); _make_user("othermaker"); _make_user("takenname")
+    cid = _make_community()
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a snake arcade game")
+    builder.update_gallery_status(creation_id=created["id"], username="maker", action="request")
+
+    # Anonymous by default.
+    assert builder.list_explore_creations()[0]["builder"] is None
+    assert builder.get_builder_pseudonym("maker") is None
+
+    # A handle may never match ANY real username (non-enumerating error).
+    with pytest.raises(ValueError):
+        builder.set_builder_pseudonym("maker", "takenname")
+    with pytest.raises(ValueError):
+        builder.set_builder_pseudonym("maker", "x")  # too short
+
+    assert builder.set_builder_pseudonym("maker", "NightOwl Builds") == "NightOwl Builds"
+    # Unique across builders, case-insensitive.
+    with pytest.raises(ValueError):
+        builder.set_builder_pseudonym("othermaker", "nightowl builds")
+
+    listed = builder.list_explore_creations()
+    assert listed[0]["builder"] == "NightOwl Builds"
+    assert "created_by" not in listed[0]
+    # "More from this builder" filter.
+    assert builder.list_explore_creations(builder="NightOwl Builds")[0]["id"] == created["id"]
+    assert builder.list_explore_creations(builder="nobody") == []
+
+    # Clearing returns the listing to fully anonymous.
+    assert builder.set_builder_pseudonym("maker", None) is None
+    assert builder.list_explore_creations()[0]["builder"] is None
+
+
+def test_featured_is_admin_only_and_sorts_first(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    first = builder.create_creation(username="maker", community_id=cid, prompt="a snake arcade game")
+    second = builder.create_creation(username="maker", community_id=cid, prompt="a sudoku puzzle game")
+    for c in (first, second):
+        builder.update_gallery_status(creation_id=c["id"], username="maker", action="request")
+
+    # Owner path (is_admin False) cannot feature.
+    with pytest.raises(ValueError):
+        builder.update_gallery_status(creation_id=first["id"], username="maker", action="feature")
+
+    builder.update_gallery_status(creation_id=first["id"], username="admin", action="feature",
+                                  reviewer="admin", is_admin=True)
+    listed = builder.list_explore_creations()
+    assert listed[0]["id"] == first["id"]
+    assert listed[0]["featured"] is True
+    assert listed[1]["featured"] is False
+
+    builder.update_gallery_status(creation_id=first["id"], username="admin", action="unfeature",
+                                  reviewer="admin", is_admin=True)
+    assert all(not i["featured"] for i in builder.list_explore_creations())
+
+
+def test_gallery_cover_absent_without_render_service(monkeypatch):
+    """Cover capture degrades silently when the render service isn't
+    configured; the payload advertises no cover_url and the cover route's
+    byte lookup returns None (client keeps the gradient)."""
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a snake arcade game")
+    builder.update_gallery_status(creation_id=created["id"], username="maker", action="request")
+
+    listed = builder.list_explore_creations()
+    assert listed[0]["cover_url"] is None
+    assert builder.get_gallery_cover_bytes(created["id"]) is None
+
+
 def test_submit_score_repeats_are_atomic_and_keep_max(monkeypatch):
     """Regression: repeated submits for the same (creation, key, user) must NOT
     raise an IntegrityError on the unique key and must keep the best — the old
