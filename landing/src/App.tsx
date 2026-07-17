@@ -7,6 +7,7 @@ import { LanguageProvider } from "./i18n/LanguageContext";
 import "./redesign/redesign.css";
 import Home from "./pages/Home";
 import Platform from "./pages/Platform";
+import Organizations from "./pages/Organizations";
 import Manifesto from "./pages/Manifesto";
 import Plans from "./pages/Plans";
 import Privacy from "./pages/Privacy";
@@ -32,6 +33,8 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/platform" element={<Platform />} />
+          <Route path="/organizations" element={<Organizations />} />
+          <Route path="/organisations" element={<Organizations />} />
           <Route path="/manifesto" element={<Manifesto />} />
           <Route path="/plans" element={<Plans />} />
           <Route path="/privacy" element={<Privacy />} />

@@ -271,12 +271,15 @@
   bottom: calc(100% + 14px);
 }
 
-/* phones: logo icon only, everything on ONE row */
+/* phones: logo icon only, everything on ONE row (Manifesto lives in the footer) */
 @media (max-width: 719px) {
   .rl-nav {
     padding: 16px;
   }
   .rl-nav-wordmark {
+    display: none;
+  }
+  .rl-nav-desktop-only {
     display: none;
   }
   .rl-nav-longlabel {
@@ -287,9 +290,9 @@
   }
   .rl-nav-links {
     flex-wrap: nowrap;
-    gap: clamp(8px, 2.4vw, 14px);
-    font-size: clamp(9.5px, 2.8vw, 11px);
-    letter-spacing: 0.06em;
+    gap: clamp(6px, 2vw, 14px);
+    font-size: clamp(9px, 2.7vw, 11px);
+    letter-spacing: 0.04em;
   }
   .rl-nav-links a,
   .rl-nav-links .rl-lang {

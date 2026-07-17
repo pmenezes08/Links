@@ -6,7 +6,7 @@ import { APP_URL } from "./links";
 
 const logo = "/cpoint-logo.png"; // served from landing/public
 
-export type NavActive = "manifesto" | "platform" | "plans" | null;
+export type NavActive = "manifesto" | "platform" | "organizations" | "plans" | null;
 
 type Props = {
   active?: NavActive;
@@ -121,7 +121,8 @@ export function SiteNav({ active = null, variant = "scroll", heroGradient = fals
         <span className="rl-nav-wordmark">C-Point</span>
       </Link>
       <div className="rl-nav-links">
-        <Link to="/manifesto" className={active === "manifesto" ? "rl-nav-active" : undefined}>
+        {/* Mobile trades Manifesto (kept in the footer) for the revenue page. */}
+        <Link to="/manifesto" className={`rl-nav-desktop-only${active === "manifesto" ? " rl-nav-active" : ""}`}>
           Manifesto
         </Link>
         <Link to="/platform" className={active === "platform" ? "rl-nav-active" : undefined}>
@@ -132,6 +133,19 @@ export function SiteNav({ active = null, variant = "scroll", heroGradient = fals
             </>
           ) : (
             "Platform"
+          )}
+        </Link>
+        <Link to="/organizations" className={active === "organizations" ? "rl-nav-active" : undefined}>
+          {pt ? (
+            <>
+              <span className="rl-nav-longlabel">Para Organizações</span>
+              <span className="rl-nav-shortlabel">Organizações</span>
+            </>
+          ) : (
+            <>
+              <span className="rl-nav-longlabel">For Organisations</span>
+              <span className="rl-nav-shortlabel">Organisations</span>
+            </>
           )}
         </Link>
         <Link to="/plans" className={active === "plans" ? "rl-nav-active" : undefined}>
