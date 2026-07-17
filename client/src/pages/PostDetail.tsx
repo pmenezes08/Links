@@ -2205,12 +2205,15 @@ export default function PostDetail(){
         </div>
       ) : null}
 
-      {/* Fixed-bottom reply composer - hidden when inline reply is active,
-          when the GIF picker is open (so the glass sheet does not show the
-          composer chrome through it), or when the expanded editor is open
-          (the compact composer is portaled at z-[1000], above the inline
-          expanded overlay, so it would otherwise show through it). */}
-      {activeInlineReplyFor === null && !gifPickerOpen && !replyComposerExpanded && (
+      {/* Fixed-bottom reply composer - hidden when inline reply is active or
+          when the expanded editor is open (the compact composer is portaled
+          at z-[1000], above the inline expanded overlay, so it would
+          otherwise show through it). It stays MOUNTED while the GIF picker
+          is open: the sheet is opaque (z-[1400], covers the z-[1000] bar)
+          and unmounting would blur the focused textarea and dismiss the
+          keyboard mid-open, stranding the picker below where the keyboard
+          lands. */}
+      {activeInlineReplyFor === null && !replyComposerExpanded && (
       <FixedComposerShell
         shellRef={composerRef}
         keyboardLift={keyboardLift}

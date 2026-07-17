@@ -1,8 +1,12 @@
 <!doctype html>
-<html lang="en">
+<!-- Inline backgrounds keep iOS/Android safe areas + overscroll dark on the
+     marketing site (inline style beats the stylesheet's white body default).
+     The light pages (/for-community-owners, /admin) flip these on mount. -->
+<html lang="en" style="background: #0a0d0d">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0a0d0d" />
     <link rel="icon" href="/cpoint-logo.png" />
     <title>C-Point | Enter the network where ideas connect people</title>
     <meta name="description" content="Invitation-only communities with a real feed and private messaging — not another public timeline. Available on iOS, Android, and Web. Steve in every community." />
@@ -20,6 +24,14 @@
     <meta name="twitter:title" content="C-Point | Enter the network where ideas connect people" />
     <meta name="twitter:description" content="Private networks with shared memory for each group. Invitation-only — on iOS, Android, and Web." />
     <meta name="twitter:image" content="https://www.c-point.co/og-image.jpg" />
+
+    <!-- Hanken Grotesk — the redesigned marketing site's typeface -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,300..800;1,300..800&display=swap"
+      rel="stylesheet"
+    />
 
     <!-- Google Ads tag (AW-18311361204) with EEA Consent Mode v2.
          Defaults to denied; the consent banner (see end of body) can grant ad
@@ -55,7 +67,7 @@
     </script>
   </head>
 
-  <body>
+  <body style="background: #0a0d0d">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
 

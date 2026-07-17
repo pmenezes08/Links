@@ -1,0 +1,44 @@
+{
+  "_generated_by": "scripts/generate_landing_pricing.py — do not edit by hand",
+  "_source": "backend/services/knowledge_base.py seeds (KB is the source of truth)",
+  "community_tiers": [
+    {
+      "code": "free",
+      "max_members": 25,
+      "price_eur_monthly": 0
+    },
+    {
+      "code": "paid_l1",
+      "max_members": 75,
+      "price_eur_monthly": 49.99
+    },
+    {
+      "code": "paid_l2",
+      "max_members": 150,
+      "price_eur_monthly": 99.99
+    },
+    {
+      "code": "paid_l3",
+      "max_members": 250,
+      "price_eur_monthly": 189.99
+    },
+    {
+      "code": "enterprise",
+      "max_members": null,
+      "price_eur_monthly": null
+    }
+  ],
+  "currency": "EUR",
+  "personal": {
+    "premium_monthly_early_eur": 4.99,
+    "premium_monthly_standard_eur": 7.99
+  },
+  "steve_package": {
+    "monthly_credit_pool": 200,
+    "price_eur_monthly": 49.99,
+    "trial_days": 14
+  },
+  "trials": {
+    "paid_community_trial_days": 14
+  }
+}

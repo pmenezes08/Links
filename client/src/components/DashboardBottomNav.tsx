@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { triggerHaptic } from '../utils/haptics'
 import { isOnboardingFullscreenOverlayActive } from '../utils/fullscreenOverlay'
+import { useModalUX } from '../hooks/useModalUX'
 
 export const DASHBOARD_BOTTOM_NAV_HEIGHT_CSS = 'var(--app-dashboard-bottom-nav-height)'
 
@@ -36,6 +37,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
   const [steveOpen, setSteveOpen] = useState(false)
   const [steveModalView, setSteveModalView] = useState<SteveModalView>('main')
   const [onboardingOverlayActive, setOnboardingOverlayActive] = useState(isOnboardingFullscreenOverlayActive)
+  const steveDialogRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const sync = () => setOnboardingOverlayActive(isOnboardingFullscreenOverlayActive())
@@ -47,16 +49,15 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
     if (!steveOpen) setSteveModalView('main')
   }, [steveOpen])
 
-  useEffect(() => {
-    if (!steveOpen) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      if (steveModalView !== 'main') setSteveModalView('main')
-      else setSteveOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [steveOpen, steveModalView])
+  // Escape / Android back step back one view before dismissing.
+  const steveModalViewRef = useRef(steveModalView)
+  steveModalViewRef.current = steveModalView
+  const dismissSteveStep = useCallback(() => {
+    if (steveModalViewRef.current !== 'main') setSteveModalView('main')
+    else setSteveOpen(false)
+  }, [])
+
+  useModalUX({ open: steveOpen, onClose: dismissSteveStep, containerRef: steveDialogRef })
 
   if (!show || onboardingOverlayActive) return null
 
@@ -94,7 +95,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
           <div className="h-14 flex items-center justify-between gap-1 text-c-text-secondary px-2 sm:px-4">
           <button
             type="button"
-            className={`p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${isDashboard ? 'bg-c-active-bg' : 'hover:bg-c-hover-bg active:bg-c-active-bg'}`}
+            className={`min-w-[44px] min-h-[44px] flex items-center justify-center p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${isDashboard ? 'bg-c-active-bg' : 'hover:bg-c-hover-bg active:bg-c-active-bg'}`}
             aria-label={t('navigation.home')}
             aria-current={isDashboard ? 'page' : undefined}
             onClick={() => { tabPress(); setSteveOpen(false); navigate('/premium_dashboard') }}
@@ -103,7 +104,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
           </button>
           <button
             type="button"
-            className={`p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${isFeed ? 'bg-c-active-bg' : 'hover:bg-c-hover-bg active:bg-c-active-bg'}`}
+            className={`min-w-[44px] min-h-[44px] flex items-center justify-center p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${isFeed ? 'bg-c-active-bg' : 'hover:bg-c-hover-bg active:bg-c-active-bg'}`}
             aria-label={t('navigation.feed')}
             aria-current={isFeed ? 'page' : undefined}
             onClick={() => { tabPress(); setSteveOpen(false); navigate('/feed') }}
@@ -112,17 +113,17 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
           </button>
           <button
             type="button"
-            className="py-1 px-2 sm:px-3 rounded-full hover:bg-c-hover-bg active:bg-c-active-bg active:scale-95 transition-[transform,background-color] duration-100 touch-manipulation flex flex-col items-center justify-center gap-0 leading-none min-w-0"
+            className="min-w-[44px] min-h-[44px] py-1 px-2 sm:px-3 rounded-full hover:bg-c-hover-bg active:bg-c-active-bg active:scale-95 transition-[transform,background-color] duration-100 touch-manipulation flex flex-col items-center justify-center gap-0 leading-none"
             aria-label={t('steve.options_label')}
             aria-expanded={steveOpen}
             onClick={() => { tabPress(); setSteveOpen(true) }}
           >
             <i className="fa-solid fa-user text-[22px] sm:text-[24px] leading-none" />
-            <span className="text-[9px] sm:text-[10px] text-c-text-secondary font-medium tracking-tight">{t('steve.label')}</span>
+            <span className="text-[10px] sm:text-[11px] text-c-text-secondary font-medium tracking-tight">{t('steve.label')}</span>
           </button>
           <button
             type="button"
-            className={`p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${!isFeed && !isAbout && searchOpen ? 'bg-c-active-bg text-cpoint-turquoise' : 'hover:bg-c-hover-bg active:bg-c-active-bg'}`}
+            className={`min-w-[44px] min-h-[44px] flex items-center justify-center p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${!isFeed && !isAbout && searchOpen ? 'bg-c-active-bg text-cpoint-turquoise' : 'hover:bg-c-hover-bg active:bg-c-active-bg'}`}
             aria-label={searchOpen && !isFeed && !isAbout ? t('navigation.close_search') : t('navigation.search_communities')}
             aria-pressed={!isFeed && !isAbout && searchOpen}
             onClick={() => { tabPress(); setSteveOpen(false); onSearch() }}
@@ -140,6 +141,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
           onClick={() => setSteveOpen(false)}
         >
           <div
+            ref={steveDialogRef}
             role="dialog"
             aria-modal="true"
             aria-label={steveModalView === 'main' ? t('steve.main_aria') : steveModalView === 'recommendations' ? t('steve.recommendations_aria') : t('steve.news_aria')}

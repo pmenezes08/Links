@@ -1412,11 +1412,13 @@ export default function CommentReply() {
         </div>
       </div>
 
-      {/* Fixed bottom reply composer — hidden while the GIF picker is open
-          (so the glass sheet does not show the composer chrome through it) or
-          while the expanded editor is open (the composer is portaled and would
-          otherwise show through the inline expanded overlay). */}
-      {!showGifPicker && !replyComposerExpanded && (
+      {/* Fixed bottom reply composer — hidden while the expanded editor is
+          open (the composer is portaled and would otherwise show through the
+          inline expanded overlay). It stays MOUNTED while the GIF picker is
+          open: the sheet is opaque (z-[1400], covers this z-[100] bar) and
+          unmounting would blur the focused textarea and dismiss the keyboard
+          mid-open, stranding the picker below where the keyboard lands. */}
+      {!replyComposerExpanded && (
       <FixedComposerShell
         keyboardLift={keyboardLift}
         safeBottomPx={safeBottomPx}

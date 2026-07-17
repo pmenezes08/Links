@@ -197,9 +197,10 @@ def _steve_pool_snapshot(root_community_id: int, state: Dict[str, Any]) -> Dict[
     breakdown = {**breakdown, "networking": None}
     # Trial flag so the panel can show "14-day trial · day N"; the client
     # derives the day from the (already returned) period_end + total days.
+    # Total days come from KB (community-tiers.steve_package_trial_days).
     try:
         is_trial = bool(community_billing.is_synthetic_steve_package_trial(state))
-        trial_total_days = int(getattr(community_billing, "STEVE_PACKAGE_TRIAL_DAYS", 14))
+        trial_total_days = int(community_billing.steve_package_trial_days())
     except Exception:
         is_trial = False
         trial_total_days = 14
@@ -259,6 +260,12 @@ def _resolve_community_tier_price(tier_code: str) -> str:
     if not base:
         return ""
     return _price_id_from_kb("community-tiers", base)
+
+
+def _community_tier_trial_days(username: str) -> int:
+    """KB trial policy — delegated to the service so the owner upgrade
+    surface (owner_upgrade_prompt) reads the same truth as checkout."""
+    return community_billing.community_tier_trial_days(username)
 
 
 # ── /api/stripe/config ──────────────────────────────────────────────────
@@ -821,13 +828,18 @@ def _preflight_community_tier(
         owner = decision.owner
         provider = owner.provider if owner else billing_provider
         if decision.decision == billing_ownership.DECISION_ALREADY_ACTIVE_SAME_PROVIDER:
+            # payload() carries its own ``reason`` — spread it FIRST so the
+            # canonical ``already_subscribed`` wins; the client matches that
+            # exact value to route the owner into the Stripe portal flow
+            # (SubscriptionPlans.tsx). The raw decision stays available as
+            # ``billing_ownership_decision``.
             return (
                 {"success": False,
                  "error": "This community already has an active subscription. Use Stripe to change or renew it.",
+                 **decision.payload(),
                  "reason": "already_subscribed",
                  "community_id": community_id,
-                 "portal_required": True,
-                 **decision.payload()},
+                 "portal_required": True},
                 409,
             )
         billing_ownership.log_conflict(
@@ -1528,6 +1540,7 @@ def api_stripe_create_checkout_session():
     client_reference_id: Optional[str] = None
     price_id: str = ""
     subscription_description: Optional[str] = None
+    trial_days = 0
 
     if plan_id == "premium":
         billing_cycle = str(payload.get("billing_cycle") or "monthly").strip().lower()
@@ -1566,6 +1579,12 @@ def api_stripe_create_checkout_session():
         community_name = _fetch_community_name(community_id)
         metadata["community_id"] = str(community_id)
         metadata["tier_code"] = tier_code
+        # KB trial policy: 14 days (paid_trial_duration_days), once per
+        # customer. The metadata flag is how the webhook knows to write
+        # the one-per-customer marker when the trial actually starts.
+        trial_days = _community_tier_trial_days(username)
+        if trial_days > 0:
+            metadata["trial_days"] = str(trial_days)
         if community_name:
             metadata["community_name"] = _stripe_metadata_value(community_name)
             subscription_description = (
@@ -1630,6 +1649,10 @@ def api_stripe_create_checkout_session():
         "subscription_data": {
             "metadata": metadata,
             **({"description": subscription_description} if subscription_description else {}),
+            # Community-tier trial (KB paid_trial_duration_days, one per
+            # customer). Checkout still collects the card up front and
+            # auto-converts at trial end (KB paid_trial_auto_convert).
+            **({"trial_period_days": trial_days} if trial_days > 0 else {}),
         },
     }
     if email_value:
@@ -1659,6 +1682,32 @@ def api_stripe_create_checkout_session():
             exc,
         )
         return jsonify({"success": False, "error": "Unable to start checkout"}), 500
+
+    # Conversion-funnel intent marker. Purchases stay webhook-driven; this
+    # row lets us measure checkout starts (and abandonment) per CTA source.
+    # Best-effort — never blocks the checkout redirect.
+    try:
+        checkout_source = subscription_audit.normalize_checkout_source(payload.get("source"))
+        audit_community_id: Optional[int] = None
+        if metadata.get("community_id"):
+            try:
+                audit_community_id = int(metadata["community_id"])
+            except (TypeError, ValueError):
+                audit_community_id = None
+        audit_metadata: Dict[str, Any] = {"source": checkout_source}
+        if metadata.get("tier_code"):
+            audit_metadata["tier_code"] = metadata["tier_code"]
+        if metadata.get("billing_cycle"):
+            audit_metadata["billing_cycle"] = metadata["billing_cycle"]
+        subscription_audit.log(
+            username=username,
+            action=f"{plan_id}_checkout_started",
+            source="checkout",
+            community_id=audit_community_id,
+            metadata=audit_metadata,
+        )
+    except Exception:
+        logger.warning("checkout_started audit failed (non-fatal)", exc_info=True)
 
     return jsonify({
         "success": True,

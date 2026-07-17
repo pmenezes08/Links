@@ -222,6 +222,8 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                     className="flex flex-col gap-2 w-full"
                     onClick={e => e.stopPropagation()}
                     onMouseDown={e => e.stopPropagation()}
+                    onPointerDown={e => e.stopPropagation()}
+                    onPointerUp={e => e.stopPropagation()}
                   >
                     <textarea
                       value={editText}
@@ -234,6 +236,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                     <div className="flex gap-2 justify-end">
                       <button
                         type="button"
+                        onMouseDown={e => e.preventDefault()}
                         onClick={onCancelEdit}
                         className="px-3 py-1 text-xs text-c-text-tertiary hover:text-c-text-primary"
                         disabled={editingSaving}
@@ -242,6 +245,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                       </button>
                       <button
                         type="button"
+                        onMouseDown={e => e.preventDefault()}
                         onClick={onSaveEdit}
                         disabled={editingSaving || !editText.trim()}
                         className="px-3 py-1 text-xs bg-cpoint-turquoise text-black rounded-lg disabled:opacity-50"

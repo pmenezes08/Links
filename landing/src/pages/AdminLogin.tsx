@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
+import { usePageChrome } from "@/redesign/hooks";
 
 const AdminLogin = () => {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  usePageChrome("#ffffff"); // light page — keep mobile safe areas white
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

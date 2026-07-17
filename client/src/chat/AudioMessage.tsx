@@ -316,9 +316,10 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
         {/* Progress and Controls */}
         <div className="flex-1 min-w-0">
           {/* Seekable Progress Bar */}
+          {/* 44px hit area (h-11) without inflating bubble layout (-my-1.5 nets 32px). */}
           <div
             ref={progressBarRef}
-            className="h-8 flex items-center cursor-pointer select-none"
+            className="h-11 -my-1.5 flex items-center cursor-pointer select-none"
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
@@ -351,7 +352,7 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
                 e.stopPropagation()
                 cycleSpeed()
               }}
-              className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 text-c-text-secondary hover:text-c-text-primary transition-colors"
+              className="text-[11px] min-w-[44px] min-h-[32px] -my-1 px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-c-text-secondary hover:text-c-text-primary transition-colors"
               style={{ WebkitTapHighlightColor: 'transparent' }}
             >
               {playbackSpeed}x

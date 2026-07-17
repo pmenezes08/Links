@@ -82,6 +82,80 @@ def _user_member_community(username: str, community_id: int) -> bool:
         return False
 
 
+# Community tiers whose owners already pay for the community itself —
+# the premium_required upsell for these should pitch the Steve Community
+# Package add-on, not the tier picker they already bought from.
+_PAID_COMMUNITY_TIERS = (
+    community_svc.COMMUNITY_TIER_PAID_L1,
+    community_svc.COMMUNITY_TIER_PAID_L2,
+    community_svc.COMMUNITY_TIER_PAID_L3,
+)
+
+
+def _steve_addon_reroute_overrides(root_id: int) -> Optional[Dict[str, Any]]:
+    """``premium_required`` CTA reroute for paid-tier, package-less communities.
+
+    A member @mentioning Steve inside a community that ALREADY sits on a
+    paid tier (paid_l1/l2/l3) but has no active Steve Community Package
+    must land on the add-on panel — the default tier-picker CTA would
+    offer something the community already owns. Free communities,
+    enterprise, and personal/DM contexts keep the default tier pitch.
+
+    Runs only on the deny path (the caller already knows the package is
+    inactive), so the extra billing-state read never taxes allowed calls.
+    Best-effort: any failure returns ``None`` → default behaviour.
+    """
+    try:
+        state = community_billing.get_billing_state(int(root_id)) or {}
+    except Exception:
+        return None
+    if state.get("tier") not in _PAID_COMMUNITY_TIERS:
+        return None
+    if state.get("steve_package_subscription_active"):
+        return None
+    return {
+        # Localized variants resolved by build_error for every locale;
+        # the literal message/label below are the English fallbacks.
+        "message_key": "entitlements.premium_required.addon_message",
+        "cta_label_key": "entitlements.premium_required.addon_cta_label",
+        "message": (
+            "This community is on a paid plan — adding the Steve Community "
+            "Package unlocks Steve for every member."
+        ),
+        "cta": {
+            "type": "upgrade",
+            "label": "Add the Steve Community Package",
+            "url": (
+                "/subscription_plans?open=community_addons"
+                f"&community_id={int(root_id)}"
+            ),
+        },
+    }
+
+
+def _fire_owner_cta(kind: str, root_id: Optional[int], username: str) -> None:
+    """Best-effort owner CTA side-channel off a deny path.
+
+    Must NEVER raise into the gate — the service is fully fail-open and
+    this wrapper adds a second belt. Rate limits / owner checks / paid-tier
+    checks all live inside :mod:`owner_billing_ctas`.
+    """
+    if not root_id:
+        return
+    try:
+        from backend.services import owner_billing_ctas
+
+        if kind == "member_blocked":
+            owner_billing_ctas.notify_member_blocked(root_id, username)
+        elif kind == "pool_exhausted":
+            owner_billing_ctas.notify_pool_exhausted(root_id, username)
+    except Exception:
+        logger.debug(
+            "owner CTA notify (%s) failed for community %s", kind, root_id,
+            exc_info=True,
+        )
+
+
 # ─── Core check ─────────────────────────────────────────────────────────
 
 
@@ -242,10 +316,20 @@ def check_steve_access(
                 reason=errs.REASON_COMMUNITY_POOL_EXHAUSTED,
                 community_id=root_id,
             )
+            _fire_owner_cta("pool_exhausted", root_id, username)
             return False, payload, status, ent
         else:
+            addon_overrides: Optional[Dict[str, Any]] = None
+            if root_id and not pool_active:
+                # Community context on a paid tier without the Steve
+                # package: send the user to the add-on panel instead of
+                # the tier picker (the tier is already owned).
+                addon_overrides = _steve_addon_reroute_overrides(root_id)
             payload, status = errs.build_error(
-                errs.REASON_PREMIUM_REQUIRED, ent=ent, locale=locale
+                errs.REASON_PREMIUM_REQUIRED,
+                ent=ent,
+                locale=locale,
+                overrides=addon_overrides,
             )
             ai_usage.log_block(
                 username,
@@ -253,6 +337,10 @@ def check_steve_access(
                 reason=errs.REASON_PREMIUM_REQUIRED,
                 community_id=root_id,
             )
+            if addon_overrides:
+                # Paid tier, no Steve package: signal the owner (rate-limited
+                # inside the service; the blocked member is never named).
+                _fire_owner_cta("member_blocked", root_id, username)
             return False, payload, status, ent
 
     # 2. Daily cap (rolling 24h).
@@ -296,6 +384,7 @@ def check_steve_access(
                     reason=errs.REASON_COMMUNITY_POOL_EXHAUSTED,
                     community_id=root_id,
                 )
+                _fire_owner_cta("pool_exhausted", root_id, username)
                 return False, payload, status, ent
         elif (
             not ent.get("can_use_steve")

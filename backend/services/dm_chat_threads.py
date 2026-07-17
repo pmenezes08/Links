@@ -82,6 +82,148 @@ def _fetch_last_message_row(
             return None
 
 
+def _ts_norm(value: object) -> str:
+    """Normalize a message timestamp (datetime or string) to a lexicographically
+    comparable second-precision string ("YYYY-MM-DD HH:MM:SS")."""
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+    return str(value).strip().replace("T", " ")[:19]
+
+
+def _ts_after(ts_value: object, cutoff: str) -> bool:
+    """Mirror the legacy SQL ``timestamp > deleted_after`` (second precision)."""
+    return _ts_norm(ts_value) > _ts_norm(cutoff)
+
+
+_BATCH_ROW_COLS = (
+    "id, message, timestamp, sender, is_encrypted, "
+    "image_path, video_path, audio_path, audio_summary, media_paths"
+)
+_BATCH_ROW_KEYS = (
+    "id", "message", "timestamp", "sender", "is_encrypted",
+    "image_path", "video_path", "audio_path", "audio_summary", "media_paths",
+)
+
+
+def _batch_thread_stats(
+    c, ph: str, username: str, counterpart_usernames: list[str]
+) -> tuple[dict[str, dict], dict[str, int]]:
+    """Batched replacement for the per-thread N+1 loop.
+
+    Returns ``(last_by_peer, unread_by_peer)`` keyed by ``peer.lower()``:
+    - newest visible message row per counterpart (same visibility rules as
+      :func:`dm_last_message_where_clause`: normal pair rows plus Steve rows
+      tagged for that pair; the private Steve thread sees only untagged rows),
+    - unread counts per counterpart (``deleted_chat_threads`` cutoffs are NOT
+      applied here — the caller keeps the legacy per-peer query for those rare
+      threads, preserving exact semantics).
+
+    Any failure (old MySQL without window functions, missing media columns)
+    must be caught by the caller, which falls back to the legacy per-thread
+    queries.
+    """
+    try:
+        ensure_human_dm_thread_column(c)
+    except Exception:
+        pass
+
+    last_by_peer: dict[str, dict] = {}
+
+    def _consider(peer_key: str, row_dict: dict) -> None:
+        cur = last_by_peer.get(peer_key)
+        if cur is None:
+            last_by_peer[peer_key] = row_dict
+            return
+        newer = (_ts_norm(row_dict.get("timestamp")), int(row_dict.get("id") or 0))
+        existing = (_ts_norm(cur.get("timestamp")), int(cur.get("id") or 0))
+        if newer > existing:
+            last_by_peer[peer_key] = row_dict
+
+    def _row_to_dict(r, lead_key: str) -> dict:
+        keys = (lead_key,) + _BATCH_ROW_KEYS
+        if hasattr(r, "keys"):
+            return {k: r[k] for k in keys}
+        return dict(zip(keys, r))
+
+    # Newest normal-pair row per counterpart. Steve rows tagged for a human
+    # pair are excluded here (they belong to that pair, handled below); the
+    # private Steve thread keeps its untagged rows via peer = 'steve'.
+    c.execute(
+        f"""
+        SELECT peer, {_BATCH_ROW_COLS} FROM (
+            SELECT CASE WHEN sender = {ph} THEN receiver ELSE sender END AS peer,
+                   {_BATCH_ROW_COLS},
+                   ROW_NUMBER() OVER (
+                       PARTITION BY (CASE WHEN sender = {ph} THEN receiver ELSE sender END)
+                       ORDER BY timestamp DESC, id DESC
+                   ) AS rn
+            FROM messages
+            WHERE (sender = {ph} OR receiver = {ph})
+              AND NOT (sender = 'steve' AND human_dm_thread IS NOT NULL AND human_dm_thread <> '')
+        ) ranked
+        WHERE rn = 1
+        """,
+        (username, username, username, username),
+    )
+    for r in c.fetchall():
+        d = _row_to_dict(r, "peer")
+        peer = str(d.pop("peer") or "")
+        if peer:
+            _consider(peer.lower(), d)
+
+    # Newest Steve in-thread row per human pair the viewer belongs to.
+    thr_to_peer: dict[str, str] = {}
+    for peer in counterpart_usernames:
+        if not is_private_steve_dm_peer(peer):
+            thr_to_peer[human_pair_thread_key(username, peer)] = peer.lower()
+    if thr_to_peer:
+        placeholders = ",".join([ph] * len(thr_to_peer))
+        c.execute(
+            f"""
+            SELECT thr, {_BATCH_ROW_COLS} FROM (
+                SELECT human_dm_thread AS thr, {_BATCH_ROW_COLS},
+                       ROW_NUMBER() OVER (
+                           PARTITION BY human_dm_thread
+                           ORDER BY timestamp DESC, id DESC
+                       ) AS rn
+                FROM messages
+                WHERE sender = 'steve' AND human_dm_thread IN ({placeholders})
+            ) ranked
+            WHERE rn = 1
+            """,
+            tuple(thr_to_peer.keys()),
+        )
+        for r in c.fetchall():
+            d = _row_to_dict(r, "thr")
+            thr = str(d.pop("thr") or "")
+            peer_key = thr_to_peer.get(thr)
+            if peer_key:
+                _consider(peer_key, d)
+
+    # Unread per counterpart. Human senders are never tagged, so excluding
+    # tagged Steve rows only affects the private Steve thread — matching the
+    # legacy per-peer queries (normal: plain count; steve: untagged only).
+    unread_by_peer: dict[str, int] = {}
+    c.execute(
+        f"""
+        SELECT sender, COUNT(*) AS cnt FROM messages
+        WHERE receiver = {ph} AND is_read = 0
+          AND NOT (sender = 'steve' AND human_dm_thread IS NOT NULL AND human_dm_thread <> '')
+        GROUP BY sender
+        """,
+        (username,),
+    )
+    for r in c.fetchall():
+        sender = r["sender"] if hasattr(r, "keys") else r[0]
+        cnt = r["cnt"] if hasattr(r, "keys") else r[1]
+        key = str(sender or "").lower()
+        unread_by_peer[key] = unread_by_peer.get(key, 0) + int(cnt or 0)
+
+    return last_by_peer, unread_by_peer
+
+
 def build_chat_threads_payload(username: str) -> dict:
     """
     Return { success, threads } or { success, error }.
@@ -191,6 +333,22 @@ def build_chat_threads_payload(username: str) -> dict:
                 except Exception as profile_err:
                     logger.warning("Could not batch fetch chat thread profiles: %s", profile_err)
 
+            # Batched last-message + unread stats (2N+1 queries → 3). Any failure
+            # falls back to the legacy per-thread queries below.
+            batch_stats: tuple[dict[str, dict], dict[str, int]] | None = None
+            try:
+                if counterpart_usernames:
+                    batch_stats = _batch_thread_stats(c, ph, username, counterpart_usernames)
+                else:
+                    batch_stats = ({}, {})
+            except Exception as batch_err:
+                logger.warning(
+                    "chat_threads batch stats failed for %s; using per-thread queries: %s",
+                    username,
+                    batch_err,
+                )
+                batch_stats = None
+
             threads: list[dict] = []
             for row in counterpart_rows:
                 try:
@@ -204,9 +362,20 @@ def build_chat_threads_payload(username: str) -> dict:
                         continue
 
                     del_at_for_preview = deleted_threads.get(other_username) if other_username in deleted_threads else None
-                    last_row = _fetch_last_message_row(
-                        c, ph, username, other_username, del_at_for_preview
-                    )
+                    if batch_stats is not None:
+                        last_row = batch_stats[0].get(other_username.lower())
+                        # Legacy applied ``timestamp > deleted_after`` in SQL; on the
+                        # single newest row that reduces to this check.
+                        if (
+                            del_at_for_preview
+                            and last_row is not None
+                            and not _ts_after(last_row.get("timestamp"), del_at_for_preview)
+                        ):
+                            last_row = None
+                    else:
+                        last_row = _fetch_last_message_row(
+                            c, ph, username, other_username, del_at_for_preview
+                        )
                     if is_private_steve_dm_peer(other_username) and not last_row:
                         continue
                     last_message_text = None
@@ -238,37 +407,42 @@ def build_chat_threads_payload(username: str) -> dict:
                         else:
                             last_activity_time = da
 
-                    if del_at_for_preview:
-                        if is_private_steve_dm_peer(other_username):
-                            c.execute(
-                                f"SELECT COUNT(*) as count FROM messages WHERE sender={ph} AND receiver={ph} "
-                                f"AND is_read=0 AND timestamp > {ph} "
-                                f"AND (human_dm_thread IS NULL OR human_dm_thread = '')",
-                                ("steve", username, del_at_for_preview),
-                            )
-                        else:
-                            c.execute(
-                                f"SELECT COUNT(*) as count FROM messages WHERE sender={ph} AND receiver={ph} AND is_read=0 AND timestamp > {ph}",
-                                (other_username, username, del_at_for_preview),
-                            )
+                    if batch_stats is not None and not del_at_for_preview:
+                        unread_count = batch_stats[1].get(other_username.lower(), 0)
                     else:
-                        if is_private_steve_dm_peer(other_username):
-                            c.execute(
-                                f"SELECT COUNT(*) as count FROM messages WHERE sender={ph} AND receiver={ph} "
-                                f"AND is_read=0 AND (human_dm_thread IS NULL OR human_dm_thread = '')",
-                                ("steve", username),
-                            )
+                        # Deleted-thread cutoffs (rare) keep the exact legacy query;
+                        # also the full fallback path when batching failed.
+                        if del_at_for_preview:
+                            if is_private_steve_dm_peer(other_username):
+                                c.execute(
+                                    f"SELECT COUNT(*) as count FROM messages WHERE sender={ph} AND receiver={ph} "
+                                    f"AND is_read=0 AND timestamp > {ph} "
+                                    f"AND (human_dm_thread IS NULL OR human_dm_thread = '')",
+                                    ("steve", username, del_at_for_preview),
+                                )
+                            else:
+                                c.execute(
+                                    f"SELECT COUNT(*) as count FROM messages WHERE sender={ph} AND receiver={ph} AND is_read=0 AND timestamp > {ph}",
+                                    (other_username, username, del_at_for_preview),
+                                )
                         else:
-                            c.execute(
-                                f"SELECT COUNT(*) as count FROM messages WHERE sender={ph} AND receiver={ph} AND is_read=0",
-                                (other_username, username),
-                            )
-                    unread_row = c.fetchone()
-                    unread_count = (
-                        unread_row["count"]
-                        if hasattr(unread_row, "keys")
-                        else (unread_row[0] if unread_row else 0)
-                    )
+                            if is_private_steve_dm_peer(other_username):
+                                c.execute(
+                                    f"SELECT COUNT(*) as count FROM messages WHERE sender={ph} AND receiver={ph} "
+                                    f"AND is_read=0 AND (human_dm_thread IS NULL OR human_dm_thread = '')",
+                                    ("steve", username),
+                                )
+                            else:
+                                c.execute(
+                                    f"SELECT COUNT(*) as count FROM messages WHERE sender={ph} AND receiver={ph} AND is_read=0",
+                                    (other_username, username),
+                                )
+                        unread_row = c.fetchone()
+                        unread_count = (
+                            unread_row["count"]
+                            if hasattr(unread_row, "keys")
+                            else (unread_row[0] if unread_row else 0)
+                        )
 
                     profile = profile_map.get(other_username) or {}
                     display_name = profile.get("display_name") or other_username

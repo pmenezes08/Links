@@ -17,3 +17,20 @@ export function shouldDeltaPoll(
 ): boolean {
   return didFullSync && lastKnownId > 0 && pollTick % fullSyncEveryN !== 0
 }
+
+/**
+ * A thread is HOT when messages are actively flowing (something was sent or
+ * received within `windowMs`, or the peer is typing right now). Hot threads
+ * poll at the fast cadence so an incoming reply appears sub-second instead of
+ * waiting the idle interval; everything else keeps the idle cadence so a
+ * backgrounded-but-open thread doesn't hammer the server.
+ */
+export function pollIsHot(
+  now: number,
+  lastActivityAt: number,
+  peerTyping: boolean,
+  windowMs: number,
+): boolean {
+  if (peerTyping) return true
+  return lastActivityAt > 0 && now - lastActivityAt < windowMs
+}

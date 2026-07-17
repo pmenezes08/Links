@@ -76,6 +76,8 @@ export interface UseOnboardingChatFlowArgs {
   targetSection?: ProfileSection
   onComplete: () => void
   onCreateCommunity: () => void
+  /** Opens the join-by-handle UI (dashboard join modal). */
+  onJoinCommunity?: () => void
   onExit: () => void
 }
 
@@ -90,6 +92,7 @@ export function useOnboardingChatFlow({
   targetSection,
   onComplete,
   onCreateCommunity,
+  onJoinCommunity,
   onExit,
 }: UseOnboardingChatFlowArgs) {
   const { t } = useTranslation()
@@ -456,6 +459,16 @@ export function useOnboardingChatFlow({
         })
         break
       }
+      case 'community_fork': {
+        addSteveMessage(oc(t, 'messages.community_fork'), {
+          options: [
+            { ...ocOpt(t, 'fork_create', 'fork_create_community'), primary: true },
+            ocOpt(t, 'fork_join', 'fork_join_community'),
+            ocOpt(t, 'fork_later', 'fork_later'),
+          ],
+        })
+        break
+      }
       case 'section_picker': {
         const personalStatus = data.personalSectionComplete
           ? oc(t, 'status.personal_complete')
@@ -600,6 +613,19 @@ export function useOnboardingChatFlow({
   function advanceToComplete() {
     setStage('complete')
     showCompleteMsg()
+  }
+
+  /**
+   * Fresh individual signups with no community close onboarding with the
+   * create-or-join fork (communities are the point — profile sections stay
+   * optional, reachable later from the profile page). Invited users, B2B
+   * founders (community already bootstrapped), and profile-builder/section
+   * modes keep the profile section picker.
+   */
+  function stageAfterPhoto(): Stage {
+    const freshNoCommunity =
+      mode === 'fresh' && !hasCommunity && !communityName && onboardingIntentRef.current !== 'b2b'
+    return freshNoCommunity ? 'community_fork' : 'section_picker'
   }
 
   async function runB2bBootstrap(childNames: string[], c: Collected) {
@@ -1017,7 +1043,7 @@ export function useOnboardingChatFlow({
     skip_photo: () => {
       addUserMessage(oc(t, 'user_echo.skip_photo'))
       addSteveMessage(oc(t, 'messages.skip_photo'))
-      setTimeout(() => advanceTo('section_picker'), 600)
+      setTimeout(() => advanceTo(stageAfterPhoto()), 600)
     },
     choose_personal_section: () => {
       addUserMessage(oc(t, 'user_echo.personal_section'))
@@ -1231,6 +1257,22 @@ export function useOnboardingChatFlow({
     create_community: async () => {
       await completeOnboarding()
       onCreateCommunity()
+    },
+    fork_create_community: async () => {
+      addUserMessage(oc(t, 'user_echo.fork_create'))
+      await completeOnboarding()
+      onCreateCommunity()
+    },
+    fork_join_community: async () => {
+      addUserMessage(oc(t, 'user_echo.fork_join'))
+      await completeOnboarding()
+      if (onJoinCommunity) onJoinCommunity()
+      else onComplete()
+    },
+    fork_later: () => {
+      addUserMessage(oc(t, 'user_echo.fork_later'))
+      addSteveMessage(oc(t, 'messages.fork_later_ok'))
+      setTimeout(() => advanceToComplete(), 600)
     },
   }
 
@@ -1544,7 +1586,7 @@ export function useOnboardingChatFlow({
         addUserMessage(oc(t, 'user_echo.photo_uploaded'))
         addSteveMessage(oc(t, 'messages.photo_great'))
         setPicFile(null)
-        setTimeout(() => advanceTo('section_picker'), 600)
+        setTimeout(() => advanceTo(stageAfterPhoto()), 600)
       } else {
         addSteveMessage(j?.error || oc(t, 'errors.photo_upload'), {
           photoUpload: true,

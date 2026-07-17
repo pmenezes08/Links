@@ -54,8 +54,10 @@
   },
   "entitlements": {
     "premium_required": {
-      "message": "O Steve é desbloqueado através do plano pago de uma comunidade. Comunidades num escalão pago podem adicionar o Pacote Steve para comunidades, para todos os membros terem o Steve no feed, nos grupos e nas conversas.",
-      "cta_label": "Ver planos de comunidade"
+      "message": "O Steve é desbloqueado através do plano pago de uma comunidade. Comunidades num escalão pago podem adicionar o Steve Community Package, para todos os membros terem o Steve no feed, nos grupos e nas conversas.",
+      "cta_label": "Ver planos de comunidade",
+      "addon_message": "Esta comunidade já está num plano pago — ao adicionar o Steve Community Package, o Steve fica desbloqueado para todos os membros.",
+      "addon_cta_label": "Adicionar o Steve Community Package"
     },
     "daily_cap": {
       "message": "Atingiste o limite diário do Steve ({ai_daily_limit} chamadas). Reinicia às {resets_at_daily}.",
@@ -177,6 +179,31 @@
       "title": "O pulso semanal do Steve",
       "body": "{wau} membros ativos em {community} esta semana — mais {delta} do que na anterior. Boa.",
       "message": "Pulso semanal: {wau} ativos em {community}, mais {delta} do que na semana passada"
+    },
+    "member_digest": {
+      "title": "Esta semana em {community}",
+      "body": "{posts} novas publicações em {community} esta semana — vê o que perdeste.",
+      "message": "Esta semana em {community}: {posts} novas publicações — vê o que perdeste"
+    },
+    "owner_cta_steve_trial_ending": {
+      "title": "O teste do Steve Community Package está a acabar",
+      "body": "O teste gratuito de {community} termina a {date}. Adiciona o Steve Community Package para manteres o Steve disponível para os teus membros.",
+      "message": "O teste do Steve Community Package de {community} termina a {date}. Adiciona o pacote para manteres o Steve disponível para os teus membros."
+    },
+    "owner_cta_steve_trial_expired": {
+      "title": "O teste do Steve Community Package terminou",
+      "body": "O teste gratuito de {community} terminou, por isso o Steve deixou de estar disponível para os membros. Podes adicionar o Steve Community Package para o trazer de volta.",
+      "message": "O teste do Steve Community Package de {community} terminou. Adiciona o pacote para voltares a disponibilizar o Steve aos membros."
+    },
+    "owner_cta_steve_member_blocked": {
+      "title": "Há membros a pedir o Steve",
+      "body": "Há membros a tentar usar o Steve em {community} — ainda não está ativo aqui. Ao adicionares o Steve Community Package, o Steve fica disponível para todos os membros.",
+      "message": "Há membros a tentar usar o Steve em {community} — ainda não está ativo aqui. Adiciona o Steve Community Package para o ativares."
+    },
+    "owner_cta_steve_pool_exhausted": {
+      "title": "A bolsa do Steve esgotou em {community}",
+      "body": "{community} usou toda a bolsa partilhada do Steve deste mês. Renova no próximo ciclo de faturação — podes rever as opções de plano da comunidade quando quiseres.",
+      "message": "{community} usou toda a bolsa partilhada do Steve deste mês. Renova no próximo ciclo de faturação — podes rever as opções de plano quando quiseres."
     },
     "owner_report": {
       "title": "Algo foi sinalizado",
@@ -302,6 +329,11 @@
       "title": "O Steve não conseguiu terminar esta criação",
       "body": "Toca para tentar outra vez quando estiveres pronto.",
       "message": "O Steve não conseguiu terminar a tua criação. Toca para tentar outra vez."
+    },
+    "builder_plays_digest": {
+      "title": "A tua criação está a ser aberta",
+      "body": "{title} teve {count} visualizações esta semana.",
+      "message": "{title} teve {count} visualizações esta semana. Continua a criar."
     },
     "profile_section_professional": {
       "title": "Uma pergunta do Steve",

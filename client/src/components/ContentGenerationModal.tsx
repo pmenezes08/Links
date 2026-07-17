@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+
+import { useModalUX } from '../hooks/useModalUX'
 
 type IdeaField = {
   name: string
@@ -237,6 +239,9 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
   const [schedule, setSchedule] = useState<ScheduleState>(defaultSchedule)
   const [editingJobId, setEditingJobId] = useState<number | null>(null)
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  useModalUX({ open, onClose, containerRef: dialogRef })
 
   const selectedIdea = useMemo(
     () => ideas.find(idea => idea.idea_id === selectedIdeaId) || null,
@@ -552,6 +557,7 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
       aria-labelledby="cg-modal-title"
     >
       <div
+        ref={dialogRef}
         className="relative z-[1] mx-auto w-full max-w-3xl rounded-2xl border border-cpoint-turquoise/30 bg-c-bg-app p-4 text-c-text-primary shadow-xl sm:p-5"
         onClick={(e) => e.stopPropagation()}
       >

@@ -1,5 +1,12 @@
 import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
-import { GROUP_FULL_SYNC_EVERY_N_POLL, GROUP_POLL_INTERVAL_MS, nextPollBackoffMs } from './constants'
+import {
+  CHAT_HOT_POLL_INTERVAL_MS,
+  CHAT_HOT_WINDOW_MS,
+  GROUP_FULL_SYNC_EVERY_N_POLL,
+  GROUP_POLL_INTERVAL_MS,
+  nextPollBackoffMs,
+} from './constants'
+import { pollIsHot } from './pollSync'
 import {
   mergePolledGroupMessages,
   type GroupPollMessage,
@@ -37,7 +44,7 @@ export function useGroupMessagePoll<T extends GroupPollMessage = GroupPollMessag
   setServerMessages,
   setSteveIsTyping,
 }: UseGroupMessagePollOptions) {
-  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pollInFlightLocal = useRef(false)
   const pollTickLocal = useRef(0)
   const pollInFlight = pollInFlightExternal ?? pollInFlightLocal
@@ -45,6 +52,8 @@ export function useGroupMessagePoll<T extends GroupPollMessage = GroupPollMessag
   // Adaptive backoff: consecutive failures widen the effective poll gap (reset on success).
   const pollErrorCountRef = useRef(0)
   const nextPollAtRef = useRef(0)
+  // Hot-thread cadence: last time delta rows actually arrived.
+  const lastActivityAtRef = useRef(0)
 
   useEffect(() => {
     if (!groupId) return
@@ -91,6 +100,10 @@ export function useGroupMessagePoll<T extends GroupPollMessage = GroupPollMessag
             m => !pendingDeletions.current.has(m.id),
           )
           const isDelta = useDelta
+          // Delta rows = messages actively flowing → switch to the hot cadence.
+          if (isDelta && newServerMessages.length > 0) {
+            lastActivityAtRef.current = Date.now()
+          }
           const typingNext = data.steve_is_typing === true
           setSteveIsTyping(prev => (prev === typingNext ? prev : typingNext))
 
@@ -126,15 +139,24 @@ export function useGroupMessagePoll<T extends GroupPollMessage = GroupPollMessag
 
     if (navigator.onLine) updatePresence()
 
-    const tick = () => {
+    // Self-scheduling cadence: recent delta rows switch the thread to the hot
+    // interval so replies land sub-second; idle threads keep the base interval.
+    let disposed = false
+    const tick = async () => {
       pollTickRef.current += 1
       const pt = pollTickRef.current
       if (pt % 4 === 0) updatePresence()
-      void poll(pt)
+      await poll(pt)
     }
-
-    void poll(0)
-    pollTimer.current = setInterval(tick, GROUP_POLL_INTERVAL_MS)
+    const scheduleNext = () => {
+      if (disposed) return
+      const hot = pollIsHot(Date.now(), lastActivityAtRef.current, false, CHAT_HOT_WINDOW_MS)
+      const delay = hot ? CHAT_HOT_POLL_INTERVAL_MS : GROUP_POLL_INTERVAL_MS
+      pollTimer.current = setTimeout(() => {
+        void tick().finally(scheduleNext)
+      }, delay)
+    }
+    void poll(0).finally(scheduleNext)
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible' && navigator.onLine && !pollInFlight.current) {
@@ -145,7 +167,8 @@ export function useGroupMessagePoll<T extends GroupPollMessage = GroupPollMessag
     document.addEventListener('visibilitychange', handleVisibility)
 
     return () => {
-      if (pollTimer.current) clearInterval(pollTimer.current)
+      disposed = true
+      if (pollTimer.current) clearTimeout(pollTimer.current)
       document.removeEventListener('visibilitychange', handleVisibility)
     }
   }, [

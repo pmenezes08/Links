@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import ZoomableImage from '../components/ZoomableImage'
+import { useModalUX } from '../hooks/useModalUX'
 import type { MediaQuality } from './upload'
 
 export type PendingMediaItem = {
@@ -34,6 +35,7 @@ export function ChatMediaPreviewModal({
   loading = false,
 }: ChatMediaPreviewModalProps) {
   const { t } = useTranslation()
+  useModalUX({ open: items.length > 0 || loading, onClose: onCancel })
   if ((items.length === 0 && !loading) || typeof document === 'undefined') return null
 
   // Reading picked photos off the native bridge takes a moment; show a spinner so the

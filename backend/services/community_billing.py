@@ -56,7 +56,74 @@ logger = logging.getLogger(__name__)
 # real package simply overwrites these columns through the normal webhook
 # path.
 STEVE_PACKAGE_TRIAL_SUB_PREFIX = "trial_pkg_"
-STEVE_PACKAGE_TRIAL_DAYS = 14
+STEVE_PACKAGE_TRIAL_DAYS = 14  # fallback when the KB field is unreadable
+
+
+def steve_package_trial_days() -> int:
+    """Trial length in days — KB ``community-tiers.steve_package_trial_days``
+    is the source of truth; the module constant is only the safety net when
+    the KB is unreachable (fresh install, KB not seeded yet)."""
+    try:
+        from backend.services import knowledge_base as kb
+
+        page = kb.get_page("community-tiers") or {}
+        for f in page.get("fields") or []:
+            if f.get("name") == "steve_package_trial_days":
+                value = int(f.get("value") or 0)
+                if value > 0:
+                    return value
+                break
+    except Exception:
+        logger.debug("steve_package_trial_days: KB read failed", exc_info=True)
+    return STEVE_PACKAGE_TRIAL_DAYS
+
+
+def community_tier_trial_days(username: str) -> int:
+    """Stripe trial days a community-tier checkout may attach for this
+    customer, 0 for none.
+
+    Implements the KB trial policy (community-tiers page):
+    ``paid_trial_duration_days`` gated by ``paid_trial_one_per_customer``
+    — one trial per billing customer across *all* communities they own.
+    The forever marker is the webhook-written
+    ``community_tier_trial_started`` audit row (written only when a trial
+    subscription actually starts, so an abandoned checkout never burns
+    the trial).
+    """
+    days = 0
+    one_per_customer = True
+    try:
+        from backend.services import knowledge_base as kb
+
+        page = kb.get_page("community-tiers") or {}
+        for f in page.get("fields") or []:
+            name = f.get("name")
+            if name == "paid_trial_duration_days":
+                try:
+                    days = int(f.get("value") or 0)
+                except (TypeError, ValueError):
+                    days = 0
+            elif name == "paid_trial_one_per_customer":
+                raw = f.get("value")
+                if isinstance(raw, bool):
+                    one_per_customer = raw
+                else:
+                    one_per_customer = str(raw).strip().lower() not in (
+                        "0", "false", "no", "off", "",
+                    )
+    except Exception:
+        logger.debug("community_tier_trial_days: KB read failed", exc_info=True)
+        return 0
+    if days <= 0:
+        return 0
+    if one_per_customer:
+        from backend.services import subscription_audit
+
+        if subscription_audit.has_action(
+            username=username, action="community_tier_trial_started"
+        ):
+            return 0
+    return days
 
 
 def is_synthetic_steve_package_trial(state: Optional[Dict[str, Any]]) -> bool:
@@ -68,7 +135,7 @@ def is_synthetic_steve_package_trial(state: Optional[Dict[str, Any]]) -> bool:
 def grant_steve_package_trial(
     community_id: int,
     *,
-    trial_days: int = STEVE_PACKAGE_TRIAL_DAYS,
+    trial_days: Optional[int] = None,
 ) -> bool:
     """Activate the Steve Community Package as a one-off trial for a new
     root community.
@@ -87,6 +154,8 @@ def grant_steve_package_trial(
         state = get_billing_state(community_id) or {}
         if state.get("steve_package_stripe_subscription_id"):
             return False
+        if trial_days is None:
+            trial_days = steve_package_trial_days()
         period_end = datetime.utcnow() + timedelta(days=int(trial_days))
         granted = mark_steve_package_subscription(
             community_id,

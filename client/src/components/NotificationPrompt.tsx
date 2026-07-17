@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
+import { useModalUX } from '../hooks/useModalUX'
 
 const PROMPT_DISMISSED_KEY = 'notif-prompt-dismissed'
 
@@ -35,12 +36,15 @@ export default function NotificationPrompt() {
     return () => clearTimeout(timer)
   }, [])
 
-  if (!show) return null
-
   const dismiss = () => {
     try { localStorage.setItem(PROMPT_DISMISSED_KEY, '1') } catch {}
     setShow(false)
   }
+
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useModalUX({ open: show, onClose: dismiss, containerRef: dialogRef })
+
+  if (!show) return null
 
   const handleEnable = async () => {
     try {
@@ -79,6 +83,10 @@ export default function NotificationPrompt() {
     <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div style={{ position: 'absolute', inset: 0, background: 'var(--c-bg-overlay)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }} />
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Turn On Notifications"
         style={{ position: 'relative', width: '100%', maxWidth: 360, borderRadius: 16, border: '1px solid var(--c-border-default)', background: 'var(--c-bg-elevated)', padding: 20, color: 'var(--c-text-primary)', boxShadow: 'var(--c-glass-shadow)' }}
         onClick={e => e.stopPropagation()}
       >

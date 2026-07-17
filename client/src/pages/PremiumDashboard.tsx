@@ -11,7 +11,7 @@ import JoinByHandlePanel from '../components/community/JoinByHandlePanel'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { readDeviceCacheStale, writeDeviceCache } from '../utils/deviceCache'
-import { trackCommunityCreatedConversion } from '../lib/adsConversion'
+import { trackCommunityCreatedConversion, trackPendingSignupConversion } from '../lib/adsConversion'
 import { cacheKeyVal, deleteCachedKeyVal, getCachedKeyVal } from '../utils/offlineDb'
 import {
   DASHBOARD_CACHE_TTL_MS,
@@ -663,6 +663,7 @@ export default function PremiumDashboard() {
         applyProfileFromServer(me.profile as Record<string, unknown>)
       }
       if (me?.success && me.profile) {
+        trackPendingSignupConversion(me.profile.username || '')
         setEmailVerified(!!me.profile.email_verified)
         setEmailVerifiedAt(me.profile.email_verified_at || null)
         setUsername(me.profile.username || '')
@@ -1432,6 +1433,12 @@ export default function PremiumDashboard() {
                 setOnboardingLaunching(false)
                 setShowCreateModal(true)
               }}
+              onJoinCommunity={() => {
+                setShowOnboarding(false)
+                setShowOnboardingWelcome(false)
+                setOnboardingLaunching(false)
+                setShowJoinModal(true)
+              }}
               onGoToCommunity={() => {
                 setShowOnboarding(false)
                 setShowOnboardingWelcome(false)
@@ -1631,6 +1638,12 @@ export default function PremiumDashboard() {
                             if (refreshed) {
                               setCommunities(refreshed)
                               setCommunitiesLoaded(true)
+                            }
+                            // A community exists to be shared: land the new owner
+                            // inside it, where the owner setup intro runs and ends
+                            // on the invite step (link + QR).
+                            if (j.community_id) {
+                              navigate(`/community_feed_react/${j.community_id}`)
                             }
                           } else {
                             alert(j?.error || t('dashboard.create_community_failed'))

@@ -2,6 +2,7 @@
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useUserProfile } from '../contexts/UserProfileContext'
+import { markPendingSignupConversion } from '../lib/adsConversion'
 
 export default function Signup(){
   const navigate = useNavigate()
@@ -145,6 +146,7 @@ export default function Signup(){
           if (j?.success) {
             const dest = inviteToken ? '/premium_dashboard?invite_prompt=1' : (j.redirect || '/premium_dashboard')
             if (j.needs_email_verification) {
+              markPendingSignupConversion(formData.username)
               setPendingEmail(formData.email)
               setShowVerify(true)
             } else {

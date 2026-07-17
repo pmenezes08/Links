@@ -1,7 +1,16 @@
 ﻿import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { WELCOME_CAROUSEL_SLIDE_MS } from '../design/motion'
+import { REDUCED_MOTION_FADE_MS, WELCOME_CAROUSEL_SLIDE_MS } from '../design/motion'
+
+function detectPrefersReducedMotion(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  } catch {
+    return false
+  }
+}
 
 const WELCOME_CARDS_CACHE_KEY = 'cpoint:welcome_cards'
 
@@ -30,6 +39,7 @@ export default function OnboardingWelcome(){
   const [touchDeltaX, setTouchDeltaX] = useState(0)
   const [loaded, setLoaded] = useState(cachedCards.length > 0)
   const [imagesLoaded, setImagesLoaded] = useState<Record<number, boolean>>({})
+  const reducedMotion = useMemo(detectPrefersReducedMotion, [])
 
   const sentences = t('onboarding.welcome.carousel', { returnObjects: true }) as string[]
 
@@ -101,16 +111,18 @@ export default function OnboardingWelcome(){
                    }
                  }}>
               <div className="absolute inset-0 flex transition-transform"
-                   style={{ transform: `translateX(calc(-${cardIndex * 100}% + ${touchDeltaX}px))`, transitionDuration: `${WELCOME_CAROUSEL_SLIDE_MS}ms` }}>
+                   style={{ transform: `translateX(calc(-${cardIndex * 100}% + ${touchDeltaX}px))`, transitionDuration: `${reducedMotion ? REDUCED_MOTION_FADE_MS : WELCOME_CAROUSEL_SLIDE_MS}ms` }}>
                 {cards.map((src, i) => (
                   <div key={i} className="min-w-full h-full bg-c-bg-surface relative">
                     {/* Show subtle loading shimmer only if image not loaded yet */}
                     {!imagesLoaded[i] && (
                       <div className="absolute inset-0 bg-white/[0.03] animate-pulse" />
                     )}
+                    {/* Alt mirrors the localized carousel line for this slide so
+                        screen readers hear the pitch, not "welcome" three times. */}
                     <img 
                       src={src} 
-                      alt="welcome"
+                      alt={`C-Point — ${sentences[i % sentences.length] || t('onboarding.welcome.title')}`}
                       className={`w-full h-full object-cover transition-opacity duration-300 ${imagesLoaded[i] ? 'opacity-100' : 'opacity-0'}`}
                       loading="eager"
                       decoding="async"
@@ -143,7 +155,7 @@ export default function OnboardingWelcome(){
           )}
         </div>
         <div className="mt-4">
-          <button className="px-4 py-3 rounded-xl bg-cpoint-turquoise text-c-text-on-accent font-semibold" onClick={onGetStarted}>{t('onboarding.welcome.get_started')}</button>
+          <button className="w-full px-4 py-3 rounded-xl bg-cpoint-turquoise text-c-text-on-accent font-semibold hover:brightness-110 active:scale-[0.99] transition" onClick={onGetStarted}>{t('onboarding.welcome.get_started')}</button>
         </div>
       </div>
     </div>

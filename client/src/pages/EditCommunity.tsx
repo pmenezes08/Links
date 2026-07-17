@@ -431,6 +431,11 @@ export default function EditCommunity(){
     }
 
     const hasPaidTier = billing.tier !== 'free' && billing.tier !== ''
+    // The Steve add-on is only sold on the standard paid tiers (mirrors the
+    // manage-subscription modal's add-on gate below). Free communities never
+    // see the row — they can't buy it.
+    const isPaidTier = ['paid_l1', 'paid_l2', 'paid_l3'].includes(String(billing.tier || '').toLowerCase())
+    const steveTrialEnded = billingDatePast(billing.steve_package_current_period_end)
     const showManageSubscription = hasPaidTier || billing.has_stripe_customer
     const billingProvider = String(billing.billing_provider || 'stripe').toLowerCase()
     const isStoreBilled = billingProvider === 'apple' || billingProvider === 'google'
@@ -536,13 +541,34 @@ export default function EditCommunity(){
           />
         )}
 
+        {/* Paid tier without the Steve package: quiet, persistent add-on row.
+            "Available, not urgent" — secondary CTA styling on purpose so the
+            card's single primary action stays the Manage subscription button. */}
+        {isPaidTier && !billing.steve_package_subscription_active && (
+          <div className="rounded-lg border border-c-border bg-c-bg-app/40 p-4">
+            <div className="text-sm font-medium text-c-text-primary">{t('communities.steve_addon_title')}</div>
+            <p className="mt-1 text-xs leading-relaxed text-c-text-secondary">
+              {steveTrialEnded
+                ? t('communities.steve_addon_pitch_return')
+                : t('communities.steve_addon_pitch_new')}
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate(`/subscription_plans?open=community_addons&community_id=${community_id}`)}
+              className="mt-3 inline-flex min-h-[44px] w-full items-center justify-center rounded-full border border-cpoint-turquoise/40 px-5 py-2.5 text-xs font-semibold text-cpoint-turquoise hover:bg-cpoint-turquoise/10 transition"
+            >
+              {t('communities.steve_addon_cta')}
+            </button>
+          </div>
+        )}
+
         <button
           type="button"
           onClick={() => {
             if (showManageSubscription) {
               setShowManageSubscriptionModal(true)
             } else {
-              navigate(`/subscription_plans?mode=choose&open=community_plans&community_id=${community_id}`)
+              navigate(`/subscription_plans?open=community_plans&community_id=${community_id}`)
             }
           }}
           className="inline-flex w-full items-center justify-center rounded-full bg-cpoint-turquoise px-5 py-2.5 text-xs font-semibold text-black hover:bg-cpoint-turquoise/90 transition disabled:opacity-50"
@@ -969,7 +995,7 @@ export default function EditCommunity(){
                 className="rounded-full bg-cpoint-turquoise px-4 py-2.5 text-xs font-semibold text-black hover:bg-cpoint-turquoise/90"
                 onClick={() => {
                   setShowManageSubscriptionModal(false)
-                  navigate(`/subscription_plans?mode=choose&open=community_plans&community_id=${community_id}`)
+                  navigate(`/subscription_plans?open=community_plans&community_id=${community_id}`)
                 }}
               >
                 {t('communities.upgrade_community_tier')}
@@ -980,7 +1006,7 @@ export default function EditCommunity(){
                   className="rounded-full border border-cpoint-turquoise/50 px-4 py-2.5 text-xs font-semibold text-cpoint-turquoise hover:bg-cpoint-turquoise/10"
                   onClick={() => {
                     setShowManageSubscriptionModal(false)
-                    navigate(`/subscription_plans?mode=choose&open=community_addons&community_id=${community_id}`)
+                    navigate(`/subscription_plans?open=community_addons&community_id=${community_id}`)
                   }}
                 >
                   {t('communities.subscribe_community_addon')}
@@ -1034,6 +1060,15 @@ function formatBillingDate(value: string) {
   const normalized = value.includes(' ') ? value.replace(' ', 'T') : value
   const date = new Date(normalized)
   return Number.isNaN(date.getTime()) ? value.split(' ')[0] : date.toLocaleDateString()
+}
+
+// True when a MySQL-style datetime string is in the past. Blank or
+// unparseable values return false (treated as "never had the package").
+function billingDatePast(value: string | null) {
+  if (!value) return false
+  const normalized = value.includes(' ') ? value.replace(' ', 'T') : value
+  const date = new Date(normalized)
+  return !Number.isNaN(date.getTime()) && date.getTime() < Date.now()
 }
 
 function formatBytes(bytes: number) {
