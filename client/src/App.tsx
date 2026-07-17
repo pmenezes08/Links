@@ -27,6 +27,7 @@ import { ThemeProvider } from './contexts/ThemeContext'
 import { NetworkProvider } from './contexts/NetworkContext'
 import { BadgeProvider } from './contexts/BadgeContext'
 import OfflineBanner from './components/OfflineBanner'
+import LiveAnnouncer, { announce } from './components/LiveAnnouncer'
 import OutboxDrainer from './components/OutboxDrainer'
 import BrandAssetsInit from './components/BrandAssetsInit'
 import BiometricLockGate from './components/BiometricLockGate'
@@ -96,11 +97,7 @@ import CommentReply from './pages/CommentReply'
 import ShareIncomingRouteRedirect from './pages/ShareIncomingRouteRedirect'
 import { isOnboardingFullscreenOverlayActive } from './utils/fullscreenOverlay'
 import { ensureAccountIsolationForUsername } from './utils/accountStateReset'
-import {
-  GOOGLE_ANDROID_CLIENT_ID,
-  GOOGLE_IOS_CLIENT_ID,
-  GOOGLE_WEB_CLIENT_ID,
-} from './constants/googleOAuth'
+import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './constants/googleOAuth'
 
 // Weak-network-friendly defaults for the (few) react-query consumers: retry
 // transient failures with backoff, revalidate on reconnect, and serve cached
@@ -860,6 +857,7 @@ function AppRoutes(){
 
   useEffect(() => {
     if (!uploadStatusToast) return
+    announce(uploadStatusToast)
     const id = window.setTimeout(() => setUploadStatusToast(null), 3500)
     return () => window.clearTimeout(id)
   }, [uploadStatusToast])
@@ -889,6 +887,11 @@ function AppRoutes(){
     currentPathName.startsWith('/community_feed_react/') ||
     currentPathName.startsWith('/group_feed_react/') ||
     currentPathName === '/builder' ||
+    // Creation play surfaces are fixed fullscreen overlays with their own
+    // chrome (close button top-left) — the global header would float above
+    // and swallow the taps meant for it. Covers BOTH play routes: the
+    // community one and the standalone /creation/<id> Explore/deep-link one.
+    currentPathName.startsWith('/creation/') ||
     (currentPathName.startsWith('/community/') && (currentPathName.includes('/builder') || currentPathName.includes('/creation/'))) ||
     currentPathName.startsWith('/community/') && currentPathName.includes('/feed')
   const showHeader = authLoaded && !hideHeader && !headerHiddenOverride
@@ -936,8 +939,9 @@ function AppRoutes(){
         {showHeader && (
           <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} titleAccessory={titleAccessory} />
         )}
+        <LiveAnnouncer />
         {uploadStatusToast ? (
-          <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+1rem)] z-[1500] -translate-x-1/2 rounded-full border border-c-border bg-c-bg-elevated/95 px-4 py-2 text-sm font-semibold text-c-text-primary shadow-2xl backdrop-blur">
+          <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+1rem)] z-[var(--z-toast)] -translate-x-1/2 rounded-full border border-c-border bg-c-bg-elevated/95 px-4 py-2 text-sm font-semibold text-c-text-primary shadow-2xl backdrop-blur">
             {uploadStatusToast}
           </div>
         ) : null}
@@ -1057,13 +1061,14 @@ export default function App() {
           grantOfflineAccess: false,
         }
 
-        // IMPORTANT: On Android, it MUST use the Android OAuth Client ID (linked to SHA-1)
-        // as the clientId to identify the specific app to Google Play Services.
-        // It MUST use the Web OAuth Client ID as the serverClientId to return an ID Token.
+        // IMPORTANT: On Android, clientId feeds GoogleSignInOptions.requestIdToken(), whose
+        // audience MUST be the WEB OAuth client ID — Play Services identifies the app itself
+        // via package name + signing SHA-1, never via the Android client ID. The plugin's
+        // Android code ignores serverClientId entirely; passing the Android client ID here
+        // fails every sign-in with DEVELOPER_ERROR (ApiException 10).
         if (platform === 'android') {
-          console.log('[GoogleAuth] Using Android + Web Client IDs for Android initialization')
-          opts.clientId = GOOGLE_ANDROID_CLIENT_ID
-          opts.serverClientId = GOOGLE_WEB_CLIENT_ID
+          console.log('[GoogleAuth] Using Web Client ID as Android idToken audience')
+          opts.clientId = GOOGLE_WEB_CLIENT_ID
         } else {
           console.log('[GoogleAuth] Using iOS Client ID for iOS initialization')
           opts.clientId = GOOGLE_IOS_CLIENT_ID

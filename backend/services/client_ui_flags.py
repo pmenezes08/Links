@@ -19,9 +19,12 @@ def ensure_user_ui_columns(cursor) -> None:
 
 
 def ensure_community_ui_columns(cursor) -> None:
-    """Idempotent schema for per-community owner feed onboarding."""
+    """Idempotent schema for per-community owner UX flags."""
     for stmt in (
         "ALTER TABLE communities ADD COLUMN owner_feed_setup_intro_seen TINYINT(1) DEFAULT 0",
+        # Owner tapped "don't show again" on the upgrade interstitial —
+        # durable across devices (backend/services/owner_upgrade_prompt.py).
+        "ALTER TABLE communities ADD COLUMN owner_upgrade_prompt_dismissed_at DATETIME NULL",
     ):
         try:
             cursor.execute(stmt)

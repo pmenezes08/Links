@@ -361,11 +361,38 @@ def notify_community_member_blocked(
     if not community_id or not attempted_username:
         return 0
 
-    message = (
+    # Owner-vs-admin copy split mirrors ``render_member_cap_error``: only
+    # the creator can act on an upgrade CTA, so only the creator gets one
+    # (with the deep link the invite-path cap error already uses); admins
+    # get the neutral heads-up.
+    creator_key = ""
+    try:
+        placeholder = get_sql_placeholder()
+        cursor.execute(
+            f"SELECT creator_username FROM communities WHERE id = {placeholder}",
+            (community_id,),
+        )
+        row = cursor.fetchone()
+        if row:
+            creator = row["creator_username"] if hasattr(row, "keys") else row[0]
+            creator_key = str(creator or "").strip().lower()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning(
+            "notify_community_member_blocked: creator lookup failed for %s: %s",
+            community_id,
+            exc,
+        )
+
+    owner_message = (
         f"{attempted_username} tried to join \"{community_name}\" but it's at "
-        f"the {cap}-member limit. Paid community tiers are coming soon — "
-        f"we'll email you when upgrade is available."
+        f"the {cap}-member limit. Upgrade your community plan to make room "
+        f"for more members."
     )
+    admin_message = (
+        f"{attempted_username} tried to join \"{community_name}\" but it's at "
+        f"the {cap}-member limit."
+    )
+    upgrade_link = f"/subscription_plans?community_id={int(community_id)}"
 
     placeholder = get_sql_placeholder()
     inserted = 0
@@ -376,15 +403,18 @@ def notify_community_member_blocked(
             community_id=community_id,
         ):
             continue
+        is_creator = bool(creator_key) and str(recipient).strip().lower() == creator_key
+        message = owner_message if is_creator else admin_message
+        link = upgrade_link if is_creator else None
         try:
             if USE_MYSQL:
                 cursor.execute(
                     f"""
                     INSERT INTO notifications
                         (user_id, from_user, type, community_id, message, link, created_at, is_read)
-                    VALUES ({placeholder}, {placeholder}, 'member_blocked', {placeholder}, {placeholder}, NULL, NOW(), 0)
+                    VALUES ({placeholder}, {placeholder}, 'member_blocked', {placeholder}, {placeholder}, {placeholder}, NOW(), 0)
                     """,
-                    (recipient, attempted_username, community_id, message),
+                    (recipient, attempted_username, community_id, message, link),
                 )
             else:
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -392,9 +422,9 @@ def notify_community_member_blocked(
                     f"""
                     INSERT INTO notifications
                         (user_id, from_user, type, community_id, message, link, created_at, is_read)
-                    VALUES ({placeholder}, {placeholder}, 'member_blocked', {placeholder}, {placeholder}, NULL, {placeholder}, 0)
+                    VALUES ({placeholder}, {placeholder}, 'member_blocked', {placeholder}, {placeholder}, {placeholder}, {placeholder}, 0)
                     """,
-                    (recipient, attempted_username, community_id, message, now_str),
+                    (recipient, attempted_username, community_id, message, link, now_str),
                 )
             inserted += 1
         except Exception as exc:  # pragma: no cover - defensive

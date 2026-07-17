@@ -13,7 +13,7 @@ export function ManifestoSection() {
   const c = copy.manifesto;
 
   return (
-    <section id="manifesto" className="section-padding bg-[#4db6ac]/10">
+    <section id="manifesto" className="section-padding bg-[#00CEC8]/10">
       <div className="max-w-3xl mx-auto px-6">
         <p className="text-sm font-semibold text-primary uppercase tracking-widest mb-3 text-center">
           {c.kicker}

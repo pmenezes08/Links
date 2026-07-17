@@ -513,7 +513,29 @@ export default function OnboardingIntroGate({ onStart, exitUrl }: OnboardingIntr
               ) : page === 2 ? (
                 <div className="text-center">
                   <h1 className="text-2xl font-semibold tracking-tight mb-3">{t('onboarding_intro.welcome_title')}</h1>
-                  <p className="text-sm leading-relaxed text-c-text-secondary mb-6">{t('onboarding_intro.summary')}</p>
+                  <p className="text-sm leading-relaxed text-c-text-secondary mb-5">{t('onboarding_intro.summary')}</p>
+                  {/* How it works — same expectation-setting as the landing site:
+                      the creator solves the cold start by inviting their people. */}
+                  <div className="mb-6 text-left">
+                    <h2 className="text-sm font-semibold text-c-text-primary mb-3 text-center">
+                      {t('onboarding_intro.hiw_title')}
+                    </h2>
+                    <div className="space-y-2">
+                      {([1, 2, 3] as const).map((n) => (
+                        <div key={n} className="flex gap-3 rounded-xl border border-c-border bg-c-hover-bg px-3 py-2.5">
+                          <span className="mt-0.5 text-xs font-bold text-cpoint-turquoise">0{n}</span>
+                          <div>
+                            <div className="text-sm font-medium text-c-text-primary">
+                              {t(`onboarding_intro.hiw_${n}_title`)}
+                            </div>
+                            <p className="mt-0.5 text-xs leading-relaxed text-c-text-tertiary">
+                              {t(`onboarding_intro.hiw_${n}_body`)}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               ) : page === 3 ? (
                 <div className="text-center">

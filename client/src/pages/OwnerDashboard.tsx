@@ -7,6 +7,7 @@ import ReportsTab from '../components/owner/ReportsTab'
 import CommunitySwitcher from '../components/owner/CommunitySwitcher'
 import ManageMembershipModal from '../components/membership/ManageMembershipModal'
 import { SkeletonFeedCard, SkeletonRow } from '../components/SkeletonRow'
+import { useRetentionAttribution } from '../hooks/useRetentionAttribution'
 import type { OwnerOverview, OwnerManagedCommunity, OwnerScope } from '../components/owner/types'
 
 type Tab = 'overview' | 'reports' | 'spaces'
@@ -87,6 +88,9 @@ export default function OwnerDashboard() {
 
   // Owner vs delegated admin — billing/upgrade moves are owner-only.
   const isOwner = managed.find(c => c.id === communityId)?.is_owner ?? false
+
+  // Pulse push deep links carry ?source= — measure tap-through against sends.
+  useRetentionAttribution('owner_pulse_opened', communityId)
 
   useEffect(() => {
     let mounted = true

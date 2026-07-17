@@ -30,6 +30,7 @@ import {
 import { sendGroupImageMessage, sendGroupMultiMedia } from '../chat/groupChatMediaSenders'
 import { comparableMediaUrl, consumeDeletedMedia, mediaDeleteScopeForGroup, type DeletedMediaItem } from '../chat/mediaDeletionEvents'
 import ChatThreadSearch from '../chat/ChatThreadSearch'
+import { bumpGroupChatPreview } from '../chat/threadListPreview'
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
 import { sendGroupDocumentMessage } from '../chat/mediaSenders'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
@@ -198,6 +199,22 @@ export default function GroupChatThread() {
     )
     return cached?.length ? cached : []
   })
+
+  // Write-through to the Messages inbox caches (see ChatThread parity): bump
+  // this group's preview + zero its unread whenever the newest message changes.
+  const lastPreviewBumpRef = useRef('')
+  useEffect(() => {
+    if (!currentUsername || !group_id || serverMessages.length === 0) return
+    const newest = serverMessages[serverMessages.length - 1]
+    const bumpKey = `${group_id}|${String(newest.id)}|${newest.text || ''}`
+    if (lastPreviewBumpRef.current === bumpKey) return
+    lastPreviewBumpRef.current = bumpKey
+    void bumpGroupChatPreview(currentUsername, Number(group_id), {
+      text: newest.text,
+      time: newest.created_at,
+      sender: newest.sender,
+    })
+  }, [currentUsername, group_id, serverMessages])
   useEffect(() => {
     if (!group_id) return
     const scope = mediaDeleteScopeForGroup(group_id)

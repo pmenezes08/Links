@@ -333,6 +333,9 @@ def test_report_progress_is_monotonic_and_scoped_to_the_worker():
     builder.report_progress(50, "coding")
     assert int(builder.get_build_job(job_id)["progress"] or 0) == 0
 
+    # Progress writes are guarded on status='running' (a cancelled job must
+    # stop the pipeline at the next checkpoint) — claim like a worker first.
+    assert builder.claim_build_job(job_id, "tok-progress") is True
     token = builder._progress_job.set(job_id)
     try:
         builder.report_progress(60, "reviewing")
@@ -498,7 +501,10 @@ def test_clamped_tier_helper():
 
 # --- Community interaction data ------------------------------------------------
 
-def _make_creation(cid: int, owner: str = "maker", monkeypatch=None) -> int:
+# NOTE: a second `_make_creation(username, community_id, monkeypatch)` helper
+# is defined further down (save-slot block) and, being later, SHADOWS this one
+# at call time — so this community-first variant carries its own name.
+def _make_creation_in(cid: int, owner: str = "maker", monkeypatch=None) -> int:
     if monkeypatch is not None:
         monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
     return builder.create_creation(username=owner, community_id=cid, prompt="a game")["id"]
@@ -507,7 +513,7 @@ def _make_creation(cid: int, owner: str = "maker", monkeypatch=None) -> int:
 def test_submit_score_keeps_best_and_ranks(monkeypatch):
     _make_user("maker"); _make_user("p2")
     cid = _make_community()
-    crid = _make_creation(cid, monkeypatch=monkeypatch)
+    crid = _make_creation_in(cid, monkeypatch=monkeypatch)
 
     builder.submit_score(creation_id=crid, community_id=cid, username="maker", value=100)
     builder.submit_score(creation_id=crid, community_id=cid, username="maker", value=50)  # lower → ignored
@@ -524,7 +530,7 @@ def test_leaderboards_are_scoped_by_community(monkeypatch):
     _make_user("maker"); _make_user("p2")
     first = _make_community("First")
     second = _make_community("Second")
-    crid = _make_creation(first, monkeypatch=monkeypatch)
+    crid = _make_creation_in(first, monkeypatch=monkeypatch)
 
     builder.submit_score(creation_id=crid, community_id=first, username="maker", value=100)
     builder.submit_score(creation_id=crid, community_id=second, username="p2", value=900)
@@ -534,6 +540,75 @@ def test_leaderboards_are_scoped_by_community(monkeypatch):
 
     assert [int(e["value"]) for e in first_board["entries"]] == [100]
     assert [int(e["value"]) for e in second_board["entries"]] == [900]
+
+
+def test_infer_creation_category_maps_prompts_within_section():
+    # Section resolved first: a travel game is a game, never app/travel.
+    assert builder.infer_creation_category("a travel trivia game", kind="game") == "trivia"
+    assert builder.infer_creation_category("trip itinerary planner app", kind="app") == "travel"
+    assert builder.infer_creation_category("build me a chess game", kind="game") == "board"
+    assert builder.infer_creation_category("landing page with a waitlist", kind="website") == "landing"
+    assert builder.infer_creation_category("website for my café with a menu", kind="website") == "business"
+    assert builder.infer_creation_category("workout tracker", kind="app") == "fitness"
+    # No hint match → None (untagged), never a fabricated bucket.
+    assert builder.infer_creation_category("something abstract and strange", kind="app") is None
+    # Every hint slug must exist in the served taxonomy so chips resolve.
+    for section, hints in builder._CATEGORY_HINTS.items():
+        for slug in hints:
+            assert slug in builder.BUILDER_CATEGORIES[section]
+
+
+def test_create_persists_inferred_category(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    created = builder.create_creation(username="maker", community_id=cid, prompt="build a sudoku puzzle game")
+    assert created["kind"] == "game"
+    assert created["category"] == "puzzle"
+
+
+def test_explore_filters_by_kind_and_category(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    game = builder.create_creation(username="maker", community_id=cid, prompt="a snake arcade game")
+    site = builder.create_creation(username="maker", community_id=cid, prompt="a portfolio website for my photography")
+    for creation in (game, site):
+        builder.update_gallery_status(creation_id=creation["id"], username="maker", action="request")
+
+    games = builder.list_explore_creations(kind="game")
+    assert [i["id"] for i in games] == [game["id"]]
+    assert games[0]["category"] == "arcade"
+    assert builder.list_explore_creations(kind="website", category="portfolio")[0]["id"] == site["id"]
+    assert builder.list_explore_creations(kind="website", category="blog") == []
+    assert builder.list_explore_creations(kind="nonsense") == []
+
+
+def test_explore_sections_shape_and_untagged_rows_kept(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    tagged = builder.create_creation(username="maker", community_id=cid, prompt="a tetris arcade game")
+    untagged = builder.create_creation(username="maker", community_id=cid,
+                                       prompt="an app for something unclassifiable")
+    for creation in (tagged, untagged):
+        builder.update_gallery_status(creation_id=creation["id"], username="maker", action="request")
+
+    out = builder.explore_sections()
+    assert out["taxonomy"] == builder.BUILDER_CATEGORIES
+    by_kind = {s["kind"]: s for s in out["sections"]}
+    assert list(by_kind) == ["game", "app", "website"]
+    assert by_kind["game"]["total"] == 1
+    assert by_kind["game"]["categories"] == {"arcade": 1}
+    # Untagged rows must never be dropped from their section.
+    app_ids = [i["id"] for i in by_kind["app"]["creations"]]
+    assert untagged["id"] in app_ids
+    assert by_kind["app"]["categories"] == {}
+    # Anonymity contract holds through the sectioned payload too.
+    for section in out["sections"]:
+        for item in section["creations"]:
+            assert "created_by" not in item
+            assert "community_id" not in item
 
 
 def test_gallery_explore_lists_owner_approved_creations_anonymous(monkeypatch):
@@ -557,13 +632,346 @@ def test_gallery_explore_lists_owner_approved_creations_anonymous(monkeypatch):
     assert "post_id" not in listed[0]
 
 
+def test_remix_creates_new_creation_with_privacy_boundaries(monkeypatch):
+    """Remix reuses ONLY the public artifact HTML: fresh history, no creator or
+    community carry-over, lineage recorded in parent_creation_id."""
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker"); _make_user("remixer")
+    cid = _make_community()
+    source = builder.create_creation(username="maker", community_id=cid,
+                                     prompt="a snake arcade game with secret sauce")
+    builder.update_gallery_status(creation_id=source["id"], username="maker", action="request")
+
+    remix = builder.remix_creation(source_creation_id=source["id"], username="remixer",
+                                   message="make it neon and faster")
+    assert remix["id"] != source["id"]
+    assert remix["parent_creation_id"] == source["id"]
+    assert remix["community_id"] is None
+
+    row = builder.get_creation(remix["id"])
+    assert row["created_by"] == "remixer"
+    assert int(row["parent_creation_id"]) == int(source["id"])
+    assert row["community_id"] is None
+    # Fresh history: the remixer's message only — never the source's prompts.
+    assert "make it neon and faster" in (row["prompt_history"] or "")
+    assert "secret sauce" not in (row["prompt_history"] or "")
+
+
+def test_remix_rejects_non_public_sources(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker"); _make_user("stranger")
+    cid = _make_community()
+    draft = builder.create_creation(username="maker", community_id=cid, prompt="a private draft game")
+
+    with pytest.raises(PermissionError):
+        builder.remix_creation(source_creation_id=draft["id"], username="stranger", message="copy it")
+    # The owner can always remix their own draft.
+    own = builder.remix_creation(source_creation_id=draft["id"], username="maker", message="a variant")
+    assert own["parent_creation_id"] == draft["id"]
+
+
+def test_gallery_approval_runs_metered_classify_and_hook_once(monkeypatch):
+    calls = {"n": 0}
+
+    def fake_meta_llm(*a, **k):
+        calls["n"] += 1
+        return '{"category": "arcade", "hook": "A neon breakout you will rage-replay"}'
+
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    # Prompt chosen so the free keyword classifier leaves category NULL.
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a game")
+    assert builder.get_creation(created["id"])["category"] is None
+
+    monkeypatch.setattr(builder.llm, "generate_text", fake_meta_llm)
+    result = builder.update_gallery_status(creation_id=created["id"], username="maker", action="request")
+    assert result["category"] == "arcade"
+    assert result["gallery_hook"] == "A neon breakout you will rage-replay"
+    assert calls["n"] == 1
+
+    # Idempotent: re-approving spends nothing once category + hook exist.
+    builder.update_gallery_status(creation_id=created["id"], username="maker", action="request")
+    assert calls["n"] == 1
+
+    # The hook flows into the explore payload.
+    listed = builder.list_explore_creations()
+    assert listed[0]["hook"] == "A neon breakout you will rage-replay"
+
+
+def test_admin_category_override_validates_against_section(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a game")
+
+    with pytest.raises(ValueError):
+        builder.update_gallery_status(creation_id=created["id"], username="admin",
+                                      action="approve", reviewer="admin", category="travel")
+
+    result = builder.update_gallery_status(creation_id=created["id"], username="admin",
+                                           action="approve", reviewer="admin", category="arcade")
+    assert result["category"] == "arcade"
+
+
+def test_play_digest_notifies_creators_and_is_idempotent(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a snake arcade game")
+    builder.update_gallery_status(creation_id=created["id"], username="maker", action="request")
+
+    sent = []
+    from backend.services import notifications as notif_mod
+    monkeypatch.setattr(notif_mod, "create_notification",
+                        lambda **kw: sent.append(kw) or 1)
+    monkeypatch.setattr(notif_mod, "send_push_to_user", lambda *a, **k: None)
+
+    # Below the floor: no digest.
+    builder.record_play(created["id"])
+    assert builder.send_play_digests()["owners_notified"] == 0
+    assert sent == []
+
+    builder.record_play(created["id"])
+    builder.record_play(created["id"])
+    out = builder.send_play_digests()
+    assert out["owners_notified"] == 1
+    assert len(sent) == 1
+    assert sent[0]["user_id"] == "maker"
+    assert sent[0]["notification_type"] == "builder_plays_digest"
+
+    # Snapshot advanced: same counts, second run is a no-op.
+    assert builder.send_play_digests()["owners_notified"] == 0
+    assert len(sent) == 1
+
+
+def test_category_precedence_admin_locks_creator_beats_automation(monkeypatch):
+    """Founder-ratified contract: admin (locks) > creator > llm > keyword."""
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker"); _make_user("stranger")
+    cid = _make_community()
+    # Unmatchable prompt → keyword classifier leaves category NULL.
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a game")
+    assert builder.get_creation(created["id"])["category"] is None
+
+    # Non-owner gets the non-enumerating not-found; bad slug is rejected.
+    with pytest.raises(PermissionError):
+        builder.set_creation_category(creation_id=created["id"], username="stranger", category="arcade")
+    with pytest.raises(ValueError):
+        builder.set_creation_category(creation_id=created["id"], username="maker", category="travel")
+
+    out = builder.set_creation_category(creation_id=created["id"], username="maker", category="arcade")
+    assert out == {"category": "arcade", "category_source": "creator"}
+
+    # Automation must not clobber the creator: the listing LLM pass may only
+    # fill the hook.
+    monkeypatch.setattr(builder.llm, "generate_text",
+                        lambda *a, **k: '{"category": "puzzle", "hook": "A hook line"}')
+    builder.update_gallery_status(creation_id=created["id"], username="maker", action="request")
+    row = builder.get_creation(created["id"])
+    assert row["category"] == "arcade"
+    assert row["category_source"] == "creator"
+    assert row["gallery_hook"] == "A hook line"
+
+    # Creator can clear back to untagged (pre-lock).
+    cleared = builder.set_creation_category(creation_id=created["id"], username="maker", category=None)
+    assert cleared == {"category": None, "category_source": None}
+
+    # Explicit admin pick wins and LOCKS.
+    builder.update_gallery_status(creation_id=created["id"], username="admin", action="approve",
+                                  reviewer="admin", category="board", is_admin=True)
+    row = builder.get_creation(created["id"])
+    assert row["category"] == "board" and row["category_source"] == "admin"
+    with pytest.raises(ValueError, match="category_locked"):
+        builder.set_creation_category(creation_id=created["id"], username="maker", category="arcade")
+
+
+def test_keyword_and_llm_writes_stamp_category_source(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    tagged = builder.create_creation(username="maker", community_id=cid, prompt="a sudoku puzzle game")
+    assert builder.get_creation(tagged["id"])["category_source"] == "keyword"
+
+    untagged = builder.create_creation(username="maker", community_id=cid, prompt="a game")
+    monkeypatch.setattr(builder.llm, "generate_text",
+                        lambda *a, **k: '{"category": "arcade", "hook": "Zip zap"}')
+    builder.update_gallery_status(creation_id=untagged["id"], username="maker", action="request")
+    row = builder.get_creation(untagged["id"])
+    assert row["category"] == "arcade" and row["category_source"] == "llm"
+
+
+def test_converse_sidecar_category_is_validated_and_additive(monkeypatch):
+    monkeypatch.setattr(
+        builder.llm, "generate_text",
+        lambda *a, **k: '{"reply": "Plan!", "ready": true, "brief": "A travel planner app", "category": "travel"}')
+    out = builder.converse([], "make me a trip app")
+    assert out["ready"] is True and out["brief"]
+    assert out["category"] == "travel"
+
+    # Out-of-enum slugs are dropped, never invented.
+    monkeypatch.setattr(
+        builder.llm, "generate_text",
+        lambda *a, **k: '{"reply": "Plan!", "ready": true, "brief": "A thing", "category": "spaceships"}')
+    assert builder.converse([], "make me a thing")["category"] == ""
+
+
+def test_suggested_category_applies_only_when_valid_for_final_kind(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    # Valid for the final kind (app) → applied with source 'llm'.
+    good = builder.create_creation(username="maker", community_id=cid,
+                                   prompt="an organizer app", suggested_category="travel")
+    row = builder.get_creation(good["id"])
+    assert row["category"] == "travel" and row["category_source"] == "llm"
+    # A game slug on an app build falls back to the keyword classifier.
+    bad = builder.create_creation(username="maker", community_id=cid,
+                                  prompt="a workout tracker app", suggested_category="arcade")
+    row = builder.get_creation(bad["id"])
+    assert row["category"] == "fitness" and row["category_source"] == "keyword"
+
+    # And it survives the async job row.
+    job = builder.create_build_job(username="maker", community_id=cid, prompt="a trip app",
+                                   tier="fast", suggested_category="Travel ")
+    assert builder.get_build_job(int(job["id"]))["suggested_category"] == "travel"
+
+
+def test_set_creation_kind_corrects_type_and_revalidates_category(monkeypatch):
+    """Founder call 2026-07-13: the keyword guess is fallible ('city guide' →
+    website), so owners correct the type; universal-topic categories survive
+    the flip, form-specific slugs clear."""
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker"); _make_user("stranger")
+    cid = _make_community()
+    # "city guide" classifies as website — the founder's Lisbon case.
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a city guide for Lisbon")
+    assert builder.get_creation(created["id"])["kind"] == "website"
+    builder.set_creation_category(creation_id=created["id"], username="maker", category="travel")
+
+    with pytest.raises(PermissionError):
+        builder.set_creation_kind(creation_id=created["id"], username="stranger", kind="app")
+    with pytest.raises(ValueError):
+        builder.set_creation_kind(creation_id=created["id"], username="maker", kind="poster")
+
+    out = builder.set_creation_kind(creation_id=created["id"], username="maker", kind="app")
+    assert out["kind"] == "app"
+    # Travel is a universal topic → survives, still creator-owned.
+    assert out["category"] == "travel" and out["category_source"] == "creator"
+    row = builder.get_creation(created["id"])
+    assert row["kind"] == "app" and row["category"] == "travel"
+
+    # A form-specific slug clears when the form changes.
+    site = builder.create_creation(username="maker", community_id=cid, prompt="a landing page for my launch")
+    assert builder.get_creation(site["id"])["category"] == "landing"
+    flipped = builder.set_creation_kind(creation_id=site["id"], username="maker", kind="game")
+    assert flipped["kind"] == "game" and flipped["category"] is None
+
+
+def test_set_creation_kind_guards(monkeypatch):
+    monkeypatch.setattr(
+        builder.llm, "generate_text",
+        lambda *a, **k: "<!doctype html><html><body><script>CPoint.turnBasedGame({})</script></body></html>")
+    _make_user("maker")
+    cid = _make_community()
+    multiplayer = builder.create_creation(username="maker", community_id=cid, prompt="chess versus members")
+    with pytest.raises(ValueError, match="kind_locked_multiplayer"):
+        builder.set_creation_kind(creation_id=multiplayer["id"], username="maker", kind="app")
+
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    site = builder.create_creation(username="maker", community_id=cid, prompt="a website for my studio")
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"UPDATE creations SET public_status = 'published' WHERE id = {ph}", (site["id"],))
+        conn.commit()
+    with pytest.raises(ValueError, match="unpublish_web_first"):
+        builder.set_creation_kind(creation_id=site["id"], username="maker", kind="game")
+    # Website ↔ app stays allowed while published (both are web-eligible).
+    assert builder.set_creation_kind(creation_id=site["id"], username="maker", kind="app")["kind"] == "app"
+
+
+def test_builder_pseudonym_validation_and_explore_credit(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker"); _make_user("othermaker"); _make_user("takenname")
+    cid = _make_community()
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a snake arcade game")
+    builder.update_gallery_status(creation_id=created["id"], username="maker", action="request")
+
+    # Anonymous by default.
+    assert builder.list_explore_creations()[0]["builder"] is None
+    assert builder.get_builder_pseudonym("maker") is None
+
+    # A handle may never match ANY real username (non-enumerating error).
+    with pytest.raises(ValueError):
+        builder.set_builder_pseudonym("maker", "takenname")
+    with pytest.raises(ValueError):
+        builder.set_builder_pseudonym("maker", "x")  # too short
+
+    assert builder.set_builder_pseudonym("maker", "NightOwl Builds") == "NightOwl Builds"
+    # Unique across builders, case-insensitive.
+    with pytest.raises(ValueError):
+        builder.set_builder_pseudonym("othermaker", "nightowl builds")
+
+    listed = builder.list_explore_creations()
+    assert listed[0]["builder"] == "NightOwl Builds"
+    assert "created_by" not in listed[0]
+    # "More from this builder" filter.
+    assert builder.list_explore_creations(builder="NightOwl Builds")[0]["id"] == created["id"]
+    assert builder.list_explore_creations(builder="nobody") == []
+
+    # Clearing returns the listing to fully anonymous.
+    assert builder.set_builder_pseudonym("maker", None) is None
+    assert builder.list_explore_creations()[0]["builder"] is None
+
+
+def test_featured_is_admin_only_and_sorts_first(monkeypatch):
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    first = builder.create_creation(username="maker", community_id=cid, prompt="a snake arcade game")
+    second = builder.create_creation(username="maker", community_id=cid, prompt="a sudoku puzzle game")
+    for c in (first, second):
+        builder.update_gallery_status(creation_id=c["id"], username="maker", action="request")
+
+    # Owner path (is_admin False) cannot feature.
+    with pytest.raises(ValueError):
+        builder.update_gallery_status(creation_id=first["id"], username="maker", action="feature")
+
+    builder.update_gallery_status(creation_id=first["id"], username="admin", action="feature",
+                                  reviewer="admin", is_admin=True)
+    listed = builder.list_explore_creations()
+    assert listed[0]["id"] == first["id"]
+    assert listed[0]["featured"] is True
+    assert listed[1]["featured"] is False
+
+    builder.update_gallery_status(creation_id=first["id"], username="admin", action="unfeature",
+                                  reviewer="admin", is_admin=True)
+    assert all(not i["featured"] for i in builder.list_explore_creations())
+
+
+def test_gallery_cover_absent_without_render_service(monkeypatch):
+    """Cover capture degrades silently when the render service isn't
+    configured; the payload advertises no cover_url and the cover route's
+    byte lookup returns None (client keeps the gradient)."""
+    monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
+    _make_user("maker")
+    cid = _make_community()
+    created = builder.create_creation(username="maker", community_id=cid, prompt="a snake arcade game")
+    builder.update_gallery_status(creation_id=created["id"], username="maker", action="request")
+
+    listed = builder.list_explore_creations()
+    assert listed[0]["cover_url"] is None
+    assert builder.get_gallery_cover_bytes(created["id"]) is None
+
+
 def test_submit_score_repeats_are_atomic_and_keep_max(monkeypatch):
     """Regression: repeated submits for the same (creation, key, user) must NOT
     raise an IntegrityError on the unique key and must keep the best — the old
     non-atomic SELECT-then-INSERT collided under rapid/concurrent submits."""
     _make_user("maker")
     cid = _make_community()
-    crid = _make_creation(cid, monkeypatch=monkeypatch)
+    crid = _make_creation_in(cid, monkeypatch=monkeypatch)
 
     for v in (100, 50, 175, 175, 30):  # no exception; best wins; single row
         builder.submit_score(creation_id=crid, community_id=cid, username="maker", value=v)
@@ -578,7 +986,7 @@ def test_save_record_repeats_are_atomic_latest_wins(monkeypatch):
     key; latest value wins and stays a single row."""
     _make_user("maker")
     cid = _make_community()
-    crid = _make_creation(cid, monkeypatch=monkeypatch)
+    crid = _make_creation_in(cid, monkeypatch=monkeypatch)
 
     for v in ("a", "bb", "ccc"):
         builder.save_record(creation_id=crid, community_id=cid, username="maker", key="slot1", value=v)
@@ -588,7 +996,7 @@ def test_save_record_repeats_are_atomic_latest_wins(monkeypatch):
 def test_rate_creation_aggregates(monkeypatch):
     _make_user("maker"); _make_user("p2")
     cid = _make_community()
-    crid = _make_creation(cid, monkeypatch=monkeypatch)
+    crid = _make_creation_in(cid, monkeypatch=monkeypatch)
 
     builder.rate_creation(creation_id=crid, community_id=cid, username="maker", value=4)
     builder.rate_creation(creation_id=crid, community_id=cid, username="maker", value=5)  # replaces (latest wins)
@@ -601,7 +1009,7 @@ def test_rate_creation_aggregates(monkeypatch):
 def test_play_count_and_summary(monkeypatch):
     _make_user("maker")
     cid = _make_community()
-    crid = _make_creation(cid, monkeypatch=monkeypatch)
+    crid = _make_creation_in(cid, monkeypatch=monkeypatch)
 
     builder.record_play(crid)
     out = builder.record_play(crid)
@@ -652,9 +1060,13 @@ def test_build_guide_loads_and_has_anchors():
     assert builder._load_build_guide(), "builder_guide.md did not load"
     sp = builder._SYSTEM_PROMPT
     assert sp is not builder._SYSTEM_PROMPT_FALLBACK, "codegen is using the inline fallback, not the guide"
+    # Anchors track the guide's CURRENT multiplayer vocabulary: the runtime
+    # moved from raw controller.submitMove/cancel calls to the turnBasedGame
+    # contract (actions.submitMove / controller.view), so the anchors moved
+    # with it.
     for anchor in (
         "modern", "minimalist", "x.ai", "CPoint.match", "Websites", "Apps", "Games", "sandbox",
-        "matchController", "controller.submitMove", "controller.cancel", "stale_version",
+        "matchController", "turnBasedGame", "actions.submitMove", "controller.view", "stale_version",
     ):
         assert anchor.lower() in sp.lower(), f"build-guide anchor missing: {anchor}"
     caps = builder._CAPS_BLOCK
@@ -794,7 +1206,7 @@ def test_vision_judge_coerce_verdict_clamps():
 def test_invalid_score_is_rejected(monkeypatch):
     _make_user("maker")
     cid = _make_community()
-    crid = _make_creation(cid, monkeypatch=monkeypatch)
+    crid = _make_creation_in(cid, monkeypatch=monkeypatch)
     for bad in ("not-a-number", float("nan"), float("inf")):
         with pytest.raises(ValueError):
             builder.submit_score(creation_id=crid, community_id=cid, username="maker", value=bad)
@@ -1979,7 +2391,11 @@ def test_create_creation_uses_r2_key_when_upload_succeeds(monkeypatch):
 def test_iterate_creation_clears_old_r2_key_when_upload_fails(monkeypatch):
     monkeypatch.setattr(builder.llm, "generate_text", lambda *a, **k: _FAKE_HTML)
     monkeypatch.setattr(builder, "store_artifact_html", lambda creation_id, html, *, updated_at=None: "private/old.html")
-    monkeypatch.setattr(builder, "load_artifact_html", lambda creation_id, key, *, updated_at=None: _FAKE_HTML)
+    # Honor the real contract: no R2 key → None, so html_content stays
+    # authoritative. An unconditional stub here masked the very value under
+    # test (get_creation would overwrite the freshly stored v2 fallback).
+    monkeypatch.setattr(builder, "load_artifact_html",
+                        lambda creation_id, key, *, updated_at=None: _FAKE_HTML if key else None)
     deleted = []
     monkeypatch.setattr(builder, "delete_artifact_html", lambda key, **_k: deleted.append(key))
     _make_user("maker")

@@ -83,6 +83,69 @@ def test_en_premium_required_pitches_community_plans():
     assert payload["cta"]["url"] == "/subscription_plans"
 
 
+_ADDON_OVERRIDES = {
+    "message_key": "entitlements.premium_required.addon_message",
+    "cta_label_key": "entitlements.premium_required.addon_cta_label",
+    "message": (
+        "This community is on a paid plan — adding the Steve Community "
+        "Package unlocks Steve for every member."
+    ),
+    "cta": {
+        "type": "upgrade",
+        "label": "Add the Steve Community Package",
+        "url": "/subscription_plans?open=community_addons&community_id=123",
+    },
+}
+
+
+def test_en_addon_override_reroutes_to_addon_panel():
+    """Paid-tier-no-package variant: add-on CTA + variant copy (English)."""
+    payload, status = errs.build_error(
+        errs.REASON_PREMIUM_REQUIRED,
+        ent={"tier": "free"},
+        overrides=dict(_ADDON_OVERRIDES),
+    )
+    assert status == 402
+    assert payload["cta"]["url"] == "/subscription_plans?open=community_addons&community_id=123"
+    assert payload["cta"]["type"] == "upgrade"
+    assert "Steve Community Package" in payload["message"]
+    assert "paid plan" in payload["message"]
+    assert payload["message_key"] == "entitlements.premium_required.addon_message"
+    assert payload["cta"]["label"] == "Add the Steve Community Package"
+
+
+@pytest.mark.parametrize("locale", ["pt-PT", "de-DE"])
+def test_addon_override_is_localized_with_untranslated_product_name(locale):
+    """Non-English locales serve their own addon variant; the product name
+    "Steve Community Package" stays an untranslated proper noun."""
+    payload, status = errs.build_error(
+        errs.REASON_PREMIUM_REQUIRED,
+        ent={"tier": "free"},
+        overrides=dict(_ADDON_OVERRIDES),
+        locale=locale,
+    )
+    assert status == 402
+    assert payload["locale"] == locale
+    # Localized variant, not the English fallback literal.
+    assert payload["message"] != _ADDON_OVERRIDES["message"]
+    assert "Steve Community Package" in payload["message"]
+    assert payload["cta"]["label"] != "Add the Steve Community Package"
+    assert "Steve Community Package" in payload["cta"]["label"]
+    # The URL is data, not copy — identical across locales.
+    assert payload["cta"]["url"] == "/subscription_plans?open=community_addons&community_id=123"
+
+
+def test_product_name_never_translated_in_premium_required():
+    """"Steve Community Package" is a proper noun in every catalog (the
+    old pt-PT catalog translated it to "Pacote Steve para comunidades")."""
+    for locale in i18n.available_locales():
+        payload, _ = errs.build_error(
+            errs.REASON_PREMIUM_REQUIRED, ent={"tier": "free"}, locale=locale
+        )
+        assert "Steve Community Package" in payload["message"], locale
+        assert "Pacote Steve" not in payload["message"], locale
+
+
 def test_unknown_locale_falls_back_to_english():
     payload, _ = errs.build_error(
         errs.REASON_MONTHLY_STEVE_CAP,

@@ -19,6 +19,7 @@ from backend.services.dm_message_delete import delete_dm_message
 from backend.services.dm_message_edit import edit_dm_message
 from backend.services.dm_message_reactions import apply_dm_message_reaction, parse_reaction_request
 from backend.services.dm_messages_read import fetch_dm_messages
+from backend.services.dm_typing import peer_is_typing_for_viewer
 from backend.services.dm_send_media import (
     parse_grouped_media_request,
     send_dm_audio_message,
@@ -633,6 +634,12 @@ def get_messages():
         since_id_param=request.form.get("since_id"),
         before_id_param=request.form.get("before_id"),
     )
+    # Poll piggyback: typing state on every poll response (clients without the
+    # param, and old clients against old servers, keep the /api/typing fallback).
+    if request.form.get("include_typing") == "1" and payload.get("success"):
+        payload["peer_is_typing"] = peer_is_typing_for_viewer(
+            username, request.form.get("other_user_id")
+        )
     return jsonify(payload)
 
 

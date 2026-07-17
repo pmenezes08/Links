@@ -18,9 +18,14 @@ const ADS_TAG_ID = 'AW-18311361204'
 // Conversion label of the "community created" action (Google Ads → Goals →
 // Conversions → Tag setup → event snippet `send_to`). Empty disables the fire.
 const COMMUNITY_CREATED_LABEL = 'qWAVCKC71s0cELTlxJtE'
+// Add the label from Google Ads → Goals → Conversions before campaign launch.
+// Empty keeps registration fully functional while disabling this conversion.
+const SIGNUP_COMPLETED_LABEL = ''
 
 const PROD_HOSTS = new Set(['app.c-point.co'])
 const CONSENT_COOKIE = 'cp_ads_consent'
+const PENDING_SIGNUP_KEY = 'cpoint:ads:pending-signup-username'
+const SIGNUP_DEDUP_PREFIX = 'cpoint:ads:signup-conversion:'
 
 declare global {
   interface Window {
@@ -94,6 +99,59 @@ export function trackCommunityCreatedConversion(): void {
       value: 1.0,
       currency: 'EUR',
     })
+  } catch {
+    /* analytics must never break product flow */
+  }
+}
+
+function normalizedUsername(username: string): string {
+  return username.trim().toLowerCase()
+}
+
+/** Remember an email signup until verification creates and authenticates it. */
+export function markPendingSignupConversion(username: string): void {
+  const normalized = normalizedUsername(username)
+  if (!normalized) return
+  try {
+    localStorage.setItem(PENDING_SIGNUP_KEY, normalized)
+  } catch {
+    /* storage is best-effort */
+  }
+}
+
+/** Report a newly authenticated account once per username and browser. */
+export function trackSignupConversion(username: string): boolean {
+  try {
+    const normalized = normalizedUsername(username)
+    if (!normalized || !shouldRun() || !SIGNUP_COMPLETED_LABEL) return false
+    if (typeof window.gtag !== 'function') return false
+    const dedupKey = `${SIGNUP_DEDUP_PREFIX}${normalized}`
+    if (localStorage.getItem(dedupKey) === '1') return false
+    window.gtag('event', 'conversion', {
+      send_to: `${ADS_TAG_ID}/${SIGNUP_COMPLETED_LABEL}`,
+      value: 1.0,
+      currency: 'EUR',
+    })
+    localStorage.setItem(dedupKey, '1')
+    return true
+  } catch {
+    /* analytics must never break product flow */
+    return false
+  }
+}
+
+/**
+ * Complete an email signup conversion only when the authenticated profile
+ * matches the username whose registration was waiting for verification.
+ */
+export function trackPendingSignupConversion(username: string): void {
+  try {
+    const normalized = normalizedUsername(username)
+    if (!normalized) return
+    const pending = localStorage.getItem(PENDING_SIGNUP_KEY)
+    if (pending !== normalized) return
+    localStorage.removeItem(PENDING_SIGNUP_KEY)
+    trackSignupConversion(normalized)
   } catch {
     /* analytics must never break product flow */
   }

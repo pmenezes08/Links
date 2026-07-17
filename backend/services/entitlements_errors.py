@@ -291,10 +291,19 @@ def build_error(
 
     The function never raises — unknown reasons fall back to a generic
     "limit reached" payload.
+
+    ``overrides`` may carry two special keys — ``message_key`` and
+    ``cta_label_key`` — naming i18n catalog keys for a localized *variant*
+    of the reason's copy (e.g. the premium_required add-on reroute). When
+    present they win over both the reason's default catalog entry and any
+    literal ``message`` / ``cta.label`` override, so every locale serves
+    its own translation instead of a hard-coded English string.
     """
     ent = ent or {}
     usage = usage or {}
-    overrides = overrides or {}
+    overrides = dict(overrides or {})
+    override_message_key = overrides.pop("message_key", None)
+    override_cta_label_key = overrides.pop("cta_label_key", None)
     resolved_locale = i18n.normalize_locale(locale)
 
     base = dict(_DEFAULT_TEMPLATES.get(reason) or {
@@ -316,11 +325,26 @@ def build_error(
         offer_caps = _upgrade_offer_caps()
         context.update(offer_caps)
 
-    # i18n catalog has priority for non-English locales.
+    # i18n catalog has priority for non-English locales. Variant keys
+    # (``message_key`` / ``cta_label_key`` overrides) have priority for
+    # *every* locale — they resolve through the catalog fallback chain so
+    # missing translations still serve the English variant, never the
+    # reason's default copy.
     catalog_message: Optional[str] = None
     catalog_label: Optional[str] = None
-    if resolved_locale != i18n.DEFAULT_LOCALE:
+    if override_message_key and (
+        i18n.has_key(override_message_key, resolved_locale)
+        or i18n.has_key(override_message_key, i18n.DEFAULT_LOCALE)
+    ):
+        catalog_message = i18n.t(override_message_key, resolved_locale, **context)
+    elif resolved_locale != i18n.DEFAULT_LOCALE:
         catalog_message = _localized_message(reason, resolved_locale, context)
+    if override_cta_label_key and (
+        i18n.has_key(override_cta_label_key, resolved_locale)
+        or i18n.has_key(override_cta_label_key, i18n.DEFAULT_LOCALE)
+    ):
+        catalog_label = i18n.t(override_cta_label_key, resolved_locale, **context)
+    elif resolved_locale != i18n.DEFAULT_LOCALE:
         catalog_label = _localized_cta_label(reason, resolved_locale, context)
 
     if catalog_message is not None:
@@ -378,7 +402,7 @@ def build_error(
         "error": "entitlements_error",
         "reason": reason,
         "message": message,
-        "message_key": f"entitlements.{reason}.message",
+        "message_key": override_message_key or f"entitlements.{reason}.message",
         "cta": cta,
         "usage": usage_payload,
         "tier": ent.get("tier"),

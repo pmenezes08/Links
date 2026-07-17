@@ -97,10 +97,13 @@ def test_failed_due_job_advances_next_run(monkeypatch):
         cg, "update_job_next_run",
         lambda job_id, cadence: advanced.append((job_id, cadence)),
     )
-    monkeypatch.delenv("CONTENT_GENERATION_CRON_API_KEY", raising=False)
+    monkeypatch.setenv("CRON_SHARED_SECRET", "test-cron-secret")
 
     client = bodybuilding_app.app.test_client()
-    resp = client.post("/api/content-generation/cron/process-due-jobs")
+    resp = client.post(
+        "/api/content-generation/cron/process-due-jobs",
+        headers={"X-Cron-Secret": "test-cron-secret"},
+    )
     assert resp.status_code == 200
     body = resp.get_json()
     assert body["success"] is True
@@ -130,10 +133,28 @@ def test_successful_due_job_advances_next_run_once(monkeypatch):
         cg, "update_job_next_run",
         lambda job_id, cadence: advanced.append((job_id, cadence)),
     )
+    monkeypatch.setenv("CRON_SHARED_SECRET", "test-cron-secret")
+
+    client = bodybuilding_app.app.test_client()
+    resp = client.post(
+        "/api/content-generation/cron/process-due-jobs",
+        headers={"X-Cron-Secret": "test-cron-secret"},
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["processed"] == 1
+    assert advanced == [(28, "weekly")]    # exactly once, not twice
+
+
+def test_cron_rejects_unauthenticated(monkeypatch):
+    import bodybuilding_app
+    from backend.blueprints import content_generation as cg
+
+    called = []
+    monkeypatch.setattr(cg, "get_due_jobs", lambda limit=5: called.append("ran") or [])
+    monkeypatch.setenv("CRON_SHARED_SECRET", "test-cron-secret")
     monkeypatch.delenv("CONTENT_GENERATION_CRON_API_KEY", raising=False)
 
     client = bodybuilding_app.app.test_client()
     resp = client.post("/api/content-generation/cron/process-due-jobs")
-    assert resp.status_code == 200
-    assert resp.get_json()["processed"] == 1
-    assert advanced == [(28, "weekly")]    # exactly once, not twice
+    assert resp.status_code == 401
+    assert called == []  # handler body never ran

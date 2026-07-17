@@ -23,6 +23,7 @@ export type Stage =
   | 'location_confirm'
   | 'location_city'
   | 'photo'
+  | 'community_fork'
   | 'section_picker'
   | 'personal_section_intro'
   | 'talk_all_day'

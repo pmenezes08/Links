@@ -280,6 +280,91 @@ class TestCommunitySubscriptionUpdated:
         assert state["days_remaining"] is not None
 
 
+class TestCommunityTierTrialStart:
+    """A checkout created with the KB trial arrives as a ``trialing``
+    subscription. The webhook must (a) store the truthful status —
+    everything downstream already treats trialing as active — and
+    (b) write the ``community_tier_trial_started`` audit row that is the
+    forever one-per-customer marker checkout creation checks."""
+
+    def test_trial_checkout_stores_trialing_and_writes_marker(
+        self, client, monkeypatch,
+    ):
+        make_user("trial_owner_wh", subscription="free")
+        cid = make_community(
+            "c-trial-wh", tier="free", creator_username="trial_owner_wh",
+        )
+        monkeypatch.setattr(
+            "backend.blueprints.subscription_webhooks._retrieve_subscription_snapshot",
+            lambda sub_id: {
+                "status": "trialing",
+                "current_period_end": 1893456000,
+                "trial_end": 1893456000,
+            },
+        )
+        event = {
+            "type": "checkout.session.completed",
+            "data": {"object": {
+                "subscription": "sub_trial_wh",
+                "customer": "cus_trial_wh",
+                "metadata": {
+                    "sku": "community_tier",
+                    "plan_id": "community_tier",
+                    "username": "trial_owner_wh",
+                    "community_id": str(cid),
+                    "tier_code": "paid_l1",
+                    "trial_days": "14",
+                },
+            }},
+        }
+        _install_event(monkeypatch, event)
+
+        _post_event(client)
+        state = community_billing.get_billing_state(cid) or {}
+        assert state["tier"] == "paid_l1"
+        assert state["subscription_status"] == "trialing"
+        # Trialing must count as an active subscription for enforcement.
+        assert community_billing.has_active_subscription(cid) is True
+
+        assert _audit_count_for("community_tier_trial_started") == 1
+        # This is exactly the lookup checkout creation performs before
+        # attaching another trial — the loop must be closed.
+        assert subscription_audit.has_action(
+            username="trial_owner_wh", action="community_tier_trial_started",
+        ) is True
+
+    def test_non_trial_checkout_writes_no_marker(self, client, monkeypatch):
+        """A plain (no-trial) purchase must not burn the customer's one
+        trial — no marker row, status stays 'active'."""
+        make_user("paid_owner_wh", subscription="free")
+        cid = make_community(
+            "c-paid-wh", tier="free", creator_username="paid_owner_wh",
+        )
+        event = {
+            "type": "checkout.session.completed",
+            "data": {"object": {
+                "subscription": "sub_paid_wh",
+                "customer": "cus_paid_wh",
+                "metadata": {
+                    "sku": "community_tier",
+                    "plan_id": "community_tier",
+                    "username": "paid_owner_wh",
+                    "community_id": str(cid),
+                    "tier_code": "paid_l1",
+                },
+            }},
+        }
+        _install_event(monkeypatch, event)
+
+        _post_event(client)
+        state = community_billing.get_billing_state(cid) or {}
+        assert state["subscription_status"] == "active"
+        assert _audit_count_for("community_tier_trial_started") == 0
+        assert subscription_audit.has_action(
+            username="paid_owner_wh", action="community_tier_trial_started",
+        ) is False
+
+
 # ── 2. Personal Premium path is unchanged ───────────────────────────────
 
 

@@ -884,9 +884,12 @@ Only share this information if asked. Be factual — do not embellish or invent 
     started = time.perf_counter()
     response = None
     try:
+        from backend.services.steve_chat_images import create_response_with_image_fallback
+
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(
-                client.responses.create,
+                create_response_with_image_fallback,
+                client,
                 model=model_to_use,
                 input=messages,
                 tools=dm_tools,

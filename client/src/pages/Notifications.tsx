@@ -6,6 +6,7 @@ import { useHeader } from '../contexts/HeaderContext'
 import { useBadges } from '../contexts/BadgeContext'
 import { renderTextWithLinks } from '../utils/linkUtils'
 import { SkeletonNotificationList } from '../components/SkeletonRow'
+import OwnerCtaCard from '../components/notifications/OwnerCtaCard'
 import { apiFetch } from '../utils/apiFetch'
 
 type Notif = {
@@ -110,6 +111,7 @@ function iconFor(type?: string){
       case 'community_invite': return 'fa-solid fa-user-plus'
       case 'community_join_request': return 'fa-solid fa-user-plus'
       case 'community_join_request_accepted': return 'fa-solid fa-user-check'
+    case 'owner_cta': return 'fa-solid fa-bolt'
     case 'poll': return 'fa-solid fa-chart-bar'
     case 'poll_vote': return 'fa-solid fa-square-poll-vertical'
     case 'event_invitation': return 'fa-solid fa-calendar-check'
@@ -576,7 +578,7 @@ export default function Notifications(){
     // Enhanced navigation with state for better back button behavior
     if (url.startsWith('http') || url.startsWith('/')){
       // Use SPA navigation for known in-app routes
-      if (url.startsWith('/post/') || url.startsWith('/reply/') || url.startsWith('/group_reply/') || url.startsWith('/group_feed_react/') || url.startsWith('/community_feed_react/') || url.startsWith('/community/') || url.startsWith('/event/') || url.includes('/tasks_react') || url.includes('/polls_react') || url.includes('/useful_links_react') || url.startsWith('/admin_dashboard')){
+      if (url.startsWith('/post/') || url.startsWith('/reply/') || url.startsWith('/group_reply/') || url.startsWith('/group_feed_react/') || url.startsWith('/community_feed_react/') || url.startsWith('/community/') || url.startsWith('/event/') || url.startsWith('/subscription_plans') || url.includes('/tasks_react') || url.includes('/polls_react') || url.includes('/useful_links_react') || url.startsWith('/admin_dashboard')){
         if (import.meta.env.DEV) console.log('Using SPA navigation to:', url)
 
         const navigationState = {
@@ -680,6 +682,45 @@ export default function Notifications(){
                   const tx = isDragging ? notifDragX : (swipeNotifId === n.id ? -NOTIF_SWIPE_ACTION_WIDTH : 0)
                   const transition = isDragging ? 'none' : 'transform 150ms ease-out'
                   const showActions = isDragging ? notifDragX < -12 : swipeNotifId === n.id
+                  // Shared swipe-to-reveal gesture handlers: identical for plain
+                  // rows and owner CTA cards so mark-read/delete behave the same.
+                  const touchHandlers = {
+                    onTouchStart: (e: React.TouchEvent<HTMLElement>) => {
+                      notifGestureRef.current = {
+                        startX: e.touches[0].clientX,
+                        startY: e.touches[0].clientY,
+                        wasOpen: swipeNotifId === n.id,
+                      }
+                      notifDraggingIdRef.current = n.id
+                      const startX = notifGestureRef.current.wasOpen ? -NOTIF_SWIPE_ACTION_WIDTH : 0
+                      notifLiveXRef.current = startX
+                      setNotifDragX(startX)
+                    },
+                    onTouchMove: (e: React.TouchEvent<HTMLElement>) => {
+                      if (notifDraggingIdRef.current !== n.id || !notifGestureRef.current) return
+                      const dx = e.touches[0].clientX - notifGestureRef.current.startX
+                      const dy = e.touches[0].clientY - notifGestureRef.current.startY
+                      if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 12) return
+                      const base = notifGestureRef.current.wasOpen ? -NOTIF_SWIPE_ACTION_WIDTH : 0
+                      const x = Math.max(-NOTIF_SWIPE_ACTION_WIDTH, Math.min(0, base + dx))
+                      notifLiveXRef.current = x
+                      setNotifDragX(x)
+                    },
+                    onTouchEnd: () => {
+                      if (notifDraggingIdRef.current !== n.id) return
+                      const x = notifLiveXRef.current
+                      setSwipeNotifId(x < -NOTIF_SWIPE_ACTION_WIDTH / 2 ? n.id : null)
+                      setNotifDragX(0)
+                      notifDraggingIdRef.current = null
+                      notifGestureRef.current = null
+                    },
+                    onTouchCancel: () => {
+                      if (notifDraggingIdRef.current !== n.id) return
+                      setNotifDragX(0)
+                      notifDraggingIdRef.current = null
+                      notifGestureRef.current = null
+                    },
+                  }
                   return (
                     <div key={n.id} className="relative w-full overflow-hidden rounded-xl">
                       <div
@@ -708,44 +749,19 @@ export default function Notifications(){
                           <i className="fa-solid fa-trash" />
                         </button>
                       </div>
+                      {typeKey === 'owner_cta' ? (
+                      <OwnerCtaCard
+                        notif={n}
+                        timeAgo={formatTimeAgo(n.created_at, t)}
+                        onCta={() => void onClick(n)}
+                        style={{ transform: `translateX(${tx}px)`, transition }}
+                        {...touchHandlers}
+                      />
+                      ) : (
                       <button
                         type="button"
                         onClick={() => onClick(n)}
-                        onTouchStart={e => {
-                          notifGestureRef.current = {
-                            startX: e.touches[0].clientX,
-                            startY: e.touches[0].clientY,
-                            wasOpen: swipeNotifId === n.id,
-                          }
-                          notifDraggingIdRef.current = n.id
-                          const startX = notifGestureRef.current.wasOpen ? -NOTIF_SWIPE_ACTION_WIDTH : 0
-                          notifLiveXRef.current = startX
-                          setNotifDragX(startX)
-                        }}
-                        onTouchMove={e => {
-                          if (notifDraggingIdRef.current !== n.id || !notifGestureRef.current) return
-                          const dx = e.touches[0].clientX - notifGestureRef.current.startX
-                          const dy = e.touches[0].clientY - notifGestureRef.current.startY
-                          if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 12) return
-                          const base = notifGestureRef.current.wasOpen ? -NOTIF_SWIPE_ACTION_WIDTH : 0
-                          const x = Math.max(-NOTIF_SWIPE_ACTION_WIDTH, Math.min(0, base + dx))
-                          notifLiveXRef.current = x
-                          setNotifDragX(x)
-                        }}
-                        onTouchEnd={() => {
-                          if (notifDraggingIdRef.current !== n.id) return
-                          const x = notifLiveXRef.current
-                          setSwipeNotifId(x < -NOTIF_SWIPE_ACTION_WIDTH / 2 ? n.id : null)
-                          setNotifDragX(0)
-                          notifDraggingIdRef.current = null
-                          notifGestureRef.current = null
-                        }}
-                        onTouchCancel={() => {
-                          if (notifDraggingIdRef.current !== n.id) return
-                          setNotifDragX(0)
-                          notifDraggingIdRef.current = null
-                          notifGestureRef.current = null
-                        }}
+                        {...touchHandlers}
                         className={`text-left w-full px-3 py-2.5 rounded-xl border touch-pan-y ${n.is_read ? 'border-c-border bg-transparent' : 'border-cpoint-turquoise/40 bg-cpoint-turquoise/10'}`}
                         style={{ transform: `translateX(${tx}px)`, transition }}
                       >
@@ -785,6 +801,7 @@ export default function Notifications(){
                           )}
                         </div>
                       </button>
+                      )}
                     </div>
                   )
                 })}

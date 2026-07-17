@@ -6,8 +6,9 @@ import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useTranslation } from 'react-i18next'
-import { CPOINT_EASE_OUT, PAGE_TRANSITION_MS, REDUCED_MOTION_FADE_MS } from '../design/motion'
+import { CHAT_KEYBOARD_ANIMATION_MS, CPOINT_EASE_OUT, PAGE_TRANSITION_MS, REDUCED_MOTION_FADE_MS } from '../design/motion'
 import { hapticImpactLight, hapticSelection } from '../utils/haptics'
+import { useModalUX } from '../hooks/useModalUX'
 import { NativeIconButton } from './NativeIconButton'
 
 export type GifSelection = {
@@ -132,6 +133,14 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
   const dragTransitionTimerRef = useRef<number | null>(null)
   const pluginKeyboardLiftRef = useRef(0)
   const visualKeyboardLiftRef = useRef(0)
+  // Seeded lift held as a FLOOR during the open transition. Callers that
+  // hide the keyboard before opening (CreatePost) otherwise produce:
+  // mount at seeded height → viewport says "keyboard gone" → sheet drops
+  // to the bottom → search autofocus re-opens the keyboard OVER the sheet
+  // → keyboardWillShow finally lifts it back. Holding the seed until the
+  // keyboard reports shown (or a short timeout) keeps the sheet parked
+  // above where the keyboard will land — no dip, no jump.
+  const seedLiftFloorRef = useRef(0)
   const dragStateRef = useRef<{
     startY: number
     lastY: number
@@ -151,18 +160,9 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
     return Math.max(SHEET_MIN_HEIGHT_PX, vvHeight)
   }, [vvHeight])
 
-  // ESC key dismiss
-  useEffect(() => {
-    if (!isOpen) return
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === 'Escape'){
-        event.preventDefault()
-        onClose()
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [isOpen, onClose])
+  // ESC + Android hardware back dismiss. Focus restore stays bespoke below —
+  // it is timed to the exit animation, which the shared hook can't know about.
+  useModalUX({ open: isOpen, onClose, restoreFocus: false })
 
   // Reset query/results on open
   useEffect(() => {
@@ -299,6 +299,7 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
       previousFocusRef.current =
         typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null
       const seedLift = getSeedKeyboardLift(initialKeyboardLift)
+      seedLiftFloorRef.current = seedLift
       const seedHeight = Math.max(0, (window.innerHeight || getInitialViewportHeight()) - seedLift)
       setKeyboardLift(prev => (Math.abs(prev - seedLift) < 1 ? prev : seedLift))
       setVvHeight(prev => (Math.abs(prev - seedHeight) < 1 ? prev : seedHeight))
@@ -336,6 +337,7 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
     if (!isOpen || typeof window === 'undefined') {
       pluginKeyboardLiftRef.current = 0
       visualKeyboardLiftRef.current = 0
+      seedLiftFloorRef.current = 0
       setKeyboardLift(0)
       return
     }
@@ -348,6 +350,7 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
         pluginKeyboardLiftRef.current,
         visualKeyboardLiftRef.current,
         getGlobalKeyboardLift(),
+        seedLiftFloorRef.current,
       )
       const nextH = Math.max(0, (window.innerHeight || getInitialViewportHeight()) - lift)
       setKeyboardLift(prev => (Math.abs(prev - lift) < 1 ? prev : lift))
@@ -359,6 +362,15 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
       const subs: PluginListenerHandle[] = []
       const viewport = window.visualViewport
       let rafId: number | null = null
+      // Once the keyboard reports shown (or after a grace window with no
+      // show event — e.g. tablets with hardware keyboards), live values own
+      // the layout and the seeded floor is released.
+      const releaseSeedFloor = () => {
+        if (seedLiftFloorRef.current === 0) return
+        seedLiftFloorRef.current = 0
+        setNativeViewportState()
+      }
+      const seedFloorTimer = window.setTimeout(releaseSeedFloor, 2500)
       const updateVisualViewportLift = () => {
         visualKeyboardLiftRef.current = getVisualViewportKeyboardLift()
         setNativeViewportState()
@@ -370,6 +382,7 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
       const onShow = (info: KeyboardInfo) => {
         pluginKeyboardLiftRef.current = norm(info?.keyboardHeight ?? 0)
         visualKeyboardLiftRef.current = getVisualViewportKeyboardLift()
+        seedLiftFloorRef.current = 0
         setNativeViewportState()
       }
       const onHide = () => {
@@ -401,6 +414,7 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
       return () => {
         disposed = true
         if (rafId !== null) cancelAnimationFrame(rafId)
+        window.clearTimeout(seedFloorTimer)
         if (viewport) {
           viewport.removeEventListener('resize', scheduleVisualViewportLift)
           viewport.removeEventListener('scroll', scheduleVisualViewportLift)
@@ -408,6 +422,7 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
         subs.forEach(sub => sub.remove())
         pluginKeyboardLiftRef.current = 0
         visualKeyboardLiftRef.current = 0
+        seedLiftFloorRef.current = 0
         setKeyboardLift(0)
         setVvHeight(window.innerHeight)
       }
@@ -442,24 +457,23 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
     }
   }, [isOpen])
 
-  // Programmatic focus on iOS (autoFocus prop covers other platforms)
+  // Native: defer search focus until the sheet enter animation completes AND
+  // any in-flight keyboard-hide animation has finished. iOS swallows a
+  // programmatic focus() issued mid keyboard-dismissal (a caller that just
+  // blurred its composer): the input becomes activeElement but the keyboard
+  // never re-summons, no keyboardWillShow fires, and the sheet sits on the
+  // seeded floor until it expires and drops. Waiting past the ~250ms hide
+  // animation makes focus reliably bring the keyboard up, which releases
+  // the seeded floor via keyboardWillShow.
   useEffect(() => {
-    if (!mounted || !isIosNative) return
-    const t = window.setTimeout(() => {
-      try { inputRef.current?.focus() } catch {}
-    }, 50)
-    return () => window.clearTimeout(t)
-  }, [mounted, isIosNative])
-
-  // Android: defer search focus until sheet enter animation completes
-  useEffect(() => {
-    if (!mounted || !entered || !isAndroidNative) return
-    const delay = reducedMotion ? REDUCED_MOTION_FADE_MS : PAGE_TRANSITION_MS
+    if (!mounted || !entered || !(isIosNative || isAndroidNative)) return
+    const enterMs = reducedMotion ? REDUCED_MOTION_FADE_MS : PAGE_TRANSITION_MS
+    const delay = Math.max(enterMs, CHAT_KEYBOARD_ANIMATION_MS + 50)
     const timer = window.setTimeout(() => {
       try { inputRef.current?.focus() } catch {}
     }, delay)
     return () => window.clearTimeout(timer)
-  }, [mounted, entered, isAndroidNative, reducedMotion])
+  }, [mounted, entered, isIosNative, isAndroidNative, reducedMotion])
 
   // IntersectionObserver — pause off-screen GIF tiles, resume when visible
   useEffect(() => {
@@ -642,10 +656,12 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
       transition,
       bottom: keyboardLift,
       height: sheetHeight,
-      // Defense in depth: an opaque near-black background sits behind the
-      // glass material so any caller that forgets to hide its composer still
-      // gets an opaque sheet (no bleed-through). The liquid-glass-surface
-      // ::before highlight still renders on top via CSS specificity.
+      // The liquid-glass material is translucent with NO backdrop blur
+      // (Phase 0 scroll perf), so caller chrome behind the sheet — focused
+      // composers, inline reply bars — bleeds through sharply. The sheet
+      // must be truly opaque; the liquid-glass-surface ::before highlight
+      // still paints on top of this fill.
+      backgroundColor: 'var(--c-bg-sheet-opaque)',
       // Respect the iOS status bar / notch so the search row never tucks
       // under the system UI.
       paddingTop: 'env(safe-area-inset-top, 0px)',
@@ -698,7 +714,7 @@ export default function GifPicker({ isOpen, onClose, onSelect, initialKeyboardLi
         role="dialog"
         aria-modal="true"
         aria-label={ariaLabel}
-        className="fixed left-0 right-0 z-[1400] mx-auto sm:max-w-2xl rounded-t-2xl liquid-glass-surface bg-c-bg-elevated border-0 border-t border-c-border flex flex-col overflow-hidden"
+        className="fixed left-0 right-0 z-[1400] mx-auto sm:max-w-2xl rounded-t-2xl liquid-glass-surface border-0 border-t border-c-border flex flex-col overflow-hidden"
         style={sheetStyle}
       >
         {/* Drag-affordance area: handle pill + search row. Pointer-down here

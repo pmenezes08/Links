@@ -73,13 +73,19 @@ export default function StevePickerPanel({
 
   const eligibleList = useMemo(() => (fullRows || []).filter(c => c.steve_addon_eligible), [fullRows])
 
+  // Exactly one eligible community and no preselected focus: skip the radio
+  // list and confirm the single community by name directly.
+  const singleEligible = !focusRow && fullRows !== null && eligibleList.length === 1 ? eligibleList[0] : null
+
   useEffect(() => {
     if (focusRow) {
       setSelectedId(focusRow.steve_addon_eligible ? focusRow.id : null)
+    } else if (singleEligible) {
+      setSelectedId(singleEligible.id)
     }
-  }, [focusRow])
+  }, [focusRow, singleEligible])
 
-  const showList = !focusRow
+  const showList = !focusRow && !singleEligible
 
   return (
     <div className="space-y-4">
@@ -110,6 +116,21 @@ export default function StevePickerPanel({
       {fullRows !== null && showList && eligibleList.length === 0 ? (
         <PanelCard>
           <div className="p-4 text-sm text-c-text-tertiary">{t('subscriptions.steve_no_eligible')}</div>
+        </PanelCard>
+      ) : null}
+
+      {singleEligible ? (
+        <PanelCard>
+          <div className="px-4 py-4">
+            <div className="text-base font-semibold text-c-text-primary">
+              {t('subscriptions.steve_single_add', { name: singleEligible.name })}
+            </div>
+            {singleEligible.tier && singleEligible.tier !== 'free' ? (
+              <div className="mt-0.5 text-sm text-c-text-tertiary">
+                {t('subscriptions.current_tier', { tier: tierLabel(singleEligible.tier) })}
+              </div>
+            ) : null}
+          </div>
         </PanelCard>
       ) : null}
 

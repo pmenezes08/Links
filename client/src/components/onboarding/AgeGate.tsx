@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 
 import { isAtLeast18, isValidDobIso } from '../../lib/ageGate'
+import { useModalUX } from '../../hooks/useModalUX'
 import { clearAllUserData } from '../../utils/clearAllUserData'
 import BrandLogo from '../BrandLogo'
 
@@ -75,6 +76,18 @@ export function AgeGate({ onConfirmed }: { onConfirmed: () => void }) {
   const [deleteFeedback, setDeleteFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const dobInputRef = useRef<HTMLInputElement>(null)
   const deleteInputRef = useRef<HTMLInputElement>(null)
+  const gateRef = useRef<HTMLDivElement>(null)
+
+  // Compliance gate: keyboard focus stays contained, but Escape / Android
+  // back must NOT dismiss it — age is answered first, always.
+  useModalUX({
+    open: true,
+    onClose: () => {},
+    containerRef: gateRef,
+    escape: false,
+    androidBack: false,
+    restoreFocus: false,
+  })
 
   useEffect(() => {
     if (!underageOpen || deleteStep !== 'confirm') return
@@ -174,7 +187,7 @@ export function AgeGate({ onConfirmed }: { onConfirmed: () => void }) {
   // gate visually precedes EVERYTHING — including the onboarding overlays that
   // PremiumDashboard portals to body (max z-[1300]). Age is answered first.
   return createPortal(
-    <div className="fixed inset-0 z-[1400] overflow-y-auto bg-c-bg-app text-c-text-primary">
+    <div ref={gateRef} className="fixed inset-0 z-[1400] overflow-y-auto bg-c-bg-app text-c-text-primary">
       <div className="min-h-full px-5 py-8 flex items-center justify-center">
         <div className="w-full max-w-md">
           <div className="rounded-[28px] border border-cpoint-turquoise/45 bg-c-bg-app overflow-hidden">

@@ -28,6 +28,20 @@ export function useIsMobile(): boolean {
 /** Movement beyond this on the message list is treated as scroll, not tap. */
 export const CHAT_TOUCH_DISMISS_MOVE_PX = 10
 
+/**
+ * Controls inside the list (inline message editor textarea + its save/cancel
+ * buttons, links, voice-note buttons) must receive their tap without the
+ * keyboard being hidden mid-gesture — `Keyboard.hide()` between pointerdown
+ * and click collapses the inverted-list inset and swallows the click on iOS.
+ */
+function touchDismissTargetIsInteractive(target: EventTarget | null): boolean {
+  const el = target instanceof Element ? target : (target as Node | null)?.parentElement
+  if (!el) return false
+  return !!el.closest(
+    'a[href], button, input, textarea, select, label[for], [role="button"], [contenteditable="true"]',
+  )
+}
+
 interface UseTouchDismissOptions {
   showKeyboard: boolean
   composerRef: React.RefObject<HTMLDivElement | null>
@@ -64,6 +78,10 @@ export function useTouchDismiss({
         return
       }
       if (composerRef.current && composerRef.current.contains(event.target as Node)) {
+        touchDismissRef.current.active = false
+        return
+      }
+      if (touchDismissTargetIsInteractive(event.target)) {
         touchDismissRef.current.active = false
         return
       }

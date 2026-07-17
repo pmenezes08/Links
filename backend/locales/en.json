@@ -55,7 +55,9 @@
   "entitlements": {
     "premium_required": {
       "message": "Steve is unlocked through a community's paid plan. Communities on a paid tier can add the Steve Community Package so every member gets Steve in the feed, groups, and chats.",
-      "cta_label": "See community plans"
+      "cta_label": "See community plans",
+      "addon_message": "This community is on a paid plan — adding the Steve Community Package unlocks Steve for every member.",
+      "addon_cta_label": "Add the Steve Community Package"
     },
     "daily_cap": {
       "message": "You've hit today's Steve limit of {ai_daily_limit} calls. It resets at {resets_at_daily}.",
@@ -177,6 +179,31 @@
       "title": "Steve's weekly pulse",
       "body": "{wau} members active in {community} this week — {delta} more than last week. Nice.",
       "message": "Weekly pulse: {wau} active in {community}, {delta} more than last week"
+    },
+    "member_digest": {
+      "title": "This week in {community}",
+      "body": "{posts} new posts landed in {community} this week — see what you missed.",
+      "message": "This week in {community}: {posts} new posts — see what you missed"
+    },
+    "owner_cta_steve_trial_ending": {
+      "title": "Steve Community Package trial ending soon",
+      "body": "The free trial for {community} ends on {date}. Add the Steve Community Package to keep Steve available to your members.",
+      "message": "The Steve Community Package trial for {community} ends on {date}. Add the package to keep Steve available to your members."
+    },
+    "owner_cta_steve_trial_expired": {
+      "title": "Steve Community Package trial ended",
+      "body": "The free trial for {community} has ended, so Steve is no longer available to members. You can add the Steve Community Package to bring Steve back.",
+      "message": "The Steve Community Package trial for {community} has ended. Add the package to make Steve available to members again."
+    },
+    "owner_cta_steve_member_blocked": {
+      "title": "Members are asking for Steve",
+      "body": "Members are trying to use Steve in {community} — it isn't active here yet. Adding the Steve Community Package makes Steve available to every member.",
+      "message": "Members are trying to use Steve in {community} — it isn't active here yet. Add the Steve Community Package to switch it on."
+    },
+    "owner_cta_steve_pool_exhausted": {
+      "title": "Steve pool used up in {community}",
+      "body": "{community} used its whole Steve pool this month. It refills next billing cycle — you can review the community's plan options anytime.",
+      "message": "{community} used its whole Steve pool this month. It refills next billing cycle — you can review plan options anytime."
     },
     "owner_report": {
       "title": "Something was flagged",
@@ -302,6 +329,11 @@
       "title": "Steve could not finish this build",
       "body": "Tap to retry when you're ready.",
       "message": "Steve could not finish your build. Tap to retry."
+    },
+    "builder_plays_digest": {
+      "title": "Your creation is getting played",
+      "body": "{title} was opened {count} times this week.",
+      "message": "{title} was opened {count} times this week. Keep building."
     },
     "profile_section_professional": {
       "title": "A question from Steve",

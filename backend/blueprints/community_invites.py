@@ -7,10 +7,28 @@ from functools import wraps
 from flask import Blueprint, current_app, jsonify, redirect, request, session, url_for
 
 from backend.services import community_invites as invites_svc
+from backend.services import retention_events
 from backend.services.basic_profile_gate import require_basic_profile_payload
 
 
 community_invites_bp = Blueprint("community_invites", __name__)
+
+
+def _record_invite_sent(community_id, detail: str) -> None:
+    """Activation instrumentation — fail-open, never breaks the invite call.
+
+    record_event never raises; the guard covers session access on odd paths.
+    """
+    try:
+        retention_events.record_event(
+            session.get("username") or "",
+            event_type="invite_sent",
+            source="server",
+            community_id=community_id,
+            detail=detail,
+        )
+    except Exception:
+        pass
 
 
 def _login_required(view_func):
@@ -56,13 +74,14 @@ def generate_invite_link():
     if gate_resp is not None:
         return gate_resp
     payload = request.get_json(silent=True) or {}
-    return _json_response(
-        invites_svc.generate_invite_link(
-            session["username"],
-            payload.get("community_id"),
-            request.host_url.rstrip("/"),
-        )
+    result, status = invites_svc.generate_invite_link(
+        session["username"],
+        payload.get("community_id"),
+        request.host_url.rstrip("/"),
     )
+    if status == 200 and result.get("success"):
+        _record_invite_sent(payload.get("community_id"), "invite_link")
+    return jsonify(result), status
 
 
 @community_invites_bp.route("/api/community/manageable", methods=["GET"])
@@ -78,7 +97,11 @@ def invite_username_to_community():
     gate_resp = _basic_profile_required_response()
     if gate_resp is not None:
         return gate_resp
-    return _json_response(invites_svc.invite_username(session["username"], request.get_json(silent=True) or {}))
+    payload = request.get_json(silent=True) or {}
+    result, status = invites_svc.invite_username(session["username"], payload)
+    if status == 200 and result.get("success"):
+        _record_invite_sent(payload.get("community_id"), "invite_username")
+    return jsonify(result), status
 
 
 @community_invites_bp.route("/api/community/invites/pending", methods=["GET"])

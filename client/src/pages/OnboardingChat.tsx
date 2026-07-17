@@ -32,6 +32,8 @@ interface OnboardingChatProps {
   targetSection?: ProfileSection
   onComplete: () => void
   onCreateCommunity: () => void
+  /** Opens the join-by-handle UI (dashboard join modal). */
+  onJoinCommunity?: () => void
   onGoToCommunity: () => void
   onExit: () => void
 }
@@ -45,6 +47,7 @@ export default function OnboardingChat({
   existingProfilePic,
   onComplete,
   onCreateCommunity,
+  onJoinCommunity,
   onGoToCommunity: _onGoToCommunity,
   onExit,
   mode = 'fresh',
@@ -102,6 +105,7 @@ export default function OnboardingChat({
     targetSection,
     onComplete,
     onCreateCommunity,
+    onJoinCommunity,
     onExit,
   })
 

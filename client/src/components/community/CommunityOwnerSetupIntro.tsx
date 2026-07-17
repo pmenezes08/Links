@@ -566,7 +566,7 @@ export default function CommunityOwnerSetupIntro({
               type="button"
               onClick={() =>
                 navigate(
-                  `/subscription_plans?mode=choose&open=community_plans&community_id=${encodeURIComponent(communityId)}&from_owner_intro=1`,
+                  `/subscription_plans?open=community_plans&community_id=${encodeURIComponent(communityId)}&from_owner_intro=1`,
                 )
               }
               className="mt-4 w-full rounded-xl bg-cpoint-turquoise px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110"

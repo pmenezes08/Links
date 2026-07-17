@@ -209,3 +209,81 @@ def record_onboarding_event(
                 pass
     except Exception as err:
         logger.warning("onboarding_events.record_onboarding_event failed: %s", err)
+
+
+def funnel_summary(days: int = 30) -> dict:
+    """Distinct-user counts per funnel event over a trailing window.
+
+    Read side for the admin activation-funnel endpoint. Shape::
+
+        {
+          "window_days": 30,
+          "started": 12,                     # distinct users with any stage row
+          "stages": {"intent": 12, ...},     # distinct users who reached each stage
+          "completed": 7,
+          "deferred": 3,
+          "bootstrap_communities": 1,
+          "resume_required": 4,
+        }
+
+    Fail-open: a query failure returns zeroed counts, never an exception
+    into the host request.
+    """
+    try:
+        window = max(1, min(int(days or 30), 365))
+    except Exception:
+        window = 30
+    out: dict = {
+        "window_days": window,
+        "started": 0,
+        "stages": {},
+        "completed": 0,
+        "deferred": 0,
+        "bootstrap_communities": 0,
+        "resume_required": 0,
+    }
+    try:
+        ensure_tables()
+        ph = get_sql_placeholder()
+        cutoff = (
+            datetime.utcnow() - timedelta(days=window)
+        ).strftime("%Y-%m-%d %H:%M:%S")
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"""
+                SELECT event, COUNT(DISTINCT username) AS users
+                FROM onboarding_events
+                WHERE created_at >= {ph}
+                GROUP BY event
+                """,
+                (cutoff,),
+            )
+            per_event = {}
+            for row in c.fetchall() or []:
+                event = row["event"] if hasattr(row, "keys") else row[0]
+                users = row["users"] if hasattr(row, "keys") else row[1]
+                per_event[str(event)] = int(users or 0)
+            out["started"] = per_event.get(EVENT_STAGE, 0)
+            out["completed"] = per_event.get(EVENT_COMPLETED, 0)
+            out["deferred"] = per_event.get(EVENT_DEFERRED, 0)
+            out["bootstrap_communities"] = per_event.get(EVENT_BOOTSTRAP, 0)
+            out["resume_required"] = per_event.get(EVENT_RESUME_REQUIRED, 0)
+
+            c.execute(
+                f"""
+                SELECT stage, COUNT(DISTINCT username) AS users
+                FROM onboarding_events
+                WHERE event = {ph} AND stage IS NOT NULL AND created_at >= {ph}
+                GROUP BY stage
+                """,
+                (EVENT_STAGE, cutoff),
+            )
+            for row in c.fetchall() or []:
+                stage = row["stage"] if hasattr(row, "keys") else row[0]
+                users = row["users"] if hasattr(row, "keys") else row[1]
+                if stage:
+                    out["stages"][str(stage)] = int(users or 0)
+    except Exception as err:
+        logger.warning("onboarding_events.funnel_summary failed: %s", err)
+    return out

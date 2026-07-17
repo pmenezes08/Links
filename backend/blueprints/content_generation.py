@@ -563,12 +563,22 @@ def api_process_due_content_generation_jobs():
     Protected by X-API-Key like poll_notification_check. Updates next_run_at after execution.
     Deploy as a cron job (e.g. every 5-15 minutes).
     """
-    api_key = request.headers.get("X-API-Key") or request.form.get("api_key")
-    expected_key = os.getenv("CONTENT_GENERATION_CRON_API_KEY")
+    # Fail-closed auth. Accept the platform-standard shared cron secret
+    # (X-Cron-Secret / CRON_SHARED_SECRET) or a legacy X-API-Key when that env is
+    # configured. The previous check returned success when no key env was set,
+    # which left this paid-AI job trigger open to unauthenticated callers.
+    # DEPLOY NOTE: pair with fixing the CONTENT_GENERATION_CRON_API_KEY env name
+    # (staging has a leading-space typo) or migrate the scheduler job to send
+    # X-Cron-Secret, otherwise the every-10-min cron will start returning 401.
+    import hmac as _hmac
+    from backend.services.cron_auth import cron_authed
+    legacy_key = request.headers.get("X-API-Key") or request.form.get("api_key")
+    expected_legacy = os.getenv("CONTENT_GENERATION_CRON_API_KEY")
+    legacy_ok = bool(expected_legacy) and _hmac.compare_digest(str(legacy_key or ""), str(expected_legacy))
 
-    if expected_key and api_key != expected_key:
-        logger.warning("Content generation due-jobs cron called with invalid API key: %s", api_key)
-        return jsonify({"success": False, "error": "Invalid API key"}), 401
+    if not (cron_authed(request) or legacy_ok):
+        logger.warning("Content generation due-jobs cron rejected: missing/invalid cron auth")
+        return jsonify({"success": False, "error": "unauthorized"}), 401
 
     try:
         due_jobs = get_due_jobs(limit=5)

@@ -131,6 +131,7 @@ From **Manage Community → Manage Subscription** (paid/customer state on the bi
 - The hidden provider-cost ceiling is enforced before community-pool spend using `ai_usage.monthly_community_spend_usd(root_id)` plus a KB reservation estimate. If the cost ceiling is exhausted, free members are blocked as pool exhausted; Premium members may fall back to personal usage when the KB fallback toggle allows it.
 - **Networking (Steve people-search) is B2B-gated to the Steve Package.** `/api/networking/steve_match` and `/api/networking/steve_auto_match` require the searched community's billing **root** to have an active Steve Package (paid **or** the synthetic 14-day trial), decided by **`backend.services.networking_billing.networking_gate_decision`** (reuses `community_billing.get_billing_state`, which root-normalizes). No package → `403 steve_package_required`. Trial communities get a reduced per-user weekly cap (KB `networking_trial_weekly_prompts`, default **5**) vs the paid cap (`weekly_prompts_per_user`, default **20**); the requirement itself is KB-toggleable (`networking_requires_steve_package`) — all on the **`networking-ai`** KB page. App admins, the founder, and **Special** users are exempt (unlimited) via `networking_cap_exempt`. Unlike feed/group Steve, networking is **not** in `STEVE_SURFACES`, so it does **not** draw the shared credit pool — it keeps its own per-user rolling-7-day counter (`ai_usage.networking_prompts_last_7_days`); pool-billing is deferred (networking measured at ~12× a chat reply, needs context cost-bounding first). Existing root communities were backfilled with trials at rollout via **`scripts/grant_networking_trials_to_existing_communities.py`**.
 - Burger-menu visits to `/subscription_plans` stay generic. Focused single-community copy/actions only appear when Manage Community links include `community_id=<id>`.
+- **Owner CTA notifications** (**`backend/services/owner_billing_ctas.py`**): owners get localized push + in-app rows (types `owner_cta:*`, deep link `/subscription_plans?open=community_addons&community_id=<id>`) when their Steve package trial is ending/ended (daily cron **`/api/cron/steve-trial-lifecycle`**, once per community ever via `subscription_audit_log`), when a member is blocked in a paid package-less community (gate side-channel, ≤1/community/7 days, member never named), and when the shared pool empties (≤1/community/cycle month). Fail-open, audited (`owner_cta_steve_*` actions), kill switch `OWNER_BILLING_CTAS_ENABLED`.
 
 ### Stripe renewal repair (offline)
 
@@ -409,10 +410,10 @@ Source-of-truth doc for the pivot, runtime rules, host controls, sound philosoph
 3. **Preview / play** — the HTML renders client-side in a sandboxed iframe (`srcDoc`, `sandbox="allow-scripts"` only → opaque origin, no access to app session cookies/storage). The injected `window.CPoint` bridge carries active context (`personal`/`community:<id>`) into `/api/builder/<id>/data/*`, `/api/builder/<id>/capsules/*`, and `/api/builder/<id>/match/*`. Scores, ratings, saves, shared state, collections, forms, leaderboards, named capsule recipes, and matches are scoped by `community_id` where applicable, so the same creation shared into multiple communities has separate runtime data.
 4. **Share = community post** — `POST /api/builder/<id>/publish` / `/share` inserts a normal `posts` row carrying `creation_id` and writes `creation_shares(creation_id, community_id, post_id, shared_by)`. Owners can share the same personal creation into multiple communities they belong to; the route enforces membership before writing. The React feed renders posts with `creation_id` as tap-to-play cards → `/community/:id/creation/:creation_id`.
 5. **Publish to web (websites/apps only)** — `POST /api/builder/<id>/publish-web` validates owner + public-eligible kind, injects a public-safe bridge plus mandatory C-Point splash/badge, writes a public R2 artifact (`public/builds/<slug>/<version>.html`) and manifest (`public/builds/<slug>/manifest.json`), then returns `https://builds.c-point.co/<slug>`. `services/public-builds-worker/` serves that manifest/artifact through Cloudflare with security headers and a branded 404, and proxies public-safe `CPoint.data`, `CPoint.images`, and `CPoint.capsule` requests back to the backend. Signed-in builds can expose explicit `CPoint.data(..., {refresh:true})` or `CPoint.capsule(name).refresh()` buttons while backend throttles, budgets, and circuit breakers still protect upstream providers; public build refresh is stripped in V1 and public reads are additionally throttled by anonymous IP. `DELETE /api/builder/<id>/publish-web` removes the manifest/artifact; games stay inside C-Point because saves, scores, identity, and multiplayer are community/session-bound.
-6. **Explore Creations** — `POST /api/builder/<id>/gallery` lets owners opt in/unlist any creation type for in-platform anonymous gallery inclusion; `POST /api/admin/builder/<id>/gallery` lets app admins approve/reject/delist if moderation is needed. `GET /api/builder/explore` lists approved creations with `/creation/<id>` play links and returns no creator, profile, community, or post identifiers.
+6. **Explore Creations ("Made with Steve")** — `POST /api/builder/<id>/gallery` lets owners opt in/unlist any creation type for in-platform anonymous gallery inclusion; `POST /api/admin/builder/<id>/gallery` lets app admins approve/reject/delist if moderation is needed. `GET /api/builder/explore` lists approved creations with `/creation/<id>` play links and returns no creator, profile, community, or post identifiers; the payload adds a section (`website`/`app`/`game`), an optional sub-category slug (free keyword classifier at build time, closed taxonomy in `builder.BUILDER_CATEGORIES`), per-section groupings, and play counts. The gallery page renders supply-aware shelves (Games → Apps → Websites, collapsing to one mixed grid on thin supply), shows play counts at ≥ 10 only, and closes the browse→build loop with a per-card "Build your own" hook that pre-fills the builder composer via `/builder?seed=` using public data only. Creators set/correct their build's category from the My Builds action sheet (`POST /api/builder/<id>/category`; precedence admin-lock > creator > automation via `category_source`), Steve proposes the shelf conversationally at build-proposal time (zero-cost converse sidecar → `builder_jobs.suggested_category`), and viewers narrow via chip → deep-linked `?kind=&category=` grid → client search (≥ 12-item floor) whose 0-1-result state nudges "build the first one" instead of showing a lonely grid.
 7. **Privacy / access** — create reads and play views authorize via owner access, gallery-approved in-platform access, or `community_access.can_view_community_content` against the active share context. Game invite opponents are only members of the active community and are exposed as opaque handles. Public web visitors are anonymous and receive only public-safe `CPoint` capabilities (public data/image connectors; no session saves, shared collections/forms, scores, ratings, or multiplayer).
 
-Phase-1 scope is front-end only (no user backends). Remix (copy a creation + `parent_creation_id`) and richer community picker UI for sharing are follow-ups.
+Phase-1 scope is front-end only (no user backends). Remix shipped: `POST /api/builder/<id>/remix` seeds a NEW personal creation from a gallery-approved/web-published creation's public HTML only (never prompt history or creator identity), records `parent_creation_id` lineage, and bills as a normal build turn — Explore's "Build your own" is the entry point. A richer community picker UI for sharing remains a follow-up.
 
 ## 15. Owner Dashboard: analytics, moderation, and the weekly pulse
 
@@ -456,3 +457,72 @@ dashboard (handled in `PushInit.tsx`). Quiet weeks are skipped; multi-network
 owners get one pulse for their largest network; kill-switch
 `OWNER_PULSE_ENABLED`. Zero AI cost — Steve's voice is i18n templates over
 numbers computed at send time.
+
+**Member weekly digest (the member-side return loop):** the pulse's sibling,
+`POST /api/cron/member-weekly-digest` (`docs/cloud-scheduler-cron.md` §13,
+service `backend/services/member_digest.py`). One recipient-locale push +
+in-app row per member per ISO week for their most active community (≥ 3 new
+posts by others; own posts don't count; owners excluded). **Off by default**
+(`MEMBER_DIGEST_ENABLED`); dedup table `member_digest_sends`; `max_sends`
+throttle. Deep links carry `?source=weekly_digest_push`.
+
+**Retention attribution + checkout intent:** the return loops are measured
+end-to-end. Digest/pulse deep links carry `?source=`, which the client
+(`useRetentionAttribution`, `CommunityFeed`, `OwnerDashboard`, Steve action
+rows in `OverviewTab`) posts to `POST /api/retention/event` — an append-only
+`retention_events` table with a closed event/source vocabulary
+(`digest_sent/opened`, `owner_pulse_opened`, `owner_action_tapped`), never
+message content or other members' identities. On the conversion side,
+`POST /api/stripe/create_checkout_session` writes one
+`<plan>_checkout_started` row to `subscription_audit_log` (with the CTA
+`source` from a closed vocabulary in `subscription_audit.CHECKOUT_SOURCES`);
+purchases stay webhook-driven, so starts vs completions = funnel abandonment.
+
+**Owner upgrade surface (backend, page ships separately):** the
+"Grow your community" pitch is gated server-side by
+`GET /api/owner/upgrade_prompt?community_id=…`
+(`backend/services/owner_upgrade_prompt.py`): owner-only with the
+non-enumerating 404 (delegated admins never see it — they can't act on
+billing), root-normalized, free-tier-only, honoring the durable
+`communities.owner_upgrade_prompt_dismissed_at` dismiss flag
+(`POST /api/owner/upgrade_prompt/dismiss`) and a 14-day interstitial
+window keyed on the owner's own `upgrade_page_shown` retention events
+(voluntary paths are never gated). Evidence carried: members vs KB cap
+with the dashboard's ≥80% `cap_warning`, and blocked-Steve demand —
+`ai_usage.community_blocked_steve_members_30d`, distinct members denied
+`premium_required`/`community_pool_exhausted`, floored below 2 so weak
+numbers never render as anti-evidence; members are counted, never named.
+`trial_eligible`/`trial_days` read the same
+`community_billing.community_tier_trial_days` policy as checkout so the
+CTA label can't promise a trial checkout won't grant. Funnel events:
+`upgrade_page_shown/tier_viewed/dismissed/checkout_started` (+
+`owner_dashboard_opened` guardrail denominator) with source
+`upgrade_interstitial`; conversion truth stays the Stripe webhook →
+`subscription_audit` join.
+
+**Community-tier 14-day trial (Stripe-level, one per customer):**
+`community_tier` checkout attaches `subscription_data.trial_period_days`
+from KB `community-tiers.paid_trial_duration_days` (default 14) — the card
+is collected up front and auto-converts at trial end. One trial per
+customer across all communities they own (KB
+`paid_trial_one_per_customer`): the forever marker is the
+`community_tier_trial_started` `subscription_audit_log` row, written by
+the webhook only when the trial subscription actually starts (an
+abandoned checkout never burns it) and checked at checkout creation via
+`subscription_audit.has_action`. The webhook stores the truthful
+`trialing` status — enforcement, health, and analytics already treat
+trialing as active — and the trial→paid flip lands via
+`customer.subscription.updated`. This is the same 14-day promise the
+landing publishes from the KB seeds.
+
+**Steve trial → paid conversion moment:** the Owner Dashboard overview
+includes an owner-only `steve_trial` metric (trial days left, shared-pool
+usage, weekly actives — aggregates only) while the synthetic Steve package
+trial or a paid package is active on the billing root, plus a Steve
+`action_trial_ending` row (final 3 days) that opens `ManageMembershipModal`.
+Trial length is KB-driven (`community-tiers.steve_package_trial_days`,
+read via `community_billing.steve_package_trial_days()`), so operators can
+tune it without a deploy. Landing pricing is generated from the same KB
+seeds (`scripts/generate_landing_pricing.py` →
+`landing/src/generated/pricing.json`, drift-checked by
+`tests/test_landing_pricing_parity.py`).

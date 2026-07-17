@@ -688,6 +688,50 @@ def community_monthly_steve_pool_credits_used(root_community_id: int) -> float:
         )
 
 
+def community_blocked_steve_members_30d(root_community_id: int) -> int:
+    """Distinct members whose Steve calls the gate blocked in the last 30
+    days for this billing root (``premium_required`` — paid tier without a
+    package — or ``community_pool_exhausted``).
+
+    Demand evidence for the owner upgrade surface: "N members tried to use
+    Steve". Distinct usernames, never a raw row count — one frustrated
+    member retrying must not read as a groundswell — and never the names
+    themselves (aggregates only leave the server). ``community_id`` on
+    blocked rows is already root-normalized by :func:`log_usage`.
+    """
+    if not root_community_id:
+        return 0
+    ensure_tables()
+    ph = get_sql_placeholder()
+    cutoff = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+    sql = f"""
+        SELECT COUNT(DISTINCT username) FROM ai_usage_log
+        WHERE community_id = {ph}
+          AND success = 0
+          AND reason_blocked IN ({ph}, {ph})
+          AND created_at >= {ph}
+    """
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                sql,
+                (int(root_community_id), "premium_required",
+                 "community_pool_exhausted", cutoff),
+            )
+            row = c.fetchone()
+        if not row:
+            return 0
+        if hasattr(row, "keys"):
+            return int(list(row.values())[0] or 0)
+        return int(row[0] or 0)
+    except Exception:
+        logger.debug(
+            "community_blocked_steve_members_30d query failed", exc_info=True,
+        )
+        return 0
+
+
 def community_monthly_steve_pool_usage(root_community_id: int) -> int:
     """Community pool credits used (display int) for ``root_community_id``."""
     from backend.services.steve_credit_weights import display_credits_used
