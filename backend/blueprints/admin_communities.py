@@ -6,9 +6,16 @@ import logging
 from functools import wraps
 from typing import Any, Dict, List
 
-from flask import Blueprint, jsonify, session
+from flask import Blueprint, jsonify, request, session
 
-from backend.services import admin_tenant_scope, ai_usage, community_billing, knowledge_base
+from backend.services import (
+    admin_tenant_scope,
+    ai_usage,
+    community_billing,
+    knowledge_base,
+    onboarding_events,
+    retention_events,
+)
 from backend.services.community import is_app_admin
 from backend.services.database import get_db_connection
 from backend.services.steve_community_config import get_paid_steve_package_config
@@ -188,4 +195,48 @@ def api_admin_communities_directory():
         return jsonify({"success": True, "communities": communities})
     except Exception as exc:
         logger.exception("api_admin_communities_directory failed: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@admin_communities_bp.route("/api/admin/activation_funnel", methods=["GET"])
+@_admin_required
+def api_admin_activation_funnel():
+    """Signup → onboarding → create-community → invite funnel over a window.
+
+    Query params:
+        days — trailing window in days (default 30, clamped to 1..365).
+
+    Response shape (all counts are DISTINCT users unless named ``total``)::
+
+        {
+          "success": true,
+          "window_days": 30,
+          "onboarding": {
+            "started": 12, "stages": {...}, "completed": 7, "deferred": 3,
+            "bootstrap_communities": 1, "resume_required": 4
+          },
+          "activation": {
+            "community_created": {"users": 5, "total": 6},
+            "invite_sent": {"users": 3, "total": 11}
+          }
+        }
+    """
+    try:
+        days = int(request.args.get("days", 30))
+    except (TypeError, ValueError):
+        days = 30
+    days = max(1, min(days, 365))
+    try:
+        onboarding = onboarding_events.funnel_summary(days=days)
+        activation = retention_events.activation_summary(days=days)
+        onboarding.pop("window_days", None)
+        activation.pop("window_days", None)
+        return jsonify({
+            "success": True,
+            "window_days": days,
+            "onboarding": onboarding,
+            "activation": activation,
+        })
+    except Exception as exc:
+        logger.exception("api_admin_activation_funnel failed: %s", exc)
         return jsonify({"success": False, "error": str(exc)}), 500

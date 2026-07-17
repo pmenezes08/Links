@@ -25,6 +25,11 @@ def _login_required(view_func):
 @_login_required
 def create_retention_event():
     data = request.get_json(silent=True) or {}
+    event_type = str(data.get("event_type") or "").strip().lower()
+    if event_type in retention_events.SERVER_ONLY_EVENT_TYPES:
+        # Activation events are emitted server-side only — the client sink
+        # must not let a browser inflate the founder's funnel numbers.
+        return jsonify({"success": True, "recorded": False})
     recorded = retention_events.record_event(
         session.get("username") or "",
         event_type=str(data.get("event_type") or ""),

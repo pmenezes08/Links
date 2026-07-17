@@ -82,6 +82,7 @@ export const ONBOARDING_STAGE_CONFIG: Record<Stage, StageConfig> = {
     photoUpload: true,
     staticOptions: [['skip_photo', 'skip_photo']],
   },
+  community_fork: custom,
   section_picker: custom,
   personal_section_intro: custom,
   talk_all_day: {

@@ -1458,6 +1458,12 @@ export default function PremiumDashboard() {
                 setOnboardingLaunching(false)
                 setShowCreateModal(true)
               }}
+              onJoinCommunity={() => {
+                setShowOnboarding(false)
+                setShowOnboardingWelcome(false)
+                setOnboardingLaunching(false)
+                setShowJoinModal(true)
+              }}
               onGoToCommunity={() => {
                 setShowOnboarding(false)
                 setShowOnboardingWelcome(false)
@@ -1657,6 +1663,12 @@ export default function PremiumDashboard() {
                             if (refreshed) {
                               setCommunities(refreshed)
                               setCommunitiesLoaded(true)
+                            }
+                            // A community exists to be shared: land the new owner
+                            // inside it, where the owner setup intro runs and ends
+                            // on the invite step (link + QR).
+                            if (j.community_id) {
+                              navigate(`/community_feed_react/${j.community_id}`)
                             }
                           } else {
                             alert(j?.error || t('dashboard.create_community_failed'))

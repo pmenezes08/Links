@@ -39,6 +39,20 @@ EVENT_TYPES = {
     "upgrade_page_tier_viewed",
     "upgrade_page_dismissed",
     "upgrade_page_checkout_started",
+    # Activation funnel (signup → create community → invite). Emitted
+    # SERVER-SIDE only from the create-community handler and the invite
+    # endpoints — the client sink rejects them (see SERVER_ONLY_EVENT_TYPES)
+    # so founder metrics can't be inflated from a browser console.
+    "community_created",    # /create_community succeeded (community_id set)
+    "invite_sent",          # invite link generated or username invite sent
+                            # (`detail` = "invite_link" | "invite_username")
+}
+# Events that only backend code may emit. The `/api/retention/event` sink
+# drops these; record_event() itself still accepts them (it IS the
+# server-side write path).
+SERVER_ONLY_EVENT_TYPES = {
+    "community_created",
+    "invite_sent",
 }
 SOURCES = {
     "weekly_digest_cron",   # server-side send marker
@@ -46,6 +60,7 @@ SOURCES = {
     "owner_pulse_push",     # client tap-through from the owner pulse
     "owner_dashboard",      # action rows on the Owner Dashboard
     "upgrade_interstitial", # taps originating on the owner upgrade surface
+    "server",               # server-emitted instrumentation (activation events)
     "direct",               # opened with no source param
 }
 
@@ -223,3 +238,47 @@ def record_event(
     except Exception:
         logger.warning("retention_events.record_event failed for %s", user, exc_info=True)
         return False
+
+
+def activation_summary(days: int = 30) -> dict:
+    """Distinct-user and total counts for the activation events over a
+    trailing window (admin funnel read — see /api/admin/activation_funnel).
+
+    Fail-open like every read here: a query failure returns zeroed counts,
+    never an exception into the admin surface.
+    """
+    try:
+        window = max(1, min(int(days or 30), 365))
+    except Exception:
+        window = 30
+    out = {
+        "window_days": window,
+        "community_created": {"users": 0, "total": 0},
+        "invite_sent": {"users": 0, "total": 0},
+    }
+    try:
+        ensure_events_table()
+        ph = get_sql_placeholder()
+        cutoff = (datetime.utcnow() - timedelta(days=window)).strftime("%Y-%m-%d %H:%M:%S")
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"""
+                SELECT event_type,
+                       COUNT(DISTINCT username) AS users,
+                       COUNT(*) AS total
+                FROM retention_events
+                WHERE event_type IN ({ph}, {ph}) AND created_at >= {ph}
+                GROUP BY event_type
+                """,
+                ("community_created", "invite_sent", cutoff),
+            )
+            for row in c.fetchall() or []:
+                etype = row["event_type"] if hasattr(row, "keys") else row[0]
+                users = row["users"] if hasattr(row, "keys") else row[1]
+                total = row["total"] if hasattr(row, "keys") else row[2]
+                if etype in out:
+                    out[etype] = {"users": int(users or 0), "total": int(total or 0)}
+    except Exception:
+        logger.warning("retention_events.activation_summary failed", exc_info=True)
+    return out

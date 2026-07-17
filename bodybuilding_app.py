@@ -23226,6 +23226,19 @@ def create_community():
             invalidate_user_cache(username)
             logger.info(f"Invalidated dashboard cache for {username} after community creation")
 
+        # Activation instrumentation (signup → create → invite funnel).
+        # record_event never raises; the guard only covers the import.
+        try:
+            from backend.services import retention_events as _retention_events
+            _retention_events.record_event(
+                username,
+                event_type="community_created",
+                source="server",
+                community_id=community_id,
+            )
+        except Exception as event_err:
+            logger.warning(f"create_community: activation event failed (non-fatal): {event_err}")
+
         # B2B pivot: every new root community starts a 14-day Steve Community
         # Package trial so members can taste Steve before the owner buys the
         # add-on. Best-effort; the service no-ops for sub-communities and
