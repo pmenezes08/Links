@@ -132,6 +132,19 @@ class TestEnterpriseStructureUncapped:
         sub = make_community("ent-structure-sub", tier="free", parent_community_id=root)
         assert _run_with_cursor(community_structure_caps_exempt, sub) is True
 
+    def test_exemption_inherits_at_any_depth(self):
+        """Enterprise applies to the whole tree: a sub-of-a-sub is exempt too.
+
+        Sub-communities carry no clauses of their own (their ``tier`` stays
+        whatever the row default is) — the walk up ``parent_community_id``
+        is what inherits the root's Enterprise deal, so nesting can go as
+        deep as the owner wants without ever re-entering a capped regime.
+        """
+        root = make_community("ent-deep-root", tier="enterprise", creator_username="deep_owner")
+        level1 = make_community("ent-deep-l1", tier="free", parent_community_id=root)
+        level2 = make_community("ent-deep-l2", tier="free", parent_community_id=level1)
+        assert _run_with_cursor(community_structure_caps_exempt, level2) is True
+
     def test_free_root_is_not_exempt(self):
         cid = make_community("free-structure", tier="free", creator_username="free_struct_owner")
         assert _run_with_cursor(community_structure_caps_exempt, cid) is False

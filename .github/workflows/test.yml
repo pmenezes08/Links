@@ -119,6 +119,8 @@ jobs:
             tests/test_stripe_community_checkout.py \
             tests/test_community_membership_limit.py \
             tests/test_enterprise_steve_inclusion.py \
+            tests/test_community_duplicate_guard.py \
+            tests/test_group_steve_agent.py \
             tests/test_owner_upgrade_prompt.py \
             tests/test_onboarding_session.py \
             tests/test_onboarding_llm.py \

@@ -1465,6 +1465,7 @@ def get_follow_counts(cursor, username: str) -> Tuple[int, int]:
 from backend.services.community import ensure_free_parent_member_capacity  # noqa: E402,F401
 from backend.services.community import ensure_community_tier_member_capacity  # noqa: E402,F401
 from backend.services.community import community_structure_caps_exempt  # noqa: E402,F401
+from backend.services.community import find_recent_duplicate_community  # noqa: E402,F401
 
 
 # ============================================================================
@@ -22989,20 +22990,22 @@ def create_community():
         if not name:
             return jsonify({'success': False, 'error': 'Name is required'}), 400
         
-        # Duplicate prevention: Check if same user created a community with same name in last 60 seconds
+        # Duplicate prevention: same user re-submitting the same create form
+        # (same name, same parent) within 60 seconds (double-tap / retry).
+        # Names are deliberately not unique — identity is the id and the
+        # connection to the root — so the same name under other parents or
+        # older communities must NOT block; the unbounded version of this
+        # check silently swallowed new sub-communities while reporting
+        # success to the client.
         try:
             with get_db_connection() as conn:
                 c_dup = conn.cursor()
-                ph = get_sql_placeholder()
-                c_dup.execute(f"""
-                    SELECT id, created_at FROM communities 
-                    WHERE creator_username = {ph} AND name = {ph}
-                    ORDER BY id DESC LIMIT 1
-                """, (username, name.strip()))
-                existing = c_dup.fetchone()
-                if existing:
-                    existing_id = existing['id'] if hasattr(existing, 'keys') else existing[0]
-                    logger.warning(f"Duplicate community prevention: User {username} already has community '{name}' (id={existing_id})")
+                existing_id = find_recent_duplicate_community(
+                    c_dup, creator_username=username, name=name,
+                    parent_community_id=parent_community_id_value,
+                )
+                if existing_id:
+                    logger.warning(f"Duplicate community prevention: User {username} just created community '{name}' (id={existing_id})")
                     return jsonify({
                         'success': True,  # Return success to prevent retry loops
                         'community_id': existing_id,
@@ -26871,7 +26874,8 @@ def api_groups_available_count_legacy():
 @login_required
 def api_groups_create():
     """Create a group under a specific community/sub-community.
-    Only the global app admin and Paulo can create groups.
+    Allowed for the app admin and for owners/admins of the community
+    (or of its root network).
     """
     username = session.get('username')
     community_id_raw = request.form.get('community_id', '').strip()
@@ -26885,9 +26889,11 @@ def api_groups_create():
         return jsonify({'success': False, 'error': 'Group name is required'})
     approval_required = approval_required_raw in ('1', 'true', 'True', 'yes', 'on')
     try:
-        # Restrict creators to app admin or Paulo only
-        if not is_app_admin_or_paulo(username):
-            return jsonify({'success': False, 'error': 'Only admin or Paulo can create groups'}), 403
+        # Owners/admins of the community (or its root) may create groups;
+        # app admin keeps the historical bypass.
+        from backend.services.community import can_create_group_in_community
+        if not (is_app_admin_or_paulo(username) or can_create_group_in_community(username, community_id)):
+            return jsonify({'success': False, 'error': 'Only community owners and admins can create groups'}), 403
         with get_db_connection() as conn:
             c = conn.cursor()
             # Ensure community exists
@@ -26899,7 +26905,9 @@ def api_groups_create():
             ancestors = get_community_ancestors(c, community_id)
             top_info = ancestors[-1] if ancestors else get_community_basic(c, community_id)
             top_creator = top_info.get('creator_username') if top_info else None
-            if community_parent_id:
+            if community_parent_id and not community_structure_caps_exempt(c, community_id):
+                # Enterprise networks are exempt: groups may live at any
+                # level of the tree regardless of the owner's personal plan.
                 subscription_value = fetch_user_subscription(c, top_creator) if top_creator else ''
                 if top_creator and not is_app_admin(top_creator) and is_free_subscription(subscription_value):
                     return jsonify({'success': False, 'error': 'Groups for free plan communities are only available at the parent community level.'}), 403

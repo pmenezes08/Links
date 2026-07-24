@@ -362,3 +362,100 @@ def test_build_steve_group_resource_context_includes_scoped_links_and_docs(mysql
     assert "https://group-only.example/doc" in out
     assert "Group documents" in out
     assert "Group-scoped doc title" in out
+
+
+# ── Group creation permissions (2026-07: opened up from app-admin-only) ──
+#
+# /api/groups/create was historically gated to is_app_admin_or_paulo, which
+# blocked every real community owner — including the first Enterprise owner.
+# The rule is now: app admin OR owner/admin of the target community or of
+# its root network. Free-plan roots still keep groups at the parent level,
+# but Enterprise roots are structure-exempt at any depth.
+
+
+def test_groups_create_allows_community_owner(mysql_dsn):
+    """A plain (non-app-admin) owner can create a group in their community."""
+    import bodybuilding_app
+
+    make_user("grp_owner_plain", subscription="premium")
+    cid = make_community("grp-owner-net", tier="paid_l1", creator_username="grp_owner_plain")
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "grp_owner_plain")
+    r = client.post(
+        "/api/groups/create",
+        data={"community_id": str(cid), "name": "Owner Group", "approval_required": "0"},
+    )
+    assert r.status_code == 200
+    assert (r.get_json() or {}).get("success") is True
+
+
+def test_groups_create_rejects_regular_member(mysql_dsn):
+    """Someone who neither owns nor administers the community gets 403."""
+    import bodybuilding_app
+
+    make_user("grp_owner_x", subscription="premium")
+    make_user("grp_rando")
+    cid = make_community("grp-perm-net", tier="paid_l1", creator_username="grp_owner_x")
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "grp_rando")
+    r = client.post(
+        "/api/groups/create",
+        data={"community_id": str(cid), "name": "Sneaky Group", "approval_required": "0"},
+    )
+    assert r.status_code == 403
+
+
+def test_groups_create_root_owner_can_create_in_sub(mysql_dsn):
+    """Owning the root grants group creation inside its sub-communities."""
+    import bodybuilding_app
+
+    make_user("grp_root_owner", subscription="premium")
+    root = make_community("grp-root-net", tier="paid_l1", creator_username="grp_root_owner")
+    sub = make_community("grp-sub-net", tier="free", parent_community_id=root)
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "grp_root_owner")
+    r = client.post(
+        "/api/groups/create",
+        data={"community_id": str(sub), "name": "Sub Group", "approval_required": "0"},
+    )
+    assert r.status_code == 200
+    assert (r.get_json() or {}).get("success") is True
+
+
+def test_groups_create_free_owner_blocked_on_sub_level(mysql_dsn):
+    """Free-plan roots keep the old rule: groups only at the parent level."""
+    import bodybuilding_app
+
+    make_user("grp_free_owner", subscription="free")
+    root = make_community("grp-free-root", tier="free", creator_username="grp_free_owner")
+    sub = make_community("grp-free-sub", tier="free", parent_community_id=root)
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "grp_free_owner")
+    r = client.post(
+        "/api/groups/create",
+        data={"community_id": str(sub), "name": "Blocked Group", "approval_required": "0"},
+    )
+    assert r.status_code == 403
+    assert "parent community level" in ((r.get_json() or {}).get("error") or "")
+
+
+def test_groups_create_enterprise_sub_by_free_owner(mysql_dsn):
+    """The TAP shape: Free personal plan + Enterprise root ⇒ groups anywhere."""
+    import bodybuilding_app
+
+    make_user("grp_ent_owner", subscription="free")
+    root = make_community("grp-ent-root", tier="enterprise", creator_username="grp_ent_owner")
+    sub = make_community("grp-ent-sub", tier="free", parent_community_id=root)
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "grp_ent_owner")
+    r = client.post(
+        "/api/groups/create",
+        data={"community_id": str(sub), "name": "Crew Group", "approval_required": "0"},
+    )
+    assert r.status_code == 200
+    assert (r.get_json() or {}).get("success") is True

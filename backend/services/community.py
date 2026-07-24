@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import deque
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
@@ -652,6 +653,73 @@ def get_community_tier(cursor, community_id: int) -> Optional[str]:
     return _normalize_tier(row)
 
 
+def find_recent_duplicate_community(
+    cursor,
+    *,
+    creator_username: str,
+    name: str,
+    parent_community_id: Optional[int] = None,
+    window_seconds: int = 60,
+) -> Optional[int]:
+    """Return the id of a community this creator made *moments ago* with the
+    same name **under the same parent**, else ``None``.
+
+    Double-tap / retry protection only. Community names are deliberately
+    not unique — identity is the id (and, for roots, the @handle), so the
+    same name under different parents, at any nesting depth, is always
+    legitimate. This guard exists solely to absorb a re-submitted create
+    form, which is why it matches the full (creator, name, parent) triple
+    inside a short window.
+
+    History: the original inline query matched on ``(creator, name)`` with
+    **no time bound and no parent scope** — so a creator could never reuse
+    a name anywhere in their networks again (a new "PNT" sub-community
+    under an Enterprise root was silently swallowed by an old community of
+    the same name, with the client reporting success). An unparseable
+    ``created_at`` fails open (allow creation) rather than permanently
+    blocking the name.
+    """
+    if not creator_username or not name or not name.strip():
+        return None
+    ph = get_sql_placeholder()
+    try:
+        cursor.execute(
+            f"""
+            SELECT id, created_at FROM communities
+            WHERE creator_username = {ph} AND name = {ph}
+              AND ((parent_community_id IS NULL AND {ph} IS NULL)
+                   OR parent_community_id = {ph})
+            ORDER BY id DESC LIMIT 1
+            """,
+            (creator_username, name.strip(), parent_community_id, parent_community_id),
+        )
+        row = cursor.fetchone()
+    except Exception:
+        logger.exception(
+            "find_recent_duplicate_community: lookup failed for %s", creator_username
+        )
+        return None
+    if not row:
+        return None
+    cid = row["id"] if hasattr(row, "keys") else row[0]
+    created_raw = row["created_at"] if hasattr(row, "keys") else row[1]
+    created: Optional[datetime] = created_raw if isinstance(created_raw, datetime) else None
+    if created is None and created_raw:
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+            try:
+                created = datetime.strptime(str(created_raw)[:19], fmt)
+                break
+            except ValueError:
+                continue
+    if created is None:
+        return None
+    # created_at rows are written with datetime.now() on the same host, so
+    # compare against local now for symmetry.
+    if (datetime.now() - created).total_seconds() <= max(0, int(window_seconds)):
+        return int(cid)
+    return None
+
+
 def community_structure_caps_exempt(cursor, community_id: Optional[int]) -> bool:
     """True when ``community_id`` sits inside an Enterprise-tier network.
 
@@ -866,6 +934,28 @@ def can_manage_community(username, community_id):
         is_app_admin(username)
         or is_community_owner(username, community_id)
     )
+
+
+def can_create_group_in_community(username, community_id) -> bool:
+    """May ``username`` create a group under ``community_id``?
+
+    Owners and community admins of the target community — or of its root
+    network — may create groups anywhere in their tree. (Historically this
+    was app-admin-only, which blocked every real community owner,
+    including Enterprise owners; app-admin retains access via the
+    ``is_app_admin_or_paulo`` check at the call site.)
+    """
+    if not username or not community_id:
+        return False
+    if is_community_owner(username, community_id) or is_community_admin(username, community_id):
+        return True
+    try:
+        root_id, is_root = resolve_root_community_id(int(community_id))
+    except Exception:
+        return False
+    if is_root:
+        return False
+    return is_community_owner(username, root_id) or is_community_admin(username, root_id)
 
 
 def is_community_admin(username, community_id):

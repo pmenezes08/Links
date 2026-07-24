@@ -1213,7 +1213,7 @@ export default function Communities(){
           <>
             <PlusActions
               onCreateSub={() => { setNewSubName(''); setNewSubType('General'); setShowCreateSubModal(true) }}
-              onCreateGroup={() => { if (!isAdminOrPaulo) { alert(t('communities.only_admin_create_groups')); return } setShowCreateGroup(true); setNewGroupName(''); setApprovalRequired(false); setGroupSteveAgentEnabled(false) }}
+              onCreateGroup={() => { setShowCreateGroup(true); setNewGroupName(''); setApprovalRequired(false); setGroupSteveAgentEnabled(false) }}
             />
 
             {showCreateSubModal && (
