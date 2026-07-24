@@ -13,19 +13,33 @@ _schema_ready = False
 
 @pytest.fixture(autouse=True)
 def _ensure_group_schema(mysql_dsn):
-    """Run the monolith's schema patcher once before this module's tests.
+    """Add the ``groups`` columns this suite writes that the conftest's
+    minimal shape lacks (``approval_required``, ``created_by``).
 
-    The CI conftest seeds only a minimal ``groups`` shape; the create route
-    inserts ``approval_required`` / Steve-agent columns that only
-    ``add_missing_tables()`` adds. Without this the first tests in the file
-    fail on 'Unknown column' while later ones pass by accident (a test near
-    the end happens to call the patcher itself).
+    Deliberately surgical: running the monolith's full ``add_missing_tables()``
+    here instead breaks under MySQL when it runs before other suites have
+    created their tables (its legacy DDL indexes a TEXT ``date`` column,
+    errno 1170). Steve-agent columns are handled by the route itself via
+    ``ensure_group_steve_agent_schema``.
     """
     global _schema_ready
     if not _schema_ready:
-        import bodybuilding_app as ba
+        from backend.services.database import get_db_connection
 
-        ba.add_missing_tables()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            for ddl in (
+                "ALTER TABLE `groups` ADD COLUMN approval_required TINYINT(1) NOT NULL DEFAULT 0",
+                "ALTER TABLE `groups` ADD COLUMN created_by VARCHAR(191) NULL",
+            ):
+                try:
+                    c.execute(ddl)
+                except Exception:
+                    pass
+            try:
+                conn.commit()
+            except Exception:
+                pass
         _schema_ready = True
 
 
