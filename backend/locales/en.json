@@ -167,6 +167,60 @@
       "lead_text": "You have been invited to join {community} by {inviter}.",
       "cta": "Join {community}",
       "nested_heading": "You'll also join"
+    },
+    "welcome_owner": {
+      "subject": "Welcome to C-Point — let's get your community started",
+      "heading": "Welcome to C-Point",
+      "lead": "C-Point is where your people gather in private, invitation-only spaces — no public feed, no noise.",
+      "moments_heading": "How it works",
+      "moment_create": "Create a community — your private space, yours to shape.",
+      "moment_invite": "Invite your people — they join by invite or handle, no one stumbles in.",
+      "moment_steve": "Meet Steve — he's pinned at the top of your chats; message him anytime.",
+      "platforms": "C-Point works on web, iPhone, and Android — sign in anywhere with the same account.",
+      "cta": "Create your first community"
+    },
+    "welcome_member": {
+      "subject": "You're in {community}",
+      "heading": "Welcome to C-Point",
+      "lead": "You've joined {community} on C-Point — a private space with your people. Say hello when you're ready.",
+      "cta": "Open {community}"
+    },
+    "no_community_nudge": {
+      "subject": "Ready when you are — create your first community",
+      "heading": "Your space is waiting",
+      "lead": "You haven't created a community yet. When you do, it's private from the first invite — you decide who's in.",
+      "secondary": "Start with 3–5 people you already trust.",
+      "cta": "Create a community"
+    },
+    "empty_community_nudge": {
+      "subject": "{community} is ready",
+      "heading": "{community} is ready",
+      "lead": "Your community is set up. Invite the first few people — it comes alive when they arrive.",
+      "secondary": "Start with the people you'd message first anyway.",
+      "cta": "Invite people to {community}"
+    },
+    "verification_reminder": {
+      "subject": "Finish creating your C-Point account",
+      "heading": "One step left",
+      "lead": "You started signing up for C-Point. Confirm your email to finish creating your account.",
+      "ignore_note": "If this wasn't you, you can safely ignore this email.",
+      "cta": "Verify my email"
+    },
+    "footer": {
+      "reason": "You're getting this because you have a C-Point account.",
+      "unsubscribe_label": "Unsubscribe"
+    },
+    "unsubscribe_page": {
+      "title": "Fewer emails?",
+      "body": "This will stop lifecycle emails from C-Point — welcome tips and reminders. You'll still receive important account and invite messages.",
+      "confirm_button": "Unsubscribe",
+      "done_title": "Done",
+      "done_body": "You won't get lifecycle emails from C-Point anymore. You'll still receive important account and invite messages.",
+      "resubscribe_button": "Turn them back on",
+      "resubscribed_title": "Welcome back",
+      "resubscribed_body": "Lifecycle emails are on again.",
+      "invalid_title": "Link invalid",
+      "invalid_body": "This link is invalid or has expired."
     }
   },
   "notifications": {

@@ -526,3 +526,51 @@ tune it without a deploy. Landing pricing is generated from the same KB
 seeds (`scripts/generate_landing_pricing.py` →
 `landing/src/generated/pricing.json`, drift-checked by
 `tests/test_landing_pricing_parity.py`).
+
+---
+
+## 16. Lifecycle email (welcome, activation nudges, unsubscribe)
+
+**Classification is the load-bearing decision.** Transactional mail
+(password reset, signup verification, community invites, billing) calls
+`backend/services/transactional_email.py` directly and is never suppressed.
+Everything relational — welcome, nudges, future digests/broadcasts — goes
+through the **`backend/services/lifecycle_email.py` chokepoint**: consent
+check against `email_preferences` (lifecycle = opt-out, marketing = opt-in,
+`hard_suppressed` overrides both), localized unsubscribe/legal footer
+(postal address from `EMAIL_LEGAL_ADDRESS` — CAN-SPAM), and RFC 8058
+one-click headers (`List-Unsubscribe` + `List-Unsubscribe-Post`). Nothing
+lifecycle may call the raw transport.
+
+**Unsubscribe:** permanent per-user DB token (`email_preferences.
+unsubscribe_token`). `GET /email/unsubscribe?t=` renders a confirm page
+(GET never mutates — mail-client prefetch safety); `POST /email/unsubscribe`
+is the one-click target and the form action; `POST /email/resubscribe`
+round-trips. All responses are non-enumerating. Rows are purged in
+`account_deletion.py`.
+
+**Sequence (cron-swept, never inline in signup):**
+
+1. **Welcome** (`/api/cron/email/welcome`, ~20 min): users rows created in
+   the last 72h. Organic signups get the OWNER variant (single CTA: create
+   your first community); users who already belong to a community (arrived
+   via invite) get the MEMBER variant anchored to that community — never a
+   create-community pitch.
+2. **Activation nudges** (`/api/cron/email/activation-nudges`, daily):
+   no-community nudge (organic users 2–14d old, zero memberships) and
+   empty-community nudge (root community ≥96h with only the owner and no
+   `invite_sent` event).
+3. **Verification reminder** (`/api/cron/email/verification-reminders`,
+   daily): `pending_signups` 24h–7d old, once per address, with a FRESH
+   token (the signup one expires after 24h). Transactional — bypasses
+   consent.
+
+Caps: one lifecycle email per recipient per 48h, each kind once ever
+(`lifecycle_email_sends`, INSERT-first reservation). Locale: explicit
+`preferred_locale` → `signup_locale` (Accept-Language guess captured at
+users-row creation) → `en`; copy lives under `email.*` in the backend
+catalogs (pt-PT uses the informal email register). Instrumentation: every
+send logs a server-only `lifecycle_email_sent` retention event and CTAs
+carry `?source=lifecycle_email_<kind>` for funnel joins against
+`community_created` / `invite_sent`. Kill switches + schedules:
+**`docs/cloud-scheduler-cron.md` §14**.

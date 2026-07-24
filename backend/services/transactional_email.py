@@ -20,8 +20,15 @@ def send(
     html: str,
     *,
     text: Optional[str] = None,
+    headers: Optional[dict] = None,
 ) -> bool:
-    """Send a single transactional email. Returns True when Resend accepts the send."""
+    """Send a single transactional email. Returns True when Resend accepts the send.
+
+    ``headers`` carries extra SMTP headers (e.g. ``List-Unsubscribe`` /
+    ``List-Unsubscribe-Post`` for lifecycle mail). Lifecycle senders must go
+    through :mod:`backend.services.lifecycle_email` — this function performs
+    no suppression checks and is reserved for transactional mail.
+    """
     if not RESEND_API_KEY:
         logger.error("RESEND_API_KEY not set; skipping email send")
         return False
@@ -34,6 +41,8 @@ def send(
         }
         if text:
             payload["text"] = text
+        if headers:
+            payload["headers"] = dict(headers)
         response = requests.post(
             "https://api.resend.com/emails",
             headers={"Authorization": f"Bearer {RESEND_API_KEY}"},

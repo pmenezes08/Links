@@ -10993,6 +10993,15 @@ def verify_email():
                     pass
                 conn.commit()
 
+            # Email-only locale guess for lifecycle mail (new users only; the
+            # verify click carries the user's browser Accept-Language).
+            try:
+                if not exists:
+                    from backend.services.user_locale import capture_signup_locale
+                    capture_signup_locale(username, request)
+            except Exception:
+                pass
+
             # Mobile users must return to the NATIVE app — never the web
             # app. So the auto-login + dashboard redirect below is
             # DESKTOP-ONLY; on phones we render the classic "verified —

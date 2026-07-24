@@ -167,6 +167,60 @@
       "lead_text": "Du wurdest von {inviter} eingeladen, {community} beizutreten.",
       "cta": "{community} beitreten",
       "nested_heading": "Du trittst außerdem bei"
+    },
+    "welcome_owner": {
+      "subject": "Willkommen bei C-Point — starte deine Community",
+      "heading": "Willkommen bei C-Point",
+      "lead": "C-Point ist der Ort, an dem sich deine Leute in privaten Räumen treffen, nur auf Einladung — kein öffentlicher Feed, kein Lärm.",
+      "moments_heading": "So funktioniert es",
+      "moment_create": "Erstelle eine Community — dein privater Raum, ganz nach deinen Regeln.",
+      "moment_invite": "Lade deine Leute ein — sie kommen per Einladung oder Handle rein, niemand stolpert zufällig hinein.",
+      "moment_steve": "Lerne Steve kennen — er ist oben in deinen Chats angepinnt; schreib ihm jederzeit.",
+      "platforms": "C-Point funktioniert im Web, auf dem iPhone und auf Android — melde dich überall mit demselben Konto an.",
+      "cta": "Meine erste Community erstellen"
+    },
+    "welcome_member": {
+      "subject": "Du bist in {community}",
+      "heading": "Willkommen bei C-Point",
+      "lead": "Du bist {community} auf C-Point beigetreten — ein privater Raum mit deinen Leuten. Sag Hallo, wann immer du bereit bist.",
+      "cta": "{community} öffnen"
+    },
+    "no_community_nudge": {
+      "subject": "Wann immer du bereit bist — erstelle deine erste Community",
+      "heading": "Dein Raum wartet",
+      "lead": "Du hast noch keine Community erstellt. Wenn du es tust, ist sie ab der ersten Einladung privat — du entscheidest, wer dabei ist.",
+      "secondary": "Fang mit 3–5 Leuten an, denen du schon vertraust.",
+      "cta": "Community erstellen"
+    },
+    "empty_community_nudge": {
+      "subject": "{community} ist bereit",
+      "heading": "{community} ist bereit",
+      "lead": "Deine Community steht. Lade die ersten Leute ein — sie wird lebendig, sobald sie ankommen.",
+      "secondary": "Fang mit den Leuten an, denen du ohnehin zuerst schreiben würdest.",
+      "cta": "Leute zu {community} einladen"
+    },
+    "verification_reminder": {
+      "subject": "Schließe die Erstellung deines C-Point-Kontos ab",
+      "heading": "Noch ein Schritt",
+      "lead": "Du hast angefangen, dich bei C-Point zu registrieren. Bestätige deine E-Mail, um dein Konto fertigzustellen.",
+      "ignore_note": "Wenn du das nicht warst, kannst du diese E-Mail einfach ignorieren.",
+      "cta": "E-Mail bestätigen"
+    },
+    "footer": {
+      "reason": "Du erhältst diese E-Mail, weil du ein C-Point-Konto hast.",
+      "unsubscribe_label": "Abbestellen"
+    },
+    "unsubscribe_page": {
+      "title": "Weniger E-Mails?",
+      "body": "Damit stoppst du Begleit-E-Mails von C-Point — Willkommens-Tipps und Erinnerungen. Wichtige Konto- und Einladungsnachrichten erhältst du weiterhin.",
+      "confirm_button": "Abbestellen",
+      "done_title": "Erledigt",
+      "done_body": "Du erhältst keine Begleit-E-Mails von C-Point mehr. Wichtige Konto- und Einladungsnachrichten kommen weiterhin an.",
+      "resubscribe_button": "Wieder aktivieren",
+      "resubscribed_title": "Willkommen zurück",
+      "resubscribed_body": "Begleit-E-Mails sind wieder aktiv.",
+      "invalid_title": "Link ungültig",
+      "invalid_body": "Dieser Link ist ungültig oder abgelaufen."
     }
   },
   "notifications": {

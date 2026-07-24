@@ -638,3 +638,67 @@ gcloud scheduler jobs create http member-weekly-digest \
 ```
 
 Add `member-weekly-digest` to the bulk-pause list in §6 when you register the job in GCP.
+
+## 14. Lifecycle emails (welcome, activation nudges, verification reminders)
+
+Three jobs sharing one service (`backend/services/lifecycle_email_dispatch.py`)
+and one reservation table (`lifecycle_email_sends`, INSERT-first
+`UNIQUE(recipient, kind)`). Welcome + nudges go through the
+`backend/services/lifecycle_email.py` chokepoint (consent check against
+`email_preferences`, RFC 8058 `List-Unsubscribe` one-click headers, localized
+unsubscribe/legal footer). The verification reminder is transactional (the
+user started the signup) and bypasses consent, but is still capped at once
+per address — and mints a **fresh** verification token, since the original
+expires 24h after signup.
+
+| Job | URI | Suggested schedule | Kill switch |
+|-----|-----|--------------------|-------------|
+| Welcome sweep | `{BASE}/api/cron/email/welcome` | every 20 min (`*/20 * * * *`) | `WELCOME_EMAIL_ENABLED` |
+| Activation nudges | `{BASE}/api/cron/email/activation-nudges` | daily 10:00 Europe/Dublin (`0 10 * * *`) | `ACTIVATION_NUDGE_EMAIL_ENABLED` |
+| Verification reminders | `{BASE}/api/cron/email/verification-reminders` | daily 11:00 Europe/Dublin (`0 11 * * *`) | `VERIFICATION_REMINDER_EMAIL_ENABLED` |
+
+All three: `POST`, `X-Cron-Secret`, `dry_run=1` lists candidates without
+reserving or sending, `max_sends=N` throttles (default 200). Real welcome /
+nudge sends **additionally** require the master `LIFECYCLE_EMAIL_ENABLED` —
+**off by default and off on staging** (staging shares the prod DB; a staging
+run must never email real users). `EMAIL_LEGAL_ADDRESS` (physical postal
+address, CAN-SPAM) must be set on the service before enabling in prod.
+
+Cohorts: welcome = users rows created in the last 72h (owner variant for
+organic signups, member variant anchored to the joined community for invited
+users); no-community nudge = organic users 2–14 days old with zero
+`user_communities` rows; empty-community nudge = root communities ≥ 96h old
+whose only member is the owner and whose owner has no `invite_sent`
+retention event; verification reminder = `pending_signups` rows 24h–7d old
+with no matching users row. Cross-kind spacing: at most one lifecycle email
+per recipient per 48h; each kind at most once ever. Every chokepoint send
+logs a server-only `lifecycle_email_sent` retention event (`detail` = kind)
+and every CTA carries `?source=lifecycle_email_<kind>`.
+
+```bash
+# Staging smoke (dry-run only; kill switches stay off on staging):
+BASE=https://cpoint-app-staging-739552904126.europe-west1.run.app
+SECRET=$(gcloud secrets versions access latest --secret=cron-shared-secret-staging)
+
+curl -X POST "$BASE/api/cron/email/welcome?dry_run=1" -H "X-Cron-Secret: $SECRET"
+curl -X POST "$BASE/api/cron/email/activation-nudges?dry_run=1" -H "X-Cron-Secret: $SECRET"
+curl -X POST "$BASE/api/cron/email/verification-reminders?dry_run=1" -H "X-Cron-Secret: $SECRET"
+
+# Prod registration (after QA + LIFECYCLE_EMAIL_ENABLED + EMAIL_LEGAL_ADDRESS set):
+gcloud scheduler jobs create http email-welcome \
+  --location=europe-west1 --schedule="*/20 * * * *" --time-zone=UTC \
+  --uri="$BASE/api/cron/email/welcome" --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" --attempt-deadline=300s
+gcloud scheduler jobs create http email-activation-nudges \
+  --location=europe-west1 --schedule="0 10 * * *" --time-zone=Europe/Dublin \
+  --uri="$BASE/api/cron/email/activation-nudges" --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" --attempt-deadline=300s
+gcloud scheduler jobs create http email-verification-reminders \
+  --location=europe-west1 --schedule="0 11 * * *" --time-zone=Europe/Dublin \
+  --uri="$BASE/api/cron/email/verification-reminders" --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" --attempt-deadline=300s
+```
+
+Add `email-welcome`, `email-activation-nudges`, and
+`email-verification-reminders` to the bulk-pause list in §6 when you register
+the jobs in GCP.
