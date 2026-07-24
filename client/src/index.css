@@ -381,9 +381,20 @@ textarea {
 select {
   -webkit-text-fill-color: var(--c-text-primary);
 }
+/* Same UA painting hits <input>/<textarea> — most visibly on focus, where the
+   value and placeholder came out white on light surfaces (Create Sub-Community
+   name field). `currentColor` defeats the UA color without freezing the value:
+   a utility class that sets `color` still wins, unlike the hard-coded token
+   above. */
+input,
+textarea {
+  -webkit-text-fill-color: currentColor;
+}
 input::placeholder,
 textarea::placeholder {
   color: var(--c-text-disabled);
+  -webkit-text-fill-color: var(--c-text-disabled);
+  opacity: 1; /* Firefox dims placeholders by default */
 }
 
 /* Force-dark utility for surfaces that remain dark regardless of theme */

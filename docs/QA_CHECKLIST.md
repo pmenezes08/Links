@@ -965,3 +965,17 @@ Run after any change to `client/src/components/community/CommunityOwnerSetupIntr
 - [ ] **Failed save keeps the work**: with the network offline, type a description and press Next. Expected: an error alert, the wizard stays on the step, and the typed text is still in the field.
 - [ ] **Reload mid-wizard**: type a description, reload the app, reopen the community. Expected: the wizard resumes on the same step with the typed text intact.
 - [ ] **No-op steps are instant**: press Next through steps you did not edit. Expected: no `/update_community` calls and no "Saving…" flash.
+
+## §20 — Create-community dialogs on device (keyboard + contrast)
+
+Run on a real iPhone/Android after any change to the Create Sub-Community /
+Create Group modals (`client/src/pages/Communities.tsx`), the dashboard
+Create/Join community modals (`client/src/pages/PremiumDashboard.tsx`), or
+`client/src/hooks/useKeyboardInset.ts`.
+
+- [ ] **Action row stays visible**: open Create Sub-Community, tap the name field. Expected: the dialog lifts with the keyboard and Cancel/Create stay on screen; nothing is hidden behind the IME. Repeat for Create Group, and for the dashboard's Create community + Join community modals.
+- [ ] **Tall keyboard / short screen**: with a predictive-text bar and a small device, repeat the above. Expected: the dialog shrinks to the space above the keyboard and scrolls internally — the Create button is always reachable.
+- [ ] **Dismiss restores layout**: close the keyboard. Expected: the dialog returns to centre with no jump or stuck padding.
+- [ ] **Light mode contrast**: in light mode, the field placeholders ("e.g., Engineering Team") and typed values are dark on the grey field — never white-on-white — including while the field is focused.
+- [ ] **Dark mode unchanged**: same dialogs in dark mode keep white values, dim placeholders, and a visible Cancel button.
+- [ ] **Cancel reads as a button**: Cancel has a visible surface and border in both themes (it previously rendered as bare text from a malformed class).
