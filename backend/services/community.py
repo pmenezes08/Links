@@ -436,6 +436,7 @@ def ensure_free_parent_member_capacity(
     Noops for:
       * missing ``community_id``
       * sub-communities (enforcement only applies to the root)
+      * ``enterprise``-tier communities (uncapped by design)
       * admin-owned communities
       * communities owned by a non-Free user
 
@@ -455,6 +456,13 @@ def ensure_free_parent_member_capacity(
         return
     if info.get("parent_community_id"):
         return  # sub-communities inherit their parent's cap indirectly
+    if get_community_tier(cursor, community_id) == COMMUNITY_TIER_ENTERPRISE:
+        # Enterprise communities are uncapped by design (the contract, not
+        # the owner's personal plan, sets the size). Without this the
+        # owner-tier cap would still bite whenever an Enterprise community
+        # is owned by someone on a Free personal plan — which is the normal
+        # case for sales-assisted deals, where nobody buys personal Premium.
+        return
     creator_username = info.get("creator_username")
     if not creator_username or str(creator_username).lower() == "admin":
         return
@@ -642,6 +650,27 @@ def get_community_tier(cursor, community_id: int) -> Optional[str]:
     if isinstance(row, (list, tuple)) and row:
         return _normalize_tier(row[0])
     return _normalize_tier(row)
+
+
+def community_structure_caps_exempt(cursor, community_id: Optional[int]) -> bool:
+    """True when ``community_id`` sits inside an Enterprise-tier network.
+
+    Enterprise buys unlimited **structure** as well as unlimited membership:
+    no sub-community count, nesting-depth, or ownership caps apply anywhere
+    under an Enterprise root, regardless of the creator's personal plan
+    (contract-billed owners are normally on a Free personal plan). The tier
+    lives on the root, so we resolve ``parent_community_id`` upward first.
+
+    Fails closed (``False``) on any lookup error — callers then apply their
+    normal plan-based caps, which is the safe default.
+    """
+    if not community_id:
+        return False
+    try:
+        root_id, _ = resolve_root_community_id(int(community_id))
+    except Exception:
+        return False
+    return get_community_tier(cursor, root_id) == COMMUNITY_TIER_ENTERPRISE
 
 
 def ensure_community_tier_member_capacity(

@@ -1464,6 +1464,7 @@ def get_follow_counts(cursor, username: str) -> Tuple[int, int]:
 # block, and the raised exception carries structured context).
 from backend.services.community import ensure_free_parent_member_capacity  # noqa: E402,F401
 from backend.services.community import ensure_community_tier_member_capacity  # noqa: E402,F401
+from backend.services.community import community_structure_caps_exempt  # noqa: E402,F401
 
 
 # ============================================================================
@@ -23123,7 +23124,12 @@ def create_community():
                         logger.exception("create_community: resolve_entitlements failed for %s", username)
                     if parent_count >= free_communities_cap:
                         return jsonify({'success': False, 'error': f'Free plan allows up to {free_communities_cap} parent communities. Upgrade to create more communities.'}), 403
-                else:
+                elif not community_structure_caps_exempt(c, parent_id_int):
+                    # Enterprise networks buy unlimited structure: sub-community
+                    # count, nesting depth, and own-parent-only caps never apply
+                    # under an Enterprise root (community_structure_caps_exempt),
+                    # whatever the creator's personal plan. Everyone else gets
+                    # the Free-plan structure caps below.
                     parent_info = get_community_basic(c, parent_id_int)
                     if not parent_info:
                         return jsonify({'success': False, 'error': 'Parent community not found'}), 404
