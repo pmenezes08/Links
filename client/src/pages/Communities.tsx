@@ -301,7 +301,6 @@ export default function Communities(){
   // Native runs with Keyboard.resize:'none', so a centered dialog stays put and
   // the IME covers its action row. Lift the dialog by the occluded height.
   const modalKeyboardInset = useKeyboardInset(showCreateSubModal || showCreateGroup)
-  const [isAdminOrPaulo, setIsAdminOrPaulo] = useState(false)
   const [isAppAdmin, setIsAppAdmin] = useState(false)
   const [showNested, setShowNested] = useState<boolean>(() => {
     try{
@@ -444,10 +443,8 @@ export default function Communities(){
         const j = await profileRes.json().catch(()=>null)
         const adminJ = await adminRes.json().catch(()=>null)
         if (mounted && j?.success && j.profile){
-          const u = String(j.profile.username || '')
           const adminFlag = !!(adminJ?.is_admin || adminJ?.isAdmin)
           setIsAppAdmin(adminFlag)
-          setIsAdminOrPaulo(adminFlag || ['admin','paulo'].includes(u.toLowerCase()))
         }
       }catch{}
     }
