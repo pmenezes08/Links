@@ -2,8 +2,31 @@
 
 from __future__ import annotations
 
+import pytest
+
 from tests.fixtures import make_community, make_user
 from tests.test_group_feed_blueprint import _add_group_member, _insert_group
+
+
+_schema_ready = False
+
+
+@pytest.fixture(autouse=True)
+def _ensure_group_schema(mysql_dsn):
+    """Run the monolith's schema patcher once before this module's tests.
+
+    The CI conftest seeds only a minimal ``groups`` shape; the create route
+    inserts ``approval_required`` / Steve-agent columns that only
+    ``add_missing_tables()`` adds. Without this the first tests in the file
+    fail on 'Unknown column' while later ones pass by accident (a test near
+    the end happens to call the patcher itself).
+    """
+    global _schema_ready
+    if not _schema_ready:
+        import bodybuilding_app as ba
+
+        ba.add_missing_tables()
+        _schema_ready = True
 
 
 def _login(client, username: str) -> None:
