@@ -455,6 +455,14 @@ _TRUNCATE_TABLES: List[str] = [
     "community_visit_history",
     "group_posts",
     "group_replies",
+    # group_posts truncation resets AUTO_INCREMENT, so any table keyed by
+    # group_post_id must be truncated too or stale rows collide with
+    # recycled post ids across tests (bit the group-agent suite's schedule
+    # assertions when it joined CI).
+    "group_members",
+    "group_steve_agent_schedule",
+    "useful_links",
+    "useful_docs",
 ]
 
 

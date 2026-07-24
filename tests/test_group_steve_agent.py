@@ -424,7 +424,6 @@ def test_build_steve_group_resource_context_includes_scoped_links_and_docs(mysql
 
     from tests.test_group_feed_blueprint import _insert_group
 
-    ba.add_missing_tables()
     make_user("grp_res_u")
     cid = make_community("grp-res-comm", tier="free", creator_username="grp_res_u")
     gid = _insert_group(cid, "GrpRes", "grp_res_u")
@@ -432,6 +431,37 @@ def test_build_steve_group_resource_context_includes_scoped_links_and_docs(mysql
     ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     with get_db_connection() as conn:
         c = conn.cursor()
+        # Minimal FK-free shapes (calling the monolith's add_missing_tables()
+        # here instead hits errno 1170 under MySQL depending on suite order —
+        # see the module fixture's docstring).
+        for ddl in (
+            """
+            CREATE TABLE IF NOT EXISTS useful_links (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                community_id INT NULL,
+                group_id INT NULL,
+                username VARCHAR(191),
+                url TEXT,
+                description TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS useful_docs (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                community_id INT NULL,
+                group_id INT NULL,
+                username VARCHAR(191),
+                file_path TEXT,
+                description TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+        ):
+            try:
+                c.execute(ddl)
+            except Exception:
+                pass
         c.execute(
             f"""
             INSERT INTO useful_links (community_id, group_id, username, url, description, created_at)

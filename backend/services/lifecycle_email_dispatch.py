@@ -73,11 +73,17 @@ CREATE TABLE IF NOT EXISTS lifecycle_email_sends (
 """
 
 # Never email operator/demo/placeholder accounts (seed scripts, QR invites).
+#
+# Literal ``%`` in LIKE patterns must be doubled for pymysql: with params
+# present it %-interpolates the query text, and a bare ``%@`` raises
+# ``ValueError: unsupported format character '@'`` (crashes the sweep).
+# SQLite's qmark style does no interpolation, so it keeps single ``%``.
+_LIKE_PCT = "%%" if USE_MYSQL else "%"
 _EXCLUDED_EMAIL_SQL = (
     " AND u.email IS NOT NULL AND u.email <> ''"
-    " AND u.email NOT LIKE '%@placeholder.local'"
-    " AND u.email NOT LIKE 'demo_b2b_%'"
-    " AND u.email NOT LIKE 'staging_test_%'"
+    f" AND u.email NOT LIKE '{_LIKE_PCT}@placeholder.local'"
+    f" AND u.email NOT LIKE 'demo_b2b_{_LIKE_PCT}'"
+    f" AND u.email NOT LIKE 'staging_test_{_LIKE_PCT}'"
     " AND LOWER(u.username) <> 'admin'"
 )
 
@@ -493,7 +499,7 @@ def _verification_candidates(cursor) -> List[Dict[str, Any]]:
         FROM pending_signups p
         WHERE p.verification_sent_at IS NOT NULL
           AND p.verification_sent_at <= {ph} AND p.verification_sent_at >= {ph}
-          AND p.email NOT LIKE '%@placeholder.local'
+          AND p.email NOT LIKE '{_LIKE_PCT}@placeholder.local'
           AND NOT EXISTS (
               SELECT 1 FROM users u WHERE LOWER(u.email) = LOWER(p.email)
           )
