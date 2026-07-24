@@ -31,6 +31,60 @@ def _ensure_group_schema(mysql_dsn):
             for ddl in (
                 "ALTER TABLE `groups` ADD COLUMN approval_required TINYINT(1) NOT NULL DEFAULT 0",
                 "ALTER TABLE `groups` ADD COLUMN created_by VARCHAR(191) NULL",
+                # FK-free minimal clones (same pattern as test_owner_analytics):
+                # production DDL declares FKs to users(username) that the
+                # conftest schema can't satisfy.
+                """
+                CREATE TABLE IF NOT EXISTS `group_members` (
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    group_id INT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
+                    status VARCHAR(32) DEFAULT 'member',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY uq_gm (group_id, username)
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS `group_posts` (
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    group_id INT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
+                    content TEXT,
+                    image_path TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS `group_replies` (
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    group_post_id INT NOT NULL,
+                    parent_reply_id INT NULL,
+                    username VARCHAR(191) NOT NULL,
+                    content TEXT,
+                    image_path TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS `group_post_reactions` (
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    group_post_id INT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
+                    reaction VARCHAR(32) NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY uniq_gpr (group_post_id, username)
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS `group_reply_reactions` (
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    group_reply_id INT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
+                    reaction VARCHAR(32) NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY uniq_grr (group_reply_id, username)
+                )
+                """,
             ):
                 try:
                     c.execute(ddl)
