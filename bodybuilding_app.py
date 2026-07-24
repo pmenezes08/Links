@@ -23643,13 +23643,30 @@ def update_community():
             if not (admin_ok or is_platform_admin):
                 return jsonify({'success': False, 'error': 'Only community admins or owner can edit the community'}), 403
 
-            # Stricter permission for network_type: only Parent Network owner or @Admin
+            # Stricter permission for network_type: only Parent Network owner
+            # or @Admin may CHANGE it — but the client posts the field on
+            # every save (defaulting to 'professional'), so gate only actual
+            # changes. Sub-communities inherit the root's network type, and
+            # an unchanged value is a no-op: in both cases preserve what's
+            # stored instead of failing the whole save with a 403 (which
+            # blocked owners from editing any sub-community at all).
             if network_type:
-                # Check if this is a parent community
-                c.execute(f"SELECT parent_community_id FROM communities WHERE id = {ph}", (community_id,))
+                c.execute(f"SELECT parent_community_id, network_type FROM communities WHERE id = {ph}", (community_id,))
                 parent_row = c.fetchone()
-                is_parent = not parent_row or (parent_row['parent_community_id'] if hasattr(parent_row, 'keys') else parent_row[0]) is None
-                if not (is_parent and (is_owner or is_platform_admin)):
+                if parent_row and hasattr(parent_row, 'keys'):
+                    parent_id_val = parent_row['parent_community_id']
+                    current_network_type = parent_row['network_type'] if 'network_type' in parent_row.keys() else None
+                elif parent_row:
+                    parent_id_val = parent_row[0]
+                    current_network_type = parent_row[1] if len(parent_row) > 1 else None
+                else:
+                    parent_id_val = None
+                    current_network_type = None
+                is_parent = parent_id_val is None
+                is_changing = (network_type or '').strip().lower() != (current_network_type or '').strip().lower()
+                if not is_parent or not is_changing:
+                    network_type = current_network_type
+                elif not (is_owner or is_platform_admin):
                     return jsonify({'success': False, 'error': 'Only Parent Network owners or platform admin (@Admin) can set network_type'}), 403
             
             # Handle background file upload or removal (restrict to owner or app admin)
