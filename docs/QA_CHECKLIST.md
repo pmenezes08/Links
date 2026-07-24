@@ -953,3 +953,15 @@ weekly digest / Retention attribution.
 - [ ] **Digest attribution round-trip** (only where the flag is on): after a real digest send, tap the push. Expected: land on `/community_feed_react/<id>?source=weekly_digest_push` and a `digest_opened` row appears in `retention_events` next to the cron's `digest_sent` row.
 - [ ] **Checkout intent audit**: start (don't complete) a community-tier checkout from the Owner Dashboard upgrade CTA. Expected: one `community_tier_checkout_started` row in `subscription_audit_log` with `metadata.source` from the closed vocabulary; no purchase rows until the webhook fires.
 - [ ] **Landing pricing parity**: `python scripts/generate_landing_pricing.py --check` passes; `landing/src/generated/pricing.json` matches the KB seed prices shown in-app.
+
+## §19 — Community owner setup wizard (no lost progress)
+
+Run after any change to `client/src/components/community/CommunityOwnerSetupIntro.tsx`.
+
+- [ ] **Save on continue**: as the owner of a fresh community, type a description on the Description step and press **Next** without pressing Save. Expected: the button briefly shows "Saving…", `POST /update_community` fires once, and the description is present in Manage Community afterwards.
+- [ ] **Save on skip**: fill in a member limit, then press **Skip** in the wizard header. Expected: the limit is saved before the exit hint appears.
+- [ ] **Save on exit**: from the exit hint, press **Open Manage Community** and **Stay on feed** in separate runs. Expected: everything typed in the wizard is already persisted when the page lands.
+- [ ] **Image step**: choose a banner, press **Next** without pressing Save. Expected: the upload happens on continue and the new banner shows on the feed.
+- [ ] **Failed save keeps the work**: with the network offline, type a description and press Next. Expected: an error alert, the wizard stays on the step, and the typed text is still in the field.
+- [ ] **Reload mid-wizard**: type a description, reload the app, reopen the community. Expected: the wizard resumes on the same step with the typed text intact.
+- [ ] **No-op steps are instant**: press Next through steps you did not edit. Expected: no `/update_community` calls and no "Saving…" flash.

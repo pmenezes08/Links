@@ -11,6 +11,9 @@ export const communityOwnerSetupStorageKey = (username: string, communityId: str
 export const communityOwnerSetupResumeKey = (username: string, communityId: string) =>
   `cpoint_community_owner_setup_resume:v1:${username.trim().toLowerCase()}:${communityId}`
 
+export const communityOwnerSetupDraftKey = (username: string, communityId: string) =>
+  `cpoint_community_owner_setup_draft:v1:${username.trim().toLowerCase()}:${communityId}`
+
 export type IntroStepId =
   | 'welcome'
   | 'structure'
@@ -78,6 +81,31 @@ function readInitialStepIndex(
   return 0
 }
 
+/**
+ * Rehydrates only the fields this wizard actually edits. Everything else comes
+ * from the live server snapshot, so a stale stored draft can never push back an
+ * old name or parent over a change made elsewhere.
+ */
+function readStoredDraft(
+  username: string,
+  communityId: string,
+  fallback: CommunityOwnerSetupSnapshot,
+): CommunityOwnerSetupSnapshot {
+  try {
+    const raw = sessionStorage.getItem(communityOwnerSetupDraftKey(username, communityId))
+    if (!raw) return { ...fallback }
+    const j = JSON.parse(raw) as Partial<CommunityOwnerSetupSnapshot> | null
+    if (!j || typeof j !== 'object') return { ...fallback }
+    return {
+      ...fallback,
+      description: typeof j.description === 'string' ? j.description : fallback.description,
+      maxMembers: typeof j.maxMembers === 'string' ? j.maxMembers : fallback.maxMembers,
+    }
+  } catch {
+    return { ...fallback }
+  }
+}
+
 export type CommunityOwnerSetupSnapshot = {
   name: string
   description: string
@@ -105,10 +133,24 @@ export type CommunityOwnerSetupIntroProps = {
 
 const PANEL_CLASS = 'rounded-2xl border border-c-border bg-c-bg-app'
 
+function snapshotsEqual(a: CommunityOwnerSetupSnapshot, b: CommunityOwnerSetupSnapshot): boolean {
+  return (
+    a.name === b.name &&
+    a.description === b.description &&
+    a.networkType === b.networkType &&
+    a.parentCommunityId === b.parentCommunityId &&
+    a.notifyOnNewMember === b.notifyOnNewMember &&
+    a.maxMembers === b.maxMembers &&
+    a.backgroundPath === b.backgroundPath
+  )
+}
+
 function ManageCommunityHint({
+  busy,
   onOpenManageCommunity,
   onStay,
 }: {
+  busy?: boolean
   onOpenManageCommunity: () => void
   onStay: () => void
 }) {
@@ -124,15 +166,17 @@ function ManageCommunityHint({
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
         <button
           type="button"
+          disabled={busy}
           onClick={onOpenManageCommunity}
-          className="w-full rounded-xl bg-cpoint-turquoise px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 sm:w-auto"
+          className="w-full rounded-xl bg-cpoint-turquoise px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-50 sm:w-auto"
         >
           {t('communities.owner_setup_open_manage')}
         </button>
         <button
           type="button"
+          disabled={busy}
           onClick={onStay}
-          className="w-full rounded-xl border border-c-border bg-c-bg-surface px-5 py-3 text-sm font-medium text-c-text-secondary transition hover:bg-c-hover-bg sm:w-auto"
+          className="w-full rounded-xl border border-c-border bg-c-bg-surface px-5 py-3 text-sm font-medium text-c-text-secondary transition hover:bg-c-hover-bg disabled:opacity-50 sm:w-auto"
         >
           {t('communities.owner_setup_stay_on_feed')}
         </button>
@@ -171,7 +215,11 @@ export default function CommunityOwnerSetupIntro({
 
   const currentStepId = steps[Math.min(stepIndex, steps.length - 1)] ?? 'welcome'
 
-  const [draft, setDraft] = useState<CommunityOwnerSetupSnapshot>(() => ({ ...initialSnapshot }))
+  // Restored from sessionStorage so a reload, a backgrounded app, or a WebView
+  // reap does not throw away setup work either.
+  const [draft, setDraft] = useState<CommunityOwnerSetupSnapshot>(() =>
+    readStoredDraft(username, communityId, initialSnapshot),
+  )
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [removeBackground, setRemoveBackground] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -181,8 +229,19 @@ export default function CommunityOwnerSetupIntro({
   const [aiPersonality, setAiPersonality] = useState('friendly')
   const [savingPersonality, setSavingPersonality] = useState(false)
 
+  // What the server currently holds. Anything in `draft` that differs from this
+  // is unsaved work, and must be flushed before the wizard navigates or closes —
+  // owners were losing whole setups by leaving on a step they had filled in.
+  const savedRef = useRef<CommunityOwnerSetupSnapshot>({ ...initialSnapshot })
+  const savedPersonalityRef = useRef('friendly')
+  const personalityTouchedRef = useRef(false)
+
   useEffect(() => {
-    setDraft({ ...initialSnapshot })
+    const prevSaved = savedRef.current
+    savedRef.current = { ...initialSnapshot }
+    // Adopt server truth only when the owner has nothing unsaved in flight;
+    // a background feed reload must never wipe what they just typed.
+    setDraft(cur => (snapshotsEqual(cur, prevSaved) ? { ...initialSnapshot } : cur))
   }, [initialSnapshot])
 
   useEffect(() => {
@@ -202,6 +261,16 @@ export default function CommunityOwnerSetupIntro({
   useEffect(() => {
     setSaveHint(null)
   }, [stepIndex])
+
+  useEffect(() => {
+    const key = communityOwnerSetupDraftKey(username, communityId)
+    try {
+      if (snapshotsEqual(draft, savedRef.current)) sessionStorage.removeItem(key)
+      else sessionStorage.setItem(key, JSON.stringify(draft))
+    } catch {
+      /* ignore */
+    }
+  }, [draft, username, communityId])
 
   useEffect(() => {
     try {
@@ -233,7 +302,9 @@ export default function CommunityOwnerSetupIntro({
         })
         const aiData = await aiResp.json().catch(() => null)
         if (!cancelled && aiData?.success && aiData.ai_personality) {
-          setAiPersonality(String(aiData.ai_personality))
+          const current = String(aiData.ai_personality)
+          savedPersonalityRef.current = current
+          if (!personalityTouchedRef.current) setAiPersonality(current)
         }
       } catch {
         /* ignore */
@@ -268,10 +339,11 @@ export default function CommunityOwnerSetupIntro({
       .catch(() => {})
   }, [communityId, onCommunityUpdated])
 
-  const persist = useCallback(
+  const markSetupDone = useCallback(
     (reason: 'completed' | 'dismissed') => {
       try {
         sessionStorage.removeItem(communityOwnerSetupResumeKey(username, communityId))
+        sessionStorage.removeItem(communityOwnerSetupDraftKey(username, communityId))
       } catch {
         /* ignore */
       }
@@ -281,47 +353,9 @@ export default function CommunityOwnerSetupIntro({
         /* ignore */
       }
       persistIntroSeen()
-      onFinished(reason)
     },
-    [communityId, onFinished, persistIntroSeen, username],
+    [communityId, persistIntroSeen, username],
   )
-
-  const finishFromSteps = useCallback(() => {
-    setExitContext('finished_wizard')
-    setPhase('exit_hint')
-  }, [])
-
-  const openManageAndComplete = useCallback(() => {
-    try {
-      sessionStorage.removeItem(communityOwnerSetupResumeKey(username, communityId))
-    } catch {
-      /* ignore */
-    }
-    try {
-      localStorage.setItem(communityOwnerSetupStorageKey(username, communityId), 'completed')
-    } catch {
-      /* ignore */
-    }
-    persistIntroSeen()
-    onOpenManageCommunity()
-    onFinished('completed')
-  }, [communityId, onFinished, onOpenManageCommunity, persistIntroSeen, username])
-
-  const openInviteAndComplete = useCallback(() => {
-    try {
-      sessionStorage.removeItem(communityOwnerSetupResumeKey(username, communityId))
-    } catch {
-      /* ignore */
-    }
-    try {
-      localStorage.setItem(communityOwnerSetupStorageKey(username, communityId), 'completed')
-    } catch {
-      /* ignore */
-    }
-    persistIntroSeen()
-    onFinished('completed')
-    navigate(`/community/${encodeURIComponent(communityId)}/members?open_invite=1`)
-  }, [communityId, navigate, onFinished, persistIntroSeen, username])
 
   const postUpdateCommunity = useCallback(
     async (next: CommunityOwnerSetupSnapshot, opts?: { imageFile?: File | null; removeBackground?: boolean }) => {
@@ -354,92 +388,175 @@ export default function CommunityOwnerSetupIntro({
     [communityId, deviceFeedCacheKey, onCommunityUpdated],
   )
 
-  const saveCommunityFieldsOnly = useCallback(async () => {
-    setSaving(true)
-    setSaveHint(null)
-    try {
-      const ok = await postUpdateCommunity(draft, {})
-      if (ok) {
-        setSaveHint(t('communities.owner_setup_saved'))
-        window.setTimeout(() => setSaveHint(null), 2200)
+  const postPersonality = useCallback(
+    async (value: string) => {
+      try {
+        const resp = await fetch(`/api/community/${communityId}/ai_personality`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ ai_personality: value }),
+        })
+        const data = await resp.json().catch(() => null)
+        if (!data?.success) {
+          alert(data?.error || t('communities.owner_setup_failed_personality'))
+          return false
+        }
+        await onCommunityUpdated()
+        return true
+      } catch {
+        alert(t('communities.owner_setup_failed_personality'))
+        return false
       }
-    } finally {
-      setSaving(false)
-    }
-  }, [draft, postUpdateCommunity])
+    },
+    [communityId, onCommunityUpdated],
+  )
 
-  const saveWithImage = useCallback(async () => {
+  const memberLimitError = useCallback(
+    (raw: string): string | null => {
+      const value = raw.trim()
+      if (!value) return null
+      const n = parseInt(value, 10)
+      if (!Number.isFinite(n) || n < 1) return t('communities.owner_setup_member_limit_invalid')
+      if (memberCap != null && memberCap > 0 && n > memberCap) {
+        return t('communities.owner_setup_member_limit_over_cap', { cap: memberCap })
+      }
+      return null
+    },
+    [memberCap],
+  )
+
+  const communityDirty =
+    !snapshotsEqual(draft, savedRef.current) || !!imageFile || removeBackground
+  const personalityDirty = aiPersonality !== savedPersonalityRef.current
+  const hasPendingChanges = communityDirty || personalityDirty
+
+  // Single persistence path for the whole wizard: everything the owner has
+  // touched on any step, saved in one shot. Returns false when the save failed
+  // (the user has already been alerted) so callers can stay put instead of
+  // navigating away from unsaved work.
+  const flushPendingChanges = useCallback(async (): Promise<boolean> => {
+    if (!communityDirty && !personalityDirty) return true
+
+    if (communityDirty) {
+      const err = memberLimitError(draft.maxMembers)
+      if (err) {
+        alert(err)
+        return false
+      }
+    }
+
     setSaving(true)
+    setSavingPersonality(personalityDirty)
     setSaveHint(null)
     try {
-      const ok = await postUpdateCommunity(draft, {
-        imageFile: imageFile ?? undefined,
-        removeBackground,
-      })
-      if (ok) {
-        setDraft(d => ({
-          ...d,
-          backgroundPath: removeBackground ? null : d.backgroundPath,
-        }))
+      if (communityDirty) {
+        const ok = await postUpdateCommunity(draft, {
+          imageFile: imageFile ?? undefined,
+          removeBackground,
+        })
+        if (!ok) return false
+        const persisted: CommunityOwnerSetupSnapshot = {
+          ...draft,
+          backgroundPath: removeBackground ? null : draft.backgroundPath,
+        }
+        savedRef.current = persisted
+        setDraft(d => ({ ...d, backgroundPath: persisted.backgroundPath }))
         if (removeBackground) setRemoveBackground(false)
         if (imageFile) setImageFile(null)
-        setSaveHint(t('communities.owner_setup_saved'))
-        window.setTimeout(() => setSaveHint(null), 2200)
       }
+      if (personalityDirty) {
+        const ok = await postPersonality(aiPersonality)
+        if (!ok) return false
+        savedPersonalityRef.current = aiPersonality
+      }
+      setSaveHint(t('communities.owner_setup_saved'))
+      window.setTimeout(() => setSaveHint(null), 2200)
+      return true
     } finally {
       setSaving(false)
-    }
-  }, [draft, imageFile, postUpdateCommunity, removeBackground])
-
-  const saveMemberLimitOnly = useCallback(async () => {
-    const raw = draft.maxMembers.trim()
-    if (raw) {
-      const n = parseInt(raw, 10)
-      if (!Number.isFinite(n) || n < 1) {
-        alert(t('communities.owner_setup_member_limit_invalid'))
-        return
-      }
-      if (memberCap != null && memberCap > 0 && n > memberCap) {
-        alert(t('communities.owner_setup_member_limit_over_cap', { cap: memberCap }))
-        return
-      }
-    }
-    setSaving(true)
-    setSaveHint(null)
-    try {
-      const ok = await postUpdateCommunity(draft, {})
-      if (ok) {
-        setSaveHint(t('communities.owner_setup_saved'))
-        window.setTimeout(() => setSaveHint(null), 2200)
-      }
-    } finally {
-      setSaving(false)
-    }
-  }, [draft, memberCap, postUpdateCommunity])
-
-  const savePersonality = useCallback(async () => {
-    setSavingPersonality(true)
-    try {
-      const resp = await fetch(`/api/community/${communityId}/ai_personality`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ ai_personality: aiPersonality }),
-      })
-      const data = await resp.json().catch(() => null)
-      if (data?.success) {
-        setSaveHint(t('communities.owner_setup_saved'))
-        window.setTimeout(() => setSaveHint(null), 2200)
-        await onCommunityUpdated()
-      } else {
-        alert(data?.error || t('communities.owner_setup_failed_personality'))
-      }
-    } catch {
-      alert(t('communities.owner_setup_failed_personality'))
-    } finally {
       setSavingPersonality(false)
     }
-  }, [aiPersonality, communityId, onCommunityUpdated])
+  }, [
+    aiPersonality,
+    communityDirty,
+    draft,
+    imageFile,
+    memberLimitError,
+    personalityDirty,
+    postPersonality,
+    postUpdateCommunity,
+    removeBackground,
+  ])
+
+  // Every way out of the wizard — Next/Back, Skip, Finish, Invite, Manage
+  // Community, or a jump to Communities/Plans — commits first. A failed save
+  // keeps the owner where they are (they have already been alerted) rather than
+  // silently dropping the step they just filled in.
+  // Runs `action` once everything the owner typed is safely on the server.
+  // With nothing pending it runs straight away, so clean steps stay instant.
+  const afterSaved = useCallback(
+    (action: () => void) => {
+      if (!hasPendingChanges) {
+        action()
+        return
+      }
+      void flushPendingChanges().then(ok => {
+        if (ok) action()
+      })
+    },
+    [flushPendingChanges, hasPendingChanges],
+  )
+
+  const goToStep = useCallback(
+    (nextIndex: number) => {
+      afterSaved(() => setStepIndex(Math.max(0, Math.min(stepCount - 1, nextIndex))))
+    },
+    [afterSaved, stepCount],
+  )
+
+  const leaveToExitHint = useCallback(
+    (context: 'skipped' | 'finished_wizard') => {
+      afterSaved(() => {
+        setExitContext(context)
+        setPhase('exit_hint')
+      })
+    },
+    [afterSaved],
+  )
+
+  const persist = useCallback(
+    (reason: 'completed' | 'dismissed') => {
+      afterSaved(() => {
+        markSetupDone(reason)
+        onFinished(reason)
+      })
+    },
+    [afterSaved, markSetupDone, onFinished],
+  )
+
+  const openManageAndComplete = useCallback(() => {
+    afterSaved(() => {
+      markSetupDone('completed')
+      onOpenManageCommunity()
+      onFinished('completed')
+    })
+  }, [afterSaved, markSetupDone, onFinished, onOpenManageCommunity])
+
+  const openInviteAndComplete = useCallback(() => {
+    afterSaved(() => {
+      markSetupDone('completed')
+      onFinished('completed')
+      navigate(`/community/${encodeURIComponent(communityId)}/members?open_invite=1`)
+    })
+  }, [afterSaved, communityId, markSetupDone, navigate, onFinished])
+
+  const navigateAwayAfterSave = useCallback(
+    (to: string) => {
+      afterSaved(() => navigate(to))
+    },
+    [afterSaved, navigate],
+  )
 
   const memberLimitHelp =
     memberCap != null && memberCap > 0
@@ -451,25 +568,33 @@ export default function CommunityOwnerSetupIntro({
 
   const heyName = (ownerDisplayName || 'there').trim() || 'there'
   const lastStep = stepIndex >= stepCount - 1
+  const busy = saving || savingPersonality
 
   const goCommunitiesStructure = useCallback(() => {
-    navigate(
+    navigateAwayAfterSave(
       `/communities?parent_id=${encodeURIComponent(communityId)}&from_owner_intro=1&resume_feed_id=${encodeURIComponent(communityId)}`,
     )
-  }, [communityId, navigate])
+  }, [communityId, navigateAwayAfterSave])
 
   const persistFooter = (
-    <p className="text-center text-[10px] leading-relaxed text-white/30">
-      {t('communities.owner_setup_footer_hint')}
-    </p>
+    <div className="space-y-1">
+      <p className="text-center text-[10px] leading-relaxed text-white/30">
+        {t('communities.owner_setup_autosave_hint')}
+      </p>
+      <p className="text-center text-[10px] leading-relaxed text-white/30">
+        {t('communities.owner_setup_footer_hint')}
+      </p>
+    </div>
   )
 
-  const saveBarDescription = (
+  // Per-step Save stays: an owner who fills in one step and leaves by any other
+  // route still has that step committed on its own.
+  const saveBar = (
     <div className="flex flex-wrap items-center gap-2">
       <button
         type="button"
         disabled={saving}
-        onClick={() => void saveCommunityFieldsOnly()}
+        onClick={() => void flushPendingChanges()}
         className="rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
       >
         {saving ? t('communities.saving') : t('common.save')}
@@ -478,19 +603,8 @@ export default function CommunityOwnerSetupIntro({
     </div>
   )
 
-  const saveBarImage = (
-    <div className="flex flex-wrap items-center gap-2">
-      <button
-        type="button"
-        disabled={saving}
-        onClick={() => void saveWithImage()}
-        className="rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
-      >
-        {saving ? t('communities.saving') : t('common.save')}
-      </button>
-      {saveHint ? <span className="text-xs text-cpoint-turquoise">{saveHint}</span> : null}
-    </div>
-  )
+  const saveBarDescription = saveBar
+  const saveBarImage = saveBar
 
   let stepContent: ReactNode = null
   switch (currentStepId) {
@@ -564,8 +678,9 @@ export default function CommunityOwnerSetupIntro({
           {!billingInherited && (
             <button
               type="button"
+              disabled={saving}
               onClick={() =>
-                navigate(
+                navigateAwayAfterSave(
                   `/subscription_plans?open=community_plans&community_id=${encodeURIComponent(communityId)}&from_owner_intro=1`,
                 )
               }
@@ -595,7 +710,7 @@ export default function CommunityOwnerSetupIntro({
             <button
               type="button"
               disabled={saving}
-              onClick={() => void saveMemberLimitOnly()}
+              onClick={() => void flushPendingChanges()}
               className="rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
             >
               {saving ? t('communities.saving') : t('communities.owner_setup_save_limit')}
@@ -665,7 +780,10 @@ export default function CommunityOwnerSetupIntro({
           <select
             className="mt-3 w-full rounded-md border border-c-border bg-c-bg-app px-3 py-2 text-[16px] text-c-text-primary outline-none focus:border-cpoint-turquoise"
             value={aiPersonality}
-            onChange={e => setAiPersonality(e.target.value)}
+            onChange={e => {
+              personalityTouchedRef.current = true
+              setAiPersonality(e.target.value)
+            }}
             disabled={savingPersonality}
           >
             {aiPersonalities.length === 0 ? (
@@ -681,8 +799,8 @@ export default function CommunityOwnerSetupIntro({
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
-              disabled={savingPersonality}
-              onClick={() => void savePersonality()}
+              disabled={savingPersonality || saving}
+              onClick={() => void flushPendingChanges()}
               className="rounded-xl bg-cpoint-turquoise px-4 py-2.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
             >
               {savingPersonality ? t('communities.saving') : t('communities.owner_setup_save_personality')}
@@ -717,7 +835,8 @@ export default function CommunityOwnerSetupIntro({
             {t('communities.owner_setup_finish_sr_title')}
           </h2>
           <ManageCommunityHint
-            onOpenManageCommunity={openManageAndComplete}
+            busy={saving || savingPersonality}
+            onOpenManageCommunity={() => openManageAndComplete()}
             onStay={() =>
               persist(exitContext === 'finished_wizard' ? 'completed' : 'dismissed')
             }
@@ -745,11 +864,9 @@ export default function CommunityOwnerSetupIntro({
             </div>
             <button
               type="button"
-              onClick={() => {
-                setExitContext('skipped')
-                setPhase('exit_hint')
-              }}
-              className="shrink-0 rounded-full border border-c-border px-3 py-1.5 text-xs font-medium text-c-text-tertiary transition hover:border-cpoint-turquoise/40 hover:text-white"
+              disabled={saving || savingPersonality}
+              onClick={() => leaveToExitHint('skipped')}
+              className="shrink-0 rounded-full border border-c-border px-3 py-1.5 text-xs font-medium text-c-text-tertiary transition hover:border-cpoint-turquoise/40 hover:text-white disabled:opacity-50"
             >
               {t('feed.skip')}
             </button>
@@ -770,8 +887,9 @@ export default function CommunityOwnerSetupIntro({
           {stepIndex > 0 && (
             <button
               type="button"
-              onClick={() => setStepIndex(i => Math.max(0, i - 1))}
-              className="order-2 w-full rounded-xl border border-c-border bg-c-bg-surface px-5 py-3 text-sm font-medium text-c-text-secondary transition hover:bg-c-hover-bg sm:order-1 sm:w-auto"
+              disabled={busy}
+              onClick={() => goToStep(stepIndex - 1)}
+              className="order-2 w-full rounded-xl border border-c-border bg-c-bg-surface px-5 py-3 text-sm font-medium text-c-text-secondary transition hover:bg-c-hover-bg disabled:opacity-50 sm:order-1 sm:w-auto"
             >
               {t('communities.owner_setup_step_back')}
             </button>
@@ -779,35 +897,39 @@ export default function CommunityOwnerSetupIntro({
           {!lastStep ? (
             <button
               type="button"
-              onClick={() => setStepIndex(i => Math.min(stepCount - 1, i + 1))}
-              className="order-1 w-full rounded-xl bg-cpoint-turquoise px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 sm:order-2 sm:w-auto"
+              disabled={busy}
+              onClick={() => goToStep(stepIndex + 1)}
+              className="order-1 w-full rounded-xl bg-cpoint-turquoise px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-50 sm:order-2 sm:w-auto"
             >
-              {t('communities.owner_setup_step_next')}
+              {busy ? t('communities.saving') : t('communities.owner_setup_step_next')}
             </button>
           ) : currentStepId === 'invite' ? (
             <>
               <button
                 type="button"
-                onClick={finishFromSteps}
-                className="order-1 w-full rounded-xl border border-c-border bg-c-bg-surface px-5 py-3 text-sm font-medium text-c-text-secondary transition hover:bg-c-hover-bg sm:order-2 sm:w-auto"
+                disabled={busy}
+                onClick={() => leaveToExitHint('finished_wizard')}
+                className="order-1 w-full rounded-xl border border-c-border bg-c-bg-surface px-5 py-3 text-sm font-medium text-c-text-secondary transition hover:bg-c-hover-bg disabled:opacity-50 sm:order-2 sm:w-auto"
               >
                 {t('communities.owner_setup_not_yet')}
               </button>
               <button
                 type="button"
-                onClick={openInviteAndComplete}
-                className="order-2 w-full rounded-xl bg-cpoint-turquoise px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 sm:order-3 sm:w-auto"
+                disabled={busy}
+                onClick={() => openInviteAndComplete()}
+                className="order-2 w-full rounded-xl bg-cpoint-turquoise px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-50 sm:order-3 sm:w-auto"
               >
-                {t('communities.owner_setup_invite_people')}
+                {busy ? t('communities.saving') : t('communities.owner_setup_invite_people')}
               </button>
             </>
           ) : (
             <button
               type="button"
-              onClick={finishFromSteps}
-              className="order-1 w-full rounded-xl bg-cpoint-turquoise px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 sm:order-2 sm:w-auto"
+              disabled={busy}
+              onClick={() => leaveToExitHint('finished_wizard')}
+              className="order-1 w-full rounded-xl bg-cpoint-turquoise px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-50 sm:order-2 sm:w-auto"
             >
-              {t('communities.owner_setup_step_finish')}
+              {busy ? t('communities.saving') : t('communities.owner_setup_step_finish')}
             </button>
           )}
         </div>

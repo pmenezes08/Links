@@ -1,9 +1,10 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { MemoryRouter } from 'react-router-dom'
 
 import CommunityOwnerSetupIntro, {
+  communityOwnerSetupDraftKey,
   communityOwnerSetupResumeKey,
   communityOwnerSetupStorageKey,
 } from './CommunityOwnerSetupIntro'
@@ -121,5 +122,115 @@ describe('CommunityOwnerSetupIntro', () => {
     expect(base.onFinished).toHaveBeenCalledWith('dismissed')
     expect(localStorage.getItem(communityOwnerSetupStorageKey('alice', '42'))).toBe('dismissed')
     expect(sessionStorage.getItem(communityOwnerSetupResumeKey('alice', '42'))).toBeNull()
+  })
+
+  describe('never loses what the owner filled in', () => {
+    type FetchCall = { url: string; init?: RequestInit }
+
+    function stubFetch(opts: { updateOk?: boolean } = {}) {
+      const calls: FetchCall[] = []
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+          const href = String(url)
+          calls.push({ url: href, init })
+          if (href.includes('/update_community')) {
+            return {
+              json: async () => ({
+                success: opts.updateOk !== false,
+                error: 'server said no',
+              }),
+            }
+          }
+          return { json: async () => ({ success: true, personalities: [] }) }
+        }),
+      )
+      return calls
+    }
+
+    function updateCalls(calls: FetchCall[]) {
+      return calls.filter(c => c.url.includes('/update_community'))
+    }
+
+    function savedField(calls: FetchCall[], field: string) {
+      const last = updateCalls(calls).at(-1)
+      return (last?.init?.body as FormData | undefined)?.get(field)
+    }
+
+    /** Advance to the description step and type into it. */
+    function typeDescription(text: string) {
+      fireEvent.click(screen.getByRole('button', { name: /next/i }))
+      fireEvent.change(screen.getByRole('textbox'), { target: { value: text } })
+    }
+
+    beforeEach(() => {
+      vi.stubGlobal('alert', vi.fn())
+    })
+
+    it('saves the current step when moving to the next one', async () => {
+      const calls = stubFetch()
+      renderIntro()
+      typeDescription('A place for runners')
+      fireEvent.click(screen.getByRole('button', { name: /next|saving/i }))
+
+      await waitFor(() => expect(updateCalls(calls)).toHaveLength(1))
+      expect(savedField(calls, 'description')).toBe('A place for runners')
+      await screen.findByRole('heading', { name: /subscription/i })
+    })
+
+    it('saves before skipping out of the wizard', async () => {
+      const calls = stubFetch()
+      renderIntro()
+      typeDescription('Saved on skip')
+      fireEvent.click(screen.getByRole('button', { name: /skip/i }))
+
+      await waitFor(() => expect(updateCalls(calls)).toHaveLength(1))
+      expect(savedField(calls, 'description')).toBe('Saved on skip')
+    })
+
+    it('saves before leaving for Manage Community', async () => {
+      const calls = stubFetch()
+      renderIntro()
+      typeDescription('Saved on manage')
+      fireEvent.click(screen.getByRole('button', { name: /skip/i }))
+      await waitFor(() => expect(updateCalls(calls)).toHaveLength(1))
+
+      fireEvent.click(screen.getByRole('button', { name: /open manage community/i }))
+      await waitFor(() => expect(base.onOpenManageCommunity).toHaveBeenCalled())
+      expect(savedField(calls, 'description')).toBe('Saved on manage')
+    })
+
+    it('keeps the owner on the step when the save fails', async () => {
+      const calls = stubFetch({ updateOk: false })
+      renderIntro()
+      typeDescription('Will not persist')
+      fireEvent.click(screen.getByRole('button', { name: /next|saving/i }))
+
+      await waitFor(() => expect(updateCalls(calls)).toHaveLength(1))
+      expect(screen.getByRole('textbox')).toHaveValue('Will not persist')
+      expect(screen.queryByRole('heading', { name: /subscription/i })).not.toBeInTheDocument()
+    })
+
+    it('restores an unsaved draft after the app reloads', () => {
+      stubFetch()
+      const first = renderIntro()
+      typeDescription('Half-finished thought')
+      expect(sessionStorage.getItem(communityOwnerSetupDraftKey('alice', '42'))).toContain(
+        'Half-finished thought',
+      )
+
+      first.unmount()
+      renderIntro()
+      expect(screen.getByRole('textbox')).toHaveValue('Half-finished thought')
+    })
+
+    it('does not touch the server when nothing changed', async () => {
+      const calls = stubFetch()
+      renderIntro()
+      fireEvent.click(screen.getByRole('button', { name: /next/i }))
+      fireEvent.click(screen.getByRole('button', { name: /next/i }))
+      await waitFor(() => expect(screen.getByRole('heading', { name: /subscription/i })).toBeInTheDocument())
+      expect(updateCalls(calls)).toHaveLength(0)
+    })
   })
 })
