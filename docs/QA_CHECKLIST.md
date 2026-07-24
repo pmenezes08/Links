@@ -979,3 +979,18 @@ Create/Join community modals (`client/src/pages/PremiumDashboard.tsx`), or
 - [ ] **Light mode contrast**: in light mode, the field placeholders ("e.g., Engineering Team") and typed values are dark on the grey field — never white-on-white — including while the field is focused.
 - [ ] **Dark mode unchanged**: same dialogs in dark mode keep white values, dim placeholders, and a visible Cancel button.
 - [ ] **Cancel reads as a button**: Cancel has a visible surface and border in both themes (it previously rendered as bare text from a malformed class).
+
+## §21 — Join-by-handle request message
+
+Run after changes to `JoinByHandlePanel.tsx`, `HandleSettings.tsx`, or
+`backend/services/community_join_requests.py`.
+
+- [ ] **Optional message**: find a findable community by handle, type a note, Ask to join. Expected: request lands with the note visible on the owner's "Asking to join" card in Notifications → Invites; the push/notification text is unchanged (no message content).
+- [ ] **No message**: send a request with the box empty (policy off). Expected: request sends; the owner's card shows no message block.
+- [ ] **140 cap**: type past 140 characters. Expected: input stops at 140, counter shows 140/140; server rejects a forged longer payload with `message_too_long`.
+- [ ] **Require a message (owner)**: in Manage Community → handle card, the "Require a message" toggle is dimmed until "Open to join requests" is on; flip it on. Expected: setting persists across reload.
+- [ ] **Required policy (requester)**: with the policy on, the join panel shows "Why do you want to join?", Ask to join stays disabled until text is entered; an empty forged POST returns `message_required` and no request row is created.
+- [ ] **Re-request**: withdraw and re-request with a different note. Expected: the owner's card shows only the newest note (or none, if the second request had none).
+- [ ] **Owner question**: with "Require a message" on, write a question in "Question for requesters" and save. Expected: a finder sees the question verbatim above the answer box ("Your answer" placeholder); the answer shows on the owner's request card. Clearing the field falls back to the generic "Why do you want to join?".
+- [ ] **Profile from request card**: tap the requester's avatar or @username on the "Asking to join" card. Expected: the requester's profile opens even with no shared community. After Accept/Decline/withdraw, a non-shared requester's profile is no longer reachable (non-enumerating error).
+- [ ] **pt-PT / de-DE**: repeat the requester flow in both locales — placeholder, hints, question label, and error line localized.

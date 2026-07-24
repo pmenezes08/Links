@@ -50,6 +50,9 @@ _COLUMNS_ENSURED = False
 # (creation/backfill) does not start the clock.
 HANDLE_CHANGE_COOLDOWN_DAYS = 30
 
+# Owner-written question a join request must answer (shown to any finder).
+JOIN_REQUEST_PROMPT_MAX_LEN = 200
+
 
 def ensure_handle_columns() -> None:
     """Idempotently add ``handle`` + ``discoverable`` to ``communities``."""
@@ -63,6 +66,11 @@ def ensure_handle_columns() -> None:
                 "ALTER TABLE communities ADD COLUMN handle VARCHAR(32) NULL",
                 "ALTER TABLE communities ADD COLUMN discoverable TINYINT(1) DEFAULT 0",
                 "ALTER TABLE communities ADD COLUMN handle_changed_at DATETIME NULL",
+                # Owner policy: a join request through the open door must
+                # carry a message (see community_join_requests), optionally
+                # answering a specific owner-written question.
+                "ALTER TABLE communities ADD COLUMN join_request_message_required TINYINT(1) DEFAULT 0",
+                "ALTER TABLE communities ADD COLUMN join_request_prompt VARCHAR(200) NULL",
                 "ALTER TABLE communities ADD UNIQUE INDEX uq_communities_handle (handle)",
             ):
                 try:
@@ -193,7 +201,8 @@ def get_handle_settings(username: str, community_id: int):
         c = conn.cursor()
         ph = get_sql_placeholder()
         c.execute(
-            f"SELECT handle, discoverable, handle_changed_at, parent_community_id "
+            f"SELECT handle, discoverable, handle_changed_at, parent_community_id, "
+            f"join_request_message_required, join_request_prompt "
             f"FROM communities WHERE id = {ph}",
             (int(community_id),),
         )
@@ -212,6 +221,8 @@ def get_handle_settings(username: str, community_id: int):
         "discoverable": bool(get("discoverable", 1) or 0),
         "can_change_handle": can_change,
         "cooldown_days_remaining": days_left,
+        "join_request_message_required": bool(get("join_request_message_required", 4) or 0),
+        "join_request_prompt": get("join_request_prompt", 5) or None,
     }, 200
 
 
@@ -231,12 +242,23 @@ def _cooldown_state(changed_at) -> tuple:
     return True, 0
 
 
-def update_handle_settings(username: str, community_id: int, *, handle=None, discoverable=None):
+def update_handle_settings(
+    username: str,
+    community_id: int,
+    *,
+    handle=None,
+    discoverable=None,
+    join_request_message_required=None,
+    join_request_prompt=None,
+):
     """Owner/admin update of handle and/or findability. Returns (payload, status).
 
     Handle changes: validated, uniqueness re-checked atomically against the
     UNIQUE index, and rate-limited (one change per 30 days). The findability
     toggle requires a saved handle — an unlisted address can't be opened.
+    ``join_request_message_required`` is the owner policy that a join request
+    through this door must carry a message; ``join_request_prompt`` is the
+    owner-written question that message must answer (empty string clears it).
     """
     if not _has_manage_permission(username, community_id):
         return {"success": False, "error": "Forbidden"}, 403
@@ -298,9 +320,31 @@ def update_handle_settings(username: str, community_id: int, *, handle=None, dis
                 (1 if bool(discoverable) else 0, int(community_id)),
             )
 
+        if join_request_message_required is not None:
+            c.execute(
+                f"UPDATE communities SET join_request_message_required = {ph} WHERE id = {ph}",
+                (1 if bool(join_request_message_required) else 0, int(community_id)),
+            )
+
+        if join_request_prompt is not None:
+            prompt_clean = " ".join(str(join_request_prompt).split()).strip()
+            if len(prompt_clean) > JOIN_REQUEST_PROMPT_MAX_LEN:
+                return {
+                    "success": False,
+                    "error": "prompt_too_long",
+                    "reason": "prompt_too_long",
+                    "max_length": JOIN_REQUEST_PROMPT_MAX_LEN,
+                }, 400
+            c.execute(
+                f"UPDATE communities SET join_request_prompt = {ph} WHERE id = {ph}",
+                (prompt_clean or None, int(community_id)),
+            )
+
         conn.commit()
         c.execute(
-            f"SELECT handle, discoverable, handle_changed_at FROM communities WHERE id = {ph}",
+            f"SELECT handle, discoverable, handle_changed_at, join_request_message_required, "
+            f"join_request_prompt "
+            f"FROM communities WHERE id = {ph}",
             (int(community_id),),
         )
         fresh = c.fetchone()
@@ -312,6 +356,8 @@ def update_handle_settings(username: str, community_id: int, *, handle=None, dis
         "discoverable": bool(fget("discoverable", 1) or 0),
         "can_change_handle": can_change,
         "cooldown_days_remaining": days_left,
+        "join_request_message_required": bool(fget("join_request_message_required", 3) or 0),
+        "join_request_prompt": fget("join_request_prompt", 4) or None,
     }, 200
 
 

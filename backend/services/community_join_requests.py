@@ -5,8 +5,9 @@ The member-in mirror of the owner-out invite flow. Invariants:
 * **Non-enumerating lookup** — a handle that doesn't exist, belongs to a
   non-discoverable community, or belongs to a sub-community returns the
   same body and status. The closed door is the product working.
-* **Lookup payload allowlist** — name, @handle, short description, and a
-  *bucketed* member count. Never owner, members, structure, or tier.
+* **Lookup payload allowlist** — name, @handle, short description, a
+  *bucketed* member count, and the join policy flag (message required).
+  Never owner, members, structure, or tier.
 * **Silent expiry on decline** — the requester's state is identical to
   no-action-yet; after the cooldown window the request quietly resets.
   No reason, no decline notification, ever.
@@ -54,6 +55,9 @@ REJECT_COOLDOWN_DAYS = 30
 LOOKUP_RATE_LIMIT = (20, 60)          # 20 lookups / minute / user
 REQUEST_RATE_LIMIT = (10, 86_400)     # 10 join requests / day / user
 
+# Optional note to the door: shown only to the deciding owner/admins.
+JOIN_REQUEST_MESSAGE_MAX_LEN = 140
+
 _NOT_FOUND: Tuple[Dict[str, Any], int] = ({"success": False, "error": "Community not found"}, 404)
 
 _TABLES_ENSURED = False
@@ -81,6 +85,11 @@ def ensure_tables() -> None:
                 )
                 """
             )
+            # Requester's optional/required note to the admins (140 chars).
+            try:
+                c.execute("ALTER TABLE community_join_requests ADD COLUMN message VARCHAR(140) NULL")
+            except Exception:
+                pass  # already applied
             try:
                 conn.commit()
             except Exception:
@@ -136,7 +145,8 @@ def lookup_by_handle(username: str, handle: str) -> Tuple[Dict[str, Any], int]:
         ph = get_sql_placeholder()
         c.execute(
             f"""
-            SELECT id, name, handle, description, discoverable, parent_community_id
+            SELECT id, name, handle, description, discoverable, parent_community_id,
+                   join_request_message_required, join_request_prompt
             FROM communities WHERE handle = {ph}
             """,
             (normalized,),
@@ -196,6 +206,10 @@ def lookup_by_handle(username: str, handle: str) -> Tuple[Dict[str, Any], int]:
             "member_bucket": _member_bucket(member_count),
             "already_member": already_member,
             "request_status": request_status,
+            # Join policy of an already-findable community — allowlist-safe:
+            # the owner wrote the prompt specifically for outsiders to read.
+            "message_required": bool(get("join_request_message_required", 6) or 0),
+            "join_prompt": get("join_request_prompt", 7) or None,
         },
     }, 200
 
@@ -213,9 +227,23 @@ def _within_cooldown(decided_at) -> bool:
 # ── Requester side ──────────────────────────────────────────────────────
 
 
-def create_request(username: str, community_id: int) -> Tuple[Dict[str, Any], int]:
+def create_request(
+    username: str, community_id: int, message: Optional[str] = None
+) -> Tuple[Dict[str, Any], int]:
     if not rate_limit_allow("join_request", username, *REQUEST_RATE_LIMIT):
         return {"success": False, "error": "Too many requests today. Try again tomorrow."}, 429
+
+    # Requester's note travels with the request and is shown only to the
+    # deciding owner/admins. Hard server-side cap; the community may make
+    # it mandatory (join_request_message_required).
+    message_clean = " ".join((message or "").split()).strip()
+    if len(message_clean) > JOIN_REQUEST_MESSAGE_MAX_LEN:
+        return {
+            "success": False,
+            "error": "message_too_long",
+            "reason": "message_too_long",
+            "max_length": JOIN_REQUEST_MESSAGE_MAX_LEN,
+        }, 400
 
     ensure_handle_columns()
     ensure_tables()
@@ -223,7 +251,8 @@ def create_request(username: str, community_id: int) -> Tuple[Dict[str, Any], in
         c = conn.cursor()
         ph = get_sql_placeholder()
         c.execute(
-            f"SELECT id, name, discoverable, parent_community_id FROM communities WHERE id = {ph}",
+            f"SELECT id, name, discoverable, parent_community_id, join_request_message_required "
+            f"FROM communities WHERE id = {ph}",
             (int(community_id),),
         )
         row = c.fetchone()
@@ -233,6 +262,12 @@ def create_request(username: str, community_id: int) -> Tuple[Dict[str, Any], in
         if not row or get("parent_community_id", 3) is not None or not (get("discoverable", 2) or 0):
             return _NOT_FOUND
         community_name = get("name", 1)
+        if (get("join_request_message_required", 4) or 0) and not message_clean:
+            return {
+                "success": False,
+                "error": "message_required",
+                "reason": "message_required",
+            }, 400
 
         c.execute(
             f"""
@@ -262,16 +297,18 @@ def create_request(username: str, community_id: int) -> Tuple[Dict[str, Any], in
             c.execute(
                 f"""
                 UPDATE community_join_requests
-                SET status = 'pending', decided_by = NULL, decided_at = NULL, created_at = {ph}
+                SET status = 'pending', decided_by = NULL, decided_at = NULL,
+                    created_at = {ph}, message = {ph}
                 WHERE id = {ph}
                 """,
-                (now_str, ex("id", 0)),
+                (now_str, message_clean or None, ex("id", 0)),
             )
             notify_admins = True
         else:
             c.execute(
-                f"INSERT INTO community_join_requests (community_id, username, status, created_at) VALUES ({ph}, {ph}, 'pending', {ph})",
-                (int(community_id), username, now_str),
+                f"INSERT INTO community_join_requests (community_id, username, status, created_at, message) "
+                f"VALUES ({ph}, {ph}, 'pending', {ph}, {ph})",
+                (int(community_id), username, now_str, message_clean or None),
             )
             notify_admins = True
 
@@ -369,7 +406,7 @@ def list_pending_for_manager(username: str) -> Tuple[Dict[str, Any], int]:
             f"""
             SELECT r.id, r.community_id, r.username, r.created_at,
                    c2.name AS community_name,
-                   u.first_name, u.last_name, up.profile_picture
+                   u.first_name, u.last_name, up.profile_picture, r.message
             FROM community_join_requests r
             JOIN communities c2 ON c2.id = r.community_id
             JOIN users u ON u.username = r.username
@@ -400,6 +437,7 @@ def list_pending_for_manager(username: str) -> Tuple[Dict[str, Any], int]:
                 "display_name": display,
                 "profile_picture": g("profile_picture", 7),
                 "created_at": str(g("created_at", 3)),
+                "message": g("message", 8) or None,
             })
     return {"success": True, "requests": out}, 200
 

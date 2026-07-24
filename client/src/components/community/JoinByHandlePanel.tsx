@@ -21,7 +21,11 @@ type FoundCommunity = {
   member_bucket: string
   already_member: boolean
   request_status: 'pending' | null
+  message_required?: boolean
+  join_prompt?: string | null
 }
+
+export const JOIN_REQUEST_MESSAGE_MAX_LEN = 140
 
 export default function JoinByHandlePanel({ onJoinedNavigate }: { onJoinedNavigate?: () => void }) {
   const { t } = useTranslation()
@@ -31,6 +35,8 @@ export default function JoinByHandlePanel({ onJoinedNavigate }: { onJoinedNaviga
   const [notFound, setNotFound] = useState(false)
   const [found, setFound] = useState<FoundCommunity | null>(null)
   const [requesting, setRequesting] = useState(false)
+  const [message, setMessage] = useState('')
+  const [messageError, setMessageError] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => () => {
@@ -69,6 +75,8 @@ export default function JoinByHandlePanel({ onJoinedNavigate }: { onJoinedNaviga
       setQuery(normalized)
       setFound(null)
       setNotFound(false)
+      setMessage('')
+      setMessageError(false)
       if (debounceRef.current) clearTimeout(debounceRef.current)
       if (normalized.length < 3) return
       debounceRef.current = setTimeout(() => runLookup(normalized), 400)
@@ -78,21 +86,31 @@ export default function JoinByHandlePanel({ onJoinedNavigate }: { onJoinedNaviga
 
   const askToJoin = useCallback(() => {
     if (!found || requesting) return
+    const trimmed = message.trim()
+    if (found.message_required && !trimmed) {
+      setMessageError(true)
+      return
+    }
     setRequesting(true)
     fetch(`/api/community/${found.id}/join_requests`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(trimmed ? { message: trimmed } : {}),
     })
       .then(r => r.json())
       .then(data => {
         if (data?.success) {
           setFound(prev => (prev ? { ...prev, request_status: 'pending' } : prev))
+          setMessage('')
+          setMessageError(false)
+        } else if (data?.reason === 'message_required') {
+          setMessageError(true)
         }
       })
       .catch(() => {})
       .finally(() => setRequesting(false))
-  }, [found, requesting])
+  }, [found, message, requesting])
 
   const withdraw = useCallback(() => {
     if (!found) return
@@ -174,14 +192,53 @@ export default function JoinByHandlePanel({ onJoinedNavigate }: { onJoinedNaviga
               </div>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={askToJoin}
-              disabled={requesting}
-              className="h-11 w-full rounded-full bg-cpoint-turquoise text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
-            >
-              {requesting ? t('notifications_page.working') : t('communities.find_ask_to_join')}
-            </button>
+            <div className="space-y-1.5">
+              <div>
+                {found.message_required && found.join_prompt ? (
+                  <p className="mb-1 text-xs font-medium text-c-text-secondary">
+                    {found.join_prompt}
+                  </p>
+                ) : null}
+                <textarea
+                  value={message}
+                  onChange={e => {
+                    setMessage(e.target.value.slice(0, JOIN_REQUEST_MESSAGE_MAX_LEN))
+                    if (messageError) setMessageError(false)
+                  }}
+                  maxLength={JOIN_REQUEST_MESSAGE_MAX_LEN}
+                  rows={2}
+                  placeholder={
+                    found.message_required
+                      ? found.join_prompt
+                        ? t('communities.join_message_placeholder_answer')
+                        : t('communities.join_message_placeholder_required')
+                      : t('communities.join_message_placeholder')
+                  }
+                  aria-invalid={messageError}
+                  className={`w-full resize-none rounded-md border bg-c-bg-app px-3 py-2 text-sm text-c-text-primary placeholder:text-c-text-disabled outline-none focus:border-cpoint-turquoise ${messageError ? 'border-red-400' : 'border-c-border'}`}
+                />
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className={messageError ? 'text-red-400' : 'text-c-text-tertiary'}>
+                    {messageError
+                      ? t('communities.join_message_required_error')
+                      : found.message_required
+                        ? t('communities.join_message_required_hint')
+                        : t('communities.join_message_optional_hint')}
+                  </span>
+                  <span className="text-c-text-tertiary tabular-nums">
+                    {message.length}/{JOIN_REQUEST_MESSAGE_MAX_LEN}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={askToJoin}
+                disabled={requesting || (found.message_required && !message.trim())}
+                className="h-11 w-full rounded-full bg-cpoint-turquoise text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
+              >
+                {requesting ? t('notifications_page.working') : t('communities.find_ask_to_join')}
+              </button>
+            </div>
           )}
         </div>
       )}

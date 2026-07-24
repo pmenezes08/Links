@@ -301,3 +301,137 @@ class TestManagerSurfaces:
         count, _ = cjr.pending_count_for_community("owner", cid)
         assert count["count"] == 2
         assert len(count["requesters"]) == 2
+
+
+# ── 6. Request message (optional note / owner-required policy) ──────────
+
+
+def _set_message_required(community_id: int, required: bool) -> None:
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"UPDATE communities SET join_request_message_required = {ph} WHERE id = {ph}",
+            (1 if required else 0, community_id),
+        )
+        conn.commit()
+
+
+class TestRequestMessage:
+    def test_message_stored_and_listed_for_manager(self, mysql_dsn):
+        make_user("knocker")
+        make_user("owner")
+        cid, _ = _make_findable("Note Door", "owner")
+
+        body, status = cjr.create_request("knocker", cid, message="  Hi!  I run  the local chapter. ")
+        assert status == 200 and body["request_status"] == "pending"
+
+        listing, _ = cjr.list_pending_for_manager("owner")
+        (req,) = listing["requests"]
+        # Whitespace-normalized, content intact.
+        assert req["message"] == "Hi! I run the local chapter."
+
+    def test_message_absent_is_null_in_listing(self, mysql_dsn):
+        make_user("knocker")
+        make_user("owner")
+        cid, _ = _make_findable("Silent Door", "owner")
+        cjr.create_request("knocker", cid)
+        listing, _ = cjr.list_pending_for_manager("owner")
+        assert listing["requests"][0]["message"] is None
+
+    def test_over_140_chars_rejected(self, mysql_dsn):
+        make_user("knocker")
+        make_user("owner")
+        cid, _ = _make_findable("Strict Door", "owner")
+        body, status = cjr.create_request("knocker", cid, message="x" * 141)
+        assert status == 400
+        assert body["reason"] == "message_too_long"
+        assert _request_row(cid, "knocker") == {}  # nothing written
+
+    def test_required_policy_blocks_empty_message(self, mysql_dsn):
+        make_user("knocker")
+        make_user("owner")
+        cid, _ = _make_findable("Doorman Door", "owner")
+        _set_message_required(cid, True)
+
+        body, status = cjr.create_request("knocker", cid)
+        assert status == 400 and body["reason"] == "message_required"
+        whitespace, status2 = cjr.create_request("knocker", cid, message="   ")
+        assert status2 == 400 and whitespace["reason"] == "message_required"
+        assert _request_row(cid, "knocker") == {}
+
+        ok, status3 = cjr.create_request("knocker", cid, message="Hello!")
+        assert status3 == 200 and ok["request_status"] == "pending"
+
+    def test_lookup_exposes_message_required_flag(self, mysql_dsn):
+        make_user("seeker")
+        make_user("owner")
+        cid, handle = _make_findable("Policy Door", "owner")
+
+        body, _ = cjr.lookup_by_handle("seeker", handle)
+        assert body["community"]["message_required"] is False
+        assert body["community"]["join_prompt"] is None
+
+        _set_message_required(cid, True)
+        ph = get_sql_placeholder()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"UPDATE communities SET join_request_prompt = {ph} WHERE id = {ph}",
+                ("Who invited you?", cid),
+            )
+            conn.commit()
+        body2, _ = cjr.lookup_by_handle("seeker", handle)
+        assert body2["community"]["message_required"] is True
+        assert body2["community"]["join_prompt"] == "Who invited you?"
+
+    def test_re_request_replaces_stale_message(self, mysql_dsn):
+        make_user("knocker")
+        make_user("owner")
+        cid, _ = _make_findable("Second Knock", "owner")
+        cjr.create_request("knocker", cid, message="First knock")
+        cjr.withdraw_request("knocker", cid)
+        cjr.create_request("knocker", cid)  # no message this time
+
+        listing, _ = cjr.list_pending_for_manager("owner")
+        assert listing["requests"][0]["message"] is None
+
+
+# ── 7. Pending request grants profile access to deciding admins ─────────
+
+
+class TestPendingRequestProfileAccess:
+    """Knocking is consent to be looked at by the people deciding — and
+    only them, only while the request is pending."""
+
+    def test_owner_can_view_requester_profile_while_pending(self, mysql_dsn):
+        from backend.services.profile_privacy import can_view_profile
+
+        make_user("knocker")
+        make_user("owner")
+        make_user("bystander")
+        cid, _ = _make_findable("Peephole", "owner")
+
+        # No request yet: no shared community, no access.
+        assert can_view_profile("owner", "knocker") is False
+
+        cjr.create_request("knocker", cid)
+        assert can_view_profile("owner", "knocker") is True
+        # The grant is one-directional and manager-only.
+        assert can_view_profile("knocker", "owner") is False
+        assert can_view_profile("bystander", "knocker") is False
+
+    def test_grant_expires_with_the_decision(self, mysql_dsn):
+        from backend.services.profile_privacy import can_view_profile
+
+        make_user("knocker")
+        make_user("owner")
+        cid, _ = _make_findable("Closing Peephole", "owner")
+
+        cjr.create_request("knocker", cid)
+        cjr.withdraw_request("knocker", cid)
+        assert can_view_profile("owner", "knocker") is False
+
+        cjr.create_request("knocker", cid)
+        cjr.decide_request("owner", cid, "knocker", "reject")
+        assert can_view_profile("owner", "knocker") is False
