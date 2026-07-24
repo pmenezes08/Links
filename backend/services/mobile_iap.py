@@ -548,7 +548,14 @@ def _steve_preflight(*, username: str, community_id: int) -> Optional[str]:
         # The synthetic 14-day trial must not block a real purchase.
         return "steve_package_already_active"
     kb_fields = _kb_field_map("community-tiers")
-    ent_incl = _truthy(kb_fields.get("enterprise_steve_package_included"), default=True)
+    from backend.services import enterprise_membership
+
+    # Per-deal clause wins over the tier-wide KB policy (Enterprise deals
+    # that exclude Steve must still be able to buy the package).
+    ent_incl = enterprise_membership.package_included_for(
+        community_id,
+        kb_default=_truthy(kb_fields.get("enterprise_steve_package_included"), default=True),
+    )
     health = subscription_health.derive_community_subscription_health(
         state,
         enterprise_steve_package_included=ent_incl,

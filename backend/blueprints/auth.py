@@ -1069,6 +1069,13 @@ def google_sign_in():
                 except Exception:
                     pass
 
+            # Email-only locale guess for lifecycle mail (never the in-app chain).
+            try:
+                from backend.services.user_locale import capture_signup_locale
+                capture_signup_locale(username, request)
+            except Exception:
+                pass
+
             session['username'] = username
             session.permanent = True
             session_revocation.stamp_session(session, username)
@@ -1227,6 +1234,13 @@ def apple_sign_in():
                     session['pending_invite_token'] = invite_token
                 except Exception:
                     pass
+
+            # Email-only locale guess for lifecycle mail (never the in-app chain).
+            try:
+                from backend.services.user_locale import capture_signup_locale
+                capture_signup_locale(username, request)
+            except Exception:
+                pass
 
             session['username'] = username
             session.permanent = True

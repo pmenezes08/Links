@@ -132,6 +132,81 @@ def set_preferred_locale(username: str, locale: Optional[str]) -> Optional[str]:
     return matched
 
 
+_SIGNUP_LOCALE_COLUMN_READY = False
+
+
+def ensure_signup_locale_column() -> None:
+    """Add ``users.signup_locale`` if missing (idempotent).
+
+    ``signup_locale`` is the Accept-Language / client-locale *guess* captured
+    when the users row is created. It is consumed ONLY by async email
+    rendering (``lifecycle_email.user_email_and_locale``) as a fallback below
+    ``preferred_locale`` — it must never enter :func:`resolve_request_locale`,
+    where live request headers remain the better signal.
+    """
+    global _SIGNUP_LOCALE_COLUMN_READY
+    if _SIGNUP_LOCALE_COLUMN_READY:
+        return
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute("ALTER TABLE users ADD COLUMN signup_locale VARCHAR(16) NULL")
+        except Exception:
+            pass
+        try:
+            conn.commit()
+        except Exception:
+            pass
+    _SIGNUP_LOCALE_COLUMN_READY = True
+
+
+def capture_signup_locale(username: str, request) -> Optional[str]:
+    """Best-effort one-shot locale guess at account creation.
+
+    Chain: ``X-CPoint-Locale`` header → ``Accept-Language`` header. Writes
+    only when ``signup_locale`` is still NULL; never raises (locale capture
+    must not break signup).
+    """
+    uname = (username or "").strip()
+    if not uname or request is None:
+        return None
+    try:
+        guess: Optional[str] = None
+        override = None
+        try:
+            override = request.headers.get("X-CPoint-Locale")
+        except Exception:
+            override = None
+        if override:
+            guess = i18n.match_locale(override)
+        if guess is None:
+            try:
+                accept = request.headers.get("Accept-Language")
+            except Exception:
+                accept = None
+            if accept:
+                guess = i18n.parse_accept_language(accept)
+        if not guess:
+            return None
+        ensure_signup_locale_column()
+        ph = get_sql_placeholder()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"UPDATE users SET signup_locale = {ph}"
+                f" WHERE username = {ph} AND signup_locale IS NULL",
+                (guess, uname),
+            )
+            try:
+                conn.commit()
+            except Exception:
+                pass
+        return guess
+    except Exception:
+        logger.warning("capture_signup_locale failed for %s", uname, exc_info=True)
+        return None
+
+
 def resolve_request_locale(request, username: Optional[str] = None) -> str:
     """Return the locale to use for the current Flask request.
 

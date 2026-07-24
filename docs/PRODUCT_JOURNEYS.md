@@ -152,6 +152,10 @@ From **Manage Community → Manage Subscription** (paid/customer state on the bi
 
 Purchasing and lifecycle routes are in **`backend/blueprints/enterprise.py`** with persistence in **`user_enterprise_seats`**. **Crons** (grace period, revoke, nags) run on a schedule — **`docs/cloud-scheduler-cron.md`** and **`docs/OPERATIONS.md`**. Any new lifecycle behaviour should remain **idempotent** and **secret-authenticated** on `/api/cron/*`.
 
+**Size and Steve are separate clauses (July 2026).** Setting `communities.tier = 'enterprise'` lifts the member cap unconditionally — both `ensure_community_tier_member_capacity` (community's own tier) and `ensure_free_parent_member_capacity` (owner's personal plan) short-circuit on Enterprise, so a contract-billed community owned by a Free-plan user is genuinely uncapped. Whether that deal also includes **Steve** is a separate, per-community clause: `communities.enterprise_steve_included` (`NULL` = follow the `community-tiers` KB policy, `0` = excluded, `1` = included), set via `steve_included` on `POST /api/admin/enterprise/communities/<id>/tier`. When excluded, `enterprise_membership.start_seat` no-ops on join (members keep their own plan) and the billing surfaces show the normal Steve Community Package add-on path instead of "already included". Community-feed Steve is unaffected by tier either way — it keys off the `steve_package_*` subscription columns, so a 14-day package trial simply lapses at read time (§4) and Steve stops. Tests: `tests/test_enterprise_steve_inclusion.py`.
+
+**Structure is uncapped too, and the exemption inherits down the whole tree.** The Enterprise clause lives on the **root only** — sub-communities carry no limits of their own (no member caps, no nested-community counts, no group quotas), so everything under an Enterprise root is unlimited at any depth. Enterprise buys unlimited **sub-communities** (any count, any nesting depth, created by any authorised member — not just the owner): the monolith's `create_community` sub-community branch consults `community_structure_caps_exempt` (`backend/services/community.py`), which resolves the parent to its root and short-circuits every Free-plan structure cap (3 subs/parent, 1 nested level, own-parent-only) when that root is Enterprise. **Group chats** were never count-capped for any tier, so "unlimited groups" holds by default; the only group limit is the per-group member cap (`MAX_GROUP_MEMBERS` in `backend/blueprints/group_chat.py`), which is orthogonal to tier.
+
 ---
 
 ## 6. Cron jobs and lifecycle
@@ -389,6 +393,8 @@ Push tokens are stored in `fcm_tokens` (primary), `native_push_tokens` (direct A
 - **Handles.** Every root community has a globally-unique `@handle` (`communities.handle`, owned by `backend/services/community_handles.py`): assigned at creation (creator-picked or slugified from the name), backfilled at startup for older rows, owner-changeable in Manage Community with a 30-day cooldown. Display names are deliberately **not** unique; the handle is the identity. Sub-communities carry no handle.
 - **Findability is opt-in.** `communities.discoverable` defaults OFF. The Manage Community card ("Open to join requests") only unlocks once a handle is saved. There is **no directory**: the only discovery primitive is exact-match lookup — `GET /api/community/by_handle/<handle>` — which is rate-limited and **non-enumerating** (nonexistent handle ≡ non-discoverable community ≡ sub-community: identical response). The lookup payload is an allowlist: name, @handle, short description, *bucketed* member count.
 - **Request → approve.** A member who finds a community asks to join (`community_join_requests`, one row per user+community). Owners/admins get a push + notification (recipient-locale copy via `notification_copy`: `community_join_request`) and act from the Notifications → Invites tab ("Asking to join" cards) or the admin-only pending-requests row at the top of the community feed (navigates to the inbox; no inline mutations). Accept routes through the same join path as invite acceptance — member-cap checks (`render_member_cap_error`; the request stays pending on cap block), introduce-yourself thread, `notify_on_new_member`, cache invalidation — then notifies the requester (`community_join_request_accepted`).
+- **Request message.** The requester may attach a note (`community_join_requests.message`, ≤140 chars, whitespace-normalized server-side) shown **only** on the deciding admins' "Asking to join" cards — never in push payloads. Owners can make it mandatory via the Manage Community handle card ("Require a message" — `communities.join_request_message_required`, meaningful only while findable): the lookup then reports `message_required: true`, the join panel blocks sending until non-empty, and the server rejects empty submissions with `message_required` (over-long ones with `message_too_long`). A re-request overwrites the stored message so admins never read a stale note.
+- **Owner question + profile review.** With the requirement on, the owner may also write a specific question (`communities.join_request_prompt`, ≤200 chars, empty clears): the lookup returns it as `join_prompt`, the join panel shows it verbatim above the answer box, and the answer arrives on the request card. From that card the deciding admins can open the requester's profile: `profile_privacy.can_view_profile` grants access while (and only while) a pending join request exists to a community the viewer manages (`has_pending_join_request_to_managed_community`) — accept converges to the shared-community rule, reject/withdraw closes the door again.
 - **Silent expiry on decline.** Declines never notify and are requester-invisible: the lookup keeps reporting `pending` for the 30-day cooldown, after which the state quietly resets. Request-pending copy promises only the positive path ("If you're welcomed in, you'll hear here"). No reason is ever recorded or shown.
 
 ---
@@ -526,3 +532,51 @@ tune it without a deploy. Landing pricing is generated from the same KB
 seeds (`scripts/generate_landing_pricing.py` →
 `landing/src/generated/pricing.json`, drift-checked by
 `tests/test_landing_pricing_parity.py`).
+
+---
+
+## 16. Lifecycle email (welcome, activation nudges, unsubscribe)
+
+**Classification is the load-bearing decision.** Transactional mail
+(password reset, signup verification, community invites, billing) calls
+`backend/services/transactional_email.py` directly and is never suppressed.
+Everything relational — welcome, nudges, future digests/broadcasts — goes
+through the **`backend/services/lifecycle_email.py` chokepoint**: consent
+check against `email_preferences` (lifecycle = opt-out, marketing = opt-in,
+`hard_suppressed` overrides both), localized unsubscribe/legal footer
+(postal address from `EMAIL_LEGAL_ADDRESS` — CAN-SPAM), and RFC 8058
+one-click headers (`List-Unsubscribe` + `List-Unsubscribe-Post`). Nothing
+lifecycle may call the raw transport.
+
+**Unsubscribe:** permanent per-user DB token (`email_preferences.
+unsubscribe_token`). `GET /email/unsubscribe?t=` renders a confirm page
+(GET never mutates — mail-client prefetch safety); `POST /email/unsubscribe`
+is the one-click target and the form action; `POST /email/resubscribe`
+round-trips. All responses are non-enumerating. Rows are purged in
+`account_deletion.py`.
+
+**Sequence (cron-swept, never inline in signup):**
+
+1. **Welcome** (`/api/cron/email/welcome`, ~20 min): users rows created in
+   the last 72h. Organic signups get the OWNER variant (single CTA: create
+   your first community); users who already belong to a community (arrived
+   via invite) get the MEMBER variant anchored to that community — never a
+   create-community pitch.
+2. **Activation nudges** (`/api/cron/email/activation-nudges`, daily):
+   no-community nudge (organic users 2–14d old, zero memberships) and
+   empty-community nudge (root community ≥96h with only the owner and no
+   `invite_sent` event).
+3. **Verification reminder** (`/api/cron/email/verification-reminders`,
+   daily): `pending_signups` 24h–7d old, once per address, with a FRESH
+   token (the signup one expires after 24h). Transactional — bypasses
+   consent.
+
+Caps: one lifecycle email per recipient per 48h, each kind once ever
+(`lifecycle_email_sends`, INSERT-first reservation). Locale: explicit
+`preferred_locale` → `signup_locale` (Accept-Language guess captured at
+users-row creation) → `en`; copy lives under `email.*` in the backend
+catalogs (pt-PT uses the informal email register). Instrumentation: every
+send logs a server-only `lifecycle_email_sent` retention event and CTAs
+carry `?source=lifecycle_email_<kind>` for funnel joins against
+`community_created` / `invite_sent`. Kill switches + schedules:
+**`docs/cloud-scheduler-cron.md` §14**.

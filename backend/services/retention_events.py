@@ -46,6 +46,11 @@ EVENT_TYPES = {
     "community_created",    # /create_community succeeded (community_id set)
     "invite_sent",          # invite link generated or username invite sent
                             # (`detail` = "invite_link" | "invite_username")
+    # Lifecycle email sends (welcome / activation nudges). Emitted from
+    # backend.services.lifecycle_email at send time; `detail` carries the
+    # email kind ("welcome_owner", "no_community_nudge", ...). CTA links
+    # carry ?source=lifecycle_email_<kind> for future click attribution.
+    "lifecycle_email_sent",
 }
 # Events that only backend code may emit. The `/api/retention/event` sink
 # drops these; record_event() itself still accepts them (it IS the
@@ -53,6 +58,7 @@ EVENT_TYPES = {
 SERVER_ONLY_EVENT_TYPES = {
     "community_created",
     "invite_sent",
+    "lifecycle_email_sent",
 }
 SOURCES = {
     "weekly_digest_cron",   # server-side send marker

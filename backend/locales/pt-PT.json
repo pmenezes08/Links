@@ -167,6 +167,60 @@
       "lead_text": "Foste convidado para entrar em {community} por {inviter}.",
       "cta": "Entrar em {community}",
       "nested_heading": "Também vais entrar em"
+    },
+    "welcome_owner": {
+      "subject": "Bem-vindo ao C-Point — vamos criar a tua comunidade",
+      "heading": "Bem-vindo ao C-Point",
+      "lead": "O C-Point é onde as tuas pessoas se juntam em espaços privados, só por convite — sem feed público, sem ruído.",
+      "moments_heading": "Como funciona",
+      "moment_create": "Cria uma comunidade — o teu espaço privado, à tua maneira.",
+      "moment_invite": "Convida as tuas pessoas — entram por convite ou handle, ninguém entra por acaso.",
+      "moment_steve": "Conhece o Steve — está fixado no topo das tuas conversas; fala com ele quando quiseres.",
+      "platforms": "O C-Point funciona na web, no iPhone e no Android — entra em qualquer lado com a mesma conta.",
+      "cta": "Criar a minha primeira comunidade"
+    },
+    "welcome_member": {
+      "subject": "Já estás em {community}",
+      "heading": "Bem-vindo ao C-Point",
+      "lead": "Entraste em {community} no C-Point — um espaço privado com as tuas pessoas. Diz olá quando quiseres.",
+      "cta": "Abrir {community}"
+    },
+    "no_community_nudge": {
+      "subject": "Quando quiseres — cria a tua primeira comunidade",
+      "heading": "O teu espaço está à espera",
+      "lead": "Ainda não criaste uma comunidade. Quando o fizeres, é privada desde o primeiro convite — tu decides quem entra.",
+      "secondary": "Começa com 3–5 pessoas em quem já confias.",
+      "cta": "Criar uma comunidade"
+    },
+    "empty_community_nudge": {
+      "subject": "{community} está pronta",
+      "heading": "{community} está pronta",
+      "lead": "A tua comunidade está criada. Convida as primeiras pessoas — ganha vida quando elas chegarem.",
+      "secondary": "Começa pelas pessoas a quem mandarias mensagem primeiro.",
+      "cta": "Convidar pessoas para {community}"
+    },
+    "verification_reminder": {
+      "subject": "Termina a criação da tua conta C-Point",
+      "heading": "Falta um passo",
+      "lead": "Começaste a criar uma conta no C-Point. Confirma o teu email para terminar.",
+      "ignore_note": "Se não foste tu, podes ignorar este email.",
+      "cta": "Verificar o meu email"
+    },
+    "footer": {
+      "reason": "Recebes este email porque tens uma conta C-Point.",
+      "unsubscribe_label": "Cancelar subscrição"
+    },
+    "unsubscribe_page": {
+      "title": "Menos emails?",
+      "body": "Isto pára os emails de acompanhamento do C-Point — dicas de boas-vindas e lembretes. Continuas a receber mensagens importantes de conta e convites.",
+      "confirm_button": "Cancelar subscrição",
+      "done_title": "Feito",
+      "done_body": "Deixas de receber emails de acompanhamento do C-Point. Continuas a receber mensagens importantes de conta e convites.",
+      "resubscribe_button": "Voltar a ativar",
+      "resubscribed_title": "Bem-vindo de volta",
+      "resubscribed_body": "Os emails de acompanhamento estão ativos outra vez.",
+      "invalid_title": "Ligação inválida",
+      "invalid_body": "Esta ligação é inválida ou expirou."
     }
   },
   "notifications": {

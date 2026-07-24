@@ -143,6 +143,52 @@ def share_any_community(
     return bool(viewer_roots.intersection(target_roots))
 
 
+def has_pending_join_request_to_managed_community(
+    viewer_username: str,
+    target_username: str,
+    cursor: Any,
+) -> bool:
+    """True while ``target`` has a *pending* join request to a community
+    ``viewer`` manages (creator or owner/admin role).
+
+    Knocking on the door is consent to be looked at by the people deciding:
+    the deciding admins may open the requester's profile while the request
+    is pending. The grant expires with the decision — accept converges to
+    the shared-community rule, reject/withdraw closes the door again.
+    """
+    viewer = str(viewer_username or "").strip()
+    target = str(target_username or "").strip()
+    if not viewer or not target:
+        return False
+    ph = get_sql_placeholder()
+    try:
+        cursor.execute(
+            f"""
+            SELECT 1
+            FROM community_join_requests r
+            JOIN communities c2 ON c2.id = r.community_id
+            WHERE LOWER(r.username) = LOWER({ph}) AND r.status = 'pending'
+              AND (
+                    LOWER(c2.creator_username) = LOWER({ph})
+                    OR EXISTS (
+                        SELECT 1 FROM user_communities uc
+                        JOIN users au ON uc.user_id = au.id
+                        WHERE uc.community_id = r.community_id
+                          AND LOWER(au.username) = LOWER({ph})
+                          AND uc.role IN ('owner', 'admin')
+                    )
+                  )
+            LIMIT 1
+            """,
+            (target, viewer, viewer),
+        )
+        return cursor.fetchone() is not None
+    except Exception:
+        # Table is created lazily by community_join_requests.ensure_tables();
+        # its absence means no requests exist — never widen access on error.
+        return False
+
+
 def can_view_profile(
     viewer_username: Optional[str],
     target_username: str,
@@ -164,4 +210,6 @@ def can_view_profile(
 
     if is_app_admin_username(cursor, viewer):
         return True
-    return share_any_community(viewer, target, cursor)
+    if share_any_community(viewer, target, cursor):
+        return True
+    return has_pending_join_request_to_managed_community(viewer, target, cursor)

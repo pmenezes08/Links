@@ -2,8 +2,99 @@
 
 from __future__ import annotations
 
+import pytest
+
 from tests.fixtures import make_community, make_user
 from tests.test_group_feed_blueprint import _add_group_member, _insert_group
+
+
+_schema_ready = False
+
+
+@pytest.fixture(autouse=True)
+def _ensure_group_schema(mysql_dsn):
+    """Add the ``groups`` columns this suite writes that the conftest's
+    minimal shape lacks (``approval_required``, ``created_by``).
+
+    Deliberately surgical: running the monolith's full ``add_missing_tables()``
+    here instead breaks under MySQL when it runs before other suites have
+    created their tables (its legacy DDL indexes a TEXT ``date`` column,
+    errno 1170). Steve-agent columns are handled by the route itself via
+    ``ensure_group_steve_agent_schema``.
+    """
+    global _schema_ready
+    if not _schema_ready:
+        from backend.services.database import get_db_connection
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            for ddl in (
+                "ALTER TABLE `groups` ADD COLUMN approval_required TINYINT(1) NOT NULL DEFAULT 0",
+                "ALTER TABLE `groups` ADD COLUMN created_by VARCHAR(191) NULL",
+                # FK-free minimal clones (same pattern as test_owner_analytics):
+                # production DDL declares FKs to users(username) that the
+                # conftest schema can't satisfy.
+                """
+                CREATE TABLE IF NOT EXISTS `group_members` (
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    group_id INT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
+                    status VARCHAR(32) DEFAULT 'member',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY uq_gm (group_id, username)
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS `group_posts` (
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    group_id INT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
+                    content TEXT,
+                    image_path TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS `group_replies` (
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    group_post_id INT NOT NULL,
+                    parent_reply_id INT NULL,
+                    username VARCHAR(191) NOT NULL,
+                    content TEXT,
+                    image_path TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS `group_post_reactions` (
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    group_post_id INT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
+                    reaction VARCHAR(32) NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY uniq_gpr (group_post_id, username)
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS `group_reply_reactions` (
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    group_reply_id INT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
+                    reaction VARCHAR(32) NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY uniq_grr (group_reply_id, username)
+                )
+                """,
+            ):
+                try:
+                    c.execute(ddl)
+                except Exception:
+                    pass
+            try:
+                conn.commit()
+            except Exception:
+                pass
+        _schema_ready = True
 
 
 def _login(client, username: str) -> None:
@@ -333,7 +424,6 @@ def test_build_steve_group_resource_context_includes_scoped_links_and_docs(mysql
 
     from tests.test_group_feed_blueprint import _insert_group
 
-    ba.add_missing_tables()
     make_user("grp_res_u")
     cid = make_community("grp-res-comm", tier="free", creator_username="grp_res_u")
     gid = _insert_group(cid, "GrpRes", "grp_res_u")
@@ -341,6 +431,37 @@ def test_build_steve_group_resource_context_includes_scoped_links_and_docs(mysql
     ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     with get_db_connection() as conn:
         c = conn.cursor()
+        # Minimal FK-free shapes (calling the monolith's add_missing_tables()
+        # here instead hits errno 1170 under MySQL depending on suite order —
+        # see the module fixture's docstring).
+        for ddl in (
+            """
+            CREATE TABLE IF NOT EXISTS useful_links (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                community_id INT NULL,
+                group_id INT NULL,
+                username VARCHAR(191),
+                url TEXT,
+                description TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS useful_docs (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                community_id INT NULL,
+                group_id INT NULL,
+                username VARCHAR(191),
+                file_path TEXT,
+                description TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+        ):
+            try:
+                c.execute(ddl)
+            except Exception:
+                pass
         c.execute(
             f"""
             INSERT INTO useful_links (community_id, group_id, username, url, description, created_at)
@@ -362,3 +483,100 @@ def test_build_steve_group_resource_context_includes_scoped_links_and_docs(mysql
     assert "https://group-only.example/doc" in out
     assert "Group documents" in out
     assert "Group-scoped doc title" in out
+
+
+# ── Group creation permissions (2026-07: opened up from app-admin-only) ──
+#
+# /api/groups/create was historically gated to is_app_admin_or_paulo, which
+# blocked every real community owner — including the first Enterprise owner.
+# The rule is now: app admin OR owner/admin of the target community or of
+# its root network. Free-plan roots still keep groups at the parent level,
+# but Enterprise roots are structure-exempt at any depth.
+
+
+def test_groups_create_allows_community_owner(mysql_dsn):
+    """A plain (non-app-admin) owner can create a group in their community."""
+    import bodybuilding_app
+
+    make_user("grp_owner_plain", subscription="premium")
+    cid = make_community("grp-owner-net", tier="paid_l1", creator_username="grp_owner_plain")
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "grp_owner_plain")
+    r = client.post(
+        "/api/groups/create",
+        data={"community_id": str(cid), "name": "Owner Group", "approval_required": "0"},
+    )
+    assert r.status_code == 200
+    assert (r.get_json() or {}).get("success") is True
+
+
+def test_groups_create_rejects_regular_member(mysql_dsn):
+    """Someone who neither owns nor administers the community gets 403."""
+    import bodybuilding_app
+
+    make_user("grp_owner_x", subscription="premium")
+    make_user("grp_rando")
+    cid = make_community("grp-perm-net", tier="paid_l1", creator_username="grp_owner_x")
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "grp_rando")
+    r = client.post(
+        "/api/groups/create",
+        data={"community_id": str(cid), "name": "Sneaky Group", "approval_required": "0"},
+    )
+    assert r.status_code == 403
+
+
+def test_groups_create_root_owner_can_create_in_sub(mysql_dsn):
+    """Owning the root grants group creation inside its sub-communities."""
+    import bodybuilding_app
+
+    make_user("grp_root_owner", subscription="premium")
+    root = make_community("grp-root-net", tier="paid_l1", creator_username="grp_root_owner")
+    sub = make_community("grp-sub-net", tier="free", parent_community_id=root)
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "grp_root_owner")
+    r = client.post(
+        "/api/groups/create",
+        data={"community_id": str(sub), "name": "Sub Group", "approval_required": "0"},
+    )
+    assert r.status_code == 200
+    assert (r.get_json() or {}).get("success") is True
+
+
+def test_groups_create_free_owner_blocked_on_sub_level(mysql_dsn):
+    """Free-plan roots keep the old rule: groups only at the parent level."""
+    import bodybuilding_app
+
+    make_user("grp_free_owner", subscription="free")
+    root = make_community("grp-free-root", tier="free", creator_username="grp_free_owner")
+    sub = make_community("grp-free-sub", tier="free", parent_community_id=root)
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "grp_free_owner")
+    r = client.post(
+        "/api/groups/create",
+        data={"community_id": str(sub), "name": "Blocked Group", "approval_required": "0"},
+    )
+    assert r.status_code == 403
+    assert "parent community level" in ((r.get_json() or {}).get("error") or "")
+
+
+def test_groups_create_enterprise_sub_by_free_owner(mysql_dsn):
+    """The TAP shape: Free personal plan + Enterprise root ⇒ groups anywhere."""
+    import bodybuilding_app
+
+    make_user("grp_ent_owner", subscription="free")
+    root = make_community("grp-ent-root", tier="enterprise", creator_username="grp_ent_owner")
+    sub = make_community("grp-ent-sub", tier="free", parent_community_id=root)
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "grp_ent_owner")
+    r = client.post(
+        "/api/groups/create",
+        data={"community_id": str(sub), "name": "Crew Group", "approval_required": "0"},
+    )
+    assert r.status_code == 200
+    assert (r.get_json() or {}).get("success") is True

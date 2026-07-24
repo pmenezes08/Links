@@ -24,6 +24,16 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "C:/Users/paulo/OneDrive/Documentos/Evalio", "run", "dev", "--", "--port", "5199", "--strictPort"],
       "port": 5199
+    },
+    {
+      "name": "evalio-api",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--env-file=C:/Users/paulo/OneDrive/Documentos/Evalio/server/.env",
+        "--env-file=C:/Users/paulo/AppData/Local/Temp/claude/C--Users-paulo-OneDrive-Documentos-CPoint-Links/1186acac-d8b5-4b6a-a165-2c6ac1f71427/scratchpad/evalio_dev_overrides.env",
+        "C:/Users/paulo/OneDrive/Documentos/Evalio/server/index.js"
+      ],
+      "port": 3001
     }
   ]
 }

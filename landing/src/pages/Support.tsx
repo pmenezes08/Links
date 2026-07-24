@@ -153,7 +153,8 @@ export default function Support() {
 
           <div>
             <h2 style={h2Style}>{c.formTitle}</h2>
-            <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* data-clarity-mask: never let session recordings capture typed contact details */}
+            <form onSubmit={onSubmit} data-clarity-mask="true" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div>
                 <label htmlFor="sp-name" style={labelStyle}>{c.name}</label>
                 <input id="sp-name" name="name" type="text" required placeholder={c.namePh} className="rl-field" autoComplete="name" />

@@ -32,6 +32,8 @@ import AboutCPointModal from '../components/about/AboutCPointModal'
 import BrandLogo from '../components/BrandLogo'
 import { setOnboardingFullscreenOverlay } from '../utils/fullscreenOverlay'
 import { useSingleCommunityLanding } from '../hooks/useSingleCommunityLanding'
+import { useKeyboardInset } from '../hooks/useKeyboardInset'
+import { CHAT_KEYBOARD_ANIMATION_MS, CPOINT_EASE_OUT } from '../design/motion'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
 const DASHBOARD_INVITE_PROMPT_DISMISSED_KEY = 'cpoint_dashboard_invite_prompt_dismissed'
@@ -169,6 +171,9 @@ export default function PremiumDashboard() {
   const [showJoinModal, setShowJoinModal] = useState(false)
   const [showAboutCPointModal, setShowAboutCPointModal] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  // Native runs with Keyboard.resize:'none', so a centered dialog stays put and
+  // the IME covers its action row. Lift the dialog by the occluded height.
+  const modalKeyboardInset = useKeyboardInset(showCreateModal || showJoinModal)
   const [newCommName, setNewCommName] = useState('')
   // Handle pre-fills from the name (slugified) until the creator edits it
   // by hand; sent with create and validated server-side (silent fallback
@@ -1543,7 +1548,7 @@ export default function PremiumDashboard() {
             <div className="font-semibold text-sm mb-2">{t('dashboard.verify_email_title')}</div>
             <div className="text-sm text-c-text-tertiary">{t('dashboard.verify_email_body')}</div>
             <div className="flex items-center justify-end gap-2 mt-3">
-              <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowVerifyFirstModal(false)}>{t('common.close')}</button>
+              <button className="px-3 py-2 rounded-md border border-c-border bg-c-bg-surface text-sm text-c-text-secondary hover:bg-c-hover-bg" onClick={()=> setShowVerifyFirstModal(false)}>{t('common.close')}</button>
               <button className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black hover:brightness-110" onClick={async()=>{ try{ await fetch('/resend_verification', { method:'POST', credentials:'include' }) }catch{} alert(t('dashboard.verification_sent_rate_limit')); setShowVerifyFirstModal(false) }}>{t('dashboard.resend_email')}</button>
             </div>
           </div>
@@ -1554,11 +1559,18 @@ export default function PremiumDashboard() {
 
       {/* Communities modal removed; dashboard links use /communities?parent_id= */}
         {showCreateModal && (
-          <div className="fixed inset-0 z-50 bg-c-bg-app/70 backdrop-blur flex items-center justify-center" onClick={(e)=> { if (e.currentTarget===e.target) handleCloseCreateModal() }}>
-          <div className="w-[92%] max-w-sm rounded-2xl border border-c-border bg-c-bg-app p-4">
+          <div
+            className="fixed inset-0 z-50 bg-c-bg-overlay backdrop-blur flex items-center justify-center p-4"
+            style={{
+              paddingBottom: modalKeyboardInset ? modalKeyboardInset + 16 : undefined,
+              transition: `padding-bottom ${CHAT_KEYBOARD_ANIMATION_MS}ms ${CPOINT_EASE_OUT}`,
+            }}
+            onClick={(e)=> { if (e.currentTarget===e.target) handleCloseCreateModal() }}
+          >
+          <div className="w-full max-w-sm max-h-full overflow-y-auto overscroll-contain rounded-2xl border border-c-border bg-c-bg-elevated text-c-text-primary p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="font-semibold text-sm">{t('dashboard.create_community_title')}</div>
-                <button className="p-2 rounded-md hover:bg:white/5" onClick={handleCloseCreateModal} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
+                <button className="p-2 rounded-md text-c-text-secondary hover:bg-c-hover-bg" onClick={handleCloseCreateModal} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
             </div>
             <div className="space-y-3">
               <div>
@@ -1570,7 +1582,7 @@ export default function PremiumDashboard() {
                     if (!handleEdited) setNewCommHandle(normalizeHandleInput(e.target.value))
                   }}
                   placeholder={t('dashboard.community_name_parent_placeholder')}
-                  className="w-full px-3 py-2 rounded-md bg-c-bg-app border border:white/15 text-sm"
+                  className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm text-c-text-primary placeholder:text-c-text-disabled"
                 />
               </div>
               <div>
@@ -1584,7 +1596,7 @@ export default function PremiumDashboard() {
                     autoCapitalize="none"
                     autoCorrect="off"
                     aria-invalid={commHandleHint === 'taken' || commHandleHint === 'invalid'}
-                    className="w-full pl-7 pr-3 py-2 rounded-md bg-c-bg-app border border:white/15 text-sm text-c-text-primary"
+                    className="w-full pl-7 pr-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm text-c-text-primary"
                   />
                 </div>
                 <div className="text-[11px] mt-1 min-h-[14px]">
@@ -1598,7 +1610,7 @@ export default function PremiumDashboard() {
                 <div>
                   <label className="block text-xs text-c-text-tertiary mb-1">{t('dashboard.community_type_label')}</label>
                   {isAppAdmin ? (
-                    <select value={newCommType} onChange={e=> setNewCommType(e.target.value as any)} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border:white/15 text-sm">
+                    <select value={newCommType} onChange={e=> setNewCommType(e.target.value as any)} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm text-c-text-primary">
                       <option value="General">{t('dashboard.type_general')}</option>
                       <option value="Gym">{t('dashboard.type_gym')}</option>
                       <option value="University">{t('dashboard.type_university')}</option>
@@ -1612,7 +1624,7 @@ export default function PremiumDashboard() {
                 </div>
               <div className="text-xs text-c-text-tertiary">{t('dashboard.create_parent_hint')}</div>
                 <div className="flex items-center justify-end gap-2">
-                  <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={handleCloseCreateModal} disabled={isCreatingCommunity}>{t('common.cancel')}</button>
+                  <button className="px-3 py-2 rounded-md border border-c-border bg-c-bg-surface text-sm text-c-text-secondary hover:bg-c-hover-bg disabled:opacity-50" onClick={handleCloseCreateModal} disabled={isCreatingCommunity}>{t('common.cancel')}</button>
                     <button 
                       className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" 
                       disabled={isCreatingCommunity || (!!newCommHandle.trim() && (commHandleHint === 'taken' || commHandleHint === 'invalid' || commHandleHint === 'checking'))}
@@ -1661,11 +1673,18 @@ export default function PremiumDashboard() {
         </div>
       )}
       {showJoinModal && (
-        <div className="fixed inset-0 z-50 bg-c-bg-app/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowJoinModal(false)}>
-          <div className="w-[92%] max-w-sm rounded-2xl border border-c-border bg-c-bg-app p-4">
+        <div
+          className="fixed inset-0 z-50 bg-c-bg-overlay backdrop-blur flex items-center justify-center p-4"
+          style={{
+            paddingBottom: modalKeyboardInset ? modalKeyboardInset + 16 : undefined,
+            transition: `padding-bottom ${CHAT_KEYBOARD_ANIMATION_MS}ms ${CPOINT_EASE_OUT}`,
+          }}
+          onClick={(e)=> e.currentTarget===e.target && setShowJoinModal(false)}
+        >
+          <div className="w-full max-w-sm max-h-full overflow-y-auto overscroll-contain rounded-2xl border border-c-border bg-c-bg-elevated text-c-text-primary p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="font-semibold text-sm">{t('dashboard.join_community_title')}</div>
-              <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowJoinModal(false)} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
+              <button className="p-2 rounded-md text-c-text-secondary hover:bg-c-hover-bg" onClick={()=> setShowJoinModal(false)} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
             </div>
             {/* Handle-only: the legacy join-by-code path is gone (its
                 endpoint never existed in this backend). */}

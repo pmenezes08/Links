@@ -323,6 +323,15 @@ def _bootstrap_schema() -> None:
             ("age_confirmed_at", "DATETIME NULL"),
             ("age_consent_given", "TINYINT(1) NULL"),
             ("underage_delete_scheduled_at", "DATETIME NULL"),
+            # Lifecycle-email sweeps read these. DEFAULT 1 on email_verified
+            # is a test convenience: fixture users represent established
+            # accounts (every prod creation path sets it explicitly);
+            # unverified-cohort tests set 0 by hand.
+            ("email_verified", "TINYINT(1) DEFAULT 1"),
+            ("google_id", "VARCHAR(191) NULL"),
+            ("apple_id", "VARCHAR(191) NULL"),
+            ("preferred_locale", "VARCHAR(16) NULL"),
+            ("signup_locale", "VARCHAR(16) NULL"),
         ):
             try:
                 c.execute(f"ALTER TABLE users ADD COLUMN {column} {col_def}")
@@ -435,6 +444,9 @@ _TRUNCATE_TABLES: List[str] = [
     # the monolith's background add_missing_tables() — runs first. Truncate
     # them so one suite's rows never leak into another's aggregates. TRUNCATE
     # on a not-yet-created table is swallowed below.
+    "email_preferences",
+    "lifecycle_email_sends",
+    "pending_signups",
     "messages",
     "group_chats",
     "group_chat_members",
@@ -443,6 +455,14 @@ _TRUNCATE_TABLES: List[str] = [
     "community_visit_history",
     "group_posts",
     "group_replies",
+    # group_posts truncation resets AUTO_INCREMENT, so any table keyed by
+    # group_post_id must be truncated too or stale rows collide with
+    # recycled post ids across tests (bit the group-agent suite's schedule
+    # assertions when it joined CI).
+    "group_members",
+    "group_steve_agent_schedule",
+    "useful_links",
+    "useful_docs",
 ]
 
 

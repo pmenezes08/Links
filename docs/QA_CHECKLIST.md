@@ -953,3 +953,44 @@ weekly digest / Retention attribution.
 - [ ] **Digest attribution round-trip** (only where the flag is on): after a real digest send, tap the push. Expected: land on `/community_feed_react/<id>?source=weekly_digest_push` and a `digest_opened` row appears in `retention_events` next to the cron's `digest_sent` row.
 - [ ] **Checkout intent audit**: start (don't complete) a community-tier checkout from the Owner Dashboard upgrade CTA. Expected: one `community_tier_checkout_started` row in `subscription_audit_log` with `metadata.source` from the closed vocabulary; no purchase rows until the webhook fires.
 - [ ] **Landing pricing parity**: `python scripts/generate_landing_pricing.py --check` passes; `landing/src/generated/pricing.json` matches the KB seed prices shown in-app.
+
+## §19 — Community owner setup wizard (no lost progress)
+
+Run after any change to `client/src/components/community/CommunityOwnerSetupIntro.tsx`.
+
+- [ ] **Save on continue**: as the owner of a fresh community, type a description on the Description step and press **Next** without pressing Save. Expected: the button briefly shows "Saving…", `POST /update_community` fires once, and the description is present in Manage Community afterwards.
+- [ ] **Save on skip**: fill in a member limit, then press **Skip** in the wizard header. Expected: the limit is saved before the exit hint appears.
+- [ ] **Save on exit**: from the exit hint, press **Open Manage Community** and **Stay on feed** in separate runs. Expected: everything typed in the wizard is already persisted when the page lands.
+- [ ] **Image step**: choose a banner, press **Next** without pressing Save. Expected: the upload happens on continue and the new banner shows on the feed.
+- [ ] **Failed save keeps the work**: with the network offline, type a description and press Next. Expected: an error alert, the wizard stays on the step, and the typed text is still in the field.
+- [ ] **Reload mid-wizard**: type a description, reload the app, reopen the community. Expected: the wizard resumes on the same step with the typed text intact.
+- [ ] **No-op steps are instant**: press Next through steps you did not edit. Expected: no `/update_community` calls and no "Saving…" flash.
+
+## §20 — Create-community dialogs on device (keyboard + contrast)
+
+Run on a real iPhone/Android after any change to the Create Sub-Community /
+Create Group modals (`client/src/pages/Communities.tsx`), the dashboard
+Create/Join community modals (`client/src/pages/PremiumDashboard.tsx`), or
+`client/src/hooks/useKeyboardInset.ts`.
+
+- [ ] **Action row stays visible**: open Create Sub-Community, tap the name field. Expected: the dialog lifts with the keyboard and Cancel/Create stay on screen; nothing is hidden behind the IME. Repeat for Create Group, and for the dashboard's Create community + Join community modals.
+- [ ] **Tall keyboard / short screen**: with a predictive-text bar and a small device, repeat the above. Expected: the dialog shrinks to the space above the keyboard and scrolls internally — the Create button is always reachable.
+- [ ] **Dismiss restores layout**: close the keyboard. Expected: the dialog returns to centre with no jump or stuck padding.
+- [ ] **Light mode contrast**: in light mode, the field placeholders ("e.g., Engineering Team") and typed values are dark on the grey field — never white-on-white — including while the field is focused.
+- [ ] **Dark mode unchanged**: same dialogs in dark mode keep white values, dim placeholders, and a visible Cancel button.
+- [ ] **Cancel reads as a button**: Cancel has a visible surface and border in both themes (it previously rendered as bare text from a malformed class).
+
+## §21 — Join-by-handle request message
+
+Run after changes to `JoinByHandlePanel.tsx`, `HandleSettings.tsx`, or
+`backend/services/community_join_requests.py`.
+
+- [ ] **Optional message**: find a findable community by handle, type a note, Ask to join. Expected: request lands with the note visible on the owner's "Asking to join" card in Notifications → Invites; the push/notification text is unchanged (no message content).
+- [ ] **No message**: send a request with the box empty (policy off). Expected: request sends; the owner's card shows no message block.
+- [ ] **140 cap**: type past 140 characters. Expected: input stops at 140, counter shows 140/140; server rejects a forged longer payload with `message_too_long`.
+- [ ] **Require a message (owner)**: in Manage Community → handle card, the "Require a message" toggle is dimmed until "Open to join requests" is on; flip it on. Expected: setting persists across reload.
+- [ ] **Required policy (requester)**: with the policy on, the join panel shows "Why do you want to join?", Ask to join stays disabled until text is entered; an empty forged POST returns `message_required` and no request row is created.
+- [ ] **Re-request**: withdraw and re-request with a different note. Expected: the owner's card shows only the newest note (or none, if the second request had none).
+- [ ] **Owner question**: with "Require a message" on, write a question in "Question for requesters" and save. Expected: a finder sees the question verbatim above the answer box ("Your answer" placeholder); the answer shows on the owner's request card. Clearing the field falls back to the generic "Why do you want to join?".
+- [ ] **Profile from request card**: tap the requester's avatar or @username on the "Asking to join" card. Expected: the requester's profile opens even with no shared community. After Accept/Decline/withdraw, a non-shared requester's profile is no longer reachable (non-enumerating error).
+- [ ] **pt-PT / de-DE**: repeat the requester flow in both locales — placeholder, hints, question label, and error line localized.
