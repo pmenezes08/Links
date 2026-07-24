@@ -76,6 +76,9 @@ We use additional providers to run the Service. They only receive what they need
 - **Google Firebase** — push delivery via Firebase Cloud Messaging ([Firebase privacy](https://firebase.google.com/support/privacy)).
 - **Resend** — transactional email ([Resend privacy policy](https://resend.com/legal/privacy-policy)).
 - **Stripe** — payment processing ([Stripe privacy policy](https://stripe.com/privacy)).
+- **Microsoft Clarity** — site analytics on our public marketing site only ([Microsoft privacy statement](https://privacy.microsoft.com/privacystatement)).
+
+**Site analytics (marketing site only).** On www.c-point.co we use Microsoft Clarity to understand how visitors use the site (heatmaps, scroll depth, and session replays). Clarity only runs if you accept cookies in our banner, form inputs are masked, and it is never used inside the C-Point app. Microsoft processes this data on our behalf — see Microsoft's privacy statement for details.
 
 We may add or replace providers as the Service evolves; we will update this Policy for material changes where appropriate.
 

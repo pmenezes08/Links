@@ -38,7 +38,8 @@ def handle_settings_post(community_id: int):
         return api_errors.auth_required()
 
     data = request.get_json(silent=True) or {}
-    if "handle" not in data and "discoverable" not in data:
+    updatable = ("handle", "discoverable", "join_request_message_required", "join_request_prompt")
+    if not any(k in data for k in updatable):
         return jsonify({"success": False, "error": "Nothing to update"}), 400
 
     from backend.services.community_handles import update_handle_settings
@@ -48,6 +49,15 @@ def handle_settings_post(community_id: int):
         community_id,
         handle=data.get("handle") if "handle" in data else None,
         discoverable=data.get("discoverable") if "discoverable" in data else None,
+        join_request_message_required=(
+            data.get("join_request_message_required")
+            if "join_request_message_required" in data
+            else None
+        ),
+        # Empty string clears the prompt, so pass it through verbatim.
+        join_request_prompt=(
+            data.get("join_request_prompt") if "join_request_prompt" in data else None
+        ),
     )
     return jsonify(body), status
 
@@ -69,14 +79,19 @@ def lookup_by_handle(handle: str):
 
 @community_handles_bp.route("/api/community/<int:community_id>/join_requests", methods=["POST"])
 def join_request_create(community_id: int):
-    """Ask to join a findable community (knock on the door)."""
+    """Ask to join a findable community (knock on the door).
+
+    Body: {message?} — requester's note to the admins (≤140 chars;
+    mandatory when the community sets join_request_message_required)."""
     username = session.get("username")
     if not username:
         return api_errors.auth_required()
 
+    data = request.get_json(silent=True) or {}
+
     from backend.services.community_join_requests import create_request
 
-    body, status = create_request(username, community_id)
+    body, status = create_request(username, community_id, message=data.get("message"))
     return jsonify(body), status
 
 

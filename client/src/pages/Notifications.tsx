@@ -76,6 +76,7 @@ type PendingJoinRequest = {
   display_name: string
   profile_picture?: string | null
   created_at?: string
+  message?: string | null
 }
 
 type TabType = 'notifications' | 'invites' | 'calendar' | 'polls' | 'tasks'
@@ -824,17 +825,26 @@ export default function Notifications(){
                 {joinRequests.map(req => (
                   <div key={`join-req-${req.id}`} className="rounded-xl border border-cpoint-turquoise/35 bg-cpoint-turquoise/10 p-3">
                     <div className="flex items-start gap-3">
-                      {req.profile_picture ? (
-                        <img
-                          src={req.profile_picture.startsWith('http') || req.profile_picture.startsWith('/') ? req.profile_picture : `/${req.profile_picture}`}
-                          alt=""
-                          className="w-10 h-10 rounded-full object-cover bg-c-active-bg"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-cpoint-turquoise/20 flex items-center justify-center text-cpoint-turquoise">
-                          <i className="fa-solid fa-user-plus" />
-                        </div>
-                      )}
+                      {/* Deciding admins may review who's knocking: the server
+                          grants profile access while the request is pending. */}
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/profile/${encodeURIComponent(req.username)}`)}
+                        aria-label={t('notifications_page.join_request_view_profile', { user: req.display_name })}
+                        className="flex-shrink-0"
+                      >
+                        {req.profile_picture ? (
+                          <img
+                            src={req.profile_picture.startsWith('http') || req.profile_picture.startsWith('/') ? req.profile_picture : `/${req.profile_picture}`}
+                            alt=""
+                            className="w-10 h-10 rounded-full object-cover bg-c-active-bg"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-cpoint-turquoise/20 flex items-center justify-center text-cpoint-turquoise">
+                            <i className="fa-solid fa-user-plus" />
+                          </div>
+                        )}
+                      </button>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-c-text-primary">
                           {t('notifications_page.join_request_body', {
@@ -842,7 +852,18 @@ export default function Notifications(){
                             community: req.community_name,
                           })}
                         </div>
-                        <div className="text-[11px] text-c-text-tertiary mt-0.5">@{req.username}{req.created_at ? ` · ${formatTimeAgo(req.created_at, t)}` : ''}</div>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/profile/${encodeURIComponent(req.username)}`)}
+                          className="text-[11px] text-c-text-tertiary mt-0.5 hover:text-c-text-primary"
+                        >
+                          @{req.username}{req.created_at ? ` · ${formatTimeAgo(req.created_at, t)}` : ''}
+                        </button>
+                        {req.message ? (
+                          <div className="mt-2 rounded-lg border border-c-border bg-c-bg-app px-3 py-2 text-sm text-c-text-secondary whitespace-pre-wrap break-words">
+                            {req.message}
+                          </div>
+                        ) : null}
                         <div className="mt-3 flex gap-2">
                           <button
                             className="flex-1 min-h-[44px] rounded-lg bg-cpoint-turquoise px-3 py-2 text-sm font-semibold text-black disabled:opacity-50"

@@ -659,7 +659,12 @@ def _fetch_user_billed_communities(username: str) -> List[Dict[str, Any]]:
         state = community_billing.get_billing_state(community_id) or {}
         health = derive_community_subscription_health(
             state,
-            enterprise_steve_package_included=enterprise_steve_included,
+            # Per-deal clause wins over the tier-wide KB policy: an
+            # Enterprise community that pays for Steve separately must see
+            # the add-on path, not "already included".
+            enterprise_steve_package_included=enterprise_membership.package_included_for(
+                community_id, kb_default=enterprise_steve_included
+            ),
         )
         tier_live = bool(health.get("tier_subscription_active"))
         items.append({
@@ -946,7 +951,10 @@ def _preflight_steve_package(
             "steve_package_subscription_active": False,
         }
     kb_fields = _kb_field_map("community-tiers")
-    ent_incl = _kb_truthy(kb_fields, "enterprise_steve_package_included", True)
+    ent_incl = enterprise_membership.package_included_for(
+        root_id,
+        kb_default=_kb_truthy(kb_fields, "enterprise_steve_package_included", True),
+    )
     health = derive_community_subscription_health(
         state,
         enterprise_steve_package_included=ent_incl,

@@ -33,14 +33,29 @@
       rel="stylesheet"
     />
 
-    <!-- Google Ads tag (AW-18311361204) with EEA Consent Mode v2.
-         Defaults to denied; the consent banner (see end of body) can grant ad
-         cookies. The choice is stored on `.c-point.co` so app.c-point.co
-         inherits both the consent and the click-id cookie for conversion
-         attribution. The tag itself loads on the production host only. -->
+    <!-- Google Ads tag (AW-18311361204) with EEA Consent Mode v2, plus
+         Microsoft Clarity (xnkhnm4ayz) for navigation heatmaps/recordings.
+         Both default to denied/off; the consent banner (see end of body)
+         grants ad + analytics cookies together. The choice is stored on
+         `.c-point.co` so app.c-point.co inherits the ads consent and click-id
+         cookie for conversion attribution. Clarity runs on the MARKETING SITE
+         ONLY and only after consent (never inside the app), and both tags
+         load on production hosts only. -->
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
+      // Clarity loader — called only once consent is granted.
+      window.__cpLoadClarity = function () {
+        if (window.__cpClarityLoaded) return;
+        if (!/(^|\.)c-point\.co$/.test(location.hostname)) return;
+        window.__cpClarityLoaded = true;
+        (function(c,l,a,r,i,t,y){
+          c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+          t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+          y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+        })(window, document, "clarity", "script", "xnkhnm4ayz");
+        try { window.clarity('consent'); } catch (e) {}
+      };
       (function () {
         if (!/(^|\.)c-point\.co$/.test(location.hostname)) return;
         gtag('consent', 'default', {
@@ -54,8 +69,10 @@
           gtag('consent', 'update', {
             ad_storage: 'granted',
             ad_user_data: 'granted',
-            ad_personalization: 'granted'
+            ad_personalization: 'granted',
+            analytics_storage: 'granted'
           });
+          window.__cpLoadClarity();
         }
         gtag('js', new Date());
         gtag('config', 'AW-18311361204');
@@ -65,7 +82,7 @@
         document.head.appendChild(s);
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index-CprrMTaN.js"></script>
+    <script type="module" crossorigin src="/assets/index-CSTra0qv.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-LkAbAUTZ.css">
   </head>
 
@@ -84,8 +101,8 @@
 
         var pt = (navigator.language || '').toLowerCase().indexOf('pt') === 0;
         var txt = pt
-          ? 'Utilizamos cookies para medir o desempenho dos nossos anúncios. Dentro da C-Point não há anúncios.'
-          : 'We use cookies to measure how our ads perform. There are no ads inside C-Point.';
+          ? 'Utilizamos cookies para medir o desempenho dos nossos anúncios e perceber como o site é utilizado. Dentro da C-Point não há anúncios.'
+          : 'We use cookies to measure how our ads perform and understand how the site is used. There are no ads inside C-Point.';
         var accept = pt ? 'Aceitar' : 'Accept';
         var decline = pt ? 'Recusar' : 'Decline';
         var privacy = pt ? 'Política de privacidade' : 'Privacy policy';
@@ -99,9 +116,11 @@
             gtag('consent', 'update', {
               ad_storage: 'granted',
               ad_user_data: 'granted',
-              ad_personalization: 'granted'
+              ad_personalization: 'granted',
+              analytics_storage: 'granted'
             });
           }
+          if (granted && window.__cpLoadClarity) window.__cpLoadClarity();
           var el = document.getElementById('cp-ads-consent');
           if (el && el.parentNode) el.parentNode.removeChild(el);
         }

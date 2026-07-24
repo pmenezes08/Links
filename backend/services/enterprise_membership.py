@@ -81,6 +81,15 @@ def ensure_tables() -> None:
         except Exception:
             pass
 
+        # Per-deal Steve switch for Enterprise communities. NULL means
+        # "follow the KB policy defaults"; 0/1 is an explicit contract
+        # override (Enterprise deals are bespoke — some buy the seats,
+        # some buy the room count only and pay for Steve separately).
+        try:
+            c.execute("ALTER TABLE communities ADD COLUMN enterprise_steve_included TINYINT(1) NULL")
+        except Exception:
+            pass
+
         # Seat ledger.
         try:
             c.execute(
@@ -242,6 +251,101 @@ def _slugify(name: Optional[str]) -> str:
     return s.strip("-")
 
 
+def _truthy(value: Any, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() not in ("0", "false", "no", "off", "")
+
+
+def steve_override_for(community_id: int) -> Optional[bool]:
+    """Read ``communities.enterprise_steve_included`` for the billing root.
+
+    ``None`` means the deal has no explicit Steve clause recorded, so
+    callers fall back to the KB policy default for the tier.
+    """
+    if not community_id:
+        return None
+    try:
+        from backend.services.community import resolve_root_community_id
+
+        root_id, _ = resolve_root_community_id(int(community_id))
+    except Exception:
+        root_id = int(community_id)
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute(
+                f"SELECT enterprise_steve_included FROM communities WHERE id = {ph}",
+                (int(root_id),),
+            )
+            row = c.fetchone()
+        except Exception:
+            # Pre-migration schema — treat as "no override recorded".
+            return None
+    if not row:
+        return None
+    raw = row["enterprise_steve_included"] if hasattr(row, "keys") else row[0]
+    if raw is None:
+        return None
+    try:
+        return bool(int(raw))
+    except (TypeError, ValueError):
+        return _truthy(raw, True)
+
+
+def set_steve_override(community_id: int, included: Optional[bool]) -> bool:
+    """Persist the per-deal Steve clause (``None`` clears it back to KB policy)."""
+    if not community_id:
+        return False
+    ensure_tables()
+    ph = get_sql_placeholder()
+    value = None if included is None else (1 if included else 0)
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute(
+                f"UPDATE communities SET enterprise_steve_included = {ph} WHERE id = {ph}",
+                (value, int(community_id)),
+            )
+        except Exception:
+            logger.exception("set_steve_override failed for community %s", community_id)
+            return False
+        try:
+            conn.commit()
+        except Exception:
+            pass
+    return True
+
+
+def seats_enabled_for(community_id: int) -> bool:
+    """Does joining this community grant a Premium-equivalent Enterprise seat?
+
+    Per-deal override wins; otherwise the ``community-tiers`` KB field
+    ``enterprise_grants_premium_steve`` decides.
+    """
+    override = steve_override_for(community_id)
+    if override is not None:
+        return override
+    return _truthy(_kb_field("community-tiers", "enterprise_grants_premium_steve", True), True)
+
+
+def package_included_for(community_id: int, *, kb_default: bool = True) -> bool:
+    """Is the community Steve pool bundled into this community's Enterprise deal?
+
+    Feeds ``subscription_health.derive_community_subscription_health`` so an
+    Enterprise community that pays for Steve separately shows the add-on
+    path instead of "already included". ``kb_default`` lets callers pass the
+    ``enterprise_steve_package_included`` value they already read.
+    """
+    override = steve_override_for(community_id)
+    if override is not None:
+        return override
+    return kb_default
+
+
 def is_enterprise_community(community_id: int) -> bool:
     # Guarantee the ``communities.tier`` column exists so a fresh DB doesn't
     # silently return False for what should be an Enterprise community.
@@ -349,6 +453,10 @@ def start_seat(
     Idempotent: if an active seat already exists for this (user, community),
     we return it unchanged rather than inserting a duplicate row.
 
+    No-ops (returning a ``skipped`` marker rather than raising) when the
+    community's Enterprise deal doesn't include Steve — those members keep
+    whatever personal plan they already have.
+
     Raises :class:`ValueError` if the community isn't Enterprise-tier.
     """
     ensure_tables()
@@ -360,6 +468,19 @@ def start_seat(
             f"Community {community_id} is not Enterprise tier "
             f"(got '{info.get('tier')}')"
         )
+    if not seats_enabled_for(community_id):
+        logger.info(
+            "start_seat: skipped for %s in community %s (deal excludes Steve)",
+            username, community_id,
+        )
+        return {
+            "username": username,
+            "community_id": int(community_id),
+            "community_slug": info.get("slug"),
+            "active": False,
+            "skipped": True,
+            "reason": "enterprise_steve_not_included",
+        }
 
     existing = active_seat_for(username)
     if existing and existing.get("community_id") == int(community_id) and existing.get("active"):

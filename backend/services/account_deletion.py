@@ -340,6 +340,16 @@ def delete_user_in_connection(conn, username: str, mode: AccountDeletionMode) ->
     _exec_optional(c, f"DELETE FROM native_push_tokens WHERE username={ph}", (username,))
     _exec_optional(c, f"DELETE FROM fcm_tokens WHERE username={ph}", (username,))
 
+    # Email consent + lifecycle send markers: the preference row holds the
+    # live unsubscribe token, and send reservations are keyed by username OR
+    # (for pre-account verification reminders) by email address.
+    _exec_optional(c, f"DELETE FROM email_preferences WHERE username={ph}", (username,))
+    _exec_optional(
+        c,
+        f"DELETE FROM lifecycle_email_sends WHERE recipient={ph} OR LOWER(recipient)=LOWER({ph})",
+        (username, user_email or username),
+    )
+
     try:
         remember_tokens.revoke_for_user(username)
     except Exception as e:

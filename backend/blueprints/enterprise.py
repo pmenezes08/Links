@@ -276,12 +276,37 @@ def admin_set_community_tier(community_id: int):
 
     When moving *out* of Enterprise, we emit ``enterprise_seat_community_downgraded``
     end_seat for every member so the grace window + winback flow kicks in.
+
+    Optional ``steve_included`` records the deal's Steve clause for this
+    community: ``"on"`` grants Premium seats on join, ``"off"`` excludes
+    Steve entirely (member limit still lifted), ``"default"`` clears the
+    override so the ``community-tiers`` KB policy decides. Turning it off
+    closes any seats already handed out, with the standard grace window.
     """
     body = _body()
     new_tier = str(body.get("tier") or "").strip().lower()
     if new_tier not in ("free", "paid", "enterprise"):
         return jsonify({"success": False, "error": "Invalid tier"}), 400
     reason = (body.get("reason") or "").strip()
+
+    steve_raw = body.get("steve_included")
+    steve_included: Any = "unset"
+    if steve_raw is not None:
+        if isinstance(steve_raw, bool):
+            steve_included = steve_raw
+        else:
+            text = str(steve_raw).strip().lower()
+            if text in ("on", "true", "1", "yes", "included"):
+                steve_included = True
+            elif text in ("off", "false", "0", "no", "excluded"):
+                steve_included = False
+            elif text in ("default", "kb", "policy", ""):
+                steve_included = None
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": "steve_included must be on / off / default",
+                }), 400
 
     enterprise_membership.ensure_tables()
     ph = get_sql_placeholder()
@@ -304,8 +329,20 @@ def admin_set_community_tier(community_id: int):
             f"UPDATE communities SET tier = {ph} WHERE id = {ph}",
             (new_tier, int(community_id)),
         )
-        # Gather members if we're downgrading out of Enterprise.
-        if current == "enterprise" and new_tier != "enterprise":
+        if steve_included != "unset":
+            c.execute(
+                f"UPDATE communities SET enterprise_steve_included = {ph} WHERE id = {ph}",
+                (
+                    None if steve_included is None else (1 if steve_included else 0),
+                    int(community_id),
+                ),
+            )
+        # Gather members whose seats must close: either the community is
+        # leaving Enterprise, or it stays Enterprise but the deal no longer
+        # includes Steve. Both paths use the same downgrade grace window.
+        leaving_enterprise = current == "enterprise" and new_tier != "enterprise"
+        steve_switched_off = new_tier == "enterprise" and steve_included is False
+        if leaving_enterprise or steve_switched_off:
             try:
                 c.execute(
                     f"""
@@ -345,6 +382,11 @@ def admin_set_community_tier(community_id: int):
         "community_id": int(community_id),
         "previous_tier": current,
         "new_tier": new_tier,
+        "steve_included": (
+            enterprise_membership.steve_override_for(int(community_id))
+            if steve_included != "unset"
+            else "unchanged"
+        ),
         "seats_closed": closed,
     })
 

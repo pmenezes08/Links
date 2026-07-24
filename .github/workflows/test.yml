@@ -118,6 +118,9 @@ jobs:
             tests/test_stripe_webhook_hardening.py \
             tests/test_stripe_community_checkout.py \
             tests/test_community_membership_limit.py \
+            tests/test_enterprise_steve_inclusion.py \
+            tests/test_community_duplicate_guard.py \
+            tests/test_group_steve_agent.py \
             tests/test_owner_upgrade_prompt.py \
             tests/test_onboarding_session.py \
             tests/test_onboarding_llm.py \
@@ -144,6 +147,7 @@ jobs:
             tests/test_member_digest.py \
             tests/test_retention_events.py \
             tests/test_activation_funnel.py \
+            tests/test_lifecycle_email.py \
             tests/test_landing_pricing_parity.py \
             tests/test_rate_limit.py \
             -v --tb=short --maxfail=5

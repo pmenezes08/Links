@@ -18,6 +18,8 @@ import { cacheKeyVal, getCachedKeyVal } from '../utils/offlineDb'
 import { apiFetch } from '../utils/apiFetch'
 import LoadErrorRetry from '../components/LoadErrorRetry'
 import { SkeletonCommunityCard } from '../components/SkeletonRow'
+import { useKeyboardInset } from '../hooks/useKeyboardInset'
+import { CHAT_KEYBOARD_ANIMATION_MS, CPOINT_EASE_OUT } from '../design/motion'
 
 type Community = { 
   id: number; 
@@ -296,7 +298,9 @@ export default function Communities(){
   const [groupSteveAgentEnabled, setGroupSteveAgentEnabled] = useState(false)
   const [stevePackageRootIds, setStevePackageRootIds] = useState<Set<number>>(new Set())
   const [selectedSubCommunityId, setSelectedSubCommunityId] = useState<number | 'none'>('none')
-  const [isAdminOrPaulo, setIsAdminOrPaulo] = useState(false)
+  // Native runs with Keyboard.resize:'none', so a centered dialog stays put and
+  // the IME covers its action row. Lift the dialog by the occluded height.
+  const modalKeyboardInset = useKeyboardInset(showCreateSubModal || showCreateGroup)
   const [isAppAdmin, setIsAppAdmin] = useState(false)
   const [showNested, setShowNested] = useState<boolean>(() => {
     try{
@@ -439,10 +443,8 @@ export default function Communities(){
         const j = await profileRes.json().catch(()=>null)
         const adminJ = await adminRes.json().catch(()=>null)
         if (mounted && j?.success && j.profile){
-          const u = String(j.profile.username || '')
           const adminFlag = !!(adminJ?.is_admin || adminJ?.isAdmin)
           setIsAppAdmin(adminFlag)
-          setIsAdminOrPaulo(adminFlag || ['admin','paulo'].includes(u.toLowerCase()))
         }
       }catch{}
     }
@@ -1208,18 +1210,22 @@ export default function Communities(){
           <>
             <PlusActions
               onCreateSub={() => { setNewSubName(''); setNewSubType('General'); setShowCreateSubModal(true) }}
-              onCreateGroup={() => { if (!isAdminOrPaulo) { alert(t('communities.only_admin_create_groups')); return } setShowCreateGroup(true); setNewGroupName(''); setApprovalRequired(false); setGroupSteveAgentEnabled(false) }}
+              onCreateGroup={() => { setShowCreateGroup(true); setNewGroupName(''); setApprovalRequired(false); setGroupSteveAgentEnabled(false) }}
             />
 
             {showCreateSubModal && (
               <div
-                className="fixed inset-0 z-50 bg-c-bg-overlay backdrop-blur flex items-center justify-center"
+                className="fixed inset-0 z-50 bg-c-bg-overlay backdrop-blur flex items-center justify-center p-4"
+                style={{
+                  paddingBottom: modalKeyboardInset ? modalKeyboardInset + 16 : undefined,
+                  transition: `padding-bottom ${CHAT_KEYBOARD_ANIMATION_MS}ms ${CPOINT_EASE_OUT}`,
+                }}
                 onClick={(e)=> { if (e.currentTarget === e.target) setShowCreateSubModal(false) }}
               >
-                <div className="w-[92%] max-w-sm rounded-2xl border border-c-border bg-c-bg-elevated p-4">
+                <div className="w-full max-w-sm max-h-full overflow-y-auto overscroll-contain rounded-2xl border border-c-border bg-c-bg-elevated text-c-text-primary p-4">
                   <div className="flex items-center justify-between mb-3">
                     <div className="font-semibold text-sm">{t('communities.create_sub_community')}</div>
-                    <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowCreateSubModal(false)} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
+                    <button className="p-2 rounded-md text-c-text-secondary hover:bg-c-hover-bg" onClick={()=> setShowCreateSubModal(false)} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
                   </div>
                   <div className="space-y-3">
                     <div>
@@ -1234,7 +1240,7 @@ export default function Communities(){
                             setSelectedSubCommunityId(Number(val))
                           }
                         }}
-                        className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm"
+                        className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm text-c-text-primary"
                       >
                         <option value={parentIdNum}>{parentName || t('communities.parent_community_fallback')}</option>
                         {(() => {
@@ -1278,14 +1284,14 @@ export default function Communities(){
                       <input value={newSubName}
                              onChange={e=> setNewSubName(e.target.value)}
                              placeholder={t('communities.sub_name_placeholder')}
-                             className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm" />
+                             className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm text-c-text-primary placeholder:text-c-text-disabled" />
                     </div>
                     {isAppAdmin ? (
                       <div>
                         <label className="block text-xs text-c-text-tertiary mb-1">{t('communities.community_type')}</label>
                         <select value={newSubType || parentTypeLabel}
                                 onChange={e=> setNewSubType(e.target.value)}
-                                className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm">
+                                className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm text-c-text-primary">
                           <option value={parentTypeLabel}>{t('communities.same_as_parent', { type: parentTypeLabel || t('communities.type_general') })}</option>
                           <option value="General">{t('communities.type_general')}</option>
                           <option value="Gym">{t('dashboard.type_gym', { defaultValue: 'Gym' })}</option>
@@ -1294,9 +1300,9 @@ export default function Communities(){
                         </select>
                       </div>
                     ) : null}
-                    <div className="flex items-center justify-end gap-2">
-                      <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowCreateSubModal(false)}>{t('common.cancel')}</button>
-                      <button className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black hover:brightness-110" onClick={async()=>{
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button className="px-3 py-2 rounded-md border border-c-border bg-c-bg-surface text-sm text-c-text-secondary hover:bg-c-hover-bg" onClick={()=> setShowCreateSubModal(false)}>{t('common.cancel')}</button>
+                      <button className="px-3 py-2 rounded-md bg-cpoint-turquoise text-sm font-semibold text-black hover:brightness-110" onClick={async()=>{
                         if (!newSubName.trim()) { alert(t('communities.sub_name_required')); return }
                         const targetParentId = selectedSubCommunityId === 'none' ? parentIdNum : Number(selectedSubCommunityId)
                         try{
@@ -1329,11 +1335,18 @@ export default function Communities(){
 
             {/* Create Group Modal */}
             {showCreateGroup && (
-              <div className="fixed inset-0 z-50 bg-c-bg-overlay backdrop-blur flex items-center justify-center" onClick={(e)=> { if (e.currentTarget === e.target) setShowCreateGroup(false) }}>
-                <div className="w-[92%] max-w-sm rounded-2xl border border-c-border bg-c-bg-elevated p-4">
+              <div
+                className="fixed inset-0 z-50 bg-c-bg-overlay backdrop-blur flex items-center justify-center p-4"
+                style={{
+                  paddingBottom: modalKeyboardInset ? modalKeyboardInset + 16 : undefined,
+                  transition: `padding-bottom ${CHAT_KEYBOARD_ANIMATION_MS}ms ${CPOINT_EASE_OUT}`,
+                }}
+                onClick={(e)=> { if (e.currentTarget === e.target) setShowCreateGroup(false) }}
+              >
+                <div className="w-full max-w-sm max-h-full overflow-y-auto overscroll-contain rounded-2xl border border-c-border bg-c-bg-elevated text-c-text-primary p-4">
                   <div className="flex items-center justify-between mb-3">
                     <div className="font-semibold text-sm">{t('communities.create_group')}</div>
-                    <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowCreateGroup(false)} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
+                    <button className="p-2 rounded-md text-c-text-secondary hover:bg-c-hover-bg" onClick={()=> setShowCreateGroup(false)} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
                   </div>
                   <div className="space-y-3">
                     <div>
@@ -1345,7 +1358,7 @@ export default function Communities(){
                       <select value={selectedSubCommunityId === 'none' ? 'none' : String(selectedSubCommunityId)} onChange={e=> {
                         const v = e.target.value
                         setSelectedSubCommunityId(v === 'none' ? 'none' : Number(v))
-                      }} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm">
+                      }} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm text-c-text-primary">
                         <option value="none">{t('communities.none_parent_only')}</option>
                         {(() => {
                           const parent = communities.find(c => c.id === parentIdNum)
@@ -1358,11 +1371,11 @@ export default function Communities(){
                     </div>
                     <div>
                       <label className="block text-xs text-c-text-tertiary mb-1">{t('communities.group_name')}</label>
-                      <input value={newGroupName} onChange={e=> setNewGroupName(e.target.value)} placeholder={t('communities.group_name_placeholder')} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm" />
+                      <input value={newGroupName} onChange={e=> setNewGroupName(e.target.value)} placeholder={t('communities.group_name_placeholder')} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm text-c-text-primary placeholder:text-c-text-disabled" />
                     </div>
                     <div>
                       <label className="block text-xs text-c-text-tertiary mb-1">{t('communities.join_policy')}</label>
-                      <select value={approvalRequired ? 'approval' : 'open'} onChange={e=> setApprovalRequired(e.target.value === 'approval')} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm">
+                      <select value={approvalRequired ? 'approval' : 'open'} onChange={e=> setApprovalRequired(e.target.value === 'approval')} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm text-c-text-primary">
                         <option value="open">{t('communities.join_policy_open')}</option>
                         <option value="approval">{t('communities.join_policy_approval_required')}</option>
                       </select>
@@ -1396,9 +1409,9 @@ export default function Communities(){
                         </div>
                       )
                     })()}
-                    <div className="flex items-center justify-end gap-2">
-                      <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowCreateGroup(false)}>{t('common.cancel')}</button>
-                      <button className="px-3 py-2 rounded-md bg-cpoint-turquoise text-black hover:brightness-110" onClick={async()=>{
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button className="px-3 py-2 rounded-md border border-c-border bg-c-bg-surface text-sm text-c-text-secondary hover:bg-c-hover-bg" onClick={()=> setShowCreateGroup(false)}>{t('common.cancel')}</button>
+                      <button className="px-3 py-2 rounded-md bg-cpoint-turquoise text-sm font-semibold text-black hover:brightness-110" onClick={async()=>{
                         if (!newGroupName.trim()) { alert(t('communities.group_name_required')); return }
                         try{
                           const targetCommunityId = selectedSubCommunityId === 'none' ? parentIdNum : Number(selectedSubCommunityId)
@@ -1501,7 +1514,7 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
       <div className="w-[92%] max-w-sm rounded-2xl border border-c-border bg-c-bg-elevated p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="font-semibold text-sm">{t('communities.tab_groups')}</div>
-          <button className="p-2 rounded-md hover:bg:white/5" onClick={onClose} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
+          <button className="p-2 rounded-md text-c-text-secondary hover:bg-c-hover-bg" onClick={onClose} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
         </div>
         {loading ? (
           <div className="text-c-text-tertiary text-sm">{t('communities.loading')}</div>
@@ -1509,7 +1522,7 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
           <div className="space-y-3">
             <div className="text-c-text-tertiary text-sm">{t('communities.join_to_view')}</div>
             <div className="flex justify-end">
-              <button className="px-3 py-1.5 rounded-md bg-cpoint-turquoise text:black text-sm hover:brightness-110" onClick={()=> { onClose(); window.location.href = `/community_feed_react/${communityId}` }}>{t('communities.go_to_community')}</button>
+              <button className="px-3 py-1.5 rounded-md bg-cpoint-turquoise text-black text-sm hover:brightness-110" onClick={()=> { onClose(); window.location.href = `/community_feed_react/${communityId}` }}>{t('communities.go_to_community')}</button>
             </div>
           </div>
         ) : items.length === 0 ? (

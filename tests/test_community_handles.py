@@ -21,6 +21,7 @@ from backend.services.community_handles import (
     backfill_missing_handles,
     choose_handle_for_creation,
     ensure_handle_columns,
+    get_handle_settings,
     is_valid_handle,
     slugify_handle,
     update_handle_settings,
@@ -190,6 +191,45 @@ class TestHandleSettings:
         child = make_community("Sub Unit", creator_username="owner", parent_community_id=root)
         body, status = update_handle_settings("owner", child, handle="sub-unit")
         assert status == 400
+
+    def test_join_message_required_policy_round_trips(self, mysql_dsn, as_manager):
+        cid = make_community("Doorman", creator_username="owner")
+        backfill_missing_handles()
+
+        initial, _ = get_handle_settings("owner", cid)
+        assert initial["join_request_message_required"] is False
+
+        on, on_status = update_handle_settings("owner", cid, join_request_message_required=True)
+        assert on_status == 200
+        assert on["join_request_message_required"] is True
+
+        fresh, _ = get_handle_settings("owner", cid)
+        assert fresh["join_request_message_required"] is True
+
+        off, _ = update_handle_settings("owner", cid, join_request_message_required=False)
+        assert off["join_request_message_required"] is False
+
+    def test_join_prompt_round_trips_and_clears(self, mysql_dsn, as_manager):
+        cid = make_community("Question Door", creator_username="owner")
+        backfill_missing_handles()
+
+        assert get_handle_settings("owner", cid)[0]["join_request_prompt"] is None
+
+        saved, status = update_handle_settings(
+            "owner", cid, join_request_prompt="  Who   invited you? "
+        )
+        assert status == 200
+        assert saved["join_request_prompt"] == "Who invited you?"  # normalized
+        assert get_handle_settings("owner", cid)[0]["join_request_prompt"] == "Who invited you?"
+
+        cleared, _ = update_handle_settings("owner", cid, join_request_prompt="")
+        assert cleared["join_request_prompt"] is None
+
+        too_long, long_status = update_handle_settings(
+            "owner", cid, join_request_prompt="x" * 201
+        )
+        assert long_status == 400
+        assert too_long["reason"] == "prompt_too_long"
 
 
 class TestCreationHandlePick:
