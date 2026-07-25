@@ -13,7 +13,6 @@ const COMMIT_MIN_PX = 72
 /** A quick flick commits even when short. */
 const COMMIT_VELOCITY_PX_PER_MS = 0.45
 const SETTLE_MS = 220
-const COMMIT_MS = 180
 
 function prefersReducedMotion(): boolean {
   try {
@@ -40,12 +39,53 @@ function composerEl(): HTMLElement | null {
   }
 }
 
+const UNDERLAY_ID = 'chat-edge-swipe-underlay'
+const UNDERLAY_MAX_DIM = 0.22
+
+/** iOS-style underlay behind the dragged card: the app surface with a scrim
+ * that lightens as the pull progresses. Without it the reveal is a bare
+ * blank strip and the gesture reads as the app breaking. */
+function ensureUnderlay(): HTMLElement {
+  let el = document.getElementById(UNDERLAY_ID) as HTMLElement | null
+  if (!el) {
+    el = document.createElement('div')
+    el.id = UNDERLAY_ID
+    el.style.position = 'fixed'
+    el.style.inset = '0'
+    el.style.zIndex = '40'
+    el.style.pointerEvents = 'none'
+    el.style.background = 'var(--c-bg-app, #000)'
+    const scrim = document.createElement('div')
+    scrim.style.position = 'absolute'
+    scrim.style.inset = '0'
+    scrim.style.background = '#000'
+    scrim.style.opacity = String(UNDERLAY_MAX_DIM)
+    el.appendChild(scrim)
+    document.body.appendChild(el)
+  }
+  return el
+}
+
+function setUnderlayProgress(progress: number, transitionMs: number) {
+  const el = document.getElementById(UNDERLAY_ID)
+  const scrim = el?.firstElementChild as HTMLElement | undefined
+  if (!scrim) return
+  scrim.style.transition = transitionMs > 0 ? `opacity ${transitionMs}ms ${CPOINT_EASE_OUT}` : ''
+  scrim.style.opacity = String(UNDERLAY_MAX_DIM * (1 - Math.min(1, Math.max(0, progress))))
+}
+
+function removeUnderlay() {
+  document.getElementById(UNDERLAY_ID)?.remove()
+}
+
 function applyOffset(page: HTMLElement | null, x: number, transitionMs: number) {
   const composer = composerEl()
   const transition = transitionMs > 0 ? `transform ${transitionMs}ms ${CPOINT_EASE_OUT}` : ''
   if (page) {
     page.style.transition = transition
     page.style.transform = x === 0 ? '' : `translate3d(${x}px, 0, 0)`
+    // Card depth: shadow on the leading edge while off home position.
+    page.style.boxShadow = x === 0 ? '' : '-16px 0 32px rgba(0, 0, 0, 0.35)'
   }
   if (composer) {
     // Web centres the composer with `left-1/2 -translate-x-1/2`; preserve it.
@@ -62,12 +102,15 @@ function clearOffset(page: HTMLElement | null) {
     page.style.transition = ''
     page.style.transform = ''
     page.style.willChange = ''
+    page.style.boxShadow = ''
+    page.style.zIndex = ''
   }
   if (composer) {
     composer.style.transition = ''
     composer.style.transform = ''
     composer.style.willChange = ''
   }
+  removeUnderlay()
 }
 
 export type EdgeSwipeBackOptions = {
@@ -118,15 +161,17 @@ export function useEdgeSwipeBack({ onBack, enabled = true }: EdgeSwipeBackOption
       return
     }
     if (commit) {
-      const width = window.innerWidth || 400
-      applyOffset(page, width, prefersReducedMotion() ? 0 : COMMIT_MS)
-      window.setTimeout(() => {
-        clearOffset(page)
-        onBackRef.current()
-      }, prefersReducedMotion() ? 0 : COMMIT_MS)
+      // Navigate SYNCHRONOUSLY on release. An exit animation followed by a
+      // deferred navigate leaves a window where the page sits translated
+      // off-screen over a bare backdrop (and a stray timeout can strand it
+      // there) — founder hit exactly that. The drag itself is the motion;
+      // the destination paints from its device cache on the next frame.
+      clearOffset(page)
+      onBackRef.current()
       return
     }
     applyOffset(page, 0, prefersReducedMotion() ? 0 : SETTLE_MS)
+    setUnderlayProgress(0, prefersReducedMotion() ? 0 : SETTLE_MS)
     window.setTimeout(() => clearOffset(page), prefersReducedMotion() ? 0 : SETTLE_MS)
   }, [])
 
@@ -168,9 +213,14 @@ export function useEdgeSwipeBack({ onBack, enabled = true }: EdgeSwipeBackOption
         state.locked = true
         state.dragging = true
         const page = containerRef.current
-        if (page) page.style.willChange = 'transform'
+        if (page) {
+          page.style.willChange = 'transform'
+          // Lift the card above the underlay for the duration of the drag.
+          page.style.zIndex = '50'
+        }
         const composer = composerEl()
         if (composer) composer.style.willChange = 'transform'
+        if (!prefersReducedMotion()) ensureUnderlay()
       }
 
       const dt = Math.max(1, event.timeStamp - state.lastT)
@@ -184,6 +234,8 @@ export function useEdgeSwipeBack({ onBack, enabled = true }: EdgeSwipeBackOption
         // Rubber-band past the viewport so the pull always feels attached.
         const width = window.innerWidth || 400
         applyOffset(containerRef.current, Math.min(dx, width), 0)
+        // Undim the surface below as the pull progresses (iOS parallax cue).
+        setUnderlayProgress(dx / width, 0)
       }
     }
 

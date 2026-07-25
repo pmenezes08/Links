@@ -476,6 +476,10 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                     ) : (
                       (() => {
                         try {
+                          // Summary is final once the server row exists (it is
+                          // generated synchronously in the send request) — only
+                          // the sender's optimistic row may say "generating".
+                          if (!isOptimistic) return null
                           const createdMs = new Date(msg.created_at).getTime()
                           if (Date.now() - createdMs < 120000)
                             return (

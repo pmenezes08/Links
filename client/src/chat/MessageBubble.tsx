@@ -283,6 +283,13 @@ function MessageBubbleInner({
                 </div>
               ) : m.audio_path && (() => {
                 try {
+                  // The summary is generated synchronously inside the send
+                  // request, so once the server-confirmed row exists with no
+                  // summary it will NEVER arrive — only the sender's
+                  // optimistic row may honestly say "generating". The old
+                  // 120s wall-clock window kept the dots bouncing long after
+                  // a provider failure, which read as an infinite loop.
+                  if (!m.isOptimistic) return null
                   const createdMs = new Date(m.time).getTime()
                   if (Date.now() - createdMs < 120000) return (
                     <div className="px-2 pb-1 pt-0.5">
