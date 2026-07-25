@@ -9,7 +9,7 @@ import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { GroupMessageRow } from '../chat/GroupMessageRow'
-import { getDateKey, normalizeMediaPath, useChatThreadChrome, chatHapticSend, ChatAttachMenuRow, useGroupMessagePoll, ChatMediaPreviewModal, ChatMediaViewerModal, ChatSelectionBar, NewMessagesChip, useResumeOutboxDrain, ChatComposerPortal, ChatComposerCard, ChatVirtualMessageList, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION, readStaleDeviceCache, markThreadCachePainted, isCachePaintedForGen, isUnchangedFromCacheSnapshot, hydrateThreadFromIndexedDb, stripReplyMarker } from '../chat'
+import { getDateKey, normalizeMediaPath, useChatThreadChrome, chatHapticSend, ChatAttachMenuRow, useGroupMessagePoll, ChatMediaPreviewModal, ChatMediaViewerModal, ChatSelectionBar, NewMessagesChip, useResumeOutboxDrain, useEdgeSwipeBack, ChatComposerPortal, ChatComposerCard, ChatVirtualMessageList, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION, readStaleDeviceCache, markThreadCachePainted, isCachePaintedForGen, isUnchangedFromCacheSnapshot, hydrateThreadFromIndexedDb, stripReplyMarker } from '../chat'
 import { groupChatInfoDeviceCacheKey, groupChatMessagesDeviceCacheKey } from '../utils/chatThreadsCache'
 import { useAndroidBackButton } from '../hooks/useAndroidBackButton'
 import { getStoredMediaQuality, setStoredMediaQuality, type MediaQuality } from '../chat/upload'
@@ -391,6 +391,13 @@ export default function GroupChatThread() {
     if (cid) navigate(`/communities?parent_id=${cid}&tab=groups`)
     else navigate('/user_chat')
   }, [navigate])
+
+  // Edge swipe (iOS/X-style) always returns to the Messages list — the
+  // conversation inbox the user swipes between — independent of the header
+  // back button's community-scoped target.
+  const edgeSwipeBackRef = useEdgeSwipeBack({
+    onBack: () => { hapticImpactLight(); navigate('/user_chat') },
+  })
 
   useAndroidBackButton({
     textareaRef,
@@ -2222,6 +2229,7 @@ export default function GroupChatThread() {
 
   return (
     <div 
+      ref={edgeSwipeBackRef}
       className="text-c-text-primary chat-thread-bg"
       style={{
         position: 'fixed',

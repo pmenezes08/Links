@@ -77,6 +77,7 @@ import {
   ChatComposerPortal,
   ChatComposerCard,
   ChatVirtualMessageList,
+  useEdgeSwipeBack,
 } from '../chat'
 import { NativeIconButton } from '../components/NativeIconButton'
 import { mentionsSteve } from '../utils/steveClientGate'
@@ -156,6 +157,11 @@ export default function ChatThread(){
   const mentionToProfile = useCallback((u: string) => {
     navigate(`/profile/${encodeURIComponent(u)}`)
   }, [navigate])
+  // Edge swipe (iOS/X-style): pull from the left edge to return to the
+  // Messages list — same destination as the header back arrow.
+  const edgeSwipeBackRef = useEdgeSwipeBack({
+    onBack: () => { hapticImpactLight(); navigate('/user_chat') },
+  })
   
   
   
@@ -2380,7 +2386,8 @@ export default function ChatThread(){
   return (
     <>
     {/* Main container with overflow:hidden */}
-    <div 
+    <div
+      ref={edgeSwipeBackRef}
       className="glass-page text-c-text-primary chat-thread-bg"
       style={{
         position: 'fixed',

@@ -104,3 +104,4 @@ export type { ChatComposerPortalProps, ChatComposerCardProps } from './ChatCompo
 export { ChatVirtualMessageList } from './ChatVirtualMessageList'
 export type { ChatVirtualMessageListProps } from './ChatVirtualMessageList'
 export { CHAT_VIRTUAL_LIST_THRESHOLD } from './constants'
+export { useEdgeSwipeBack } from './useEdgeSwipeBack'
