@@ -37,9 +37,6 @@ export default function GroupsEmptyState({
 
   return (
     <div className="flex flex-col items-center py-12 px-4">
-      <div className="w-16 h-16 rounded-full bg-c-hover-bg border border-c-border grid place-items-center mb-3">
-        <i className="fa-solid fa-users text-2xl text-c-text-tertiary" aria-hidden />
-      </div>
       <div className="text-base font-medium text-c-text-secondary mb-1">{title}</div>
       <div className="text-xs text-c-text-tertiary text-center max-w-xs">{body}</div>
       {variant === 'owner-none' && onCreate && (

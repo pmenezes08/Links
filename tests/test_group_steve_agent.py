@@ -561,8 +561,14 @@ def test_groups_create_root_owner_can_create_in_sub(mysql_dsn):
     assert (r.get_json() or {}).get("success") is True
 
 
-def test_groups_create_free_owner_blocked_on_sub_level(mysql_dsn):
-    """Free-plan roots keep the old rule: groups only at the parent level."""
+def test_groups_create_free_owner_allowed_on_sub_level(mysql_dsn):
+    """Groups live at any level, on any tier.
+
+    Until July 2026 a Free-plan root owner got 403 'groups only at the
+    parent community level' for every sub-community — a leftover from when
+    only app admins created groups. Owners must be able to organise their
+    own tree.
+    """
     import bodybuilding_app
 
     make_user("grp_free_owner", subscription="free")
@@ -573,10 +579,29 @@ def test_groups_create_free_owner_blocked_on_sub_level(mysql_dsn):
     _login(client, "grp_free_owner")
     r = client.post(
         "/api/groups/create",
-        data={"community_id": str(sub), "name": "Blocked Group", "approval_required": "0"},
+        data={"community_id": str(sub), "name": "Sub Group", "approval_required": "0"},
     )
-    assert r.status_code == 403
-    assert "parent community level" in ((r.get_json() or {}).get("error") or "")
+    assert r.status_code == 200
+    assert (r.get_json() or {}).get("success") is True
+
+
+def test_groups_create_at_any_nesting_depth(mysql_dsn):
+    """Root owner can create a group in a grandchild community."""
+    import bodybuilding_app
+
+    make_user("grp_deep_owner", subscription="free")
+    root = make_community("grp-deep-root", tier="free", creator_username="grp_deep_owner")
+    sub = make_community("grp-deep-sub", tier="free", parent_community_id=root)
+    nested = make_community("grp-deep-nested", tier="free", parent_community_id=sub)
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "grp_deep_owner")
+    r = client.post(
+        "/api/groups/create",
+        data={"community_id": str(nested), "name": "Deep Group", "approval_required": "0"},
+    )
+    assert r.status_code == 200
+    assert (r.get_json() or {}).get("success") is True
 
 
 def test_groups_create_enterprise_sub_by_free_owner(mysql_dsn):

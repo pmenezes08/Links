@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { formatSmartTime } from '../../../utils/time'
-import { groupAccentHue, type CommunityGroup } from './types'
+import type { CommunityGroup } from './types'
 import GroupJoinRequests from './GroupJoinRequests'
 
 /**
@@ -62,11 +62,6 @@ export default function GroupCard({
     }
   }, [menuOpen])
 
-  const hue = groupAccentHue(group.group_id)
-  const iconStyle = isMember
-    ? { backgroundColor: `hsla(${hue}, 65%, 55%, 0.16)`, color: `hsl(${hue}, 70%, 62%)` }
-    : undefined
-
   const metaParts: string[] = []
   if (typeof group.member_count === 'number') {
     metaParts.push(t('communities.group_members_count', { count: group.member_count }))
@@ -99,14 +94,7 @@ export default function GroupCard({
         onClick={isMember ? onOpen : undefined}
         onKeyDown={isMember ? e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen() } } : undefined}
       >
-        <div
-          className={`w-10 h-10 rounded-full grid place-items-center shrink-0 ${isMember ? '' : 'bg-c-hover-bg'}`}
-          style={iconStyle}
-          aria-hidden
-        >
-          <i className={`fa-solid fa-users text-sm ${isMember ? '' : 'text-c-text-tertiary'}`} />
-        </div>
-        <div className="flex-1 min-w-0 pt-0.5">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 min-w-0">
             {hasNewActivity && (
               <span className="w-1.5 h-1.5 rounded-full bg-cpoint-turquoise shrink-0" aria-hidden />
@@ -114,10 +102,9 @@ export default function GroupCard({
             <span className="text-sm font-medium text-c-text-primary truncate">{group.name}</span>
             {group.steve_agent_enabled && (
               <span
-                className="inline-flex items-center gap-1 px-1.5 h-5 rounded-full bg-cpoint-turquoise/10 text-cpoint-turquoise text-[10px] shrink-0"
+                className="inline-flex items-center px-1.5 h-5 rounded-full bg-cpoint-turquoise/10 text-cpoint-turquoise text-[10px] shrink-0"
                 aria-hidden
               >
-                <i className="fa-solid fa-robot text-[9px]" />
                 Steve
               </span>
             )}

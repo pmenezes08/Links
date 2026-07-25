@@ -26918,16 +26918,14 @@ def api_groups_create():
             community_row = c.fetchone()
             if not community_row:
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
-            community_parent_id = community_row['parent_community_id'] if hasattr(community_row, 'keys') else community_row[2]
-            ancestors = get_community_ancestors(c, community_id)
-            top_info = ancestors[-1] if ancestors else get_community_basic(c, community_id)
-            top_creator = top_info.get('creator_username') if top_info else None
-            if community_parent_id and not community_structure_caps_exempt(c, community_id):
-                # Enterprise networks are exempt: groups may live at any
-                # level of the tree regardless of the owner's personal plan.
-                subscription_value = fetch_user_subscription(c, top_creator) if top_creator else ''
-                if top_creator and not is_app_admin(top_creator) and is_free_subscription(subscription_value):
-                    return jsonify({'success': False, 'error': 'Groups for free plan communities are only available at the parent community level.'}), 403
+            # Groups may live at ANY level of the tree — root, sub-community,
+            # or a nested community several levels down. The old rule here
+            # ("free plan communities only get groups at the parent level")
+            # dated from when groups were app-admin-only; now that owners and
+            # community admins create their own groups it only ever blocked
+            # them from organising their own network. Size and structure are
+            # gated by the tier caps elsewhere; Steve stays gated by the
+            # package check below.
             from backend.services.group_steve_agent import (
                 PRESET_CAREER_EXPERT,
                 ensure_group_steve_agent_schema,

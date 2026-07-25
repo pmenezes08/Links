@@ -24,9 +24,3 @@ export type CommunityGroup = {
   pending_count?: number
 }
 
-/** Deterministic accent hue per group so a wall of cards stays scannable.
- * Pure client-side: same id → same hue, everywhere, forever. */
-export function groupAccentHue(groupId: number): number {
-  // Knuth multiplicative hash → stable, well-spread hue.
-  return Math.abs((groupId * 2654435761) % 360)
-}

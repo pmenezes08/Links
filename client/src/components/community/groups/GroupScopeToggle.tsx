@@ -27,15 +27,16 @@ export default function GroupScopeToggle({
 }) {
   const { t } = useTranslation()
   const duration = prefersReducedMotion() ? REDUCED_MOTION_FADE_MS : TAB_CROSSFADE_MS
-  // min-w-0 + truncate: a long community name must shrink, never push the
-  // sibling option off a 375px screen.
-  const base = 'px-3.5 h-9 rounded-full text-xs font-medium min-w-0 truncate'
+  // flex-1 so the two options split the pill edge to edge (no dead white
+  // gap on the right); min-w-0 + truncate so a long community name shrinks
+  // instead of pushing its sibling off a 375px screen.
+  const base = 'flex-1 px-3 h-9 rounded-full text-xs font-medium min-w-0 truncate'
   const active = 'bg-cpoint-turquoise/15 text-cpoint-turquoise'
   const idle = 'text-c-text-tertiary hover:text-c-text-secondary'
   const style = { transition: `background-color ${duration}ms ${CPOINT_EASE_OUT}, color ${duration}ms ${CPOINT_EASE_OUT}` }
 
   return (
-    <div role="tablist" aria-label={t('communities.groups_scope_aria')} className="flex max-w-full p-0.5 rounded-full bg-c-bg-elevated border border-c-border">
+    <div role="tablist" aria-label={t('communities.groups_scope_aria')} className="flex w-full p-0.5 rounded-full bg-c-bg-elevated border border-c-border">
       <button
         type="button"
         role="tab"
@@ -51,7 +52,7 @@ export default function GroupScopeToggle({
         type="button"
         role="tab"
         aria-selected={includeSubs}
-        className={`${base} shrink-0 ${includeSubs ? active : idle}`}
+        className={`${base} ${includeSubs ? active : idle}`}
         style={style}
         onClick={() => onChange(true)}
       >
