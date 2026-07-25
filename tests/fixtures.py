@@ -68,6 +68,7 @@ def make_user(
             (username, email, subscription, 1 if is_special else 0,
              1 if is_admin else 0, created_str),
         )
+        user_id = c.lastrowid
         try:
             conn.commit()
         except Exception:
@@ -113,6 +114,7 @@ def make_user(
             except Exception:
                 pass
     out = {
+        "id": int(user_id) if user_id else None,
         "username": username,
         "email": email,
         "subscription": subscription,
