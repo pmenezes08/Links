@@ -3259,8 +3259,9 @@ def set_creation_category(*, creation_id: int, username: str,
 
     Precedence contract (founder-ratified): admin (locks) > creator > llm >
     keyword. Owner-only with the non-enumerating not-found; the slug must be
-    valid for the creation's section (a 'travel' pick on a game is rejected
-    server-side whatever the client sent). An admin-locked category raises
+    valid for the creation's section (a website-only 'portfolio' pick on a
+    game is rejected server-side whatever the client sent; universal topics
+    like 'travel' are valid for every section). An admin-locked category raises
     ``ValueError('category_locked')``. ``category=None`` clears the creator's
     choice back to untagged (automation may then re-fill at listing time).
     """
