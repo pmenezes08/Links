@@ -700,6 +700,7 @@ export default function Communities(){
     const n = raw ? Number(raw) : NaN
     return Number.isFinite(n) && n > 0 ? n : null
   })()
+  const groupsScopeIncludesSubs = new URLSearchParams(location.search).get('scope') === 'subs'
 
   return (
     <div className="min-h-screen bg-c-bg-app text-c-text-primary relative pb-safe">
@@ -720,8 +721,10 @@ export default function Communities(){
             className="mr-2 p-2 rounded-full hover:bg-c-hover-bg"
             onClick={()=> {
               if (communitiesGuideStep !== null) return
-              if (window.history.length > 1) navigate(-1)
-              else navigate('/premium_dashboard')
+              // Always the dashboard: this page is reached from many places
+              // (feed, group, deep link) and history-back would otherwise
+              // bounce the user into whichever of them they came from.
+              navigate('/premium_dashboard')
             }}
             aria-label={t('common.back')}
           >
@@ -923,6 +926,7 @@ export default function Communities(){
                         currentUsername={_data?.username || null}
                         isAppAdmin={isAppAdmin}
                         highlightGroupId={highlightGroupId}
+                        initialIncludeSubs={groupsScopeIncludesSubs}
                         onCreate={() => setShowCreateGroup(true)}
                         onNavigateCommunity={(cid) => navigate(`/communities?parent_id=${cid}&tab=groups`)}
                         onOpenGroup={(gid) => navigate(`/group_feed_react/${gid}`)}
