@@ -937,7 +937,7 @@ export default function GroupFeed(){
 
       {/* More bottom sheet */}
       {moreOpen && (
-        <div className="fixed inset-0 z-[110] bg-c-hover-bg flex items-end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
+        <div className="fixed inset-0 z-[950] bg-c-hover-bg flex items-end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
           <div className="w-[75%] max-w-sm mr-2 bg-c-bg-app/95 backdrop-blur border border-c-border rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0" style={{ marginBottom: 'var(--app-feed-bottom-nav-height)' }}>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-c-hover-bg" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/key_posts?group_id=${group_id}`) }}>
               {t('feed.key_posts')}
@@ -960,7 +960,7 @@ export default function GroupFeed(){
       )}
 
       {announcementsOpen && (
-        <div className="fixed inset-0 z-[120] bg-c-bg-app/70 flex items-end sm:items-center justify-center p-3" onClick={(e) => e.currentTarget === e.target && setAnnouncementsOpen(false)}>
+        <div className="fixed inset-0 z-[950] bg-c-bg-app/70 flex items-end sm:items-center justify-center p-3" onClick={(e) => e.currentTarget === e.target && setAnnouncementsOpen(false)}>
           <div className="w-full max-w-lg max-h-[85vh] rounded-2xl border border-c-border bg-[#0a0a0a] flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-c-border">
               <h2 className="text-base font-semibold text-c-text-primary">{t('feed.announcements')}</h2>
@@ -1005,7 +1005,7 @@ export default function GroupFeed(){
 
       {/* Hashtag / text search (group posts) */}
       {showSearch && (
-        <div className="fixed inset-0 z-[115] bg-c-bg-app/70 backdrop-blur flex items-center justify-center" onClick={(e) => e.currentTarget === e.target && setShowSearch(false)}>
+        <div className="fixed inset-0 z-[950] bg-c-bg-app/70 backdrop-blur flex items-center justify-center" onClick={(e) => e.currentTarget === e.target && setShowSearch(false)}>
           <div className="w-[92%] max-w-[560px] rounded-2xl border border-c-border bg-c-bg-app p-3">
             <div className="flex items-center gap-2 mb-2">
               <i className="fa-solid fa-hashtag text-cpoint-turquoise" />
@@ -1045,7 +1045,7 @@ export default function GroupFeed(){
 
       {/* Members modal */}
       {showMembers && (
-        <div className="fixed inset-0 z-[120] bg-c-bg-app/50 flex items-end justify-center" onClick={(e) => e.currentTarget === e.target && setShowMembers(false)}>
+        <div className="fixed inset-0 z-[950] bg-c-bg-app/50 flex items-end justify-center" onClick={(e) => e.currentTarget === e.target && setShowMembers(false)}>
           <div className="w-full max-w-lg bg-c-bg-app/95 backdrop-blur border border-c-border rounded-t-2xl p-4 max-h-[75vh] flex flex-col" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}>
             <div className="flex items-center justify-between mb-3">
               <div className="text-c-text-primary font-semibold text-base">{t('feed.group_members')}</div>
