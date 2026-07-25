@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import ContentGenerationModal from '../components/ContentGenerationModal'
 import DeleteCommunityModal, { type DeleteCommunityResult } from '../components/DeleteCommunityModal'
 import HandleSettings from '../components/community/HandleSettings'
+import PlacementSettings from '../components/community/PlacementSettings'
 import SteveActionsPanel from '../components/community/SteveActionsPanel'
 import ImageLoader from '../components/ImageLoader'
 import { clearDeviceCache } from '../utils/deviceCache'
@@ -630,6 +631,7 @@ export default function EditCommunity(){
             <div className="text-xs text-c-text-tertiary mt-1">{t('communities.description_feed_hint')}</div>
           </div>
           {community_id && <HandleSettings communityId={community_id} />}
+          {community_id && <PlacementSettings communityId={community_id} />}
           {renderBillingCard()}
           <div>
             <label className="block text-sm text-c-text-tertiary mb-1">{t('communities.network_type_label')} <span className="text-cpoint-turquoise text-xs">{t('communities.network_type_admin_only')}</span></label>

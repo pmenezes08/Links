@@ -883,6 +883,8 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "enterprise_steve_package_included", "label": "Steve package included (larger pool)", "type": "boolean", "value": True,
                  "help": "Default for Enterprise deals. Overridden per community by enterprise_steve_included; when Steve is excluded the owner sees the normal Steve Community Package add-on path instead of 'already included'.", "group": "enterprise"},
                 {"name": "enterprise_content_gen_included", "label": "Content generation included (no allowance cap)", "type": "boolean", "value": True, "group": "enterprise"},
+                {"name": "enterprise_guided_placement_included", "label": "Guided placement (post-accept Steve questionnaire)", "type": "boolean", "value": True,
+                 "help": "Enterprise-only. Owners define questions whose options map to sub-communities; new members answer once after being accepted and are allocated deterministically (no AI call). Turning this off dissolves pending questionnaires platform-wide.", "group": "enterprise"},
                 {"name": "enterprise_custom_caps_allowed", "label": "Custom caps on request", "type": "boolean", "value": True, "group": "enterprise"},
                 {"name": "enterprise_monthly_spend_ceiling_eur", "label": "Monthly AI spend ceiling / Enterprise community", "type": "decimal", "prefix": "€", "value": 2000, "tbd": True,
                  "help": "Circuit breaker — content-gen autopauses first, then interactive Steve.", "group": "enterprise"},

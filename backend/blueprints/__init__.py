@@ -49,6 +49,7 @@ def register_blueprints(app: Flask) -> None:
     from .owner_billing_ctas import owner_billing_ctas_bp
     from .owner_upgrade import owner_upgrade_bp
     from .lifecycle_emails import lifecycle_emails_bp
+    from .community_placement import community_placement_bp
 
     app.register_blueprint(public_bp)
     app.register_blueprint(auth_bp)
@@ -92,6 +93,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(owner_billing_ctas_bp)
     app.register_blueprint(owner_upgrade_bp)
     app.register_blueprint(lifecycle_emails_bp)
+    app.register_blueprint(community_placement_bp)
 
     # Make sure the Stripe/community-billing columns exist before the
     # first webhook fires. Each service's ensure_tables() is already
@@ -116,6 +118,8 @@ def register_blueprints(app: Flask) -> None:
         _remember_tokens.ensure_tables()
         from backend.services import community_join_requests as _community_join_requests
         _community_join_requests.ensure_tables()
+        from backend.services import community_placement as _community_placement
+        _community_placement.ensure_tables()
         from backend.services import community_handles as _community_handles
         _community_handles.ensure_handle_columns()
         # Deterministic + idempotent: only fills NULL handles, oldest

@@ -407,6 +407,11 @@ _TRUNCATE_TABLES: List[str] = [
     "community_admins",
     "community_invitations",
     "community_join_requests",
+    # Guided placement: pending/config rows are keyed by community_id, and
+    # TRUNCATE resets AUTO_INCREMENT — without these two, a recycled
+    # community id inherits another test's questions or pending placement.
+    "community_placement_questions",
+    "community_placement_responses",
     "post_views",
     "posts",
     "replies",

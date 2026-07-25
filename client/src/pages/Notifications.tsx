@@ -7,6 +7,7 @@ import { useBadges } from '../contexts/BadgeContext'
 import { renderTextWithLinks } from '../utils/linkUtils'
 import { SkeletonNotificationList } from '../components/SkeletonRow'
 import OwnerCtaCard from '../components/notifications/OwnerCtaCard'
+import { PLACEMENT_REFRESH_EVENT } from '../components/community/placement/PlacementGate'
 import { apiFetch } from '../utils/apiFetch'
 
 type Notif = {
@@ -531,6 +532,7 @@ export default function Notifications(){
         await load({ silent: true })
         refreshBadges()
         if (action === 'accept') {
+          if (j.placement_pending) window.dispatchEvent(new Event(PLACEMENT_REFRESH_EVENT))
           navigate(j.next_url || `/community_feed_react/${j.community_id || invite.community_id}`)
         }
       } else {

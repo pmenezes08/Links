@@ -24,6 +24,7 @@ from backend.services.community import (
     is_community_admin,
     render_member_cap_error,
 )
+from backend.services.community_placement import open_pending_placement_if_active
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.email_normalization import canonicalize_with_policy
 from backend.services.notifications import create_notification, send_push_to_user
@@ -651,6 +652,9 @@ def accept_invite(username: str, invite_id: int) -> Tuple[Dict[str, Any], int]:
                 """,
                 (username, community_id),
             )
+            placement_pending = open_pending_placement_if_active(
+                c, community_id, username, _row_value(invite, "invited_by_username", 8)
+            )
             introduce_thread_post_id = ensure_introduce_yourself_thread(c, community_id)
             notify_community_new_member(
                 community_id,
@@ -670,6 +674,7 @@ def accept_invite(username: str, invite_id: int) -> Tuple[Dict[str, Any], int]:
                 "introduce_thread_post_id": introduce_thread_post_id,
                 "next_url": f"/community_feed_react/{community_id}?joined=1",
                 "message": f"Joined {community_name}",
+                "placement_pending": placement_pending,
             }, 200
     except Exception as exc:
         logger.error("Error accepting username invite %s: %s", invite_id, exc, exc_info=True)
@@ -970,6 +975,9 @@ def accept_token_invite(username: str, invite_token: str) -> Tuple[Dict[str, Any
                     """,
                     (now_value, now_value, invitation_id),
                 )
+            placement_pending = open_pending_placement_if_active(
+                c, community_id, username, _row_value(invitation, "invited_by_username", 9)
+            )
             introduce_thread_post_id = ensure_introduce_yourself_thread(c, community_id)
             notify_community_new_member(
                 community_id,
@@ -997,6 +1005,7 @@ def accept_token_invite(username: str, invite_token: str) -> Tuple[Dict[str, Any
                 "next_url": f"/community_feed_react/{community_id}?joined=1",
                 "message": joined_message,
                 "message_key": "communities.join.joined",
+                "placement_pending": placement_pending,
             }, 200
     except Exception as exc:
         logger.error("Error joining with invite: %s", exc, exc_info=True)
