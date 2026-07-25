@@ -410,6 +410,177 @@ def test_welcome_lock_blocks_moderation_remove(mysql_dsn):
     assert int(_scalar(f"SELECT COUNT(*) FROM posts WHERE id = {ph}", (pid,))) == 1
 
 
+# Mirrors prod's key-post tables *with their restricting FKs* (the conftest
+# thin schema has neither) so the delete-order regression below actually
+# reproduces MySQL error 1451 if the cascade regresses.
+_KEY_POST_TABLES_DDL = [
+    """
+CREATE TABLE IF NOT EXISTS community_key_posts (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    community_id INT NOT NULL,
+    post_id INT NOT NULL,
+    created_at VARCHAR(32) NOT NULL,
+    UNIQUE KEY uq_ckp (community_id, post_id),
+    CONSTRAINT community_key_posts_ibfk_2 FOREIGN KEY (post_id) REFERENCES posts (id)
+)
+""",
+    """
+CREATE TABLE IF NOT EXISTS key_posts (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    username VARCHAR(191) NOT NULL,
+    post_id INT NOT NULL,
+    community_id INT NOT NULL,
+    created_at VARCHAR(32) NOT NULL,
+    UNIQUE KEY uq_kp (username, post_id),
+    CONSTRAINT key_posts_post_fk FOREIGN KEY (post_id) REFERENCES posts (id)
+)
+""",
+]
+
+
+def test_delete_cascade_clears_key_post_markers(mysql_dsn):
+    """Regression (prod 2026-07-24): a post highlighted as a community key
+    post (or user-starred in key_posts) holds a restricting FK on posts(id).
+    The cascade must clear those marker rows before the posts row, or MySQL
+    rejects the delete with IntegrityError 1451 and the whole cascade 500s."""
+    from backend.services.post_deletion import delete_post_cascade
+
+    make_user("ownerA")
+    make_user("m1")
+    a = make_community("Mod A", creator_username="ownerA")
+    pid = _make_post(a, "m1", "pinned wisdom")
+    ph = get_sql_placeholder()
+
+    for ddl in _KEY_POST_TABLES_DDL:
+        _exec(ddl)
+    # Not in conftest's truncate list — drop stale rows from earlier tests
+    # (TRUNCATE resets post AUTO_INCREMENT, so ids get reused).
+    _exec("DELETE FROM community_key_posts")
+    _exec("DELETE FROM key_posts")
+    _exec(
+        f"INSERT INTO community_key_posts (community_id, post_id, created_at) "
+        f"VALUES ({ph}, {ph}, '2026-07-24 00:00:00')",
+        (a, pid),
+    )
+    _exec(
+        f"INSERT INTO key_posts (username, post_id, community_id, created_at) "
+        f"VALUES ('m1', {ph}, {ph}, '2026-07-24 00:00:00')",
+        (pid, a),
+    )
+
+    payload, status = delete_post_cascade(pid, actor="ownerA")
+    assert status == 200, payload
+    assert payload["success"] is True
+
+    assert int(_scalar(f"SELECT COUNT(*) FROM posts WHERE id = {ph}", (pid,))) == 0
+    assert int(_scalar(f"SELECT COUNT(*) FROM community_key_posts WHERE post_id = {ph}", (pid,))) == 0
+    assert int(_scalar(f"SELECT COUNT(*) FROM key_posts WHERE post_id = {ph}", (pid,))) == 0
+
+
+# Mirrors the code DDL for the reaction tables, restricting FKs included
+# (bodybuilding_app.py declares both FKs WITHOUT ON DELETE CASCADE — prod's
+# live FKs happen to cascade only because they were hand-migrated, so a fresh
+# install hits MySQL 1451 unless the cascade clears these rows itself).
+_REACTION_TABLES_DDL = [
+    """
+CREATE TABLE IF NOT EXISTS reactions (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    post_id INT NOT NULL,
+    username VARCHAR(191) NOT NULL,
+    reaction_type VARCHAR(32) NOT NULL,
+    UNIQUE KEY uq_react (post_id, username),
+    CONSTRAINT test_react_post_fk FOREIGN KEY (post_id) REFERENCES posts (id)
+)
+""",
+    """
+CREATE TABLE IF NOT EXISTS reply_reactions (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    reply_id INT NOT NULL,
+    username VARCHAR(191) NOT NULL,
+    reaction_type VARCHAR(32) NOT NULL,
+    UNIQUE KEY uq_reply_react (reply_id, username),
+    CONSTRAINT test_reply_react_fk FOREIGN KEY (reply_id) REFERENCES replies (id)
+)
+""",
+]
+
+
+def test_delete_cascade_clears_reactions_and_reply_reactions(mysql_dsn):
+    """FK-order audit follow-up to the 2026-07-24 key-post incident: the code
+    DDL gives ``reactions.post_id`` and ``reply_reactions.reply_id`` restricting
+    FKs (no ON DELETE CASCADE), so the cascade must clear reply_reactions
+    before the replies rows and reactions before the posts row — otherwise any
+    environment built from the code DDL rejects the delete with 1451."""
+    from backend.services.post_deletion import delete_post_cascade
+
+    make_user("ownerA")
+    make_user("m1")
+    make_user("r1")
+    a = make_community("Mod A", creator_username="ownerA")
+    pid = _make_post(a, "m1", "much reacted")
+    ph = get_sql_placeholder()
+
+    for ddl in _REACTION_TABLES_DDL:
+        _exec(ddl)
+    # Not in conftest's truncate list — drop stale rows from earlier tests
+    # (TRUNCATE resets AUTO_INCREMENT, so post/reply ids get reused).
+    _exec("DELETE FROM reply_reactions")
+    _exec("DELETE FROM reactions")
+    _exec(
+        f"INSERT INTO replies (post_id, community_id, username, content) VALUES ({ph}, {ph}, {ph}, {ph})",
+        (pid, a, "r1", "a reply"),
+    )
+    rid = int(_scalar("SELECT MAX(id) FROM replies"))
+    _exec(
+        f"INSERT INTO reactions (post_id, username, reaction_type) VALUES ({ph}, 'r1', 'heart')",
+        (pid,),
+    )
+    _exec(
+        f"INSERT INTO reply_reactions (reply_id, username, reaction_type) VALUES ({ph}, 'm1', 'heart')",
+        (rid,),
+    )
+
+    payload, status = delete_post_cascade(pid, actor="ownerA")
+    assert status == 200, payload
+    assert payload["success"] is True
+
+    assert int(_scalar(f"SELECT COUNT(*) FROM posts WHERE id = {ph}", (pid,))) == 0
+    assert int(_scalar(f"SELECT COUNT(*) FROM replies WHERE post_id = {ph}", (pid,))) == 0
+    assert int(_scalar(f"SELECT COUNT(*) FROM reactions WHERE post_id = {ph}", (pid,))) == 0
+    assert int(_scalar(f"SELECT COUNT(*) FROM reply_reactions WHERE reply_id = {ph}", (rid,))) == 0
+
+
+def test_delete_cascade_clears_post_notifications(mysql_dsn):
+    """Notifications keep a ``post_id`` pointer (no FK in prod, restricting FK
+    in the legacy DDL) — the cascade must drop them so notification bells never
+    deep-link to a deleted post, while unrelated notifications survive."""
+    from backend.services.post_deletion import delete_post_cascade
+
+    make_user("ownerA")
+    make_user("m1")
+    a = make_community("Mod A", creator_username="ownerA")
+    pid = _make_post(a, "m1", "notified about")
+    other_pid = _make_post(a, "m1", "unrelated survivor")
+    ph = get_sql_placeholder()
+
+    _exec(
+        f"INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message) "
+        f"VALUES ('m1', 'ownerA', 'reaction', {ph}, {ph}, 'someone reacted')",
+        (pid, a),
+    )
+    _exec(
+        f"INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message) "
+        f"VALUES ('m1', 'ownerA', 'reaction', {ph}, {ph}, 'other post reaction')",
+        (other_pid, a),
+    )
+
+    payload, status = delete_post_cascade(pid, actor="ownerA")
+    assert status == 200, payload
+
+    assert int(_scalar(f"SELECT COUNT(*) FROM notifications WHERE post_id = {ph}", (pid,))) == 0
+    assert int(_scalar(f"SELECT COUNT(*) FROM notifications WHERE post_id = {ph}", (other_pid,))) == 1
+
+
 def test_r2_key_derivation():
     """Unit: R2 key is derived only for recognizable R2 CDN URLs, and only
     when R2 is enabled — everything else falls through to filesystem/no-op."""

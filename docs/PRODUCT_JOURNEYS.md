@@ -436,8 +436,11 @@ and Steve's read switches to a reduced template. Responses are Redis-cached
 
 **Moderation remove** routes through the shared cascade
 (`backend/services/post_deletion.delete_post_cascade`) — the same cleanup as
-author/app-admin deletes (replies, post_views, imagine_jobs, media incl. R2,
-report resolution, feed + post-detail cache invalidation).
+author/app-admin deletes (replies + their reply_reactions, reactions,
+post_views, key-post markers (community_key_posts + key_posts, whose
+restricting FKs would otherwise block the delete), notifications linking to
+the post, imagine_jobs, media incl. R2, report resolution, feed +
+post-detail cache invalidation).
 
 **Report signal (owner-first, Moderation v2 Phase 0):** when a member reports
 a post (or the wordlist auto-flags one), the community's moderators — owner +
