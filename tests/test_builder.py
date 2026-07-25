@@ -705,9 +705,12 @@ def test_admin_category_override_validates_against_section(monkeypatch):
     cid = _make_community()
     created = builder.create_creation(username="maker", community_id=cid, prompt="a game")
 
+    # "portfolio" is a website-only slug — never valid for a game section.
+    # (Universal topics like "travel" are valid everywhere since the
+    # categories-are-topics change, so they no longer exercise this guard.)
     with pytest.raises(ValueError):
         builder.update_gallery_status(creation_id=created["id"], username="admin",
-                                      action="approve", reviewer="admin", category="travel")
+                                      action="approve", reviewer="admin", category="portfolio")
 
     result = builder.update_gallery_status(creation_id=created["id"], username="admin",
                                            action="approve", reviewer="admin", category="arcade")
@@ -758,7 +761,7 @@ def test_category_precedence_admin_locks_creator_beats_automation(monkeypatch):
     with pytest.raises(PermissionError):
         builder.set_creation_category(creation_id=created["id"], username="stranger", category="arcade")
     with pytest.raises(ValueError):
-        builder.set_creation_category(creation_id=created["id"], username="maker", category="travel")
+        builder.set_creation_category(creation_id=created["id"], username="maker", category="portfolio")
 
     out = builder.set_creation_category(creation_id=created["id"], username="maker", category="arcade")
     assert out == {"category": "arcade", "category_source": "creator"}

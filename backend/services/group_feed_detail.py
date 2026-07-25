@@ -15,6 +15,17 @@ from backend.services.group_post_views import batch_group_post_view_counts_exclu
 logger = logging.getLogger(__name__)
 
 
+def _root_community_id(community_id: Any) -> Any:
+    """Billing/structure root of a community; falls back to itself on error."""
+    try:
+        from backend.services.community import resolve_root_community_id
+
+        root_id, _ = resolve_root_community_id(int(community_id))
+        return root_id
+    except Exception:
+        return community_id
+
+
 def build_group_feed_response(username: str, group_id: int) -> tuple[dict[str, Any], int]:
     """Return (json-serializable dict, http_status)."""
     try:
@@ -295,6 +306,11 @@ def build_group_feed_response(username: str, group_id: int) -> tuple[dict[str, A
                         "id": community_id,
                         "name": community_name,
                         "type": community_type,
+                        # Root of the network this group belongs to. Leaving a
+                        # group returns to the network-wide Groups view, which
+                        # is addressed by the root id, not the owning
+                        # sub-community.
+                        "root_id": _root_community_id(community_id),
                     },
                     "capabilities": {"can_post_announcements": bool(is_manager)},
                     "posts": posts,

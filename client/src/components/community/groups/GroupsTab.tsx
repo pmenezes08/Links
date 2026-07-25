@@ -66,6 +66,7 @@ export default function GroupsTab({
   currentUsername,
   isAppAdmin,
   highlightGroupId,
+  initialIncludeSubs = false,
   onCreate,
   onNavigateCommunity,
   onOpenGroup,
@@ -78,6 +79,7 @@ export default function GroupsTab({
   currentUsername: string | null
   isAppAdmin: boolean
   highlightGroupId: number | null
+  initialIncludeSubs?: boolean
   onCreate: () => void
   onNavigateCommunity: (communityId: number) => void
   onOpenGroup: (groupId: number) => void
@@ -85,7 +87,9 @@ export default function GroupsTab({
   onToast: (message: string) => void
 }) {
   const { t } = useTranslation()
-  const [includeSubs, setIncludeSubs] = useState(false)
+  // `?scope=subs` arrives from a group's back button: the user came from the
+  // network-wide list, so return them to it rather than a single community.
+  const [includeSubs, setIncludeSubs] = useState(initialIncludeSubs)
   const [search, setSearch] = useState('')
   const [confirmAction, setConfirmAction] = useState<{ kind: 'leave' | 'delete'; group: CommunityGroup } | null>(null)
   const [confirmBusy, setConfirmBusy] = useState(false)

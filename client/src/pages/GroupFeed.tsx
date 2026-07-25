@@ -80,7 +80,7 @@ export default function GroupFeed(){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
   const [groupName, setGroupName] = useState(t('feed.group_fallback'))
-  const [communityMeta, setCommunityMeta] = useState<{ id?: number|string, name?: string, type?: string } | null>(null)
+  const [communityMeta, setCommunityMeta] = useState<{ id?: number|string, name?: string, type?: string, root_id?: number|string } | null>(null)
   const [posts, setPosts] = useState<Post[]>([])
   const [capabilities, setCapabilities] = useState<{ can_post_announcements?: boolean }>({})
   const [announcementsOpen, setAnnouncementsOpen] = useState(false)
@@ -179,10 +179,11 @@ export default function GroupFeed(){
   }
 
   const goBackFromGroupFeed = () => {
-    const cid = communityMeta?.id
-    // Land on the Groups tab of the owning community, with this group
-    // highlighted — never the unscoped communities list.
-    if (cid) navigate(`/communities?parent_id=${cid}&tab=groups${group_id ? `&highlight_group=${group_id}` : ''}`)
+    // Return to the NETWORK-wide Groups view (root community, sub-communities
+    // included) rather than the single sub-community that owns this group —
+    // that's the list the user was browsing when they picked it.
+    const cid = communityMeta?.root_id ?? communityMeta?.id
+    if (cid) navigate(`/communities?parent_id=${cid}&tab=groups&scope=subs${group_id ? `&highlight_group=${group_id}` : ''}`)
     else navigate('/premium_dashboard')
   }
 
