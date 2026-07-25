@@ -1636,6 +1636,13 @@ def add_user_to_community(cursor, user_id: int, community_id: int, role: Optiona
     ensure_community_tier_member_capacity(
         cursor, community_id, attempted_username=username
     )
+    # Membership of a nested community implies membership of its whole
+    # ancestor chain (owning sub-community up to the root network). Runs
+    # BEFORE the target insert so a capped root aborts the join atomically.
+    from backend.services.community import ensure_ancestor_memberships
+    ensure_ancestor_memberships(
+        cursor, int(user_id), int(community_id), username=username
+    )
     joined_at_value = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     if role is None:
         if USE_MYSQL:
@@ -1713,7 +1720,12 @@ def add_user_to_community(cursor, user_id: int, community_id: int, role: Optiona
         from backend.services import enterprise_membership as _em
         from backend.services import enterprise_iap_nag as _nag
         from backend.services import subscription_audit as _audit
-        if _em.is_enterprise_community(int(community_id)):
+        from backend.services.community import resolve_root_community_id as _resolve_root
+        # The Enterprise tier lives on the ROOT; joining any community in
+        # the tree (ancestor-chain joins included) must evaluate the seat
+        # against the root, not the nested node the invite pointed at.
+        _seat_root_id, _ = _resolve_root(int(community_id))
+        if _em.is_enterprise_community(int(_seat_root_id)):
             join_username = username
             if not join_username:
                 ph = get_sql_placeholder()
@@ -1724,7 +1736,7 @@ def add_user_to_community(cursor, user_id: int, community_id: int, role: Optiona
             if join_username:
                 _em.start_seat(
                     username=join_username,
-                    community_id=int(community_id),
+                    community_id=int(_seat_root_id),
                     source="community_join",
                     actor_username=join_username,
                 )
@@ -1738,12 +1750,12 @@ def add_user_to_community(cursor, user_id: int, community_id: int, role: Optiona
                     _sr = cursor.fetchone()
                     _sub = (_sr['subscription'] if hasattr(_sr, 'keys') else (_sr[0] if _sr else '')) or ''
                     if str(_sub).lower() in ('premium', 'pro', 'paid'):
-                        _nag.start_nag(username=join_username, community_id=int(community_id))
+                        _nag.start_nag(username=join_username, community_id=int(_seat_root_id))
                         _audit.log(
                             username=join_username,
                             action="iap_conflict_detected",
                             source="community_join",
-                            community_id=int(community_id),
+                            community_id=int(_seat_root_id),
                             metadata={"reason": "premium_plus_enterprise_seat"},
                         )
                 except Exception:

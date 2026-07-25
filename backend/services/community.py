@@ -720,6 +720,84 @@ def find_recent_duplicate_community(
     return None
 
 
+def ensure_ancestor_memberships(
+    cursor,
+    user_id: int,
+    community_id: int,
+    *,
+    username: Optional[str] = None,
+) -> List[int]:
+    """Make membership of a nested community imply membership of its whole
+    ancestor chain (owning sub-community up to the root network).
+
+    Joining PNT must also put the member in Pessoal Navegante and TAP Air
+    Portugal — otherwise the network's feeds, member lists, and group
+    directory (all root-scoped) don't know they exist.
+
+    Walks ``parent_community_id`` upward, then inserts missing
+    ``user_communities`` rows **root-first** so the root's member caps are
+    enforced (and can abort the whole join) before any intermediate row is
+    written. Ancestors the user already belongs to are skipped — idempotent.
+
+    Raises :class:`CommunityMembershipLimitError` when an ancestor is over
+    its cap (same semantics as joining that ancestor directly). Returns the
+    ancestor ids that were inserted.
+    """
+    if not user_id or not community_id:
+        return []
+    ph = get_sql_placeholder()
+
+    # Collect the ancestor chain (nearest parent → root), cycle-guarded.
+    chain: List[int] = []
+    seen = {int(community_id)}
+    current = int(community_id)
+    for _ in range(16):
+        cursor.execute(
+            f"SELECT parent_community_id FROM communities WHERE id = {ph}",
+            (current,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            break
+        parent = row["parent_community_id"] if hasattr(row, "keys") else row[0]
+        if parent in (None, ""):
+            break
+        parent = int(parent)
+        if parent in seen:
+            break
+        chain.append(parent)
+        seen.add(parent)
+        current = parent
+
+    added: List[int] = []
+    joined_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for ancestor_id in reversed(chain):  # root first
+        cursor.execute(
+            f"SELECT 1 FROM user_communities WHERE user_id = {ph} AND community_id = {ph}",
+            (int(user_id), ancestor_id),
+        )
+        if cursor.fetchone():
+            continue
+        # Same gates as a direct join of the ancestor. Both helpers noop for
+        # sub-communities and Enterprise, so in practice this bites only at
+        # a capped root.
+        ensure_free_parent_member_capacity(
+            cursor, ancestor_id, attempted_username=username
+        )
+        ensure_community_tier_member_capacity(
+            cursor, ancestor_id, attempted_username=username
+        )
+        cursor.execute(
+            f"""
+            INSERT INTO user_communities (user_id, community_id, role, joined_at)
+            VALUES ({ph}, {ph}, {ph}, {ph})
+            """,
+            (int(user_id), ancestor_id, "member", joined_at),
+        )
+        added.append(ancestor_id)
+    return added
+
+
 def community_structure_caps_exempt(cursor, community_id: Optional[int]) -> bool:
     """True when ``community_id`` sits inside an Enterprise-tier network.
 
