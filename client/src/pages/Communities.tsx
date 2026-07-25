@@ -73,6 +73,10 @@ const COMMUNITIES_GUIDE_STEPS = [
 /** New key so users who completed the old full-screen intro still see this spotlight tour once. */
 const COMMUNITIES_SPOTLIGHT_TOUR_PREFIX = 'communities_spotlight_tour_v1:'
 
+/** Indent added by each nesting level of the sub-community tree. Levels are
+ * rendered as nested containers, so this compounds — keep it small. */
+const NESTED_INDENT_REM = '0.75rem'
+
 function collectDescendantIds(nodes?: Community[]): number[] {
   if (!nodes) return []
   const stack = [...nodes]
@@ -1892,16 +1896,18 @@ function CommunityItem({
           {isChild && (
             <span className="block w-[6px] h-[6px] rounded-full bg-cpoint-turquoise" />
           )}
-          <div className="flex-1 min-w-0">
+          {/* min-w floor: however deep the row sits, the name keeps enough
+              room to render — the chips on the right give way first. */}
+          <div className="flex-1 min-w-[4.5rem]">
             <div className="font-medium text-c-text-primary truncate">{community.name}</div>
             <div className="text-xs text-c-text-tertiary truncate">{community.type || t('communities.community_type_fallback')}</div>
           </div>
         </div>
-        <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+        <div className="flex items-center gap-2 ml-3 min-w-0">
           {(community.group_count ?? 0) > 0 && (
             <button
               type="button"
-              className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-white/[0.05] text-c-text-tertiary hover:text-c-text-secondary whitespace-nowrap"
+              className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-white/[0.05] text-c-text-tertiary hover:text-c-text-secondary whitespace-nowrap overflow-hidden text-ellipsis"
               onClick={(e) => { e.stopPropagation(); onOpenGroups(community.id) }}
               aria-label={t('communities.groups_chip_aria', { count: community.group_count ?? 0 })}
             >
@@ -1913,7 +1919,7 @@ function CommunityItem({
               {t('communities.unread_new', { count: community.unread_posts_count ?? 0 })}
             </span>
           )}
-          <span className="text-cpoint-turquoise">
+          <span className="text-cpoint-turquoise shrink-0">
             <i className="fa-solid fa-chevron-right" />
           </span>
         </div>
@@ -1952,8 +1958,13 @@ function NestedCommunities({
   setExpandedDeepCommunityIds: Dispatch<SetStateAction<Record<number, boolean>>>
 }) {
   const { t } = useTranslation()
+  // Each nesting level renders INSIDE the previous one, so this margin
+  // compounds. It used to be `level * 1.5rem`, which made the indent grow
+  // quadratically (24px, 72px, 144px, 240px…) until deep rows had no room
+  // left and the community name truncated away to nothing. A small constant
+  // per level keeps the hierarchy readable and linear.
   return (
-    <div className={`ml-${level * 6} space-y-2`} style={{ marginLeft: `${level * 1.5}rem` }}>
+    <div className="space-y-2" style={{ marginLeft: NESTED_INDENT_REM }}>
       {communities.map(child => {
         const hasChildren = !!(child.children && child.children.length > 0)
         const isFirstLevelChild = level === 1
