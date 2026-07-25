@@ -106,7 +106,9 @@ function communityTreeOptions(parent: Community | undefined) {
     for (const child of children || []) {
       options.push(
         <option key={child.id} value={child.id}>
-          {'  '.repeat(depth) + '└─ '}{child.name}
+          {/* Native <option> can't take padding, so depth is non-breaking
+              spaces — no box-drawing glyphs. */}
+          {'   '.repeat(depth)}{child.name}
         </option>
       )
       walk(child.children, depth + 1)

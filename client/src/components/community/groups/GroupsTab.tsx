@@ -177,7 +177,7 @@ export default function GroupsTab({
         <GroupScopeToggle
           includeSubs={includeSubs}
           onChange={setIncludeSubs}
-          subCount={subtreeIds.length - 1}
+          communityName={scopeNode.name}
         />
       )}
       {searchActive && (

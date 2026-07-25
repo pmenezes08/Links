@@ -117,7 +117,8 @@ export default function GroupCard({
                 className="inline-flex items-center gap-1 px-1.5 h-5 rounded-full bg-cpoint-turquoise/10 text-cpoint-turquoise text-[10px] shrink-0"
                 aria-hidden
               >
-                ✦ Steve
+                <i className="fa-solid fa-robot text-[9px]" />
+                Steve
               </span>
             )}
           </div>

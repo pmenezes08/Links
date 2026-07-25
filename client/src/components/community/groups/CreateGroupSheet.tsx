@@ -163,7 +163,9 @@ export default function CreateGroupSheet({
                     style={{ paddingLeft: `${12 + row.depth * 16}px` }}
                     onClick={() => { setTargetId(row.id); setPickerOpen(false) }}
                   >
-                    {row.depth > 0 && <span className="text-c-text-disabled text-xs" aria-hidden>└─</span>}
+                    {row.depth > 0 && (
+                      <span className="w-1 h-1 rounded-full bg-c-text-disabled shrink-0" aria-hidden />
+                    )}
                     <span className="truncate">{row.name}</span>
                   </button>
                 ))}
