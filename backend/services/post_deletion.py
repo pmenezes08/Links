@@ -1,8 +1,14 @@
 """Canonical post-deletion cascade, shared by every delete path.
 
-A community post is referenced by more than the ``posts`` row: replies,
-``post_views`` analytics, pending ``imagine_jobs``, its reports, media on
-disk or in R2, and two caches (community feed + post detail). Historically
+A community post is referenced by more than the ``posts`` row: replies
+(and their ``reply_reactions``), ``reactions``, ``post_views`` analytics,
+key-post markers (``community_key_posts`` / ``key_posts``, whose restricting
+foreign keys block the delete outright), ``notifications`` rows linking to
+the post, pending ``imagine_jobs``, its reports, media on disk or in R2, and
+two caches (community feed + post detail). The reaction tables matter even
+though prod's hand-migrated FKs cascade: the code DDL (fresh installs)
+declares those FKs *without* ON DELETE CASCADE, so relying on the database
+to clean them up is a latent MySQL 1451 on any new environment. Historically
 the monolith's ``delete_post`` did the full cleanup while the app-admin and
 owner-moderation paths did lighter, divergent subsets — orphaning views,
 jobs, and media. Every deletion now funnels through
@@ -189,11 +195,40 @@ def delete_post_cascade(
 
             _delete_post_media(post.get("image_path"), post.get("video_path"))
 
+            # reply_reactions FK-references replies(id) without ON DELETE
+            # CASCADE in the code DDL — clear it before the replies rows.
+            try:
+                c.execute(
+                    f"DELETE FROM reply_reactions WHERE reply_id IN "
+                    f"(SELECT id FROM replies WHERE post_id = {ph})",
+                    (post_id,),
+                )
+            except Exception as exc:
+                logger.warning("could not delete reply_reactions for post %s: %s", post_id, exc)
             c.execute(f"DELETE FROM replies WHERE post_id = {ph}", (post_id,))
+            try:
+                c.execute(f"DELETE FROM reactions WHERE post_id = {ph}", (post_id,))
+            except Exception as exc:
+                logger.warning("could not delete reactions for post %s: %s", post_id, exc)
             try:
                 c.execute(f"DELETE FROM post_views WHERE post_id = {ph}", (post_id,))
             except Exception as exc:
                 logger.warning("could not delete post_views for post %s: %s", post_id, exc)
+            # Notifications keep a post_id pointer (no FK in prod, plain FK in
+            # the code DDL) — drop them so bells never deep-link to a dead post.
+            try:
+                c.execute(f"DELETE FROM notifications WHERE post_id = {ph}", (post_id,))
+            except Exception as exc:
+                logger.warning("could not delete notifications for post %s: %s", post_id, exc)
+            # Key-post markers hold restricting FKs on posts(id) — clear them
+            # before the posts row or MySQL rejects the delete (error 1451).
+            for key_table in ("community_key_posts", "key_posts"):
+                try:
+                    c.execute(f"DELETE FROM {key_table} WHERE post_id = {ph}", (post_id,))
+                except Exception as exc:
+                    logger.warning(
+                        "could not delete %s rows for post %s: %s", key_table, post_id, exc
+                    )
             c.execute(f"DELETE FROM posts WHERE id = {ph}", (post_id,))
             conn.commit()
     except Exception as exc:
