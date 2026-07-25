@@ -628,6 +628,9 @@ def test_groups_my_enrichment_and_request_flow(mysql_dsn):
     make_user("greq_member")
     make_user("greq_rando")
     cid = make_community("greq-net", tier="paid_l1", creator_username="greq_owner")
+    # /api/groups/my early-returns empty for users with no user_communities
+    # rows — owners are community members in prod, so mirror that here.
+    _join_community("greq_owner", cid)
     _join_community("greq_member", cid)
 
     owner = bodybuilding_app.app.test_client()
@@ -683,6 +686,7 @@ def test_group_request_deny_removes_the_row(mysql_dsn):
     make_user("gden_owner", subscription="premium")
     make_user("gden_member")
     cid = make_community("gden-net", tier="paid_l1", creator_username="gden_owner")
+    _join_community("gden_owner", cid)
     _join_community("gden_member", cid)
 
     owner = bodybuilding_app.app.test_client()
