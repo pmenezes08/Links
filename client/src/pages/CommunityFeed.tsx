@@ -19,6 +19,7 @@ import CommunityOwnerSetupIntro, {
 import OwnerFirstPostBanner from '../components/community/OwnerFirstPostBanner'
 import AIDraftFirstPostModal from '../components/community/AIDraftFirstPostModal'
 import CommunityJoinedOrientationCard from '../components/community/CommunityJoinedOrientationCard'
+import PlacementPendingCard from '../components/community/placement/PlacementPendingCard'
 import { buildFeedDisplayPosts, isSteveWelcomePost } from '../utils/communityFeedDisplay'
 import MentionTextarea from '../components/MentionTextarea'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
@@ -2952,6 +2953,8 @@ export default function CommunityFeed() {
             )}
           </div>
           </div>
+
+          {community_id && <PlacementPendingCard communityId={Number(community_id)} />}
 
           {showJoinedOrientationCard && (
             <CommunityJoinedOrientationCard

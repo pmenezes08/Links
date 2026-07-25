@@ -39,6 +39,7 @@ from backend.services.community_invites import (
     _has_manage_permission,
     notify_community_new_member,
 )
+from backend.services.community_placement import open_pending_placement_if_active
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.notifications import create_notification, send_push_to_user
 from backend.services.steve_community_welcome import (
@@ -534,6 +535,7 @@ def decide_request(
                 # accept after upgrading; they get the canonical cap error.
                 return render_member_cap_error(exc, session_username=deciding_username)
 
+        open_pending_placement_if_active(c, int(community_id), requester, deciding_username)
         c.execute(
             f"UPDATE community_join_requests SET status = 'accepted', decided_by = {ph}, decided_at = {ph} WHERE id = {ph}",
             (deciding_username, now_str, g("id", 0)),

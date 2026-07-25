@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import BrandLogo from '../components/BrandLogo'
+import { PLACEMENT_REFRESH_EVENT } from '../components/community/placement/PlacementGate'
 import { refreshDashboardCommunities } from '../utils/dashboardCache'
 import { triggerDashboardServerPull } from '../utils/serverPull'
 import { useUserProfile } from '../contexts/UserProfileContext'
@@ -99,6 +100,7 @@ export default function InvitePreview() {
       await triggerDashboardServerPull()
       await refreshDashboardCommunities()
       await refresh()
+      if (data.placement_pending) window.dispatchEvent(new Event(PLACEMENT_REFRESH_EVENT))
       navigate(data.next_url || `/community_feed_react/${data.community_id}`, { replace: true })
     } catch {
       setError(t('communities.invite_preview.accept_retry'))

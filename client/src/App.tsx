@@ -33,6 +33,7 @@ import BrandAssetsInit from './components/BrandAssetsInit'
 import BiometricLockGate from './components/BiometricLockGate'
 import BasicProfileGateProvider from './components/basic-profile/BasicProfileGateProvider'
 import AgeGateController from './components/onboarding/AgeGate'
+import PlacementGateController from './components/community/placement/PlacementGate'
 import LocaleBootstrap from './components/LocaleBootstrap'
 import CrossfitExact from './pages/CrossfitExact'
 import CommunityFeed from './pages/CommunityFeed'
@@ -1053,6 +1054,9 @@ function AppRoutes(){
         {/* 18+ compliance gate (Option A): fires once per account when the
             server-side status is unanswered — see docs/COMPLIANCE_AGE_GATE.md. */}
         {authLoaded ? <AgeGateController username={userMeta.username || null} /> : null}
+        {/* Enterprise guided placement: mandatory post-accept questionnaire,
+            server-side pending state — see docs/PRODUCT_JOURNEYS.md § 5. */}
+        {authLoaded ? <PlacementGateController username={userMeta.username || null} /> : null}
       </HeaderContext.Provider>
       </BadgeProvider>
     </UserProfileContext.Provider>

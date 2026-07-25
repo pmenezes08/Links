@@ -5,6 +5,7 @@ import type { TFunction } from 'i18next'
 import { useHeader } from '../contexts/HeaderContext'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { normalizeHandleInput } from '../components/community/HandleSettings'
+import { PLACEMENT_REFRESH_EVENT } from '../components/community/placement/PlacementGate'
 import SpotlightAsk from '../components/dashboard/SpotlightAsk'
 import DashboardEmptyState from '../components/dashboard/DashboardEmptyState'
 import SteveCreateCard from '../components/dashboard/SteveCreateCard'
@@ -626,6 +627,7 @@ export default function PremiumDashboard() {
           setCommunities(refreshed)
           setCommunitiesLoaded(true)
         }
+        if (j.placement_pending) window.dispatchEvent(new Event(PLACEMENT_REFRESH_EVENT))
         const targetId = j.community_id || activeInvitePrompt.community_id
         navigate(j.next_url || `/community_feed_react/${targetId}`, { replace: true })
       }
