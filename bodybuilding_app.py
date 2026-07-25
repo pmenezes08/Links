@@ -4653,8 +4653,12 @@ def transcribe_audio_file(audio_file_path):
     
     try:
         logger.info(f"Transcribing audio file: {audio_file_path}")
-        client = OpenAI(api_key=OPENAI_API_KEY)
-        
+        # Bounded: transcription runs SYNCHRONOUSLY inside the DM/group send
+        # request, so a provider outage (OpenAI 500s, 2026-07-25) must fail
+        # fast instead of holding every voice-note send hostage while the
+        # SDK's default retries stack up. One retry, 20s per attempt.
+        client = OpenAI(api_key=OPENAI_API_KEY, max_retries=1, timeout=20.0)
+
         # Check if this is a URL (R2 CDN) or local path
         if audio_file_path.startswith('http://') or audio_file_path.startswith('https://'):
             # Download from R2 CDN to a temporary file

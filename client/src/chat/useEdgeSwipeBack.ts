@@ -13,7 +13,6 @@ const COMMIT_MIN_PX = 72
 /** A quick flick commits even when short. */
 const COMMIT_VELOCITY_PX_PER_MS = 0.45
 const SETTLE_MS = 220
-const COMMIT_MS = 180
 
 function prefersReducedMotion(): boolean {
   try {
@@ -162,13 +161,13 @@ export function useEdgeSwipeBack({ onBack, enabled = true }: EdgeSwipeBackOption
       return
     }
     if (commit) {
-      const width = window.innerWidth || 400
-      applyOffset(page, width, prefersReducedMotion() ? 0 : COMMIT_MS)
-      setUnderlayProgress(1, prefersReducedMotion() ? 0 : COMMIT_MS)
-      window.setTimeout(() => {
-        clearOffset(page)
-        onBackRef.current()
-      }, prefersReducedMotion() ? 0 : COMMIT_MS)
+      // Navigate SYNCHRONOUSLY on release. An exit animation followed by a
+      // deferred navigate leaves a window where the page sits translated
+      // off-screen over a bare backdrop (and a stray timeout can strand it
+      // there) — founder hit exactly that. The drag itself is the motion;
+      // the destination paints from its device cache on the next frame.
+      clearOffset(page)
+      onBackRef.current()
       return
     }
     applyOffset(page, 0, prefersReducedMotion() ? 0 : SETTLE_MS)
