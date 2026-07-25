@@ -1192,3 +1192,73 @@ def api_group_replies_delete():
     except Exception as e:
         logger.error("api_group_replies_delete error: %s", e, exc_info=True)
         return jsonify({"success": False, "error": "Server error"}), 500
+
+
+# ── Group join-request management (approval-required groups) ────────────
+#
+# Same permission model as group creation/deletion: group creator, app
+# admin, or owner/admin of the owning community / its root network.
+
+def _may_manage_group_requests(username: str, group: dict) -> bool:
+    from backend.services.community import can_create_group_in_community
+
+    if not username or not group:
+        return False
+    if username == (group.get("created_by") or ""):
+        return True
+    if is_app_admin(username):
+        return True
+    return can_create_group_in_community(username, group.get("community_id"))
+
+
+@group_feed_bp.route("/api/groups/<int:group_id>/requests", methods=["GET"])
+@_login_required
+def api_group_requests_list(group_id: int):
+    from backend.services import group_membership
+
+    username = session_identity.valid_session_username(session)
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            group = group_membership.get_group_basic(c, group_id)
+            if not group:
+                return jsonify({"success": False, "error": "Group not found"}), 404
+            if not _may_manage_group_requests(username, group):
+                return jsonify({"success": False, "error": "Forbidden"}), 403
+            requests_list = group_membership.list_pending_requests(c, group_id)
+        return jsonify({"success": True, "group_id": group_id, "requests": requests_list})
+    except Exception as e:
+        logger.error("api_group_requests_list error: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": "Server error"}), 500
+
+
+@group_feed_bp.route("/api/groups/<int:group_id>/requests/decide", methods=["POST"])
+@_login_required
+def api_group_requests_decide(group_id: int):
+    from backend.services import group_membership
+
+    username = session_identity.valid_session_username(session)
+    payload = request.get_json(silent=True) or {}
+    target = str(payload.get("username") or "").strip()
+    decision = str(payload.get("decision") or "").strip().lower()
+    if not target or decision not in ("approve", "deny"):
+        return jsonify({"success": False, "error": "username and decision (approve|deny) required"}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            group = group_membership.get_group_basic(c, group_id)
+            if not group:
+                return jsonify({"success": False, "error": "Group not found"}), 404
+            if not _may_manage_group_requests(username, group):
+                return jsonify({"success": False, "error": "Forbidden"}), 403
+            changed = group_membership.decide_request(
+                c, group_id, target, approve=(decision == "approve")
+            )
+            try:
+                conn.commit()
+            except Exception:
+                pass
+        return jsonify({"success": True, "changed": bool(changed), "decision": decision})
+    except Exception as e:
+        logger.error("api_group_requests_decide error: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": "Server error"}), 500

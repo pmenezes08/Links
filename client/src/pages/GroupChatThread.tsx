@@ -388,7 +388,7 @@ export default function GroupChatThread() {
   const goBackFromGroupChat = useCallback(() => {
     hapticImpactLight()
     const cid = latestGroupRef.current?.community_id
-    if (cid) navigate(`/communities?parent_id=${cid}`)
+    if (cid) navigate(`/communities?parent_id=${cid}&tab=groups`)
     else navigate('/user_chat')
   }, [navigate])
 

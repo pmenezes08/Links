@@ -47,6 +47,12 @@ export default function GroupFeed(){
   const { t } = useTranslation()
   const { group_id } = useParams()
   const navigate = useNavigate()
+  // Device-local "seen" marker — the Groups tab shows a new-activity dot
+  // when a group's last post is newer than the last open on this device.
+  useEffect(() => {
+    if (!group_id) return
+    try { window.localStorage.setItem(`group_last_seen:${group_id}`, String(Date.now())) } catch {}
+  }, [group_id])
   const mentionToProfile = useCallback((u: string) => { navigate(`/profile/${encodeURIComponent(u)}`) }, [navigate])
   const openExternalArticle = useCallback((url: string) => {
     void openExternalInApp(url)
@@ -174,7 +180,9 @@ export default function GroupFeed(){
 
   const goBackFromGroupFeed = () => {
     const cid = communityMeta?.id
-    if (cid) navigate(`/communities?parent_id=${cid}`)
+    // Land on the Groups tab of the owning community, with this group
+    // highlighted — never the unscoped communities list.
+    if (cid) navigate(`/communities?parent_id=${cid}&tab=groups${group_id ? `&highlight_group=${group_id}` : ''}`)
     else navigate('/premium_dashboard')
   }
 

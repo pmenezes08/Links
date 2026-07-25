@@ -497,6 +497,7 @@ def test_build_steve_group_resource_context_includes_scoped_links_and_docs(mysql
 def test_groups_create_allows_community_owner(mysql_dsn):
     """A plain (non-app-admin) owner can create a group in their community."""
     import bodybuilding_app
+    from backend.services.database import get_db_connection, get_sql_placeholder
 
     make_user("grp_owner_plain", subscription="premium")
     cid = make_community("grp-owner-net", tier="paid_l1", creator_username="grp_owner_plain")
@@ -508,7 +509,21 @@ def test_groups_create_allows_community_owner(mysql_dsn):
         data={"community_id": str(cid), "name": "Owner Group", "approval_required": "0"},
     )
     assert r.status_code == 200
-    assert (r.get_json() or {}).get("success") is True
+    body = r.get_json() or {}
+    assert body.get("success") is True
+
+    # The creator must be a member of their own group immediately —
+    # otherwise the UI shows it under "Available" with a Join button.
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"SELECT status FROM `group_members` WHERE group_id = {ph} AND username = {ph}",
+            (int(body["group_id"]), "grp_owner_plain"),
+        )
+        row = c.fetchone()
+    assert row is not None
+    assert (row["status"] if hasattr(row, "keys") else row[0]) == "member"
 
 
 def test_groups_create_rejects_regular_member(mysql_dsn):
@@ -580,3 +595,120 @@ def test_groups_create_enterprise_sub_by_free_owner(mysql_dsn):
     )
     assert r.status_code == 200
     assert (r.get_json() or {}).get("success") is True
+
+
+def _join_community(username: str, community_id: int) -> None:
+    from backend.services.database import get_db_connection, get_sql_placeholder
+
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT id FROM users WHERE username = {ph}", (username,))
+        row = c.fetchone()
+        uid = int(row["id"] if hasattr(row, "keys") else row[0])
+        c.execute(
+            f"INSERT INTO user_communities (user_id, community_id, role) VALUES ({ph}, {ph}, 'member')",
+            (uid, community_id),
+        )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+
+def test_groups_my_enrichment_and_request_flow(mysql_dsn):
+    """End-to-end: approval-required group → pending request → owner sees
+    counts and approves → requester becomes a member.
+
+    Also pins the /api/groups/my enrichment (member_count, pending_count,
+    approval_required, status='pending' rows in `joined`)."""
+    import bodybuilding_app
+
+    make_user("greq_owner", subscription="premium")
+    make_user("greq_member")
+    make_user("greq_rando")
+    cid = make_community("greq-net", tier="paid_l1", creator_username="greq_owner")
+    _join_community("greq_member", cid)
+
+    owner = bodybuilding_app.app.test_client()
+    _login(owner, "greq_owner")
+    r = owner.post(
+        "/api/groups/create",
+        data={"community_id": str(cid), "name": "Crew Room", "approval_required": "1"},
+    )
+    gid = (r.get_json() or {}).get("group_id")
+    assert gid
+
+    member = bodybuilding_app.app.test_client()
+    _login(member, "greq_member")
+    r2 = member.post("/api/groups/join", data={"group_id": str(gid)})
+    assert (r2.get_json() or {}).get("success") is True
+
+    # Requester sees the group as pending inside `joined`.
+    j3 = member.get("/api/groups/my").get_json()
+    mine = [g for g in j3["joined"] if g["group_id"] == gid]
+    assert mine and mine[0]["status"] == "pending"
+
+    # Owner card data: 1 member (the creator), 1 pending, approval flag on.
+    j4 = owner.get("/api/groups/my").get_json()
+    own = [g for g in j4["joined"] if g["group_id"] == gid][0]
+    assert own["status"] == "member"
+    assert own["member_count"] == 1
+    assert own["pending_count"] == 1
+    assert own["approval_required"] is True
+
+    # Requests list is owner/admin territory.
+    j5 = owner.get(f"/api/groups/{gid}/requests").get_json()
+    assert [x["username"] for x in j5["requests"]] == ["greq_member"]
+
+    rando = bodybuilding_app.app.test_client()
+    _login(rando, "greq_rando")
+    assert rando.get(f"/api/groups/{gid}/requests").status_code == 403
+
+    # Approve → requester is a member, queue empties, counts move.
+    r6 = owner.post(
+        f"/api/groups/{gid}/requests/decide",
+        json={"username": "greq_member", "decision": "approve"},
+    )
+    assert (r6.get_json() or {}).get("success") is True
+    assert (owner.get(f"/api/groups/{gid}/requests").get_json() or {})["requests"] == []
+    j8 = member.get("/api/groups/my").get_json()
+    mine2 = [g for g in j8["joined"] if g["group_id"] == gid]
+    assert mine2 and mine2[0]["status"] == "member"
+
+
+def test_group_request_deny_removes_the_row(mysql_dsn):
+    import bodybuilding_app
+
+    make_user("gden_owner", subscription="premium")
+    make_user("gden_member")
+    cid = make_community("gden-net", tier="paid_l1", creator_username="gden_owner")
+    _join_community("gden_member", cid)
+
+    owner = bodybuilding_app.app.test_client()
+    _login(owner, "gden_owner")
+    gid = (owner.post(
+        "/api/groups/create",
+        data={"community_id": str(cid), "name": "Deny Room", "approval_required": "1"},
+    ).get_json() or {}).get("group_id")
+
+    member = bodybuilding_app.app.test_client()
+    _login(member, "gden_member")
+    member.post("/api/groups/join", data={"group_id": str(gid)})
+
+    r = owner.post(
+        f"/api/groups/{gid}/requests/decide",
+        json={"username": "gden_member", "decision": "deny"},
+    )
+    assert (r.get_json() or {}).get("success") is True
+    # Denied → no membership row at all: not pending, not member.
+    j = member.get("/api/groups/my").get_json()
+    assert not [g for g in j["joined"] if g["group_id"] == gid]
+    # Idempotent: deciding again is success with changed=False.
+    r2 = owner.post(
+        f"/api/groups/{gid}/requests/decide",
+        json={"username": "gden_member", "decision": "deny"},
+    )
+    body2 = r2.get_json() or {}
+    assert body2.get("success") is True
+    assert body2.get("changed") is False

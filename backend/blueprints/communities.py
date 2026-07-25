@@ -831,6 +831,26 @@ def _build_community_tree(cursor: Any, rows: List[Any]) -> List[Dict[str, Any]]:
             "children": [],
         }
 
+    # Per-community group counts for the "Groups (N)" chip on rows. One
+    # aggregate query; missing `groups` table (pre-migration) → zero chips.
+    if all_by_id:
+        try:
+            ph = get_sql_placeholder()
+            id_list = list(all_by_id.keys())
+            placeholders = ",".join([ph] * len(id_list))
+            cursor.execute(
+                f"SELECT community_id, COUNT(*) AS n FROM `groups` "
+                f"WHERE community_id IN ({placeholders}) GROUP BY community_id",
+                tuple(id_list),
+            )
+            for row in cursor.fetchall() or []:
+                gcid = _row_value(row, "community_id", 0)
+                n = _row_value(row, "n", 1)
+                if gcid is not None and int(gcid) in all_by_id:
+                    all_by_id[int(gcid)]["group_count"] = int(n or 0)
+        except Exception:
+            logger.debug("_build_community_tree: group_count aggregate skipped", exc_info=True)
+
     already_child = set()
     roots: Dict[int, Dict[str, Any]] = {}
     for cid, data in list(all_by_id.items()):
