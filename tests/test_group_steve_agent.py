@@ -561,13 +561,11 @@ def test_groups_create_root_owner_can_create_in_sub(mysql_dsn):
     assert (r.get_json() or {}).get("success") is True
 
 
-def test_groups_create_free_owner_allowed_on_sub_level(mysql_dsn):
-    """Groups live at any level, on any tier.
+def test_groups_create_free_owner_blocked_on_sub_level(mysql_dsn):
+    """Free-plan networks keep groups at the parent-community level.
 
-    Until July 2026 a Free-plan root owner got 403 'groups only at the
-    parent community level' for every sub-community — a leftover from when
-    only app admins created groups. Owners must be able to organise their
-    own tree.
+    This is a deliberate free-tier limitation, not an accident — Enterprise
+    (below) is the exemption.
     """
     import bodybuilding_app
 
@@ -579,18 +577,22 @@ def test_groups_create_free_owner_allowed_on_sub_level(mysql_dsn):
     _login(client, "grp_free_owner")
     r = client.post(
         "/api/groups/create",
-        data={"community_id": str(sub), "name": "Sub Group", "approval_required": "0"},
+        data={"community_id": str(sub), "name": "Blocked Group", "approval_required": "0"},
     )
-    assert r.status_code == 200
-    assert (r.get_json() or {}).get("success") is True
+    assert r.status_code == 403
+    assert "parent community level" in ((r.get_json() or {}).get("error") or "")
 
 
-def test_groups_create_at_any_nesting_depth(mysql_dsn):
-    """Root owner can create a group in a grandchild community."""
+def test_groups_create_enterprise_at_any_nesting_depth(mysql_dsn):
+    """The TAP shape: Enterprise root, owner on a Free personal plan,
+    group created in a GRANDCHILD community (root -> sub -> nested).
+
+    The exemption resolves the tier from the root, so depth is irrelevant.
+    """
     import bodybuilding_app
 
     make_user("grp_deep_owner", subscription="free")
-    root = make_community("grp-deep-root", tier="free", creator_username="grp_deep_owner")
+    root = make_community("grp-deep-root", tier="enterprise", creator_username="grp_deep_owner")
     sub = make_community("grp-deep-sub", tier="free", parent_community_id=root)
     nested = make_community("grp-deep-nested", tier="free", parent_community_id=sub)
 
