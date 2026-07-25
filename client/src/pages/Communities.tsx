@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
-import type { CSSProperties, Dispatch, SetStateAction } from 'react'
+import type { CSSProperties, Dispatch, ReactElement, SetStateAction } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { formatSmartTime } from '../utils/time'
@@ -17,19 +17,24 @@ import { triggerDashboardServerPull } from '../utils/serverPull'
 import { cacheKeyVal, getCachedKeyVal } from '../utils/offlineDb'
 import { apiFetch } from '../utils/apiFetch'
 import LoadErrorRetry from '../components/LoadErrorRetry'
+import FeedbackToast from '../components/moderation/FeedbackToast'
 import { SkeletonCommunityCard } from '../components/SkeletonRow'
 import { useKeyboardInset } from '../hooks/useKeyboardInset'
+import { useCommunityManagementTab } from '../hooks/useCommunityManagementTab'
+import GroupsTab from '../components/community/groups/GroupsTab'
+import CreateGroupSheet from '../components/community/groups/CreateGroupSheet'
 import { CHAT_KEYBOARD_ANIMATION_MS, CPOINT_EASE_OUT } from '../design/motion'
 
-type Community = { 
-  id: number; 
-  name: string; 
-  type?: string; 
+type Community = {
+  id: number;
+  name: string;
+  type?: string;
   is_active?: boolean;
   parent_community_id?: number;
   children?: Community[];
   creator_username?: string;
   unread_posts_count?: number;
+  group_count?: number;
 }
 
 type CommunityManagementCache = {
@@ -90,6 +95,27 @@ function findCommunityInTree(nodes: Community[] | undefined, id: number): Commun
     if (c) return c
   }
   return undefined
+}
+
+/** Indented `<option>` rows for EVERY descendant of `parent` — the full
+ * recursive tree, so deep nodes (TAP → Pessoal Navegante → PNT) are always
+ * reachable as creation targets. */
+function communityTreeOptions(parent: Community | undefined) {
+  const options: ReactElement[] = []
+  function walk(children: Community[] | undefined, depth: number) {
+    for (const child of children || []) {
+      options.push(
+        <option key={child.id} value={child.id}>
+          {/* Native <option> can't take padding, so depth is non-breaking
+              spaces — no box-drawing glyphs. */}
+          {'   '.repeat(depth)}{child.name}
+        </option>
+      )
+      walk(child.children, depth + 1)
+    }
+  }
+  walk(parent?.children, 1)
+  return options
 }
 
 /** Billing for Steve add-on is on the root network; walk up parent_chain from a node in `communities`. */
@@ -267,25 +293,23 @@ export default function Communities(){
     communities_spotlight_tour_seen?: boolean
   } | null>(null)
   const [communities, setCommunities] = useState<Community[]>([])
+  // The complete roots→children hierarchy (unscoped) — used to resolve the
+  // ancestor chain for the Groups-tab breadcrumb when the page is scoped to
+  // a nested community.
+  const [fullTree, setFullTree] = useState<Community[]>([])
   const [parentName, setParentName] = useState<string>('')
   const [parentType, setParentType] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const [swipedCommunity, setSwipedCommunity] = useState<number|null>(null)
-  const [activeTab, setActiveTab] = useState<'timeline'|'management'|'groups'|'training'>('management')
-  const [joinedGroups, setJoinedGroups] = useState<Array<{ group_id: number; name: string; community_id: number; status: string; community_name: string }>>([])
-  const [availableGroups, setAvailableGroups] = useState<Array<{ group_id: number; name: string; community_id: number; approval_required: boolean; community_name: string }>>([])
-  const [groupCommunities, setGroupCommunities] = useState<Array<{ id: number; name: string; parent_community_id?: number | null }>>([])
-  const [myGroupsLoading, setMyGroupsLoading] = useState(false)
-  const [joinedFilter, setJoinedFilter] = useState<string>('all')
-  const [availableFilter, setAvailableFilter] = useState<string>('all')
-  const [joiningGroupId, setJoiningGroupId] = useState<number | null>(null)
+  // URL-addressed (?tab=): deep links and "back from a group" land on the
+  // right tab; taps replace history so hardware-back never walks the tabs.
+  const [activeTab, setActiveTab] = useCommunityManagementTab()
+  const [groupsToast, setGroupsToast] = useState<string | null>(null)
   const [communitiesGuideStep, setCommunitiesGuideStep] = useState<number | null>(null)
   // @ts-expect-error - used only via setCommunitiesGuideDismissed (TS complains due to noUnusedLocals)
   const [communitiesGuideDismissed, setCommunitiesGuideDismissed] = useState(false)
-  
-  // No auto-tab switch on URL change — user always lands on Sub-communities tab
   
   // Sub-community creation state
   const [showCreateSubModal, setShowCreateSubModal] = useState(false)
@@ -293,9 +317,6 @@ export default function Communities(){
   const [newSubType, setNewSubType] = useState<string>('')
   // Group creation
   const [showCreateGroup, setShowCreateGroup] = useState(false)
-  const [newGroupName, setNewGroupName] = useState('')
-  const [approvalRequired, setApprovalRequired] = useState(false)
-  const [groupSteveAgentEnabled, setGroupSteveAgentEnabled] = useState(false)
   const [stevePackageRootIds, setStevePackageRootIds] = useState<Set<number>>(new Set())
   const [selectedSubCommunityId, setSelectedSubCommunityId] = useState<number | 'none'>('none')
   // Native runs with Keyboard.resize:'none', so a centered dialog stays put and
@@ -315,9 +336,9 @@ export default function Communities(){
   const [expandedNestedParentId, setExpandedNestedParentId] = useState<number | null>(null)
   const [expandedDeepCommunityIds, setExpandedDeepCommunityIds] = useState<Record<number, boolean>>({})
   // Groups modal (list & join)
-  const [showGroupsModal, setShowGroupsModal] = useState(false)
-  const [groupsModalCommunityId, setGroupsModalCommunityId] = useState<number|null>(null)
-  const openGroups = (cid: number) => { setGroupsModalCommunityId(cid); setShowGroupsModal(true) }
+  // The old swipe-reveal GroupsModal is retired — groups have one surface
+  // now. The swipe action becomes a shortcut into the scoped Groups tab.
+  const openGroups = (cid: number) => { navigate(`/communities?parent_id=${cid}&tab=groups`) }
   const communitiesGuideKey = useMemo(
     () =>
       _data?.username
@@ -384,9 +405,12 @@ export default function Communities(){
         return
       }
       if (hierarchyCache.userData) setData(prev => prev || hierarchyCache.userData!)
+      setFullTree(hierarchyCache.communities)
       if (parentIdParam) {
         const pid = Number(parentIdParam)
-        const parent = hierarchyCache.communities.find((c: Community) => c.id === pid)
+        // Same tree-wide resolution as the online path — the cached
+        // hierarchy is roots-only at the top level too.
+        const parent = findCommunityInTree(hierarchyCache.communities, pid)
         if (parent) {
           setCommunities([{ ...parent, children: parent.children || [] }])
           setParentName(parent.name || '')
@@ -495,38 +519,6 @@ export default function Communities(){
     setCommunitiesGuideStep(null)
   }, [communitiesGuideKey])
 
-  const loadGroupsTabData = useCallback(() => {
-    setMyGroupsLoading(true)
-    fetch('/api/groups/my', { credentials: 'include', headers: { 'Accept': 'application/json' } })
-      .then(r => r.json())
-      .then(j => {
-        if (j?.success) {
-          setJoinedGroups(j.joined || [])
-          setAvailableGroups(j.available || [])
-          setGroupCommunities(j.communities || [])
-          const parentIdParam = new URLSearchParams(location.search).get('parent_id')
-          if (parentIdParam) {
-            const parentIdNum = parseInt(parentIdParam)
-            const communities = j.communities || []
-            const matchingCommunity = communities.find((c: { id: number; parent_community_id?: number | null }) =>
-              c.id === parentIdNum || c.parent_community_id === parentIdNum
-            )
-            if (matchingCommunity) {
-              setJoinedFilter(String(matchingCommunity.id))
-              setAvailableFilter(String(matchingCommunity.id))
-            } else {
-              const directMatch = communities.find((c: { id: number }) => c.id === parentIdNum)
-              if (directMatch) {
-                setJoinedFilter(String(parentIdNum))
-                setAvailableFilter(String(parentIdNum))
-              }
-            }
-          }
-        }
-      })
-      .catch(() => {})
-      .finally(() => setMyGroupsLoading(false))
-  }, [location.search])
 
   useEffect(() => {
     if (communitiesGuideStep === null) return
@@ -542,10 +534,8 @@ export default function Communities(){
         })
       }
     }
-    if (step.tab === 'groups') {
-      loadGroupsTabData()
-    }
-  }, [communitiesGuideStep, location.search, loadGroupsTabData])
+    // Groups data load is handled by the activeTab effect above.
+  }, [communitiesGuideStep, location.search, setActiveTab])
 
   useEffect(() => {
     // Skip network fetches when offline — rely on cached data
@@ -589,7 +579,11 @@ export default function Communities(){
           fullHierarchy = all
           if (parentIdParam) {
             const pid = Number(parentIdParam)
-            const parent = all.find(c => c.id === pid)
+            // The tree endpoint returns ROOTS with nested children — a
+            // ?parent_id pointing at a nested community (back from a group
+            // feed two levels deep) must resolve through the whole tree,
+            // never fall back to dumping every community the user has.
+            const parent = findCommunityInTree(all, pid)
             if (parent) {
               const subset: Community[] = [{ ...parent, children: parent.children || [] }]
               latestCommunitiesSnapshot = subset
@@ -599,16 +593,17 @@ export default function Communities(){
               setParentName(parent.name)
               setParentType(parent.type || '')
             } else {
-              latestCommunitiesSnapshot = all
+              latestCommunitiesSnapshot = []
               latestParentNameSnapshot = ''
-              try {
-                const roots = all.filter(c => !c.parent_community_id)
-                if (roots.length === 1) setParentType(roots[0].type || '')
-                else setParentType('')
-              } catch { setParentType('') }
-              setCommunities(all)
+              latestParentTypeSnapshot = ''
+              setCommunities([])
               setParentName('')
+              setParentType('')
+              setFullTree(all)
+              setError(t('communities.community_not_found'))
+              return
             }
+            setFullTree(all)
           } else {
             latestCommunitiesSnapshot = all
             latestParentNameSnapshot = ''
@@ -616,6 +611,7 @@ export default function Communities(){
             setCommunities(all)
             setParentName('')
             setParentType('')
+            setFullTree(all)
           }
           setError(null)
         } else {
@@ -693,10 +689,17 @@ export default function Communities(){
   }, [location.pathname, location.search, navigate])
 
   const parentIdFromQuery = new URLSearchParams(location.search).get('parent_id')
-  const showSubCommunityFab = activeTab === 'management' && !!parentIdFromQuery
+  const showSubCommunityFab = (activeTab === 'management' || activeTab === 'groups') && !!parentIdFromQuery
+  const parentIdNumForTabs = parentIdFromQuery ? Number(parentIdFromQuery) : null
+  const highlightGroupId = (() => {
+    const raw = new URLSearchParams(location.search).get('highlight_group')
+    const n = raw ? Number(raw) : NaN
+    return Number.isFinite(n) && n > 0 ? n : null
+  })()
 
   return (
     <div className="min-h-screen bg-c-bg-app text-c-text-primary relative pb-safe">
+      <FeedbackToast message={groupsToast} onDone={() => setGroupsToast(null)} />
       {/* Global header used from App */}
 
       {/* Secondary nav like X - fixed below global header */}
@@ -713,7 +716,8 @@ export default function Communities(){
             className="mr-2 p-2 rounded-full hover:bg-c-hover-bg"
             onClick={()=> {
               if (communitiesGuideStep !== null) return
-              navigate('/premium_dashboard')
+              if (window.history.length > 1) navigate(-1)
+              else navigate('/premium_dashboard')
             }}
             aria-label={t('common.back')}
           >
@@ -752,7 +756,6 @@ export default function Communities(){
               onClick={()=> {
                 if (communitiesGuideStep !== null) return
                 setActiveTab('groups')
-                loadGroupsTabData()
               }}
             >
               <div className="pt-2 whitespace-nowrap text-center">{t('communities.tab_groups')}</div>
@@ -774,12 +777,6 @@ export default function Communities(){
           </div>
         </div>
       </div>
-      {/* Groups Modal Root */}
-      <GroupsModal
-        open={showGroupsModal}
-        onClose={()=> setShowGroupsModal(false)}
-        communityId={groupsModalCommunityId}
-      />
       {communitiesGuideStep !== null && (
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center px-4 bg-c-bg-overlay backdrop-blur-sm"
@@ -915,148 +912,19 @@ export default function Communities(){
                 return (
                   <>
                     {activeTab === 'groups' ? (
-                      <div className="space-y-5">
-                        {myGroupsLoading ? (
-                          <div className="text-c-text-tertiary text-sm py-4 text-center">{t('communities.loading')}</div>
-                        ) : (
-                          (() => {
-                            const searchParams = new URLSearchParams(location.search)
-                            const parentIdParam = searchParams.get('parent_id')
-                            const parentIdNum = parentIdParam ? parseInt(parentIdParam) : null
-                            const filteredGroupCommunities = parentIdParam
-                              ? groupCommunities.filter(c => c.parent_community_id === parentIdNum || c.id === parentIdNum)
-                              : groupCommunities
-                            // Get the set of valid community IDs for filtering when parent_id is present
-                            const validCommunityIds = parentIdParam
-                              ? new Set(filteredGroupCommunities.map(c => c.id))
-                              : null
-                            return <>
-                            {/* Joined Groups */}
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <div className="text-xs font-semibold uppercase tracking-[0.15em] text-c-text-tertiary">{t('communities.joined_groups')}</div>
-                                <select
-                                  value={joinedFilter}
-                                  onChange={e => setJoinedFilter(e.target.value)}
-                  className="rounded-lg border border-c-border bg-transparent px-2 py-1 text-[10px] text-c-text-primary focus:outline-none focus:border-cpoint-turquoise"
-                >
-                  <option value="all" className="bg-c-bg-app">{parentIdParam ? t('communities.filter_this_community') : t('communities.filter_all_communities')}</option>
-                  {filteredGroupCommunities.map(c => (
-                    <option key={c.id} value={String(c.id)} className="bg-c-bg-app">{c.name}</option>
-                  ))}
-                </select>
-              </div>
-              {(() => {
-                // When parent_id is present and filter is 'all', only show groups from the current community hierarchy
-                let filtered = joinedGroups
-                                if (joinedFilter !== 'all') {
-                                  filtered = joinedGroups.filter(g => String(g.community_id) === joinedFilter)
-                                } else if (validCommunityIds) {
-                                  filtered = joinedGroups.filter(g => validCommunityIds.has(g.community_id))
-                                }
-                                return filtered.length === 0 ? (
-                                  <div className="text-c-text-tertiary text-xs py-4 text-center">{joinedFilter !== 'all' || parentIdParam ? t('communities.no_joined_groups_here') : `${t('communities.no_joined_groups')}.`}</div>
-                                ) : (
-                                  <div className="space-y-2">
-                                    {filtered.map(g => (
-                                      <div
-                                        key={g.group_id}
-                                        className="rounded-xl border border-c-border bg-c-bg-elevated px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-c-hover-bg transition-colors"
-                                        onClick={() => navigate(`/group_feed_react/${g.group_id}`)}
-                                      >
-                                        <div className="w-10 h-10 rounded-full bg-cpoint-turquoise/20 flex items-center justify-center flex-shrink-0">
-                                          <i className="fa-solid fa-users text-cpoint-turquoise text-sm" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-sm font-medium text-c-text-primary truncate">{g.name}</div>
-                                          <div className="text-[11px] text-c-text-tertiary">{g.community_name}</div>
-                                        </div>
-                                        <i className="fa-solid fa-chevron-right text-xs text-c-text-tertiary" />
-                                      </div>
-                                    ))}
-                                  </div>
-                                )
-                              })()}
-                            </div>
-
-                            {/* Available Groups */}
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <div className="text-xs font-semibold uppercase tracking-[0.15em] text-c-text-tertiary">{t('communities.available_groups')}</div>
-                                <select
-                                  value={availableFilter}
-                                  onChange={e => setAvailableFilter(e.target.value)}
-                  className="rounded-lg border border-c-border bg-transparent px-2 py-1 text-[10px] text-c-text-primary focus:outline-none focus:border-cpoint-turquoise"
-                >
-                  <option value="all" className="bg-c-bg-app">{parentIdParam ? t('communities.filter_this_community') : t('communities.filter_all_communities')}</option>
-                  {filteredGroupCommunities.map(c => (
-                    <option key={c.id} value={String(c.id)} className="bg-c-bg-app">{c.name}</option>
-                  ))}
-                </select>
-              </div>
-              {(() => {
-                // When parent_id is present and filter is 'all', only show groups from the current community hierarchy
-                let filtered = availableGroups
-                                if (availableFilter !== 'all') {
-                                  filtered = availableGroups.filter(g => String(g.community_id) === availableFilter)
-                                } else if (validCommunityIds) {
-                                  filtered = availableGroups.filter(g => validCommunityIds.has(g.community_id))
-                                }
-                                return filtered.length === 0 ? (
-                                  <div className="text-c-text-tertiary text-xs py-4 text-center">{availableFilter !== 'all' || parentIdParam ? t('communities.no_available_groups_here') : `${t('communities.no_available_groups')}.`}</div>
-                                ) : (
-                                  <div className="space-y-2">
-                                    {filtered.map(g => (
-                                      <div
-                                        key={g.group_id}
-                                        className="rounded-xl border border-c-border bg-c-bg-elevated px-4 py-3 flex items-center gap-3"
-                                      >
-                                        <div className="w-10 h-10 rounded-full bg-c-hover-bg flex items-center justify-center flex-shrink-0">
-                                          <i className="fa-solid fa-users text-c-text-tertiary text-sm" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-sm font-medium text-c-text-primary truncate">{g.name}</div>
-                                          <div className="text-[11px] text-c-text-tertiary">
-                                            {g.community_name}
-                                            {g.approval_required && <span className="ml-1.5 text-cpoint-turquoise">· {t('communities.approval_required_short')}</span>}
-                                          </div>
-                                        </div>
-                                        <button
-                                          disabled={joiningGroupId === g.group_id}
-                                          className="px-3 py-1.5 rounded-lg border border-cpoint-turquoise/40 text-cpoint-turquoise text-xs font-medium hover:bg-cpoint-turquoise/10 disabled:opacity-50 flex-shrink-0"
-                                          onClick={async () => {
-                                            setJoiningGroupId(g.group_id)
-                                            try {
-                                              const fd = new URLSearchParams({ group_id: String(g.group_id) })
-                                              const r = await fetch('/api/groups/join', { method: 'POST', credentials: 'include', body: fd })
-                                              const j = await r.json()
-                                              if (j?.success) {
-                                                // Refresh the lists
-                                                const r2 = await fetch('/api/groups/my', { credentials: 'include', headers: { 'Accept': 'application/json' } })
-                                                const j2 = await r2.json()
-                                                if (j2?.success) {
-                                                  setJoinedGroups(j2.joined || [])
-                                                  setAvailableGroups(j2.available || [])
-                                                }
-                                              } else {
-                                                alert(j?.error || t('communities.failed_to_join'))
-                                              }
-                                            } catch { alert(t('communities.failed_to_join_group')) }
-                                            setJoiningGroupId(null)
-                                          }}
-                                        >
-                                          {joiningGroupId === g.group_id ? <i className="fa-solid fa-spinner fa-spin" /> : t('communities.join')}
-                                        </button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )
-                              })()}
-                            </div>
-                          </>
-                          })()
-                        )}
-                      </div>
+                      <GroupsTab
+                        scopeNode={parentIdNumForTabs != null ? findCommunityInTree(communities, parentIdNumForTabs) : undefined}
+                        fullTree={fullTree}
+                        active={activeTab === 'groups'}
+                        currentUsername={_data?.username || null}
+                        isAppAdmin={isAppAdmin}
+                        highlightGroupId={highlightGroupId}
+                        onCreate={() => setShowCreateGroup(true)}
+                        onNavigateCommunity={(cid) => navigate(`/communities?parent_id=${cid}&tab=groups`)}
+                        onOpenGroup={(gid) => navigate(`/group_feed_react/${gid}`)}
+                        onManageGroup={(gid) => navigate(`/group/${gid}/edit`)}
+                        onToast={setGroupsToast}
+                      />
                     ) : activeTab === 'training' && showTrainingTab ? (
                       <div className="bg-c-hover-bg backdrop-blur rounded-xl p-4 border border-c-border">
                         <button
@@ -1210,7 +1078,7 @@ export default function Communities(){
           <>
             <PlusActions
               onCreateSub={() => { setNewSubName(''); setNewSubType('General'); setShowCreateSubModal(true) }}
-              onCreateGroup={() => { setShowCreateGroup(true); setNewGroupName(''); setApprovalRequired(false); setGroupSteveAgentEnabled(false) }}
+              onCreateGroup={() => setShowCreateGroup(true)}
             />
 
             {showCreateSubModal && (
@@ -1243,40 +1111,7 @@ export default function Communities(){
                         className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm text-c-text-primary"
                       >
                         <option value={parentIdNum}>{parentName || t('communities.parent_community_fallback')}</option>
-                        {(() => {
-                          const parent = communities.find(c => c.id === parentIdNum)
-                          const options: any[] = []
-                          
-                          // Debug: log the parent structure
-                          console.log('Parent community:', parent)
-                          console.log('Parent children:', parent?.children)
-                          
-                          // Recursively add all sub-communities with indentation
-                          function addChildren(children: Community[], depth: number) {
-                            for (const child of children) {
-                              const indent = '  '.repeat(depth) + '└─ '
-                              console.log(`Adding option at depth ${depth}:`, child.name, 'Children:', child.children?.length || 0)
-                              options.push(
-                                <option key={child.id} value={child.id}>
-                                  {indent}{child.name}
-                                </option>
-                              )
-                              if (child.children && child.children.length > 0) {
-                                addChildren(child.children, depth + 1)
-                              }
-                            }
-                          }
-                          
-                          if (parent?.children && parent.children.length > 0) {
-                            console.log('Starting to add children, total:', parent.children.length)
-                            addChildren(parent.children, 1)
-                          } else {
-                            console.log('No children found for parent')
-                          }
-                          
-                          console.log('Total options to render:', options.length)
-                          return options
-                        })()}
+                        {communityTreeOptions(findCommunityInTree(communities, parentIdNum))}
                       </select>
                     </div>
                     <div>
@@ -1333,106 +1168,17 @@ export default function Communities(){
               </div>
             )}
 
-            {/* Create Group Modal */}
-            {showCreateGroup && (
-              <div
-                className="fixed inset-0 z-50 bg-c-bg-overlay backdrop-blur flex items-center justify-center p-4"
-                style={{
-                  paddingBottom: modalKeyboardInset ? modalKeyboardInset + 16 : undefined,
-                  transition: `padding-bottom ${CHAT_KEYBOARD_ANIMATION_MS}ms ${CPOINT_EASE_OUT}`,
-                }}
-                onClick={(e)=> { if (e.currentTarget === e.target) setShowCreateGroup(false) }}
-              >
-                <div className="w-full max-w-sm max-h-full overflow-y-auto overscroll-contain rounded-2xl border border-c-border bg-c-bg-elevated text-c-text-primary p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="font-semibold text-sm">{t('communities.create_group')}</div>
-                    <button className="p-2 rounded-md text-c-text-secondary hover:bg-c-hover-bg" onClick={()=> setShowCreateGroup(false)} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
-                  </div>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-xs text-c-text-tertiary mb-1">{t('communities.parent_community_label')}</label>
-                      <input value={parentName || `ID ${parentIdNum}`} disabled className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm text-c-text-secondary disabled:opacity-70" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-c-text-tertiary mb-1">{t('communities.sub_community_label')}</label>
-                      <select value={selectedSubCommunityId === 'none' ? 'none' : String(selectedSubCommunityId)} onChange={e=> {
-                        const v = e.target.value
-                        setSelectedSubCommunityId(v === 'none' ? 'none' : Number(v))
-                      }} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm text-c-text-primary">
-                        <option value="none">{t('communities.none_parent_only')}</option>
-                        {(() => {
-                          const parent = communities.find(c => c.id === parentIdNum)
-                          const subs = parent?.children || []
-                          return subs.map(sc => (
-                            <option key={sc.id} value={String(sc.id)}>{sc.name}</option>
-                          ))
-                        })()}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-c-text-tertiary mb-1">{t('communities.group_name')}</label>
-                      <input value={newGroupName} onChange={e=> setNewGroupName(e.target.value)} placeholder={t('communities.group_name_placeholder')} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm text-c-text-primary placeholder:text-c-text-disabled" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-c-text-tertiary mb-1">{t('communities.join_policy')}</label>
-                      <select value={approvalRequired ? 'approval' : 'open'} onChange={e=> setApprovalRequired(e.target.value === 'approval')} className="w-full px-3 py-2 rounded-md bg-c-bg-app border border-c-border text-sm text-c-text-primary">
-                        <option value="open">{t('communities.join_policy_open')}</option>
-                        <option value="approval">{t('communities.join_policy_approval_required')}</option>
-                      </select>
-                    </div>
-                    {(() => {
-                      const targetCommunityId = selectedSubCommunityId === 'none' ? parentIdNum : Number(selectedSubCommunityId)
-                      const billingRoot = billingRootIdForTree(communities, targetCommunityId)
-                      const canSteveAgent = stevePackageRootIds.has(billingRoot)
-                      return (
-                        <div>
-                          <label className="flex items-start gap-2 text-sm text-c-text-primary cursor-pointer">
-                            <input
-                              type="checkbox"
-                              className="mt-1"
-                              disabled={!canSteveAgent}
-                              checked={groupSteveAgentEnabled && canSteveAgent}
-                              onChange={(e) => setGroupSteveAgentEnabled(e.target.checked)}
-                            />
-                            <span>
-                              <span className="font-medium">{t('communities.steve_agent_label')}</span>
-                              <span className="block text-xs text-c-text-tertiary mt-0.5">
-                                {t('communities.steve_agent_desc')}
-                              </span>
-                            </span>
-                          </label>
-                          {!canSteveAgent && (
-                            <div className="text-xs text-amber-200/90 mt-1">
-                              {t('communities.steve_addon_required')}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })()}
-                    <div className="flex items-center justify-end gap-2 pt-1">
-                      <button className="px-3 py-2 rounded-md border border-c-border bg-c-bg-surface text-sm text-c-text-secondary hover:bg-c-hover-bg" onClick={()=> setShowCreateGroup(false)}>{t('common.cancel')}</button>
-                      <button className="px-3 py-2 rounded-md bg-cpoint-turquoise text-sm font-semibold text-black hover:brightness-110" onClick={async()=>{
-                        if (!newGroupName.trim()) { alert(t('communities.group_name_required')); return }
-                        try{
-                          const targetCommunityId = selectedSubCommunityId === 'none' ? parentIdNum : Number(selectedSubCommunityId)
-                          const billingRoot = billingRootIdForTree(communities, targetCommunityId)
-                          const steveOn = groupSteveAgentEnabled && stevePackageRootIds.has(billingRoot)
-                          const fd = new URLSearchParams({ community_id: String(targetCommunityId), name: newGroupName.trim(), approval_required: approvalRequired ? '1' : '0' })
-                          if (steveOn) {
-                            fd.append('steve_agent_enabled', '1')
-                            fd.append('steve_agent_preset', 'career_expert')
-                          }
-                          const r = await fetch('/api/groups/create', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
-                          const j = await r.json().catch(()=>null)
-                          if (j?.success){ setShowCreateGroup(false); setNewGroupName(''); setGroupSteveAgentEnabled(false); alert(t('communities.group_created')) }
-                          else alert(j?.error || t('communities.failed_create_group'))
-                        }catch{ alert(t('communities.network_error')) }
-                      }}>{t('communities.create')}</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+            <CreateGroupSheet
+              open={showCreateGroup}
+              onClose={() => setShowCreateGroup(false)}
+              tree={findCommunityInTree(communities, parentIdNum)}
+              defaultTargetId={parentIdNum}
+              keyboardInset={modalKeyboardInset}
+              steveAllowed={(cid) => stevePackageRootIds.has(billingRootIdForTree(communities, cid))}
+              steveAddonUrl={(cid) => `/subscription_plans?open=community_addons&community_id=${billingRootIdForTree(communities, cid)}`}
+              onCreated={(gid) => { setShowCreateGroup(false); navigate(`/group_feed_react/${gid}`) }}
+              onToast={setGroupsToast}
+            />
           </>
         )
       })()}
@@ -1471,128 +1217,6 @@ function PlusActions({ onCreateSub, onCreateGroup }:{ onCreateSub: ()=>void, onC
         <span>{t('communities.create_sub_or_group')}</span>
         <i className={`fa-solid fa-chevron-${open ? 'down' : 'up'} text-xs transition-transform`} />
       </button>
-    </div>
-  )
-}
-
-function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=>void, communityId: number | null }){
-  const { t } = useTranslation()
-  const [loading, setLoading] = useState(false)
-  const [items, setItems] = useState<Array<{ id:number; name:string; approval_required:boolean; membership_status?: string | null; community_id:number, can_delete?: boolean }>>([])
-  const [isMember, setIsMember] = useState<boolean | null>(null)
-  useEffect(() => {
-    const el = document.getElementById('groups-modal-root') as any
-    if (el){
-      el.__reactOpen = (cid:number)=>{
-        try{
-          const evt = new CustomEvent('open-groups-modal', { detail: { cid } })
-          window.dispatchEvent(evt)
-        }catch{}
-      }
-    }
-  }, [])
-  useEffect(() => {
-    let ok = true
-    async function load(){
-      if (!open || !communityId) return
-      setLoading(true)
-      try{
-        const r = await fetch(`/api/groups?community_id=${communityId}&include_ancestors=0`, { credentials:'include', headers: { 'Accept': 'application/json' } })
-        if (r.status === 403){ setIsMember(false); setItems([]); return }
-        const j = await r.json().catch(()=>null)
-        if (!ok) return
-        if (j?.success){ setItems(j.groups||[]); setIsMember(typeof j.member === 'boolean' ? j.member : true) }
-        else { setItems([]) }
-      }catch{ if (ok) setItems([]) }
-      finally{ if (ok) setLoading(false) }
-    }
-    load(); return ()=> { ok = false }
-  }, [open, communityId])
-  if (!open) return <div id="groups-modal-root" />
-  return (
-    <div id="groups-modal-root" className="fixed inset-0 z-50 bg-c-bg-overlay backdrop-blur flex items-center justify-center" onClick={(e)=> { if (e.currentTarget === e.target) onClose() }}>
-      <div className="w-[92%] max-w-sm rounded-2xl border border-c-border bg-c-bg-elevated p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="font-semibold text-sm">{t('communities.tab_groups')}</div>
-          <button className="p-2 rounded-md text-c-text-secondary hover:bg-c-hover-bg" onClick={onClose} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
-        </div>
-        {loading ? (
-          <div className="text-c-text-tertiary text-sm">{t('communities.loading')}</div>
-        ) : (isMember === false) ? (
-          <div className="space-y-3">
-            <div className="text-c-text-tertiary text-sm">{t('communities.join_to_view')}</div>
-            <div className="flex justify-end">
-              <button className="px-3 py-1.5 rounded-md bg-cpoint-turquoise text-black text-sm hover:brightness-110" onClick={()=> { onClose(); window.location.href = `/community_feed_react/${communityId}` }}>{t('communities.go_to_community')}</button>
-            </div>
-          </div>
-        ) : items.length === 0 ? (
-          <div className="text-c-text-tertiary text-sm">{t('communities.no_groups_available')}</div>
-        ) : (
-          <div className="space-y-2 max-h-[50vh] overflow-y-auto">
-            {items.map(g => {
-              const status = g.membership_status
-              return (
-                <div key={g.id} className="flex items-center gap-2 border border-c-border rounded-lg p-2">
-                  <div className="flex-1">
-                    <button className="font-medium text-c-text-primary underline decoration-white/20 underline-offset-2" onClick={()=> {
-                      if (status !== 'member'){
-                        alert(t('communities.join_group_to_view'))
-                        return
-                      }
-                      window.location.href = `/group_feed_react/${g.id}`
-                    }}>{g.name}</button>
-                    <div className="text-xs text-c-text-tertiary">{g.approval_required ? t('communities.approval_required_short') : t('communities.open_to_members')}</div>
-                  </div>
-                  {status === 'member' ? (
-                    <span className="text-xs text-cpoint-turquoise">{t('communities.joined_status')}</span>
-                  ) : status === 'pending' ? (
-                    <span className="text-xs text-yellow-400">{t('communities.pending_status')}</span>
-                  ) : (
-                    <button className="px-2.5 py-1.5 rounded-md bg-cpoint-turquoise text-black text-xs hover:brightness-110" onClick={async()=>{
-                      try{
-                        const fd = new URLSearchParams({ group_id: String(g.id) })
-                        const r = await fetch('/api/groups/join', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
-                        const j = await r.json().catch(()=>null)
-                        if (handleBasicProfileRequired(j)) return
-                        if (j?.success){ setItems(list => list.map(it => it.id===g.id ? ({ ...it, membership_status: j.status }) : it)) }
-                        else alert(j?.error || t('communities.failed_to_join_group'))
-                      }catch{ alert(t('communities.network_error')) }
-                    }}>{t('communities.join')}</button>
-                  )}
-                  {g.can_delete ? (
-                    <button className="ml-2 p-2 rounded-md hover:bg-red-500/10" title={t('communities.delete_group')} aria-label={t('communities.delete_group')} onClick={async()=>{
-                      const ok = confirm(t('communities.delete_group_confirm'))
-                      if (!ok) return
-                      try{
-                        const fd = new URLSearchParams({ group_id: String(g.id) })
-                        const r = await fetch('/api/groups/delete', { method:'POST', credentials:'include', body: fd })
-                        const j = await r.json().catch(()=>null)
-                        if (j?.success){ setItems(list => list.filter(it => it.id !== g.id)) }
-                        else alert(j?.error || t('communities.failed_delete_group'))
-                      }catch{ alert(t('communities.network_error')) }
-                    }}>
-                      <i className="fa-regular fa-trash-can text-red-400" />
-                    </button>
-                  ) : null}
-                  {status === 'member' ? (
-                    <button className="ml-2 px-2.5 py-1.5 rounded-md border border-c-border text-c-text-secondary text-xs hover:bg-c-hover-bg" onClick={async()=>{
-                      const ok = confirm(t('communities.leave_group_confirm'))
-                      if (!ok) return
-                      try{
-                        const fd = new URLSearchParams({ group_id: String(g.id) })
-                        const r = await fetch('/api/groups/leave', { method:'POST', credentials:'include', body: fd })
-                        const j = await r.json().catch(()=>null)
-                        if (j?.success){ setItems(list => list.map(it => it.id===g.id ? ({ ...it, membership_status: null }) : it)) }
-                        else alert(j?.error || t('communities.failed_leave_group'))
-                      }catch{ alert(t('communities.network_error')) }
-                    }}>{t('communities.leave_action')}</button>
-                  ) : null}
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
     </div>
   )
 }
@@ -2274,6 +1898,16 @@ function CommunityItem({
           </div>
         </div>
         <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+          {(community.group_count ?? 0) > 0 && (
+            <button
+              type="button"
+              className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-white/[0.05] text-c-text-tertiary hover:text-c-text-secondary whitespace-nowrap"
+              onClick={(e) => { e.stopPropagation(); onOpenGroups(community.id) }}
+              aria-label={t('communities.groups_chip_aria', { count: community.group_count ?? 0 })}
+            >
+              {t('communities.groups_chip', { count: community.group_count ?? 0 })}
+            </button>
+          )}
           {(community.unread_posts_count ?? 0) > 0 && (
             <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-cpoint-turquoise/20 text-cpoint-turquoise border border-cpoint-turquoise/30 whitespace-nowrap">
               {t('communities.unread_new', { count: community.unread_posts_count ?? 0 })}
@@ -2287,14 +1921,6 @@ function CommunityItem({
       {/* FAB removed pending proper state wiring */}
     </div>
   )
-}
-
-// Global opener for groups modal
-;(window as any).openGroupsModal = async (communityId: number) => {
-  try{
-    const el = document.getElementById('groups-modal-root') as any
-    if (el && el.__open){ el.__open(communityId) }
-  }catch{}
 }
 
 // Recursive component for nested sub-communities

@@ -26923,8 +26923,10 @@ def api_groups_create():
             top_info = ancestors[-1] if ancestors else get_community_basic(c, community_id)
             top_creator = top_info.get('creator_username') if top_info else None
             if community_parent_id and not community_structure_caps_exempt(c, community_id):
-                # Enterprise networks are exempt: groups may live at any
-                # level of the tree regardless of the owner's personal plan.
+                # Free-plan networks keep groups at the parent level only.
+                # Enterprise networks are exempt at every depth — the tier
+                # lives on the root, so a nested community several levels
+                # down still resolves to it.
                 subscription_value = fetch_user_subscription(c, top_creator) if top_creator else ''
                 if top_creator and not is_app_admin(top_creator) and is_free_subscription(subscription_value):
                     return jsonify({'success': False, 'error': 'Groups for free plan communities are only available at the parent community level.'}), 403
@@ -26998,6 +27000,19 @@ def api_groups_create():
                     ),
                 )
                 gid = c.lastrowid
+            # The creator is a member of their own group from the first
+            # second. Without this row the UI files the brand-new group
+            # under "Available" with a Join button and blocks entry with
+            # "Join group to view" — the owner's very first impression.
+            try:
+                gm_table = '`group_members`' if USE_MYSQL else 'group_members'
+                ph_gm = get_sql_placeholder()
+                c.execute(
+                    f"INSERT INTO {gm_table} (group_id, username, status) VALUES ({ph_gm}, {ph_gm}, 'member')",
+                    (int(gid), username),
+                )
+            except Exception as gm_err:
+                logger.warning(f"group create: creator membership insert failed (non-fatal): {gm_err}")
             welcome_group_post_id: int | None = None
             if steve_agent_enabled and steve_agent_preset:
                 try:
@@ -27201,12 +27216,21 @@ def api_groups_delete():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute(f"SELECT id, created_by FROM {'`groups`' if USE_MYSQL else 'groups'} WHERE id = {get_sql_placeholder()}", (group_id,))
+            c.execute(f"SELECT id, created_by, community_id FROM {'`groups`' if USE_MYSQL else 'groups'} WHERE id = {get_sql_placeholder()}", (group_id,))
             g = c.fetchone()
             if not g:
                 return jsonify({'success': False, 'error': 'Group not found'}), 404
             created_by = g['created_by'] if hasattr(g, 'keys') else g[1]
-            if not (username == created_by or is_app_admin(username)):
+            g_community_id = g['community_id'] if hasattr(g, 'keys') else g[2]
+            # Same management model as group creation: the creator, the app
+            # admin, or an owner/admin of the owning community (or its root
+            # network) may delete a group in their tree.
+            from backend.services.community import can_create_group_in_community
+            if not (
+                username == created_by
+                or is_app_admin(username)
+                or can_create_group_in_community(username, g_community_id)
+            ):
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
             c.execute(f"DELETE FROM {'`groups`' if USE_MYSQL else 'groups'} WHERE id = {get_sql_placeholder()}", (group_id,))
             if not USE_MYSQL: conn.commit()
@@ -27395,51 +27419,125 @@ def api_groups_my():
             if not comm_ids:
                 return jsonify({'success': True, 'joined': [], 'available': [], 'communities': []})
 
-            # Joined groups
-            c.execute(f"""
-                SELECT g.id as group_id, g.name, g.community_id, gm.status,
-                       c.name as community_name
-                FROM {gm_table} gm
-                JOIN {groups_table} g ON gm.group_id = g.id
-                JOIN communities c ON c.id = g.community_id
-                WHERE gm.username = {ph} AND gm.status = 'member'
-                ORDER BY c.name, g.name
-            """, (username,))
+            # Card-level enrichment (member count, last activity, Steve
+            # agent, join policy, creator). Wrapped so pre-migration
+            # schemas (no steve columns / no group_posts) fall back to the
+            # legacy minimal shape instead of 500ing.
+            def _g(row, key, idx, default=None):
+                try:
+                    return row[key] if hasattr(row, 'keys') else row[idx]
+                except Exception:
+                    return default
+
+            # Joined + pending memberships (pending renders as a
+            # non-interactive "Pending" state on the card).
             joined = []
             joined_ids = set()
-            for r in c.fetchall():
-                gid = r['group_id'] if hasattr(r, 'keys') else r[0]
+            try:
+                c.execute(f"""
+                    SELECT g.id as group_id, g.name, g.community_id, gm.status,
+                           c.name as community_name, g.approval_required,
+                           g.steve_agent_enabled, g.created_by,
+                           (SELECT COUNT(*) FROM {gm_table} gm2
+                             WHERE gm2.group_id = g.id AND gm2.status = 'member') AS member_count,
+                           (SELECT MAX(gp.created_at) FROM group_posts gp
+                             WHERE gp.group_id = g.id) AS last_activity_at,
+                           (SELECT COUNT(*) FROM {gm_table} gm3
+                             WHERE gm3.group_id = g.id AND gm3.status = 'pending') AS pending_count
+                    FROM {gm_table} gm
+                    JOIN {groups_table} g ON gm.group_id = g.id
+                    JOIN communities c ON c.id = g.community_id
+                    WHERE gm.username = {ph} AND gm.status IN ('member', 'pending')
+                    ORDER BY c.name, g.name
+                """, (username,))
+                rows = c.fetchall() or []
+                enriched_joined = True
+            except Exception:
+                c.execute(f"""
+                    SELECT g.id as group_id, g.name, g.community_id, gm.status,
+                           c.name as community_name
+                    FROM {gm_table} gm
+                    JOIN {groups_table} g ON gm.group_id = g.id
+                    JOIN communities c ON c.id = g.community_id
+                    WHERE gm.username = {ph} AND gm.status IN ('member', 'pending')
+                    ORDER BY c.name, g.name
+                """, (username,))
+                rows = c.fetchall() or []
+                enriched_joined = False
+            for r in rows:
+                gid = _g(r, 'group_id', 0)
                 joined_ids.add(gid)
-                joined.append({
+                item = {
                     'group_id': gid,
-                    'name': r['name'] if hasattr(r, 'keys') else r[1],
-                    'community_id': r['community_id'] if hasattr(r, 'keys') else r[2],
-                    'status': r['status'] if hasattr(r, 'keys') else r[3],
-                    'community_name': r['community_name'] if hasattr(r, 'keys') else r[4],
-                })
+                    'name': _g(r, 'name', 1),
+                    'community_id': _g(r, 'community_id', 2),
+                    'status': _g(r, 'status', 3),
+                    'community_name': _g(r, 'community_name', 4),
+                }
+                if enriched_joined:
+                    last_act = _g(r, 'last_activity_at', 9)
+                    item.update({
+                        'approval_required': bool(_g(r, 'approval_required', 5) or 0),
+                        'steve_agent_enabled': bool(_g(r, 'steve_agent_enabled', 6) or 0),
+                        'created_by': _g(r, 'created_by', 7),
+                        'member_count': int(_g(r, 'member_count', 8) or 0),
+                        'last_activity_at': str(last_act) if last_act else None,
+                        'pending_count': int(_g(r, 'pending_count', 10) or 0),
+                    })
+                joined.append(item)
 
-            # Available groups (in user's communities, not yet joined)
+            # Available groups (in user's communities, not joined/pending)
             placeholders = ','.join([ph] * len(comm_ids))
-            c.execute(f"""
-                SELECT g.id as group_id, g.name, g.community_id, g.approval_required,
-                       c.name as community_name
-                FROM {groups_table} g
-                JOIN communities c ON c.id = g.community_id
-                WHERE g.community_id IN ({placeholders})
-                ORDER BY c.name, g.name
-            """, tuple(comm_ids))
+            try:
+                c.execute(f"""
+                    SELECT g.id as group_id, g.name, g.community_id, g.approval_required,
+                           c.name as community_name, g.steve_agent_enabled, g.created_by,
+                           (SELECT COUNT(*) FROM {gm_table} gm2
+                             WHERE gm2.group_id = g.id AND gm2.status = 'member') AS member_count,
+                           (SELECT MAX(gp.created_at) FROM group_posts gp
+                             WHERE gp.group_id = g.id) AS last_activity_at,
+                           (SELECT COUNT(*) FROM {gm_table} gm3
+                             WHERE gm3.group_id = g.id AND gm3.status = 'pending') AS pending_count
+                    FROM {groups_table} g
+                    JOIN communities c ON c.id = g.community_id
+                    WHERE g.community_id IN ({placeholders})
+                    ORDER BY c.name, g.name
+                """, tuple(comm_ids))
+                rows = c.fetchall() or []
+                enriched_avail = True
+            except Exception:
+                c.execute(f"""
+                    SELECT g.id as group_id, g.name, g.community_id, g.approval_required,
+                           c.name as community_name
+                    FROM {groups_table} g
+                    JOIN communities c ON c.id = g.community_id
+                    WHERE g.community_id IN ({placeholders})
+                    ORDER BY c.name, g.name
+                """, tuple(comm_ids))
+                rows = c.fetchall() or []
+                enriched_avail = False
             available = []
-            for r in c.fetchall():
-                gid = r['group_id'] if hasattr(r, 'keys') else r[0]
+            for r in rows:
+                gid = _g(r, 'group_id', 0)
                 if gid in joined_ids:
                     continue
-                available.append({
+                item = {
                     'group_id': gid,
-                    'name': r['name'] if hasattr(r, 'keys') else r[1],
-                    'community_id': r['community_id'] if hasattr(r, 'keys') else r[2],
-                    'approval_required': bool(r['approval_required'] if hasattr(r, 'keys') else r[3]),
-                    'community_name': r['community_name'] if hasattr(r, 'keys') else r[4],
-                })
+                    'name': _g(r, 'name', 1),
+                    'community_id': _g(r, 'community_id', 2),
+                    'approval_required': bool(_g(r, 'approval_required', 3) or 0),
+                    'community_name': _g(r, 'community_name', 4),
+                }
+                if enriched_avail:
+                    last_act = _g(r, 'last_activity_at', 8)
+                    item.update({
+                        'steve_agent_enabled': bool(_g(r, 'steve_agent_enabled', 5) or 0),
+                        'created_by': _g(r, 'created_by', 6),
+                        'member_count': int(_g(r, 'member_count', 7) or 0),
+                        'last_activity_at': str(last_act) if last_act else None,
+                        'pending_count': int(_g(r, 'pending_count', 9) or 0),
+                    })
+                available.append(item)
 
             return jsonify({'success': True, 'joined': joined, 'available': available, 'communities': communities})
     except Exception as e:
