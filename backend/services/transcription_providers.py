@@ -11,8 +11,9 @@ Notes on the xAI endpoint:
 
 - NOT OpenAI-SDK compatible — plain multipart POST. Option fields must
   precede ``file`` in the body (fields after ``file`` are ignored).
-- Accepts a remote ``url`` field, so R2 CDN voice notes skip the local
-  download entirely on the fallback path.
+- The documented remote ``url`` field 400s on our R2 CDN links in
+  practice (2026-07-26 staging QA), so we always download and upload the
+  bytes ourselves — same flow as the OpenAI leg.
 - Documented containers: WAV, MP3, OGG, Opus, FLAC, AAC, MP4, M4A, MKV.
   WebM (browser recordings) is undocumented; we attempt it anyway — as a
   fallback the worst case equals today's behaviour (transcription fails).
@@ -76,6 +77,19 @@ def _resolve_local_path(audio_file_path: str) -> Optional[str]:
     return None
 
 
+def _fetch_to_temp(url: str, label: str) -> str:
+    """Download a remote audio file to a temp path (caller unlinks)."""
+    import requests
+
+    logger.info("stt/%s: downloading audio from CDN: %s", label, url)
+    response = requests.get(url, timeout=_DOWNLOAD_TIMEOUT_SECONDS)
+    response.raise_for_status()
+    ext = os.path.splitext(url)[1] or ".mp4"
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp_file:
+        tmp_file.write(response.content)
+        return tmp_file.name
+
+
 def _transcribe_openai(audio_file_path: str) -> Optional[Dict[str, Any]]:
     from openai import OpenAI  # lazy
 
@@ -88,15 +102,7 @@ def _transcribe_openai(audio_file_path: str) -> Optional[Dict[str, Any]]:
     tmp_path = None
     try:
         if audio_file_path.startswith(("http://", "https://")):
-            import requests
-
-            logger.info("stt/openai: downloading audio from CDN: %s", audio_file_path)
-            response = requests.get(audio_file_path, timeout=_DOWNLOAD_TIMEOUT_SECONDS)
-            response.raise_for_status()
-            ext = os.path.splitext(audio_file_path)[1] or ".mp4"
-            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp_file:
-                tmp_file.write(response.content)
-                tmp_path = tmp_file.name
+            tmp_path = _fetch_to_temp(audio_file_path, "openai")
             local_path = tmp_path
         else:
             local_path = _resolve_local_path(audio_file_path)
@@ -131,19 +137,20 @@ def _transcribe_xai(audio_file_path: str) -> Optional[Dict[str, Any]]:
 
     headers = {"Authorization": f"Bearer {XAI_API_KEY}"}
 
-    if audio_file_path.startswith(("http://", "https://")):
-        # xAI downloads the URL server-side — no local round-trip needed.
-        response = requests.post(
-            XAI_STT_URL,
-            headers=headers,
-            data={"url": audio_file_path},
-            timeout=_XAI_TIMEOUT_SECONDS,
-        )
-    else:
-        local_path = _resolve_local_path(audio_file_path)
-        if not local_path:
-            logger.warning("stt/xai: file not found: %s", audio_file_path)
-            return None
+    # Always upload the bytes ourselves. The endpoint's ``url`` field
+    # 400s on our R2 CDN links in practice (2026-07-26 staging QA) —
+    # likely their fetcher vs Cloudflare — and the upload path is the one
+    # verified live, so we don't depend on xAI's server-side download.
+    tmp_path = None
+    try:
+        if audio_file_path.startswith(("http://", "https://")):
+            tmp_path = _fetch_to_temp(audio_file_path, "xai")
+            local_path = tmp_path
+        else:
+            local_path = _resolve_local_path(audio_file_path)
+            if not local_path:
+                logger.warning("stt/xai: file not found: %s", audio_file_path)
+                return None
         with open(local_path, "rb") as audio_file:
             # Option fields must precede ``file`` in the multipart body;
             # requests emits ``data`` entries before ``files``.
@@ -153,11 +160,22 @@ def _transcribe_xai(audio_file_path: str) -> Optional[Dict[str, Any]]:
                 files={"file": (os.path.basename(local_path), audio_file)},
                 timeout=_XAI_TIMEOUT_SECONDS,
             )
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
 
     if response.status_code == 401:
         exc = RuntimeError("xai stt: 401 unauthorized")
         setattr(exc, "status_code", 401)
         raise exc
+    if response.status_code >= 400:
+        # Surface the body — "400 Bad Request" alone is undiagnosable.
+        logger.error(
+            "stt/xai: HTTP %s: %.300s", response.status_code, response.text
+        )
     response.raise_for_status()
     payload = response.json()
     text = (payload.get("text") or "").strip()
