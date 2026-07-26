@@ -274,8 +274,9 @@ Rules and facts:
   `transcription_providers.stt_cost_usd` (whisper-1 $0.006/min whole-minute;
   xAI STT $0.10/hr pro-rated — https://docs.x.ai/developers/models).
 - **xAI STT specifics:** NOT OpenAI-SDK-compatible (plain multipart POST;
-  option fields must precede `file`). Remote R2 URLs are passed via the
-  `url` field so xAI downloads server-side. Returns exact `duration`
+  option fields must precede `file`). The documented `url` field 400s on
+  our R2 CDN links in practice (2026-07-26 staging QA) — we always
+  download and upload the bytes ourselves. Returns exact `duration`
   (preferred over probe/word-estimate when the client didn't send one)
   and `language` (observed as ISO code `en` live, docs say full name —
   both normalised to lowercase; downstream lang maps accept either).

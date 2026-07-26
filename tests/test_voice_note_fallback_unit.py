@@ -185,11 +185,12 @@ def test_transcription_returns_none_when_all_fail(monkeypatch):
     assert tp.transcribe_audio("voice.mp4") is None
 
 
-def test_xai_stt_response_parsing(monkeypatch):
+def test_xai_stt_response_parsing(monkeypatch, tmp_path):
     captured = {}
 
     class FakeResponse:
         status_code = 200
+        text = ""
 
         def raise_for_status(self):
             pass
@@ -208,10 +209,22 @@ def test_xai_stt_response_parsing(monkeypatch):
 
     monkeypatch.setattr("requests.post", fake_post)
 
+    # Remote URLs are downloaded locally, then uploaded as multipart bytes
+    # (the endpoint's own ``url`` field 400s on our R2 CDN links).
+    fake_audio = tmp_path / "x.mp4"
+    fake_audio.write_bytes(b"fake-bytes")
+    downloaded = {}
+
+    def fake_fetch(url, label):
+        downloaded["url"] = url
+        return str(fake_audio)
+
+    monkeypatch.setattr(tp, "_fetch_to_temp", fake_fetch)
+
     result = tp._transcribe_xai("https://media.c-point.co/voice_messages/x.mp4")
+    assert downloaded["url"] == "https://media.c-point.co/voice_messages/x.mp4"
     assert captured["url"] == tp.XAI_STT_URL
-    # Remote files go via the url field — xAI downloads server-side.
-    assert captured["data"] == {"url": "https://media.c-point.co/voice_messages/x.mp4"}
+    assert "file" in captured["files"]
     assert result["text"] == "Hello there."
     # Capitalised language name is normalised to Whisper's lowercase form.
     assert result["language"] == "english"
