@@ -1,7 +1,8 @@
 """Whisper transcription wrapper — the gated entry point.
 
-The underlying OpenAI Whisper call lives in the legacy monolith
-(``bodybuilding_app.transcribe_audio_file``). This module wraps it so that:
+The underlying STT call lives in
+:mod:`backend.services.transcription_providers` (OpenAI Whisper primary,
+xAI Grok STT fallback). This module wraps it so that:
 
 1. Entitlements are checked *before* we spend money on the API call.
 2. Audio duration is measured and written to ``ai_usage_log`` so the
@@ -147,22 +148,17 @@ def transcribe(
         payload["http_status"] = status
         return False, payload
 
-    # Lazy import — monolith loads after this module.
-    try:
-        from bodybuilding_app import transcribe_audio_file  # type: ignore
-    except Exception as import_err:
-        logger.error("whisper_service: cannot import transcribe_audio_file: %s", import_err)
-        return False, {
-            "success": False,
-            "error": "Transcription service unavailable",
-            "http_status": 503,
-        }
+    # Provider chain: OpenAI Whisper primary, xAI Grok STT fallback.
+    from backend.services.transcription_providers import (
+        stt_cost_usd,
+        transcribe_audio,
+    )
 
     start = time.time()
-    transcription_result = transcribe_audio_file(audio_file_path)
+    stt = transcribe_audio(audio_file_path)
     elapsed_ms = int((time.time() - start) * 1000)
 
-    if not transcription_result:
+    if not stt or not stt.get("text"):
         ai_usage.log_usage(
             username,
             surface=surface,
@@ -179,20 +175,23 @@ def transcribe(
             "http_status": 502,
         }
 
-    # transcribe_audio_file returns (text, language) on success.
-    if isinstance(transcription_result, tuple):
-        text, language = transcription_result
-    else:
-        text, language = str(transcription_result), None
+    text = stt["text"]
+    language = stt.get("language")
+    model = stt.get("model") or WHISPER_MODEL
 
-    # If we couldn't probe pre-flight, estimate duration from the transcript
-    # length as a last-resort (roughly 150 wpm average speech).
+    # Duration preference: pre-flight probe > provider-reported > word-rate
+    # estimate from the transcript (≈150 wpm ⇒ 2.5 wps).
     final_duration = pre_duration
+    if final_duration is None and stt.get("duration_seconds"):
+        try:
+            final_duration = float(stt["duration_seconds"])
+        except Exception:
+            final_duration = None
     if final_duration is None and text:
         words = len(text.split())
-        final_duration = max(1.0, words / 2.5)  # ≈150 wpm ⇒ 2.5 wps
+        final_duration = max(1.0, words / 2.5)
 
-    cost = _whisper_cost_usd(final_duration or 0.0)
+    cost = stt_cost_usd(model, final_duration or 0.0)
 
     ai_usage.log_usage(
         username,
@@ -203,7 +202,7 @@ def transcribe(
         success=True,
         response_time_ms=elapsed_ms,
         community_id=community_id,
-        model=WHISPER_MODEL,
+        model=model,
     )
 
     return True, {
@@ -211,5 +210,5 @@ def transcribe(
         "language": language,
         "duration_seconds": final_duration,
         "cost_usd": cost,
-        "model": WHISPER_MODEL,
+        "model": model,
     }
