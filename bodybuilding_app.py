@@ -4638,159 +4638,43 @@ def format_date(date_str, format_str):
 
 def transcribe_audio_file(audio_file_path):
     """
-    Transcribe an audio file using OpenAI Whisper API
-    Returns the transcribed text or None if transcription fails
-    Supports both local files and R2 CDN URLs
-    """
-    if not OPENAI_AVAILABLE:
-        logger.warning("OpenAI package not available - run: pip install openai")
-        return None
-    
-    if not OPENAI_API_KEY:
-        logger.warning(f"OpenAI API key not set (length: {len(OPENAI_API_KEY)})")
-        logger.warning("Set OPENAI_API_KEY environment variable")
-        return None
-    
-    try:
-        logger.info(f"Transcribing audio file: {audio_file_path}")
-        # Bounded: transcription runs SYNCHRONOUSLY inside the DM/group send
-        # request, so a provider outage (OpenAI 500s, 2026-07-25) must fail
-        # fast instead of holding every voice-note send hostage while the
-        # SDK's default retries stack up. One retry, 20s per attempt.
-        client = OpenAI(api_key=OPENAI_API_KEY, max_retries=1, timeout=20.0)
+    Transcribe an audio file (legacy wrapper).
+    Returns a (text, language) tuple or None if transcription fails.
+    Supports both local files and R2 CDN URLs.
 
-        # Check if this is a URL (R2 CDN) or local path
-        if audio_file_path.startswith('http://') or audio_file_path.startswith('https://'):
-            # Download from R2 CDN to a temporary file
-            import tempfile
-            import requests
-            
-            logger.info(f"Downloading audio from CDN: {audio_file_path}")
-            response = requests.get(audio_file_path, timeout=30)
-            response.raise_for_status()
-            
-            # Determine file extension from URL
-            ext = os.path.splitext(audio_file_path)[1] or '.mp4'
-            
-            # Create temp file with proper extension (OpenAI needs this)
-            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp_file:
-                tmp_file.write(response.content)
-                tmp_path = tmp_file.name
-            
-            try:
-                with open(tmp_path, 'rb') as audio_file:
-                    result = client.audio.transcriptions.create(
-                        model="whisper-1",
-                        file=audio_file,
-                        response_format="verbose_json"
-                    )
-                detected_lang = getattr(result, 'language', None) or 'en'
-                transcription = result.text or ''
-                logger.info(f"Transcription successful (lang={detected_lang}): {transcription[:100]}...")
-                return transcription, detected_lang
-            finally:
-                # Clean up temp file
-                try:
-                    os.unlink(tmp_path)
-                except:
-                    pass
-        else:
-            # Handle local file paths
-            if not os.path.isabs(audio_file_path):
-                # Remove 'uploads/' prefix if present for consistency
-                rel_path = audio_file_path.replace('uploads/', '', 1)
-                full_path = os.path.join(app.config['UPLOAD_FOLDER'], rel_path)
-            else:
-                full_path = audio_file_path
-            
-            with open(full_path, 'rb') as audio_file:
-                result = client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=audio_file,
-                    response_format="verbose_json"
-                )
-            detected_lang = getattr(result, 'language', None) or 'en'
-            transcription = result.text or ''
-            logger.info(f"Transcription successful (lang={detected_lang}): {transcription[:100]}...")
-            return transcription, detected_lang
-    except Exception as e:
-        logger.error(f"Error transcribing audio: {str(e)}")
+    The actual provider chain (OpenAI Whisper primary, xAI Grok STT
+    fallback — added after the 2026-07-25/26 OpenAI outage + quota
+    exhaustion) lives in backend.services.transcription_providers.
+    Callers that need the model/duration for usage logging should call
+    transcription_providers.transcribe_audio(...) directly.
+    """
+    from backend.services.transcription_providers import transcribe_audio
+
+    logger.info(f"Transcribing audio file: {audio_file_path}")
+    result = transcribe_audio(audio_file_path)
+    if not result:
         return None
+    return result["text"], result.get("language") or 'en'
 
 def summarize_text(text, username=None, language=None):
     """
-    Summarize text using OpenAI GPT
-    Returns a concise summary or None if summarization fails
-    language: ISO language code detected by Whisper (e.g., 'en', 'pt', 'es')
+    Summarize a transcript (legacy wrapper).
+    Returns a concise summary string or None if summarization fails.
+    language: Whisper language name ("portuguese") or ISO code ("pt").
+
+    The provider chain (OpenAI gpt-4o-mini primary, xAI Grok fallback)
+    lives in backend.services.voice_note_providers. Callers that need the
+    model/tokens for usage logging should call
+    voice_note_providers.summarize_transcript(...) directly.
     """
-    if not OPENAI_AVAILABLE:
-        logger.warning("OpenAI package not available for summarization")
-        return None
-    
-    if not OPENAI_API_KEY:
-        logger.warning("OpenAI API key not set for summarization")
-        return None
-    
     if not text or len(text.strip()) < 20:
         logger.info("Text too short to summarize, returning as-is")
         return text.strip() if text else None
-    
-    try:
-        logger.info(f"Summarizing text of length: {len(text)} for user: {username}")
-        client = OpenAI(api_key=OPENAI_API_KEY)
-        
-        # Map language identifiers to full names for the prompt.
-        # Whisper returns full lowercase names (e.g. "portuguese"), but callers
-        # may also pass ISO 639-1 codes (e.g. "pt"), so we accept both.
-        lang_map = {
-            'en': 'English', 'pt': 'European Portuguese (PT-PT)', 'es': 'Spanish',
-            'fr': 'French', 'de': 'German', 'it': 'Italian', 'nl': 'Dutch',
-            'ga': 'Irish', 'pl': 'Polish', 'ru': 'Russian', 'ja': 'Japanese',
-            'zh': 'Mandarin Chinese', 'ko': 'Korean', 'ar': 'Arabic',
-            'english': 'English', 'portuguese': 'European Portuguese (PT-PT)',
-            'spanish': 'Spanish', 'french': 'French', 'german': 'German',
-            'italian': 'Italian', 'dutch': 'Dutch', 'irish': 'Irish',
-            'polish': 'Polish', 'russian': 'Russian', 'japanese': 'Japanese',
-            'chinese': 'Mandarin Chinese', 'korean': 'Korean', 'arabic': 'Arabic',
-        }
-        target_lang = lang_map.get(language.lower() if language else '', 'English') or 'English'
-        
-        system_prompt = f"""You are a helpful assistant that summarizes audio transcriptions.
 
-You MUST write your summary in {target_lang}. This is non-negotiable.
+    from backend.services.voice_note_providers import summarize_transcript
 
-Content requirements:
-- Provide a concise 1-2 sentence summary of the main points
-- Refer to the person by their name if provided, not as 'the speaker' or 'the user'
-- Write ONLY in {target_lang}"""
-        
-        if username:
-            user_prompt = f"Summarize this audio transcription from {username}. Write the summary in {target_lang}.\n\n{text}"
-        else:
-            user_prompt = f"Summarize this audio transcription. Write the summary in {target_lang}.\n\n{text}"
-        
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",  # Fast and cost-effective
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_prompt
-                },
-                {
-                    "role": "user",
-                    "content": user_prompt
-                }
-            ],
-            max_tokens=150,
-            temperature=0.5
-        )
-        
-        summary = response.choices[0].message.content.strip()
-        logger.info(f"Summary created: {summary}")
-        return summary
-    except Exception as e:
-        logger.error(f"Error summarizing text: {str(e)}")
-        return None
+    result = summarize_transcript(text, username=username, language=language)
+    return result["text"] if result else None
 
 def process_audio_for_summary(
     audio_file_path,
@@ -4828,9 +4712,16 @@ def process_audio_for_summary(
 
     logger.info(f"Processing audio for AI summary: {audio_file_path} (user: {username})")
 
-    # Step 1: Transcribe audio (returns (text, language) tuple)
-    result = transcribe_audio_file(audio_file_path)
-    if not result:
+    # Step 1: Transcribe audio via the provider chain (OpenAI Whisper
+    # primary, xAI Grok STT fallback). The returned dict carries the model
+    # that actually served, so the usage row below stays truthful.
+    from backend.services.transcription_providers import (
+        transcribe_audio as _transcribe_chain,
+        stt_cost_usd as _stt_cost,
+    )
+
+    stt = _transcribe_chain(audio_file_path)
+    if not stt or not stt.get("text"):
         logger.warning("Transcription failed, no summary generated")
         # Log failed whisper attempt for analytics (no usage charged).
         try:
@@ -4849,28 +4740,20 @@ def process_audio_for_summary(
             pass
         return None
 
-    # Handle both old (string) and new (tuple) return format
-    if isinstance(result, tuple):
-        transcription, detected_lang = result
-    else:
-        transcription = result
-        detected_lang = 'en'
-
-    if not transcription:
-        return None
+    transcription = stt["text"]
+    detected_lang = stt.get("language") or 'en'
+    stt_model = stt.get("model") or "whisper-1"
 
     logger.info(f"Detected language: {detected_lang}")
 
-    # ── Log Whisper usage ──
-    # Source of truth for the "Voice transcription this month" counter. If
-    # the caller gave us a duration, use it; otherwise probe the file; last
-    # resort is a word-rate estimate (≈150 wpm = 2.5 wps).
+    # ── Log transcription usage ──
+    # Source of truth for the "Voice transcription this month" counter.
+    # Duration preference: client-provided > provider-reported > file
+    # probe > word-rate estimate (≈150 wpm = 2.5 wps).
     try:
         from backend.services import ai_usage as _au
         from backend.services.whisper_service import (
             _probe_duration_seconds as _probe,
-            _whisper_cost_usd as _wcost,
-            WHISPER_MODEL as _WHISPER_MODEL,
         )
 
         final_duration = None
@@ -4880,6 +4763,11 @@ def process_audio_for_summary(
             final_duration = None
         if not final_duration:
             try:
+                final_duration = float(stt["duration_seconds"]) if stt.get("duration_seconds") else None
+            except Exception:
+                final_duration = None
+        if not final_duration:
+            try:
                 final_duration = _probe(audio_file_path)
             except Exception:
                 final_duration = None
@@ -4887,7 +4775,7 @@ def process_audio_for_summary(
             words = len(transcription.split())
             final_duration = max(1.0, words / 2.5)
 
-        whisper_cost = _wcost(final_duration or 0.0)
+        whisper_cost = _stt_cost(stt_model, final_duration or 0.0)
 
         if username:
             _au.log_usage(
@@ -4898,18 +4786,29 @@ def process_audio_for_summary(
                 cost_usd=whisper_cost,
                 success=True,
                 community_id=community_id,
-                model=_WHISPER_MODEL,
+                model=stt_model,
             )
     except Exception as _log_err:
         logger.warning(f"Could not log Whisper usage: {_log_err}")
 
-    # Step 2: Summarize transcription with username and detected language
-    summary = summarize_text(transcription, username=username, language=detected_lang)
+    # Step 2: Summarize via the provider chain (OpenAI gpt-4o-mini
+    # primary, xAI Grok fallback); the result carries model + tokens.
+    from backend.services.voice_note_providers import summarize_transcript as _summarize_chain
 
-    # ── Log the voice-summary GPT call ──
-    # The summarization is a separate LLM call against OpenAI; it counts as
-    # one Steve use on the ``voice_summary`` surface. We log both success
-    # and failure so analytics capture failed summarizations too.
+    if transcription and len(transcription.strip()) >= 20:
+        summary_result = _summarize_chain(
+            transcription, username=username, language=detected_lang
+        )
+    else:
+        # Too short to summarize — mirror the legacy behaviour of passing
+        # the transcript through without an LLM call (nothing to log).
+        return transcription.strip() if transcription else None
+    summary = summary_result["text"] if summary_result else None
+
+    # ── Log the voice-summary LLM call ──
+    # The summarization is a separate LLM call; it counts as one Steve use
+    # on the ``voice_summary`` surface. We log both success and failure so
+    # analytics capture failed summarizations too.
     try:
         from backend.services import ai_usage as _au2
         if username:
@@ -4918,8 +4817,10 @@ def process_audio_for_summary(
                 surface=_au2.SURFACE_VOICE_SUMMARY,
                 request_type="voice_summary",
                 success=bool(summary),
+                tokens_in=summary_result.get("tokens_in") if summary_result else None,
+                tokens_out=summary_result.get("tokens_out") if summary_result else None,
                 community_id=community_id,
-                model="gpt-4o-mini",
+                model=(summary_result.get("model") if summary_result else None) or "gpt-4o-mini",
                 reason_blocked=None if summary else "api_error",
             )
     except Exception as _log_err2:
@@ -20030,68 +19931,26 @@ def translate_summary():
     if not target_lang_name:
         return jsonify({'success': False, 'error': 'Invalid target language'}), 400
 
+    from backend.services.voice_note_providers import (
+        any_chat_provider_configured,
+        translate_text as _translate_chain,
+    )
+
     if not OPENAI_AVAILABLE:
         return jsonify({'success': False, 'error': 'Translation service not available'}), 503
 
-    if not OPENAI_API_KEY:
+    if not any_chat_provider_configured():
         return jsonify({'success': False, 'error': 'Translation service not configured'}), 503
 
     import time as _time
     _started = _time.monotonic()
-    try:
-        logger.info(f"Translating summary to {target_lang_name} for {username} ({surface})")
-        client = OpenAI(api_key=OPENAI_API_KEY)
+    logger.info(f"Translating summary to {target_lang_name} for {username} ({surface})")
 
-        system_prompt = f"""You are a professional translator. Translate the given text to {target_lang_name}.
-Rules:
-- Maintain the meaning and tone of the original text
-- Keep the same level of formality
-- If translating to European Portuguese, use Portugal vocabulary and grammar, NOT Brazilian Portuguese
-- Keep proper names unchanged
-- Preserve any technical terms that don't need translation"""
+    # Provider chain: OpenAI gpt-4o-mini primary, xAI Grok fallback.
+    result = _translate_chain(summary, target_lang_name)
+    elapsed_ms = int((_time.monotonic() - _started) * 1000)
 
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_prompt
-                },
-                {
-                    "role": "user",
-                    "content": f"Translate this to {target_lang_name}:\n\n{summary}"
-                }
-            ],
-            max_tokens=200,
-            temperature=0.3
-        )
-
-        translated = response.choices[0].message.content.strip()
-        usage = getattr(response, 'usage', None)
-        tokens_in = getattr(usage, 'prompt_tokens', None) if usage else None
-        tokens_out = getattr(usage, 'completion_tokens', None) if usage else None
-        elapsed_ms = int((_time.monotonic() - _started) * 1000)
-
-        _ai_usage.log_usage(
-            username,
-            surface=surface,
-            request_type='translate_summary',
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
-            success=True,
-            response_time_ms=elapsed_ms,
-            model='gpt-4o-mini',
-        )
-        logger.info(f"Translation successful: {translated[:50]}...")
-
-        return jsonify({
-            'success': True,
-            'translated_summary': translated,
-            'target_language': target_language
-        })
-
-    except Exception as e:
-        elapsed_ms = int((_time.monotonic() - _started) * 1000)
+    if not result:
         _ai_usage.log_usage(
             username,
             surface=surface,
@@ -20100,8 +19959,26 @@ Rules:
             response_time_ms=elapsed_ms,
             model='gpt-4o-mini',
         )
-        logger.error(f"Error translating summary: {str(e)}")
+        logger.error("Error translating summary: all providers failed")
         return jsonify({'success': False, 'error': 'Translation failed'}), 500
+
+    _ai_usage.log_usage(
+        username,
+        surface=surface,
+        request_type='translate_summary',
+        tokens_in=result.get('tokens_in'),
+        tokens_out=result.get('tokens_out'),
+        success=True,
+        response_time_ms=elapsed_ms,
+        model=result.get('model') or 'gpt-4o-mini',
+    )
+    logger.info(f"Translation successful: {result['text'][:50]}...")
+
+    return jsonify({
+        'success': True,
+        'translated_summary': result['text'],
+        'target_language': target_language
+    })
 
 @app.route('/admin/communities_list')
 @login_required

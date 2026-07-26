@@ -156,6 +156,7 @@ jobs:
             tests/test_lifecycle_email.py \
             tests/test_landing_pricing_parity.py \
             tests/test_rate_limit.py \
+            tests/test_voice_note_fallback_unit.py \
             -v --tb=short --maxfail=5
 
       - name: Upload test logs (on failure)
