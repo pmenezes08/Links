@@ -136,6 +136,17 @@ def _page_field_map(page_slug: str) -> Dict[str, Any]:
     return out
 
 
+def _kb_field_value(page_slug: str, field_name: str, default: Any) -> Any:
+    """Pluck a single field's value off a KB page, falling back to a default.
+
+    Also imported by ``entitlements_gate`` and ``steve_credit_weights`` —
+    keep the name and signature stable. ``_load_kb_defaults`` uses its own
+    prefetched-page variant instead of this (one page fetch per call here).
+    """
+    fields = _page_field_map(page_slug)
+    return fields[field_name] if field_name in fields else default
+
+
 def _bool_field(value: Any, default: bool = False) -> bool:
     if value is None:
         return default
