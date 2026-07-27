@@ -84,8 +84,18 @@ def _ensure_column(cursor, table: str, column: str, column_def_sql: str) -> None
         pass
 
 
+_TABLES_ENSURED = False
+
+
 def ensure_tables() -> None:
-    """Create KB tables if they don't exist. Idempotent."""
+    """Create KB tables if they don't exist. Idempotent.
+
+    Runs the DDL once per process — ``get_page`` calls this on every KB read
+    (the entitlements hot path), and each run costs several DB round-trips.
+    """
+    global _TABLES_ENSURED
+    if _TABLES_ENSURED:
+        return
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute(
@@ -130,6 +140,7 @@ def ensure_tables() -> None:
             conn.commit()
         except Exception:
             pass
+    _TABLES_ENSURED = True
 
 
 # ── CRUD ─────────────────────────────────────────────────────────────────

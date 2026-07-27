@@ -30,6 +30,7 @@ from backend.services.entitlements import (
     TIER_SPECIAL,
     TIER_TRIAL,
     resolve_entitlements,
+    resolve_entitlements_many,
 )
 
 from tests.fixtures import (
@@ -471,3 +472,54 @@ class TestCrossCuttingInvariants:
         ent = resolve_entitlements("paying")
         assert ent["tier"] == TIER_PREMIUM
         assert ent["steve_uses_per_month"] > 0
+
+
+# ── 7. Batch resolver ───────────────────────────────────────────────────
+
+
+class TestBatchResolver:
+    """``resolve_entitlements_many`` must match ``resolve_entitlements``
+    exactly — the admin users list depends on it to avoid a per-row N+1
+    (which made the page take tens of seconds against Cloud SQL)."""
+
+    def test_batch_matches_single_across_tiers(self, mysql_dsn):
+        make_user("b_free", subscription="free", created_at=days_ago(60))
+        make_user("b_trial", subscription="free", created_at=days_ago(7))
+        make_user("b_premium", subscription="premium", created_at=days_ago(200))
+        make_user("b_special", subscription="free", is_special=True,
+                  created_at=days_ago(400))
+        make_user("b_seat", subscription="free", created_at=days_ago(60))
+        cid = make_community("ACME Corp", tier="enterprise")
+        make_enterprise_seat("b_seat", cid)
+
+        names = ["b_free", "b_trial", "b_premium", "b_special", "b_seat",
+                 "b_ghost_never_inserted"]
+        batch = resolve_entitlements_many(names)
+        assert set(batch.keys()) == set(names)
+        for name in names:
+            assert batch[name] == resolve_entitlements(name), name
+
+    def test_batch_seat_pick_matches_single_with_history(self, mysql_dsn):
+        """A user with an ended seat AND a live seat must resolve to the same
+        seat in batch as in single (newest-first pick)."""
+        make_user("b_rejoiner", subscription="free", created_at=days_ago(90))
+        cid_old = make_community("Old Corp", tier="enterprise")
+        cid_new = make_community("New Corp", tier="enterprise")
+        make_enterprise_seat("b_rejoiner", cid_old,
+                             started_at=days_ago(60),
+                             ended_at=days_ago(30),
+                             end_reason="voluntary_leave",
+                             grace_until=None)
+        make_enterprise_seat("b_rejoiner", cid_new, started_at=days_ago(10))
+
+        single = resolve_entitlements("b_rejoiner")
+        batch = resolve_entitlements_many(["b_rejoiner"])
+        assert batch["b_rejoiner"] == single
+        assert batch["b_rejoiner"]["tier"] == TIER_PREMIUM
+        assert batch["b_rejoiner"]["inherited_from"] == f"enterprise:c{cid_new}"
+
+    def test_batch_empty_and_anonymous(self, mysql_dsn):
+        assert resolve_entitlements_many([]) == {}
+        batch = resolve_entitlements_many([None])
+        assert batch[None]["tier"] == "anonymous"
+        assert batch[None] == resolve_entitlements(None)

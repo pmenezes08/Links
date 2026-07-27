@@ -68,8 +68,19 @@ def _parse_dt(value: Any) -> Optional[datetime]:
 # Schema
 # ---------------------------------------------------------------------------
 
+_TABLES_ENSURED = False
+
+
 def ensure_tables() -> None:
-    """Add ``communities.tier`` + create ``user_enterprise_seats`` if missing."""
+    """Add ``communities.tier`` + create ``user_enterprise_seats`` if missing.
+
+    Runs the DDL once per process — it sits on the entitlements hot path
+    (every seat lookup), and the ALTER TABLE attempts cost a round-trip even
+    when the column already exists.
+    """
+    global _TABLES_ENSURED
+    if _TABLES_ENSURED:
+        return
     with get_db_connection() as conn:
         c = conn.cursor()
 
@@ -134,6 +145,7 @@ def ensure_tables() -> None:
             conn.commit()
         except Exception:
             pass
+    _TABLES_ENSURED = True
 
 
 # ---------------------------------------------------------------------------
@@ -393,6 +405,10 @@ def active_seat_for(username: str) -> Optional[Dict[str, Any]]:
             return None
     if not row:
         return None
+    return _row_to_seat(row)
+
+
+def _row_to_seat(row: Any) -> Dict[str, Any]:
     def g(key, idx):
         return row[key] if hasattr(row, "keys") else row[idx]
     return {
@@ -408,6 +424,49 @@ def active_seat_for(username: str) -> Optional[Dict[str, Any]]:
         "return_intent": bool(int(g("return_intent", 9) or 0)),
         "active": g("ended_at", 5) is None,
     }
+
+
+def active_seats_for(usernames: List[str]) -> Dict[str, Dict[str, Any]]:
+    """Bulk ``active_seat_for`` — one query for many users.
+
+    Returns a dict keyed by lowercased username; each value is the same seat
+    dict (and the same newest-first pick) the single-user lookup returns.
+    Users without an active/grace seat are simply absent.
+    """
+    names = [u for u in usernames if u]
+    if not names:
+        return {}
+    ensure_tables()
+    ph = get_sql_placeholder()
+    now_str = _utc_now_str()
+    in_clause = ", ".join([ph] * len(names))
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute(
+                f"""
+                SELECT id, username, community_id, community_slug, started_at,
+                       ended_at, end_reason, grace_until, had_personal_premium_at_join,
+                       return_intent, created_at
+                FROM user_enterprise_seats
+                WHERE username IN ({in_clause})
+                  AND (ended_at IS NULL OR (grace_until IS NOT NULL AND grace_until > {ph}))
+                ORDER BY COALESCE(grace_until, ended_at, created_at) DESC, id DESC
+                """,
+                tuple(names) + (now_str,),
+            )
+            rows = c.fetchall()
+        except Exception:
+            return {}
+    out: Dict[str, Dict[str, Any]] = {}
+    for row in rows or []:
+        seat = _row_to_seat(row)
+        key = (seat.get("username") or "").strip().lower()
+        # Rows come back newest-first (same sort as active_seat_for), so the
+        # first row per user is the one its LIMIT 1 would have picked.
+        if key and key not in out:
+            out[key] = seat
+    return out
 
 
 def list_active_seats() -> List[Dict[str, Any]]:

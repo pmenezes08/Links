@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services import knowledge_base as kb
@@ -119,18 +119,21 @@ _DEFAULTS: Dict[str, Any] = {
 }
 
 
-def _kb_field_value(page_slug: str, field_name: str, default: Any) -> Any:
-    """Pluck a single field's value off a KB page, falling back to a default."""
+def _page_field_map(page_slug: str) -> Dict[str, Any]:
+    """Field-name → value map for one KB page ({} when the page is missing).
+
+    First occurrence of a field name wins, matching the old per-field scan.
+    """
     try:
         page = kb.get_page(page_slug)
     except Exception:
         page = None
-    if not page:
-        return default
-    for f in page.get("fields") or []:
-        if f.get("name") == field_name and "value" in f:
-            return f["value"]
-    return default
+    out: Dict[str, Any] = {}
+    for f in (page or {}).get("fields") or []:
+        name = f.get("name")
+        if name and "value" in f and name not in out:
+            out[name] = f["value"]
+    return out
 
 
 def _bool_field(value: Any, default: bool = False) -> bool:
@@ -150,7 +153,21 @@ def _bool_field(value: Any, default: bool = False) -> bool:
 
 
 def _load_kb_defaults() -> Dict[str, Any]:
-    """Read all the values we care about from the KB, falling back to _DEFAULTS."""
+    """Read all the values we care about from the KB, falling back to _DEFAULTS.
+
+    Each KB page is fetched exactly once per call — ``kb.get_page`` opens its
+    own DB connection, so the old per-field fetches (~40 of them) were a huge
+    connection amplifier on every entitlements resolve.
+    """
+    pages = {
+        slug: _page_field_map(slug)
+        for slug in ("credits-entitlements", "hard-limits", "user-tiers")
+    }
+
+    def _kb_field_value(page_slug: str, field_name: str, default: Any) -> Any:
+        fields = pages.get(page_slug) or {}
+        return fields[field_name] if field_name in fields else default
+
     out = dict(_DEFAULTS)
 
     # Credits & Entitlements
@@ -312,6 +329,80 @@ def _load_user(username: str) -> Optional[Dict[str, Any]]:
         return _with_special_no_trial(row)
 
 
+def _load_users_bulk(usernames: List[str]) -> Dict[str, Dict[str, Any]]:
+    """One-query variant of ``_load_user`` for many usernames.
+
+    Returns a dict keyed by lowercased username (MySQL's default collation is
+    case-insensitive, so this mirrors what the single-user ``WHERE username =``
+    lookup matches). Same column-fallback ladder as ``_load_user``.
+    """
+    if not usernames:
+        return {}
+    ph = get_sql_placeholder()
+    in_clause = ", ".join([ph] * len(usernames))
+    params = tuple(usernames)
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        has_trial = True
+        has_special = True
+        try:
+            c.execute(
+                f"""
+                SELECT username, subscription, is_special, created_at, trial_revoked_at
+                FROM users WHERE username IN ({in_clause})
+                """,
+                params,
+            )
+            rows = c.fetchall()
+        except Exception:
+            has_trial = False
+            try:
+                c.execute(
+                    f"""
+                    SELECT username, subscription, is_special, created_at
+                    FROM users WHERE username IN ({in_clause})
+                    """,
+                    params,
+                )
+                rows = c.fetchall()
+            except Exception:
+                has_special = False
+                try:
+                    c.execute(
+                        f"SELECT username, subscription, created_at FROM users WHERE username IN ({in_clause})",
+                        params,
+                    )
+                    rows = c.fetchall()
+                except Exception:
+                    return {}
+
+    def g(row, key, idx):
+        return row[key] if hasattr(row, "keys") else row[idx]
+
+    out: Dict[str, Dict[str, Any]] = {}
+    for row in rows or []:
+        uname = g(row, "username", 0)
+        if has_special:
+            is_special = bool(int(g(row, "is_special", 2) or 0))
+            created = g(row, "created_at", 3)
+        else:
+            is_special = False
+            created = g(row, "created_at", 2)
+        rec: Dict[str, Any] = {
+            "username": uname,
+            "subscription": (g(row, "subscription", 1) or "free"),
+            "is_special": is_special,
+            "created_at": str(created or ""),
+            "trial_revoked_at": None,
+        }
+        if has_trial:
+            raw_tr = g(row, "trial_revoked_at", 4)
+            rec["trial_revoked_at"] = raw_tr if raw_tr not in (None, "") else None
+        out[(uname or "").strip().lower()] = rec
+    return out
+
+
 def _is_in_trial_window(user: Dict[str, Any], trial_days: int = 30) -> bool:
     created = (user.get("created_at") or "").strip()
     if not created:
@@ -337,25 +428,11 @@ def resolve_entitlements(username: Optional[str]) -> Dict[str, Any]:
     defaults = _load_kb_defaults()
 
     if not username:
-        return {
-            "username": None,
-            "tier": "anonymous",
-            "can_use_steve": False,
-            "can_create_communities": False,
-            **defaults,
-        }
+        return _anonymous_entitlements(defaults)
 
     user = _load_user(username)
     if user is None:
-        return {
-            "username": username,
-            "tier": "unknown",
-            "can_use_steve": False,
-            "can_create_communities": False,
-            **defaults,
-        }
-
-    subscription = (user.get("subscription") or "free").strip().lower()
+        return _unknown_entitlements(username, defaults)
 
     # Check for an active Enterprise seat (including grace-window seats the
     # resolver still considers "premium-via-enterprise"). When present this
@@ -369,6 +446,73 @@ def resolve_entitlements(username: Optional[str]) -> Dict[str, Any]:
         except Exception:
             logger.exception("resolve_entitlements: active_seat_for failed for %s", username)
             enterprise_seat = None
+
+    return _build_entitlements(username, user, enterprise_seat, defaults)
+
+
+def resolve_entitlements_many(usernames: List[Optional[str]]) -> Dict[Optional[str], Dict[str, Any]]:
+    """Batch variant of ``resolve_entitlements`` — same output, O(1) queries.
+
+    One users query + one enterprise-seats query + one KB-defaults load for
+    the whole list, instead of per-user round-trips. Built for list surfaces
+    (admin users page) where a per-row resolve is an N+1. Returns a dict
+    keyed by each *input* username (missing users get the ``unknown`` shape,
+    falsy usernames the ``anonymous`` shape, exactly like the single call).
+    """
+    defaults = _load_kb_defaults()
+    names = [u for u in usernames if u]
+    users = _load_users_bulk(names)
+    seats: Dict[str, Dict[str, Any]] = {}
+    em = _ent_mem()
+    if em is not None and names:
+        try:
+            seats = em.active_seats_for(names)
+        except Exception:
+            logger.exception("resolve_entitlements_many: active_seats_for failed")
+            seats = {}
+
+    out: Dict[Optional[str], Dict[str, Any]] = {}
+    for u in usernames:
+        if not u:
+            out[u] = _anonymous_entitlements(defaults)
+            continue
+        key = u.strip().lower()
+        rec = users.get(key)
+        if rec is None:
+            out[u] = _unknown_entitlements(u, defaults)
+        else:
+            out[u] = _build_entitlements(u, rec, seats.get(key), defaults)
+    return out
+
+
+def _anonymous_entitlements(defaults: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "username": None,
+        "tier": "anonymous",
+        "can_use_steve": False,
+        "can_create_communities": False,
+        **defaults,
+    }
+
+
+def _unknown_entitlements(username: str, defaults: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "username": username,
+        "tier": "unknown",
+        "can_use_steve": False,
+        "can_create_communities": False,
+        **defaults,
+    }
+
+
+def _build_entitlements(
+    username: str,
+    user: Dict[str, Any],
+    enterprise_seat: Optional[Dict[str, Any]],
+    defaults: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Pure tier decision + entitlements dict for an already-loaded user row."""
+    subscription = (user.get("subscription") or "free").strip().lower()
 
     tier: str
     inherited_from: Optional[str] = None

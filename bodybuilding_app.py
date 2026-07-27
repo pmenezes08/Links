@@ -9363,31 +9363,54 @@ def admin_users_api():
             r = c.fetchone()
             total = r['cnt'] if hasattr(r, 'keys') else r[0]
             offset = (page - 1) * per_page
-            # Include is_special in the projection where available; fall back if the column doesn't exist.
+            # Include is_special/is_admin in the projection where available;
+            # fall back if the columns don't exist. Selecting is_admin here
+            # avoids a per-row is_app_admin() lookup (one connection each).
+            _has_is_special_col = True
+            _has_is_admin_col = True
             try:
                 if search:
-                    c.execute(f"SELECT id, username, email, subscription, is_special, created_at FROM users WHERE (username LIKE {ph} OR email LIKE {ph}){tf} ORDER BY username LIMIT {ph} OFFSET {ph}", (f'%{search}%', f'%{search}%') + tp + (per_page, offset))
+                    c.execute(f"SELECT id, username, email, subscription, is_special, is_admin, created_at FROM users WHERE (username LIKE {ph} OR email LIKE {ph}){tf} ORDER BY username LIMIT {ph} OFFSET {ph}", (f'%{search}%', f'%{search}%') + tp + (per_page, offset))
                 else:
-                    c.execute(f"SELECT id, username, email, subscription, is_special, created_at FROM users WHERE 1=1{tf} ORDER BY username LIMIT {ph} OFFSET {ph}", tp + (per_page, offset))
-                _has_is_special_col = True
+                    c.execute(f"SELECT id, username, email, subscription, is_special, is_admin, created_at FROM users WHERE 1=1{tf} ORDER BY username LIMIT {ph} OFFSET {ph}", tp + (per_page, offset))
             except Exception:
-                if search:
-                    c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE (username LIKE {ph} OR email LIKE {ph}){tf} ORDER BY username LIMIT {ph} OFFSET {ph}", (f'%{search}%', f'%{search}%') + tp + (per_page, offset))
-                else:
-                    c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE 1=1{tf} ORDER BY username LIMIT {ph} OFFSET {ph}", tp + (per_page, offset))
-                _has_is_special_col = False
-            # Lazy import to avoid circulars at module load time.
+                _has_is_admin_col = False
+                try:
+                    if search:
+                        c.execute(f"SELECT id, username, email, subscription, is_special, created_at FROM users WHERE (username LIKE {ph} OR email LIKE {ph}){tf} ORDER BY username LIMIT {ph} OFFSET {ph}", (f'%{search}%', f'%{search}%') + tp + (per_page, offset))
+                    else:
+                        c.execute(f"SELECT id, username, email, subscription, is_special, created_at FROM users WHERE 1=1{tf} ORDER BY username LIMIT {ph} OFFSET {ph}", tp + (per_page, offset))
+                except Exception:
+                    _has_is_special_col = False
+                    if search:
+                        c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE (username LIKE {ph} OR email LIKE {ph}){tf} ORDER BY username LIMIT {ph} OFFSET {ph}", (f'%{search}%', f'%{search}%') + tp + (per_page, offset))
+                    else:
+                        c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE 1=1{tf} ORDER BY username LIMIT {ph} OFFSET {ph}", tp + (per_page, offset))
+            rows = c.fetchall()
+            # Resolve entitlements for the whole page in one batch (one users
+            # query + one seats query). The old per-row resolve_entitlements()
+            # was an N+1 that re-read the KB per user — thousands of fresh DB
+            # connections per page load. Lazy import avoids circulars.
             try:
-                from backend.services.entitlements import resolve_entitlements as _resolve_ent  # type: ignore
+                from backend.services.entitlements import resolve_entitlements_many as _resolve_ent_many  # type: ignore
             except Exception:
-                _resolve_ent = None  # type: ignore
+                _resolve_ent_many = None  # type: ignore
+            row_names = [(u['username'] if hasattr(u, 'keys') else u[1]) for u in rows]
+            ent_map = {}
+            if _resolve_ent_many is not None and row_names:
+                try:
+                    ent_map = _resolve_ent_many(row_names)
+                except Exception:
+                    logger.exception('admin_users: batch entitlements resolve failed')
+                    ent_map = {}
             users = []
-            for u in c.fetchall():
+            for u in rows:
                 uname = u['username'] if hasattr(u,'keys') else u[1]
                 sub = u['subscription'] if hasattr(u,'keys') else u[3]
                 if _has_is_special_col:
                     is_special_raw = u['is_special'] if hasattr(u,'keys') else u[4]
-                    created_raw = u['created_at'] if hasattr(u,'keys') else u[5]
+                    created_idx = 6 if _has_is_admin_col else 5
+                    created_raw = u['created_at'] if hasattr(u,'keys') else u[created_idx]
                 else:
                     is_special_raw = 0
                     created_raw = u['created_at'] if hasattr(u,'keys') else u[4]
@@ -9395,22 +9418,21 @@ def admin_users_api():
                     is_special_val = bool(int(is_special_raw or 0))
                 except Exception:
                     is_special_val = bool(is_special_raw)
+                if _has_is_admin_col:
+                    is_admin_raw = u['is_admin'] if hasattr(u,'keys') else u[5]
+                    try:
+                        is_admin_val = bool(int(is_admin_raw or 0))
+                    except Exception:
+                        is_admin_val = bool(is_admin_raw)
+                    # Legacy 'admin' username is always an app admin.
+                    is_admin_val = is_admin_val or (uname or '').strip().lower() == 'admin'
+                else:
+                    is_admin_val = is_app_admin(uname)
                 # effective_tier + inherited_from come from the entitlements resolver
                 # so admin UI matches what the enforcement layer actually applies.
-                effective_tier = None
-                inherited_from = None
-                if _resolve_ent is not None:
-                    try:
-                        ent = _resolve_ent(uname)
-                        effective_tier = ent.get('tier')
-                        # inherited_from is only set when the tier comes from an
-                        # Enterprise seat (Wave 5 will populate this). For now the
-                        # resolver returns plain tier names, so this is None for
-                        # personal Premium/Free/Trial and 'enterprise:<slug>' once
-                        # the Enterprise lifecycle lands.
-                        inherited_from = ent.get('inherited_from')
-                    except Exception:
-                        effective_tier = None
+                ent = ent_map.get(uname) or {}
+                effective_tier = ent.get('tier')
+                inherited_from = ent.get('inherited_from')
                 users.append({
                     'id': u['id'] if hasattr(u,'keys') else u[0],
                     'username': uname,
@@ -9420,7 +9442,7 @@ def admin_users_api():
                     'effective_tier': effective_tier or (sub or 'free'),
                     'inherited_from': inherited_from,
                     'created_at': str(created_raw) if created_raw else None,
-                    'is_admin': is_app_admin(uname),
+                    'is_admin': is_admin_val,
                 })
             return jsonify({'success': True, 'users': users, 'total': total, 'page': page, 'per_page': per_page, 'pages': (total + per_page - 1) // per_page})
     except Exception as e:
