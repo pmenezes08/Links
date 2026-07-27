@@ -20857,6 +20857,19 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                 except Exception as ctx_err:
                     logger.warning("Steve community context failed: %s", ctx_err)
 
+            # Community Brain: compact memory card (always-on, freshness-gated)
+            if community_id:
+                try:
+                    from backend.services.steve_community_memory import get_compact_community_memory
+                    _brain_card = get_compact_community_memory(int(community_id))
+                    if _brain_card:
+                        context_parts.append(
+                            "Community memory (recent, synthesized — background only, mention it only when it helps):\n"
+                            + _brain_card
+                        )
+                except Exception as brain_err:
+                    logger.debug("Steve community brain card failed: %s", brain_err)
+
             # Privacy gate BEFORE KB fetch (per docs/STEVE_PRIVACY_GATE.md and community rule)
             from backend.services.steve_profiling_gates import user_can_access_steve_kb
             if not should_include_user_profile(post_content):
@@ -22160,7 +22173,33 @@ def ai_steve_reply():
                         )
                 except Exception as ctx_err:
                     logger.warning("Steve community context (comment reply) failed: %s", ctx_err)
-            
+
+            # Community Brain: compact memory card (always-on, freshness-gated)
+            # + recall retrieval when the message explicitly reaches back.
+            if community_id and not is_group_post:
+                try:
+                    from backend.services.steve_community_memory import get_compact_community_memory
+                    _brain_card = get_compact_community_memory(int(community_id))
+                    if _brain_card:
+                        context_parts.append(
+                            "Community memory (recent, synthesized — background only, mention it only when it helps):\n"
+                            + _brain_card
+                        )
+                except Exception as brain_err:
+                    logger.debug("Steve community brain card failed: %s", brain_err)
+                try:
+                    from backend.services.steve_community_brain import try_recall_context
+                    _recall_block = try_recall_context(
+                        c,
+                        placeholder,
+                        community_id=int(community_id),
+                        user_message=user_message or "",
+                    )
+                    if _recall_block:
+                        context_parts.append(_recall_block)
+                except Exception as recall_err:
+                    logger.warning("Steve community recall failed: %s", recall_err)
+
             # Privacy gate BEFORE KB fetch (per docs/STEVE_PRIVACY_GATE.md and community rule)
             from backend.services.steve_profiling_gates import user_can_access_steve_kb
             if not should_include_user_profile(user_message):

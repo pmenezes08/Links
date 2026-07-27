@@ -212,9 +212,10 @@ def build_steve_community_context(
     try:
         from backend.services.steve_community_memory import get_compact_community_memory
 
-        memory = get_compact_community_memory(int(community_id))
-        if memory:
-            parts.append("Compact community memory:\n" + memory)
+        # Compact community memory moved out of this resource-gated block:
+        # the Community Brain card is injected always-on (fresh-gated) by the
+        # feed call sites, so it no longer depends on resource activation.
+        pass
     except Exception as e:
         logger.debug("Steve community memory context failed: %s", e)
 

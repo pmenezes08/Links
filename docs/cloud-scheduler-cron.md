@@ -121,6 +121,33 @@ gcloud scheduler jobs create http ai-usage-daily-rollup \
   --headers="X-Cron-Secret=$SECRET" \
   --attempt-deadline=300s
 
+# Steve Community Brain — synthesizes compact community memory
+# (steve_community_memory Firestore docs) for the busiest active root
+# communities. One metered LLM call per community (content_gen surface,
+# request_type community_brain_refresh), max 10 communities per run (KB
+# community_brain_max_communities_per_run), NO retries, idempotent via
+# sourceLatestPostTs (a rerun without new posts spends nothing). Daily at
+# 04:30 UTC. IMPORTANT: create with --max-retry-attempts=0 — this job
+# spends AI credits (see the 2026-07 cron retry incident).
+#
+# Kill switch (no code deploy): flip KB community_brain_enabled → False
+# on the "community-tiers" page; the reader also stops injecting cards
+# once docs go stale (community_brain_freshness_days, default 14).
+#
+# Manual run for QA:
+#   curl -X POST "$BASE/api/cron/steve-community-brain" \
+#     -H "X-Cron-Secret: $CRON_SECRET" -H "Content-Type: application/json" \
+#     -d '{"max_communities": 2}'
+gcloud scheduler jobs create http steve-community-brain \
+  --location=europe-west1 \
+  --schedule="30 4 * * *" \
+  --time-zone=UTC \
+  --uri="$BASE/api/cron/steve-community-brain" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --max-retry-attempts=0 \
+  --attempt-deadline=540s
+
 # Community lifecycle warnings — fires pre-archive warnings for Free
 # communities (day 75, day 88) and purge reminders for archived Free
 # communities (day 300). Daily at 10:05 Europe/Dublin so warnings land

@@ -96,6 +96,31 @@ rules; the five-heading template stays DM-only), cap the injected profile dossie
 `cap_profile_context`, append tools-honest `render_steve_external_knowledge_guidance` after tool
 resolution, and sample with KB-backed **`paid_steve_package_temperature`** (default 0.7).
 
+### Community Brain (compact memory + recall)
+
+**`backend/services/steve_community_brain.py`** — "total recall, selective expression": Steve knows the
+community's recent history but is instructed to mention it only when it serves the current message.
+
+- **Writer**: `/api/cron/steve-community-brain` (blueprint `steve_brain`, `X-Cron-Secret`) →
+  `refresh_all()` synthesizes recent tree-wide activity (posts, comments, events, polls, links; KB
+  `community_brain_window_days`, default 30) into Firestore `steve_community_memory/{root_id}` via one
+  metered `llm.generate_text` call per community (`usage_context` → `content_gen` surface,
+  `request_type=community_brain_refresh`). Hard caps: `community_brain_max_communities_per_run`
+  (default 10), `community_brain_min_new_posts`, **no retries**, idempotent via `sourceLatestPostTs`.
+  Kill switch: KB `community_brain_enabled`.
+- **Freshness contract**: docs are stamped `updatedAt`; `get_compact_community_memory` refuses docs
+  older than `community_brain_freshness_days` (default 14) and caps the rendered card at
+  `community_brain_card_max_chars` (default 900). Stale memory degrades to *no memory*, never frozen
+  memory. The dead `_network_{id}_CommunityIndex` fallback was removed.
+- **Injection**: the card is injected always-on (fresh-gated) by the community post + comment reply
+  paths — no longer tied to resource activation. Exclusive-group posts skip it (group prompts forbid
+  parent-community resources).
+- **Recall retrieval**: `try_recall_context` — when the current message contains explicit
+  backward-reference phrasing (EN + PT: "what did we decide", "lembras-te", …), a lexical search over
+  the community tree's own MySQL posts/replies returns dated snippets Steve can cite. Tightly gated so
+  it cannot re-create the loop-back behaviour the 2026-07 review removed; community-scoped by
+  construction. No embeddings, no new storage.
+
 ---
 
 ## Exclusive group Steve agent (group feed)

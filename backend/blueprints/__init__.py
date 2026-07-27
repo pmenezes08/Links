@@ -51,6 +51,7 @@ def register_blueprints(app: Flask) -> None:
     from .owner_upgrade import owner_upgrade_bp
     from .lifecycle_emails import lifecycle_emails_bp
     from .community_placement import community_placement_bp
+    from .steve_brain import steve_brain_bp
 
     app.register_blueprint(public_bp)
     app.register_blueprint(auth_bp)
@@ -96,6 +97,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(owner_upgrade_bp)
     app.register_blueprint(lifecycle_emails_bp)
     app.register_blueprint(community_placement_bp)
+    app.register_blueprint(steve_brain_bp)
 
     # Make sure the Stripe/community-billing columns exist before the
     # first webhook fires. Each service's ensure_tables() is already
