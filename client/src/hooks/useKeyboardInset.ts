@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
+import { readVisualViewportImeInset } from '../utils/keyboardLift'
 
 /** Ignore sub-pixel jitter from the plugin / viewport events. */
 const INSET_EPSILON = 2
@@ -15,8 +16,9 @@ const INSET_EPSILON = 2
  * (see `client/capacitor.config.ts`): the WebView keeps its full height when the
  * IME opens, so `100vh`, `inset-0`, and safe-area insets all still describe the
  * whole screen and the dialog's action row ends up underneath the keyboard.
- * Only the plugin knows the occluded height there. On web there is no plugin, so
- * `visualViewport` is the signal.
+ * On iOS only the plugin knows the occluded height; on Android and web the
+ * `visualViewport` IME inset is the signal (the plugin over-reports on Android
+ * under adjustNothing).
  *
  * Pass `enabled` (typically the dialog's open state) so nothing is listening
  * while the surface is closed.
@@ -24,8 +26,8 @@ const INSET_EPSILON = 2
 export function useKeyboardInset(enabled = true): number {
   const [inset, setInset] = useState(0)
   const insetRef = useRef(0)
-  const isNativePlatform = useMemo(
-    () => typeof window !== 'undefined' && Capacitor.getPlatform() !== 'web',
+  const platform = useMemo(
+    () => (typeof window !== 'undefined' ? Capacitor.getPlatform() : 'web'),
     [],
   )
 
@@ -38,7 +40,7 @@ export function useKeyboardInset(enabled = true): number {
 
   // Web: the visual viewport shrinks under the IME.
   useEffect(() => {
-    if (!enabled || isNativePlatform) return
+    if (!enabled || platform !== 'web') return
     if (typeof window === 'undefined') return
     const viewport = window.visualViewport
     if (!viewport) return
@@ -68,11 +70,34 @@ export function useKeyboardInset(enabled = true): number {
       viewport.removeEventListener('resize', onChange)
       viewport.removeEventListener('scroll', onChange)
     }
-  }, [enabled, isNativePlatform, update])
+  }, [enabled, platform, update])
 
-  // Native: the plugin is the only source of the occluded height.
+  // Android: the plugin over-reports with resize:'none' (adjustNothing), so the
+  // visualViewport IME inset is the trustworthy signal — mirrors
+  // useFixedComposerKeyboard.
   useEffect(() => {
-    if (!enabled || !isNativePlatform) return
+    if (!enabled || platform !== 'android') return
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    let rafId: number | null = null
+    const onChange = () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(() => update(readVisualViewportImeInset()))
+    }
+
+    viewport.addEventListener('resize', onChange)
+    onChange()
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      viewport.removeEventListener('resize', onChange)
+    }
+  }, [enabled, platform, update])
+
+  // iOS: the plugin is the only source of the occluded height.
+  useEffect(() => {
+    if (!enabled || platform !== 'ios') return
     let showSub: PluginListenerHandle | undefined
     let resizeSub: PluginListenerHandle | undefined
     let hideSub: PluginListenerHandle | undefined
@@ -96,7 +121,7 @@ export function useKeyboardInset(enabled = true): number {
       void resizeSub?.remove()
       void hideSub?.remove()
     }
-  }, [enabled, isNativePlatform, update])
+  }, [enabled, platform, update])
 
   // Closed surfaces report no inset, and reopen from a clean slate.
   useEffect(() => {
@@ -106,6 +131,28 @@ export function useKeyboardInset(enabled = true): number {
   }, [enabled])
 
   return enabled ? inset : 0
+}
+
+/**
+ * Mount once at the app root. Publishes the live occluded height as the global
+ * `--keyboard-inset` CSS variable on `<html>`.
+ *
+ * Unlike `--keyboard-offset` (which App.tsx forces to 0 on chat routes because
+ * their composers manage their own lift), this variable is always live on every
+ * route. Centered dialogs opt in with the `.kb-avoid-center` utility
+ * (index.css) instead of wiring per-modal keyboard listeners.
+ */
+export function useGlobalKeyboardInsetVar(): void {
+  const inset = useKeyboardInset(true)
+  useLayoutEffect(() => {
+    document.documentElement.style.setProperty('--keyboard-inset', `${inset}px`)
+  }, [inset])
+  useEffect(
+    () => () => {
+      document.documentElement.style.removeProperty('--keyboard-inset')
+    },
+    [],
+  )
 }
 
 export default useKeyboardInset

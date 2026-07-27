@@ -755,7 +755,7 @@ export default function CreatePost(){
       
       {/* Rename link modal */}
       {renamingLink && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-c-bg-overlay backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-c-bg-overlay backdrop-blur-sm kb-avoid-center">
           <div className="w-[90%] max-w-md rounded-2xl border border-cpoint-turquoise/30 bg-c-bg-elevated p-6 shadow-[0_0_40px_rgba(0,206,200,0.3)]">
             <h3 className="text-lg font-bold text-c-text-primary mb-4">{t('feed.rename_link')}</h3>
             <div className="space-y-3">

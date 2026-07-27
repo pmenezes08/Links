@@ -496,7 +496,7 @@ export default function WorkoutTracking(){
 
       {/* Add Exercise Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 kb-avoid-center">
           <div className="w-[90%] max-w-md rounded-xl border border-c-border bg-c-bg-app p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="font-semibold">Add New Exercise</div>
@@ -546,7 +546,7 @@ export default function WorkoutTracking(){
       )}
       {/* Exercise Logs Modal */}
       {showLogsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 kb-avoid-center">
           <div className="w-[92%] max-w-md rounded-xl border border-c-border bg-c-bg-app p-3">
             <div className="flex items-center justify-between mb-2">
               <div className="font-semibold text-sm">{logsExerciseName}</div>
@@ -685,7 +685,7 @@ export default function WorkoutTracking(){
 
       {/* Create Workout Modal */}
       {showCreateWorkoutModal && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 kb-avoid-center">
           <div className="w-[92%] max-w-md rounded-xl border border-c-border bg-c-bg-app p-3">
             <div className="flex items-center justify-between mb-2">
               <div className="font-semibold text-sm">Create New Workout</div>

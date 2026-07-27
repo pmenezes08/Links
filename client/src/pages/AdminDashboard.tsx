@@ -3640,7 +3640,7 @@ export default function AdminDashboard() {
 
       {/* Add User to Community Modal */}
       {showAddToCommunityModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 kb-avoid-center">
           <div className="bg-c-bg-surface rounded-xl p-6 w-full max-w-md border border-c-border">
             <h2 className="text-lg font-semibold mb-1">Add User to Community</h2>
             <p className="text-xs text-c-text-tertiary mb-4">
@@ -3713,7 +3713,7 @@ export default function AdminDashboard() {
 
       {/* Add User Modal */}
       {showAddUserModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 kb-avoid-center">
           <div className="bg-c-bg-surface rounded-xl p-6 w-full max-w-md border border-c-border">
             <h2 className="text-lg font-semibold mb-4">Add New User</h2>
             <form onSubmit={handleAddUser} className="space-y-4">
@@ -3772,7 +3772,7 @@ export default function AdminDashboard() {
       )}
 
         {showBroadcastModal && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 kb-avoid-center">
             <div className="bg-c-bg-surface rounded-xl p-6 w-full max-w-lg border border-c-border">
               <h2 className="text-lg font-semibold mb-3 text-cpoint-turquoise">Broadcast Notification</h2>
               <p className="text-xs text-c-text-tertiary mb-4">
@@ -3865,7 +3865,7 @@ export default function AdminDashboard() {
 
         {/* Invite User Modal */}
         {showInviteModal && !showQRCode && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 kb-avoid-center">
             <div className="max-h-[85vh] w-full max-w-md overflow-hidden rounded-xl border border-c-border bg-c-bg-surface shadow-xl shadow-black/40">
               <div className="max-h-[85vh] overflow-y-auto px-6 py-6">
               <h2 className="text-lg font-semibold mb-2">Invite to {inviteCommunityName}</h2>
@@ -4078,7 +4078,7 @@ export default function AdminDashboard() {
 
       {/* QR Code Modal */}
       {showQRCode && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 kb-avoid-center">
           <div className="bg-c-bg-surface rounded-xl p-6 w-full max-w-md border border-c-border">
             <h2 className="text-lg font-semibold mb-2">QR Code Invitation</h2>
             <p className="text-sm text-c-text-tertiary mb-4">Scan this QR code to join {inviteCommunityName}</p>
@@ -4210,7 +4210,7 @@ export default function AdminDashboard() {
 
       {/* Steve Profile Edit Modal */}
       {editingSteveProfile && editSection && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 kb-avoid-center">
           <div className="bg-c-bg-surface rounded-2xl w-full max-w-3xl border border-c-border flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between px-6 py-4 border-b border-c-border">
               <div className="flex items-center gap-3">

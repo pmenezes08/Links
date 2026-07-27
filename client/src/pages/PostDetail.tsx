@@ -2572,7 +2572,7 @@ export default function PostDetail(){
       {/* Hide Post Modal */}
       {showHideModal && (
         <div 
-          className="fixed inset-0 z-[200] bg-c-bg-overlay backdrop-blur flex items-center justify-center p-4"
+          className="fixed inset-0 z-[200] bg-c-bg-overlay backdrop-blur flex items-center justify-center p-4 kb-avoid-center"
           onClick={(e) => e.currentTarget === e.target && setShowHideModal(false)}
         >
           <div className="w-full max-w-sm rounded-2xl border border-c-border bg-c-bg-elevated p-5">
@@ -2622,7 +2622,7 @@ export default function PostDetail(){
       {/* Block User Modal */}
       {showBlockModal && (
         <div 
-          className="fixed inset-0 z-[200] bg-c-bg-overlay backdrop-blur flex items-center justify-center p-4"
+          className="fixed inset-0 z-[200] bg-c-bg-overlay backdrop-blur flex items-center justify-center p-4 kb-avoid-center"
           onClick={(e) => e.currentTarget === e.target && !blockSubmitting && setShowBlockModal(false)}
         >
           <div className="w-full max-w-sm rounded-2xl border border-c-border bg-c-bg-elevated p-5">
@@ -2687,7 +2687,7 @@ export default function PostDetail(){
       {/* Report Post Modal */}
       {showReportModal && (
         <div
-          className="fixed inset-0 z-[200] bg-c-bg-overlay backdrop-blur flex items-center justify-center p-4"
+          className="fixed inset-0 z-[200] bg-c-bg-overlay backdrop-blur flex items-center justify-center p-4 kb-avoid-center"
           onClick={(e) => e.currentTarget === e.target && !reportSubmitting && setShowReportModal(false)}
         >
           <div className="w-full max-w-md rounded-2xl border border-c-border bg-c-bg-elevated p-5 max-h-[90vh] overflow-y-auto">

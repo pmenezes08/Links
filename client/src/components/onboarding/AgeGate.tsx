@@ -301,7 +301,9 @@ export function AgeGate({ onConfirmed }: { onConfirmed: () => void }) {
           className="fixed inset-0 z-[1315] flex items-center justify-center px-4"
           style={{
             paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)',
-            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)',
+            // Inline padding wins over .kb-avoid-center, so fold the global
+            // keyboard inset (App.tsx) into the calc directly.
+            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem + var(--keyboard-inset, 0px))',
           }}
         >
           <div className="absolute inset-0 bg-c-bg-overlay backdrop-blur-sm" aria-hidden />
@@ -312,7 +314,7 @@ export function AgeGate({ onConfirmed }: { onConfirmed: () => void }) {
             aria-describedby="age-gate-underage-desc"
             className="relative w-full max-w-lg overflow-y-auto rounded-2xl border border-cpoint-turquoise/45 bg-c-bg-app p-6 shadow-[0_24px_80px_rgba(0,0,0,0.45)]"
             style={{
-              maxHeight: 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2rem)',
+              maxHeight: 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2rem - var(--keyboard-inset, 0px))',
             }}
             onClick={(event) => event.stopPropagation()}
           >

@@ -7,6 +7,7 @@ import type { KeyboardInfo } from '@capacitor/keyboard'
 import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { extractInviteToken, isInternalLink } from './utils/internalLinkHandler'
+import { useGlobalKeyboardInsetVar } from './hooks/useKeyboardInset'
 import {
   isClipboardInviteConsumed,
   markClipboardInviteConsumed,
@@ -173,6 +174,9 @@ function AppRoutes(){
   const [uploadStatusToast, setUploadStatusToast] = useState<string | null>(null)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const [fullscreenOverlayTick, setFullscreenOverlayTick] = useState(0)
+  // Always-live --keyboard-inset CSS var for keyboard-avoiding centered
+  // dialogs (.kb-avoid-center) — independent of the route-aware offset below.
+  useGlobalKeyboardInsetVar()
   // Routes that run their OWN fixed composer + keyboard lift, so the global
   // <main> keyboard offset/padding must stay OFF for them — otherwise it
   // double-counts the keyboard and shoves content up under the header (leaving

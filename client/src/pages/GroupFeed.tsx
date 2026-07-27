@@ -1005,7 +1005,7 @@ export default function GroupFeed(){
 
       {/* Hashtag / text search (group posts) */}
       {showSearch && (
-        <div className="fixed inset-0 z-[950] bg-c-bg-app/70 backdrop-blur flex items-center justify-center" onClick={(e) => e.currentTarget === e.target && setShowSearch(false)}>
+        <div className="fixed inset-0 z-[950] bg-c-bg-app/70 backdrop-blur flex items-center justify-center kb-avoid-center" onClick={(e) => e.currentTarget === e.target && setShowSearch(false)}>
           <div className="w-[92%] max-w-[560px] rounded-2xl border border-c-border bg-c-bg-app p-3">
             <div className="flex items-center gap-2 mb-2">
               <i className="fa-solid fa-hashtag text-cpoint-turquoise" />

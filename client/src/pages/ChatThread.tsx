@@ -3593,7 +3593,7 @@ export default function ChatThread(){
       {/* Steve Reminder Vault */}
       {reminderVaultOpen && (
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 kb-avoid-center"
           onClick={() => {
             setReminderVaultOpen(false)
             setEditingVaultId(null)
@@ -3762,9 +3762,9 @@ export default function ChatThread(){
 
       {/* Edit Steve summary modal */}
       {editingSummaryId !== null && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => { setEditingSummaryId(null); setEditSummaryText('') }}>
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center kb-avoid-center" onClick={() => { setEditingSummaryId(null); setEditSummaryText('') }}>
           <div className="absolute inset-0 bg-c-bg-overlay" />
-          <div 
+          <div
             className="relative bg-c-bg-elevated rounded-2xl border border-c-border w-[90%] max-w-md p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >

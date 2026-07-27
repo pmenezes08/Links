@@ -222,6 +222,11 @@
 
   /* Layout tokens */
   --keyboard-offset: 0px;
+  /* Raw IME-occluded height, published by useGlobalKeyboardInsetVar (App.tsx).
+     Unlike --keyboard-offset it is NEVER route-suppressed — chat routes zero
+     the offset because their composers lift themselves, but centered dialogs
+     still need the true inset there. Consume via .kb-avoid-center. */
+  --keyboard-inset: 0px;
   /* Default to env() so CSS consumers (calc/var) already reflect the device
      safe area on first paint. The inline probe in index.html also writes
      resolved pixel values so JS getComputedStyle() readers (chat composer
@@ -246,6 +251,19 @@
   --z-modal: 1300;    /* dialogs, sheets, drawers */
   --z-toast: 1500;    /* transient toasts/banners above modals */
   --z-emergency: 999999; /* compliance/system prompts that outrank everything */
+}
+
+/* Keyboard-avoiding centered dialog.
+   Apply to a `fixed inset-0 flex items-center justify-center` overlay wrapper:
+   native runs Keyboard.resize:'none' (capacitor.config.ts), so the WebView
+   keeps full height and the IME paints over the bottom half of centered
+   dialogs — hiding their action row. Padding the wrapper by the occluded
+   height re-centers the dialog in the visible area on every platform/route.
+   Declared after @tailwind utilities so it wins over p-* on the same element.
+   Timing mirrors CHAT_KEYBOARD_ANIMATION_MS / CPOINT_EASE_OUT (design/motion.ts). */
+.kb-avoid-center {
+  padding-bottom: max(1rem, calc(var(--keyboard-inset, 0px) + 12px));
+  transition: padding-bottom 250ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 :root[data-theme='light'] {

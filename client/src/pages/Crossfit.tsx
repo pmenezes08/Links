@@ -220,7 +220,7 @@ export default function Crossfit() {
       </div>
 
       {modalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-c-bg-overlay backdrop-blur" onClick={(e) => e.currentTarget === e.target && setModalOpen(false)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-c-bg-overlay backdrop-blur kb-avoid-center" onClick={(e) => e.currentTarget === e.target && setModalOpen(false)}>
           <form onSubmit={submitEntry} className="w-[90%] max-w-[480px] rounded-xl bg-c-bg-elevated shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3 border-b border-teal-700/30 bg-c-bg-app">
               <h3 className="text-base font-semibold">Add Crossfit Entry</h3>

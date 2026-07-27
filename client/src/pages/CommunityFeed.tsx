@@ -3777,7 +3777,7 @@ export default function CommunityFeed() {
 
       {/* Announcements modal */}
       {showAnnouncements && (
-        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && _setShowAnnouncements(false)}>
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur flex items-center justify-center kb-avoid-center" onClick={(e)=> e.currentTarget===e.target && _setShowAnnouncements(false)}>
             <div className="w-[92%] max-w-[560px] rounded-2xl border border-c-border bg-c-bg-app p-3">
               <div className="flex items-center justify-between mb-2">
                 <div className="font-semibold">{t('feed.announcements')}</div>
@@ -3819,7 +3819,7 @@ export default function CommunityFeed() {
 
       {/* Search modal */}
       {showSearch && (
-        <div className="fixed inset-0 z-[90] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowSearch(false)}>
+        <div className="fixed inset-0 z-[90] bg-black/70 backdrop-blur flex items-center justify-center kb-avoid-center" onClick={(e)=> e.currentTarget===e.target && setShowSearch(false)}>
           <div className="w-[92%] max-w-[560px] rounded-2xl border border-c-border bg-c-bg-app p-3">
             <div className="flex items-center gap-2 mb-2">
               <i className="fa-solid fa-hashtag text-cpoint-turquoise" />
@@ -4130,7 +4130,7 @@ export default function CommunityFeed() {
       {/* Hide Post Modal - Ask if user wants to also report or block */}
       {hideModalPost && (
         <div 
-          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
+          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4 kb-avoid-center"
           onClick={(e) => e.currentTarget === e.target && setHideModalPost(null)}
         >
           <div className="w-full max-w-sm rounded-2xl border border-c-border bg-c-bg-surface p-5">
@@ -4189,7 +4189,7 @@ export default function CommunityFeed() {
       {/* Block User Modal */}
       {blockModalUser && (
         <div 
-          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
+          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4 kb-avoid-center"
           onClick={(e) => e.currentTarget === e.target && !blockSubmitting && setBlockModalUser(null)}
         >
           <div className="w-full max-w-sm rounded-2xl border border-c-border bg-c-bg-surface p-5">
@@ -4254,7 +4254,7 @@ export default function CommunityFeed() {
       {/* Report Post Modal */}
       {reportModalPost && (
         <div
-          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
+          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4 kb-avoid-center"
           onClick={(e) => e.currentTarget === e.target && !reportSubmitting && setReportModalPost(null)}
         >
           <div className="w-full max-w-md rounded-2xl border border-c-border bg-c-bg-surface p-5 max-h-[90vh] overflow-y-auto">
@@ -5697,7 +5697,7 @@ const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, colla
 
       {/* Rename link modal */}
       {renamingLink && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-sm" onClick={(e)=> e.stopPropagation()}>
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-sm kb-avoid-center" onClick={(e)=> e.stopPropagation()}>
           <div className="w-[90%] max-w-md rounded-2xl border border-cpoint-turquoise/30 bg-c-bg-surface p-6 shadow-[0_0_40px_rgba(0,206,200,0.3)]">
             <h3 className="text-lg font-bold text-c-text-primary mb-4">{t('feed.rename_link')}</h3>
             <div className="space-y-3">

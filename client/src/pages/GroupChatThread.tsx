@@ -3214,7 +3214,7 @@ export default function GroupChatThread() {
       {/* Members Modal */}
       {showMembers && group && (
         <div
-          className="fixed inset-0 bg-c-bg-overlay backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+          className="fixed inset-0 bg-c-bg-overlay backdrop-blur-sm z-[9999] flex items-center justify-center p-4 kb-avoid-center"
           onClick={() => setShowMembers(false)}
         >
           <div
@@ -3302,7 +3302,7 @@ export default function GroupChatThread() {
       {/* Manage Group Modal */}
       {showManageGroup && group && (
         <div
-          className="fixed inset-0 bg-c-bg-overlay backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+          className="fixed inset-0 bg-c-bg-overlay backdrop-blur-sm z-[9999] flex items-center justify-center p-4 kb-avoid-center"
           onClick={() => setShowManageGroup(false)}
         >
           <div
@@ -3421,7 +3421,7 @@ export default function GroupChatThread() {
       {/* Add Members Modal */}
       {showAddMembers && group && (
         <div
-          className="fixed inset-0 bg-c-bg-overlay backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+          className="fixed inset-0 bg-c-bg-overlay backdrop-blur-sm z-[9999] flex items-center justify-center p-4 kb-avoid-center"
           onClick={() => {
             setShowAddMembers(false)
             setSelectedNewMembers([])
@@ -3770,7 +3770,7 @@ export default function GroupChatThread() {
 
       {/* Edit Steve summary modal */}
       {editingSummaryId !== null && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => { setEditingSummaryId(null); setEditSummaryText('') }}>
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center kb-avoid-center" onClick={() => { setEditingSummaryId(null); setEditSummaryText('') }}>
           <div className="absolute inset-0 bg-c-bg-overlay" />
           <div 
             className="relative bg-c-bg-elevated rounded-2xl border border-c-border w-[90%] max-w-md p-5 shadow-2xl"
