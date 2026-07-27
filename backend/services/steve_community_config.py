@@ -41,6 +41,10 @@ class SteveCommunityConfig:
     polls_limit: int = 5
     images_limit: int = 4
     context_degrade_before_block: bool = True
+    feed_thread_summary_enabled: bool = True
+    feed_thread_summary_trigger_older: int = 10
+    feed_thread_summary_refresh_every: int = 20
+    feed_thread_summary_max_chars: int = 1500
 
 
 def _field_map() -> dict[str, Any]:
@@ -177,6 +181,25 @@ def get_paid_steve_package_config(fields: Optional[dict[str, Any]] = None) -> St
         context_degrade_before_block=_bool(
             f.get("paid_steve_package_context_degrade_before_block"),
             defaults.context_degrade_before_block,
+        ),
+        feed_thread_summary_enabled=_bool(
+            f.get("feed_thread_summary_enabled"),
+            defaults.feed_thread_summary_enabled,
+        ),
+        feed_thread_summary_trigger_older=_int(
+            f.get("feed_thread_summary_trigger_older"),
+            defaults.feed_thread_summary_trigger_older,
+            minimum=1,
+        ),
+        feed_thread_summary_refresh_every=_int(
+            f.get("feed_thread_summary_refresh_every"),
+            defaults.feed_thread_summary_refresh_every,
+            minimum=1,
+        ),
+        feed_thread_summary_max_chars=_int(
+            f.get("feed_thread_summary_max_chars"),
+            defaults.feed_thread_summary_max_chars,
+            minimum=200,
         ),
     )
 

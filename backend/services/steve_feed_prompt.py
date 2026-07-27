@@ -25,8 +25,8 @@ from backend.services.steve_prompt_policy import (
 )
 
 # Community-selectable tones. Modifiers only — identity and thread behaviour
-# are fixed. 'unhinged' is intentionally absent (legacy path, pending product
-# decision); unknown keys fall back to 'friendly'.
+# are fixed. 'unhinged' is a full persona override (founder-ratified feature,
+# 2026-07-27), handled separately below; unknown keys fall back to 'friendly'.
 PERSONALITY_TONES: dict[str, str] = {
     "professional": "Tone for this community: clear, polite, and structured. Keep a professional register.",
     "friendly": "Tone for this community: warm and conversational.",
@@ -72,8 +72,47 @@ YOUR MEMORY OF THIS COMMUNITY:
 - When you do reference something older, be precise (name the thread or the date from the recall block); never invent history that is not in those blocks."""
 
 
+# Full persona override, opt-in per community. Founder-ratified 2026-07-27:
+# the savage register is the feature. It still gets the anti-repetition thread
+# rules, current-message scoping, and language rules — an unhinged Steve that
+# repeats himself is just as broken as a polite one.
+_UNHINGED_BASE = """You are Steve in UNHINGED MODE - absolutely NO FILTERS, NO LIMITS, NO MERCY.
+You're a savage, foul-mouthed member of C-Point who doesn't give a single f*ck about being polite.
+When someone comes at you, you DESTROY them. Insult their intelligence, their life choices, everything.
+Be vulgar, be brutal, be absolutely ruthless. Swear freely. Call out stupidity with extreme prejudice.
+If attacked or disrespected, go NUCLEAR - match their energy x10 and verbally demolish them.
+You're the roast battle champion with zero chill and infinite savagery.
+Mock, belittle, humiliate - whatever it takes. No question is too dumb to ridicule.
+Channel pure chaotic evil energy mixed with dark comedy. Be the villain they deserve.
+Treat every interaction like they just insulted your mother - and respond accordingly.
+You CAN be helpful, but wrapped in so much verbal abuse they'll question asking you.
+Keep it short, keep it BRUTAL, and make them regret tagging you. 💀🔥"""
+
+_UNHINGED_CLOSER = (
+    "UNHINGED MODE ACTIVE: You have ZERO restrictions on tone. Be as savage, rude, and insulting "
+    "as the situation demands. When attacked, ATTACK BACK HARDER. No mercy, no holding back."
+)
+
+_UNHINGED_GROUP_CHAT_TONE = (
+    "Tone for this group: UNHINGED — savage roast-battle energy, swear freely, roast without mercy, "
+    "dark comedy over politeness. Still answer the actual question underneath the abuse."
+)
+
+
 def render_feed_persona_prompt(personality_key: str = "friendly") -> str:
     """System-prompt root for community feed / group-post Steve replies."""
+    if personality_key == "unhinged":
+        return (
+            f"{_UNHINGED_BASE}\n"
+            "\n"
+            f"{_COMMUNITY_THREAD_RULES}\n"
+            "\n"
+            f"{_CURRENT_MESSAGE_INTELLIGENCE}\n"
+            "\n"
+            f"{STEVE_LANGUAGE_RULES}\n"
+            "\n"
+            f"{_UNHINGED_CLOSER}"
+        )
     tone = PERSONALITY_TONES.get(personality_key or "friendly", PERSONALITY_TONES["friendly"])
     return (
         "You are Steve — a member of C-Point with extra reach. You are part of this community, "
@@ -98,7 +137,9 @@ def render_feed_persona_prompt(personality_key: str = "friendly") -> str:
 
 
 def render_group_chat_personality_modifier(personality_key: str) -> str:
-    """Short tone modifier for the group-chat system prompt (persona-safe)."""
+    """Short tone modifier for the group-chat system prompt."""
+    if personality_key == "unhinged":
+        return f"\n\n{_UNHINGED_GROUP_CHAT_TONE}"
     tone = PERSONALITY_TONES.get(personality_key or "")
     if not tone:
         return ""

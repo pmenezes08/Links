@@ -90,7 +90,16 @@ comment only (never the reply tail — that made it sticky).
 **`backend/services/steve_feed_prompt.render_feed_persona_prompt`** (persona-correct per
 `docs/STEVE_PERSONA.md`, enforced by `tests/test_steve_persona.py`) — no more legacy
 "AI assistant" root. Community personality settings map to short tone modifiers
-(`PERSONALITY_TONES`); `unhinged` remains on the legacy monolith path pending a product decision.
+(`PERSONALITY_TONES`); **`unhinged` is a founder-ratified full persona override** (savage register
+kept, but composed with the same anti-repetition/current-message rules and language rules; it also
+has a real group-chat tone modifier now).
+
+**Long-thread rolling summary**: **`backend/services/steve_feed_thread_summary.py`** — on threads
+longer than the comment window, Steve carries a cached structured summary of the *older* comments
+(Firestore `posts/{post_id}` / `gp_{id}` mirror doc, `merge=True`). Trigger/refresh/size are KB-backed
+(`feed_thread_summary_*`, `paid_steve_package` group); cached-fresh reuse costs nothing, one metered
+call per refresh (`usage_context` → feed/group surface, `request_type=steve_feed_thread_summary`),
+no retries, LLM failure degrades to the cached summary.
 Feed/group-post surfaces pass `conversational=True` into `append_response_policy` (plain-prose format
 rules; the five-heading template stays DM-only), cap the injected profile dossier via
 `cap_profile_context`, append tools-honest `render_steve_external_knowledge_guidance` after tool

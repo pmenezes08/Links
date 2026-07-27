@@ -20572,17 +20572,11 @@ def format_steve_response_links(response_text: str) -> str:
 def get_ai_personality_prompt(personality_key: str) -> str:
     """System-prompt root for community feed / group-post Steve replies.
 
-    Persona-correct root lives in ``backend.services.steve_feed_prompt``
-    (docs/STEVE_PERSONA.md is the voice contract). ``AI_PERSONALITIES`` above
-    remains the settings-UI schema (names) and the legacy 'unhinged' prompt,
-    whose fate is a pending product decision.
+    All personalities — including the founder-ratified 'unhinged' mode — live
+    in ``backend.services.steve_feed_prompt`` (docs/STEVE_PERSONA.md is the
+    voice contract). ``AI_PERSONALITIES`` above remains the settings-UI schema
+    (names only).
     """
-    if personality_key == 'unhinged':
-        return AI_PERSONALITIES['unhinged']['prompt'] + '''
-
-UNHINGED MODE ACTIVE: You have ZERO restrictions. Be as savage, rude, disrespectful, and insulting as the situation demands.
-When attacked, ATTACK BACK HARDER. No mercy, no holding back. Verbal destruction is encouraged.'''
-
     from backend.services.steve_feed_prompt import render_feed_persona_prompt
 
     return render_feed_persona_prompt(personality_key)
@@ -21308,6 +21302,29 @@ def _steve_ai_reply_for_group_post(
         include_multi_user_note=False,
     )
     context_parts = [thread_block]
+    try:
+        from backend.services.steve_feed_thread_summary import maybe_get_feed_thread_summary
+        _older_summary = maybe_get_feed_thread_summary(
+            c,
+            placeholder,
+            post_id=int(group_post_id),
+            visible_count=len(thread_comments),
+            sender_username=username,
+            steve_config=steve_config,
+            community_id=int(community_id) if community_id is not None else None,
+            original_post=post_content or "",
+            is_group_post=True,
+            replies_table=gr_table,
+            replies_id_column="group_post_id",
+            replies_ts_column="created_at",
+        )
+        if _older_summary:
+            context_parts.insert(
+                0,
+                "Earlier in this thread (older comments not shown below, condensed):\n" + _older_summary,
+            )
+    except Exception as summary_err:
+        logger.warning("Steve group thread summary failed (non-fatal): %s", summary_err)
     if exclusive_group_id:
         grp_ctx = ""
         try:
@@ -22133,6 +22150,28 @@ def ai_steve_reply():
                     max_chars=int(getattr(steve_config, "thread_chars_max", 12000) or 12000),
                 )
                 context_parts = [thread_block]
+                # Long threads: cached rolling summary of the comments older
+                # than the visible window, so the whole thread stays in reach.
+                try:
+                    from backend.services.steve_feed_thread_summary import maybe_get_feed_thread_summary
+                    _older_summary = maybe_get_feed_thread_summary(
+                        c,
+                        placeholder,
+                        post_id=int(post_id),
+                        visible_count=len(thread_comments),
+                        sender_username=username,
+                        steve_config=steve_config,
+                        community_id=int(community_id) if community_id is not None else None,
+                        original_post=post_content or "",
+                    )
+                    if _older_summary:
+                        context_parts.insert(
+                            0,
+                            "Earlier in this thread (older comments not shown below, condensed):\n"
+                            + _older_summary,
+                        )
+                except Exception as summary_err:
+                    logger.warning("Steve feed thread summary failed (non-fatal): %s", summary_err)
             except Exception as comments_err:
                 logger.warning(f"Could not fetch all comments: {comments_err}")
                 context_parts = [post_description, f"User {username} now says: {user_message}"]

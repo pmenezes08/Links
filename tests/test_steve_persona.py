@@ -71,6 +71,29 @@ def test_feed_persona_prompt_makes_no_search_capability_claim():
     assert "You have access to real-time web search" not in prompt
 
 
+def test_unhinged_keeps_character_and_gains_anti_repetition():
+    # Founder-ratified feature (2026-07-27): the savage register stays, but it
+    # gets the same anti-repetition/current-message scoping as everyone else.
+    prompt = render_feed_persona_prompt("unhinged")
+    assert "UNHINGED MODE" in prompt
+    assert "roast battle champion" in prompt
+    assert "Never repeat a point you have already made in this thread" in prompt
+    assert "CONVERSATION INTELLIGENCE (about the CURRENT message" in prompt
+    assert "LANGUAGE RULES" in prompt
+    # The polite closer and the persona-clean identity line don't apply here.
+    assert "Never be rude or offensive" not in prompt
+    # No stale brand spelling or capability claims even in unhinged mode.
+    assert "C.Point" not in prompt
+    assert "AI assistant" not in prompt
+    assert "You have access to real-time web search" not in prompt
+
+
+def test_unhinged_group_chat_modifier_exists():
+    modifier = render_group_chat_personality_modifier("unhinged")
+    assert "UNHINGED" in modifier
+    assert "roast" in modifier
+
+
 @pytest.mark.parametrize("personality", sorted(PERSONALITY_TONES))
 def test_group_chat_personality_modifier_clean_and_nonempty(personality):
     modifier = render_group_chat_personality_modifier(personality)
@@ -79,7 +102,7 @@ def test_group_chat_personality_modifier_clean_and_nonempty(personality):
 
 
 def test_group_chat_personality_modifier_unknown_key_is_empty():
-    assert render_group_chat_personality_modifier("unhinged") == ""
+    assert render_group_chat_personality_modifier("no-such-personality") == ""
     assert render_group_chat_personality_modifier("") == ""
 
 
