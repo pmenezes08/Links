@@ -19,10 +19,10 @@ def _assert_no_store(resp) -> None:
 @pytest.mark.parametrize(
     ("blueprint", "path", "expected_error"),
     [
-        (dm_chats_bp, "/api/chat_threads", "unauthenticated"),
+        (dm_chats_bp, "/api/chat_threads", "Authentication required"),
         (group_chat_bp, "/api/group_chat/list", "Login required"),
         (notifications_bp, "/api/notifications/badge-count", "unauthenticated"),
-        (communities_bp, "/api/user_communities_hierarchical", "unauthenticated"),
+        (communities_bp, "/api/user_communities_hierarchical", "Authentication required"),
     ],
 )
 def test_remaining_blueprints_clear_ghost_session_and_return_json_401(

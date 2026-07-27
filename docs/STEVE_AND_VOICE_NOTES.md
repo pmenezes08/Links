@@ -78,9 +78,23 @@ recent N comments** on that post (tail of the thread, not the oldest N). Limits 
 **`paid_steve_package_thread_chars_max`** (default 12000); when over budget, oldest numbered comments
 drop first while keeping at least the three newest. Each comment is numbered; replies show
 ``↳ reply to #k`` when ``parent_reply_id`` is in the fetched window. Steve's own earlier lines are
-marked **`[Steve — your prior reply]`**; **`steve_prompt_policy.render_thread_grounding_appendix`**
-instructs the model to stay multilingual and consistent with those lines. Pre-LLM doc/resource gates
-remain separate from reply language.
+marked **`[Steve — your prior reply]`**; only the **newest two stay verbatim** — older Steve replies
+are condensed to a one-line stub (anti-self-conditioning, 2026-07 community review), and Steve-authored
+content is **excluded from `plain_contents`** so his own replies never seed doc-retrieval queries or
+resource gates. **`steve_prompt_policy.render_thread_grounding_appendix`** instructs the model to stay
+multilingual, never contradict prior lines, and **never restate them**. Pre-LLM doc/resource gates
+remain separate from reply language; resource activation anchors on the current message / post / parent
+comment only (never the reply tail — that made it sticky).
+
+**Feed persona root**: the community feed / group-post system prompt starts at
+**`backend/services/steve_feed_prompt.render_feed_persona_prompt`** (persona-correct per
+`docs/STEVE_PERSONA.md`, enforced by `tests/test_steve_persona.py`) — no more legacy
+"AI assistant" root. Community personality settings map to short tone modifiers
+(`PERSONALITY_TONES`); `unhinged` remains on the legacy monolith path pending a product decision.
+Feed/group-post surfaces pass `conversational=True` into `append_response_policy` (plain-prose format
+rules; the five-heading template stays DM-only), cap the injected profile dossier via
+`cap_profile_context`, append tools-honest `render_steve_external_knowledge_guidance` after tool
+resolution, and sample with KB-backed **`paid_steve_package_temperature`** (default 0.7).
 
 ---
 

@@ -837,6 +837,8 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "paid_steve_package_feed_attach_x_search_tool", "label": "Hosted Steves (feed/DM/group): allow x_search", "type": "boolean", "value": True,
                  "help": "When intent allows external tools, pass Grok hosted x_search. Matches web flag semantics for all interactive Steve surfaces that read SteveCommunityConfig.", "group": "paid_steve_package"},
                 {"name": "paid_steve_package_max_output_tokens", "label": "Max output tokens", "type": "integer", "value": 1400, "group": "paid_steve_package"},
+                {"name": "paid_steve_package_temperature", "label": "Community Steve temperature", "type": "decimal", "value": 0.7,
+                 "help": "Sampling temperature for community-feed and group-post Steve replies (DM already uses 0.7). Higher = more varied phrasing.", "group": "paid_steve_package"},
                 {"name": "paid_steve_package_recent_comments_limit", "label": "Recent comments in context", "type": "integer", "value": 24, "group": "paid_steve_package"},
                 {"name": "paid_steve_package_thread_chars_max", "label": "Max thread context chars", "type": "integer", "value": 12000, "group": "paid_steve_package"},
                 {"name": "paid_steve_package_doc_excerpt_chars_default", "label": "Default document excerpt chars", "type": "integer", "value": 4000, "group": "paid_steve_package"},

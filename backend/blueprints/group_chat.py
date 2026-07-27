@@ -3577,13 +3577,14 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         
         from openai import OpenAI
         
-        # Apply personality modifier if set
+        # Apply personality modifier if set. (The old code read AI_PERSONALITIES
+        # ['description'] — a key that never existed — so the KeyError was
+        # silently swallowed and per-group personality was a no-op.)
         personality_modifier = ""
         if steve_personality and steve_personality != "default":
             try:
-                from bodybuilding_app import AI_PERSONALITIES
-                if steve_personality in AI_PERSONALITIES:
-                    personality_modifier = f"\n\nPERSONALITY: {AI_PERSONALITIES[steve_personality]['description']}\n{AI_PERSONALITIES[steve_personality].get('rules', '')}"
+                from backend.services.steve_feed_prompt import render_group_chat_personality_modifier
+                personality_modifier = render_group_chat_personality_modifier(steve_personality)
             except Exception:
                 pass
         

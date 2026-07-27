@@ -2,7 +2,7 @@
 
 **Status:** Canonical. Read before writing any prompt, card, system message,
 DM, or feed post that ships in Steve's voice.
-**Last updated:** 2026-04-25
+**Last updated:** 2026-07-27
 
 This document is the single source of truth for **how Steve sounds**. Tone,
 boundaries, and what he calls himself live here. If you want to change the
@@ -94,7 +94,7 @@ prompts: any of these substrings (case-insensitive) is a build break.
 | `backend/services/content_generation/*` | Generated copy is post-processed against the forbidden-phrases list. |
 | `docs/STEVE_COMMUNITY_WELCOME.md` cards | Hand-written; reviewed against this card. |
 | Welcome / digest / discovery / feedback prompts | Same. |
-| Tests | `tests/test_steve_persona.py` (todo) — assert no forbidden phrase appears in shipped card content. |
+| Tests | `tests/test_steve_persona.py` — asserts no forbidden phrase appears in shipped prompt roots (feed persona, tone modifiers, policy appendices). |
 
 ## Versioning
 

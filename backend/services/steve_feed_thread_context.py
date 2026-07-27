@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, replace as dataclass_replace
 from datetime import datetime
 from typing import Any, List, Optional, Sequence, Tuple
 
@@ -13,6 +14,37 @@ STEVE_PRIOR_REPLY_LABEL = "[Steve — your prior reply]"
 DEFAULT_THREAD_CHARS_MAX = 12000
 MIN_COMMENTS_TO_KEEP = 3
 HARD_COMMENT_LIMIT_MAX = 50
+# Steve's own replies are the longest text in a thread (up to 1400 output
+# tokens vs one-line human comments). Re-injecting them all verbatim lets his
+# prose dominate the context budget and conditions him to restate himself —
+# so only the newest few stay verbatim; older ones become one-line stubs.
+STEVE_VERBATIM_REPLIES_KEPT = 2
+STEVE_REPLY_STUB_MAX_CHARS = 140
+
+# Any @handle other than @steve in the current message.
+_OTHER_MENTION_RE = re.compile(r"@(?!steve\b)[A-Za-z0-9_]+", re.IGNORECASE)
+
+
+def _stub_content(content: str) -> str:
+    """Condense an older Steve reply to its opening line."""
+    first_line = (content or "").strip().splitlines()[0] if (content or "").strip() else ""
+    if len(first_line) > STEVE_REPLY_STUB_MAX_CHARS:
+        first_line = first_line[:STEVE_REPLY_STUB_MAX_CHARS].rstrip()
+    return f"{first_line} […condensed; do not restate…]"
+
+
+def _compress_older_steve_replies(comments: List["ThreadComment"]) -> List["ThreadComment"]:
+    """Keep the newest ``STEVE_VERBATIM_REPLIES_KEPT`` Steve replies verbatim; stub the rest."""
+    steve_indexes = [
+        idx for idx, c in enumerate(comments) if c.username.lower() == STEVE_USERNAME
+    ]
+    to_stub = set(steve_indexes[:-STEVE_VERBATIM_REPLIES_KEPT]) if len(steve_indexes) > STEVE_VERBATIM_REPLIES_KEPT else set()
+    if not to_stub:
+        return comments
+    return [
+        dataclass_replace(c, content=_stub_content(c.content)) if idx in to_stub else c
+        for idx, c in enumerate(comments)
+    ]
 
 
 @dataclass
@@ -172,7 +204,7 @@ def format_thread_for_steve(
     include_multi_user_note: bool = True,
 ) -> Tuple[str, List[str]]:
     """Build the user-message thread block and a plain content list for doc gates."""
-    comment_list = list(comments or [])
+    comment_list = _compress_older_steve_replies(list(comments or []))
     budget = int(max_chars) if max_chars is not None else DEFAULT_THREAD_CHARS_MAX
     if budget > 0 and comment_list:
         comment_list = _trim_comments_for_budget(
@@ -183,7 +215,14 @@ def format_thread_for_steve(
             max_chars=budget,
         )
 
-    plain_contents = [c.content for c in comment_list if c.content]
+    # Human comments only: this list seeds doc-retrieval queries and resource
+    # gates. Including Steve's own replies made retrieval self-reinforcing —
+    # once he mentioned a doc/topic, his own mention kept re-triggering it.
+    plain_contents = [
+        c.content
+        for c in comment_list
+        if c.content and c.username.lower() != STEVE_USERNAME
+    ]
     parts: List[str] = [post_description]
     if comment_list:
         id_to_number = {c.id: idx for idx, c in enumerate(comment_list, start=1)}
@@ -197,7 +236,9 @@ def format_thread_for_steve(
     parts.append(f"User {current_username} now says: {current_message}")
     current_datetime = datetime.utcnow()
     parts.append(f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]")
-    if include_multi_user_note:
+    # Only when the current message actually addresses another user — as an
+    # always-on note it pointed Steve backwards into the thread on every turn.
+    if include_multi_user_note and _OTHER_MENTION_RE.search(current_message or ""):
         parts.append(
             "\nNote: If the user asks you to respond to or help another user, look through the comments above "
             "to find that user's question or message and address it directly."

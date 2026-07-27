@@ -108,7 +108,11 @@ def classify_response_mode(user_message: str, *, mentorship_enabled: bool = Fals
 
 
 def should_include_user_profile(user_message: str) -> bool:
-    return bool(_PROFILE_RE.search(user_message or ""))
+    # Strip the @Steve invocation first: on mention-gated surfaces every message
+    # contains "@steve", which would make the @handle alternative match always
+    # and inject the full dossier into every reply.
+    text = re.sub(r"(?i)@\s*steve\b", "", user_message or "")
+    return bool(_PROFILE_RE.search(text))
 
 
 def should_include_community_resources(user_message: str) -> bool:
@@ -164,8 +168,11 @@ def render_thread_grounding_appendix() -> str:
     return (
         "\nTHREAD CONTEXT:\n"
         "- You are a multilingual agent; reply in the language used in the current thread unless the user clearly switches language.\n"
-        f"- Lines marked **{STEVE_PRIOR_REPLY_LABEL}** are your earlier answers in this thread — stay consistent with them; "
-        "do not deny or contradict what you already said here.\n"
+        f"- Lines marked **{STEVE_PRIOR_REPLY_LABEL}** are your earlier answers in this thread. Never contradict them — "
+        "and never restate them. Add only what is new since your last reply; if nothing new is needed, a short direct "
+        "reply to the current message is enough. Older ones may be condensed to their opening line.\n"
+        "- Do not loop back to earlier thread topics unless the current message brings them up again; "
+        "if the thread has moved on, move on with it.\n"
         "- If the user asks for sources or citations you did not actually retrieve on this turn, say so honestly "
         "instead of inventing links or denying prior statements."
     )
@@ -184,16 +191,22 @@ def should_include_community_resources_from_thread(
     The model is multilingual, but this decision happens before Steve sees
     context. We therefore use broad structural signals instead of trying to
     enumerate every language.
+
+    Deliberately anchored to the current message, the original post, and the
+    comment being replied to — NOT the recent-reply tail. Matching the tail
+    made activation sticky: one resource mention (often Steve's own) kept the
+    doc block pinned into every later reply in the thread. The post and parent
+    are static anchors, so they cannot ratchet. ``recent_replies`` is accepted
+    for call-site compatibility but no longer consulted.
     """
+    del recent_replies
     current = user_message or ""
-    thread_text = "\n".join(
-        part
-        for part in [current, original_post or "", parent_reply or "", "\n".join(list(recent_replies or [])[-8:])]
-        if part
+    anchor_text = "\n".join(
+        part for part in [current, original_post or "", parent_reply or ""] if part
     )
-    if _COMMUNITY_RESOURCE_RE.search(thread_text):
+    if _COMMUNITY_RESOURCE_RE.search(anchor_text):
         return True
-    if has_recent_docs and _RESOURCE_FOLLOWUP_RE.search(thread_text):
+    if has_recent_docs and _RESOURCE_FOLLOWUP_RE.search(anchor_text):
         return True
     if has_recent_docs and len((current or "").strip()) >= 12:
         return bool(
@@ -320,8 +333,66 @@ def render_third_party_job_grounding_rules() -> str:
     )
 
 
-def render_response_policy_prompt(user_message: str, *, surface: str, mentorship_enabled: bool = False) -> str:
+def _render_format_rules(conversational: bool) -> str:
+    if conversational:
+        return (
+            "FORMAT RULES:\n"
+            "- This is a conversation between community members, not a report: plain sentences and short "
+            "paragraphs by default.\n"
+            "- No Markdown headings unless the user explicitly asks for a structured analysis; "
+            "news_current_events keeps its required shape.\n"
+            "- Use a list only when listing is genuinely clearer; never end with a summary or "
+            "next-steps section by default.\n"
+            "- Bold sparingly.\n"
+            "- For casual replies, stay conversational and do not over-format."
+        )
+    return (
+        "FORMAT RULES:\n"
+        "- Avoid long walls of unbroken prose outside the opening paragraph.\n"
+        "- For substantive_analysis (non-news), prefer: ## Short Answer, ## Analysis, ## Recommendation, "
+        "## Pitfalls, ## Next Steps.\n"
+        "- Use bullet points by default in substantive and news sections, usually 3-6 bullets per section "
+        "where applicable.\n"
+        "- Use numbered steps only for sequences or action plans.\n"
+        "- Bold the key recommendation when helpful (substantive/recommendation modes).\n"
+        "- For casual replies, stay conversational and do not over-format."
+    )
+
+
+def render_response_policy_prompt(
+    user_message: str,
+    *,
+    surface: str,
+    mentorship_enabled: bool = False,
+    conversational: bool = False,
+) -> str:
+    """Response policy appendix.
+
+    ``conversational=True`` (community feed / group posts) keeps the mode
+    classification but swaps the report-style formatting for peer-register
+    prose: no heading template, no mandatory next-steps closer. News mode
+    keeps its required shape everywhere.
+    """
     mode = classify_response_mode(user_message, mentorship_enabled=mentorship_enabled)
+    if conversational:
+        substantive_line = (
+            "- substantive_analysis: Use for strategy, business, product, technical, career, health, finance, "
+            "community decisions, or why/how questions. Go deeper with substance — concrete reasoning in plain "
+            "prose. Headings only if the user explicitly asks for a structured analysis or report."
+        )
+        recommendation_line = (
+            "- recommendation: State the recommendation clearly and why; include tradeoffs when they matter. "
+            "Suggest next steps only when the person is actually deciding something."
+        )
+    else:
+        substantive_line = (
+            "- substantive_analysis: Use for strategy, business, product, technical, career, health, finance, "
+            "community decisions, or why/how questions. Use Markdown headings and bullet points."
+        )
+        recommendation_line = (
+            "- recommendation: State the recommendation clearly, explain why, include tradeoffs, and finish "
+            "with practical next steps."
+        )
     return f"""STEVE RESPONSE POLICY:
 - First classify the user's request internally. Current likely mode: {mode}.
 - Think step-by-step internally for complex requests, but do not reveal hidden chain-of-thought.
@@ -330,8 +401,8 @@ def render_response_policy_prompt(user_message: str, *, surface: str, mentorship
 RESPONSE MODES:
 - quick_answer: Use for casual chat, acknowledgements, and simple questions. Reply naturally in 2-5 sentences. Do not add headings unless they help.
 - news_current_events: Use for news headlines, weather, sports results, politics, markets, breaking stories, and “what happened today” briefings. Use web_search / x_search when needed. Be substantive — not a one-liner.
-- substantive_analysis: Use for strategy, business, product, technical, career, health, finance, community decisions, or why/how questions. Use Markdown headings and bullet points.
-- recommendation: State the recommendation clearly, explain why, include tradeoffs, and finish with practical next steps.
+{substantive_line}
+{recommendation_line}
 - review_critique: Evaluate what works, risks, blind spots, and improvements.
 - mentorship: Be practical, direct, supportive, and specific. Ask at most one useful follow-up question only if needed.
 
@@ -342,13 +413,7 @@ NEWS / CURRENT EVENTS (news_current_events mode) — REQUIRED SHAPE:
 - ## Sources — 2-4 lines; each line MUST be a Markdown link using the article headline as link text: [Exact headline from the source](https://full-url). Do NOT use bare URLs. Do NOT use [[1]](url) citation-style links in the final reply.
 - SOURCE HYGIENE: Prefer reputable outlets — major wires and nationals (e.g. Reuters, AP, BBC, FT, NPR, Guardian where appropriate). For Portugal or when the user writes European Portuguese / asks about Portugal, prioritise RTP Notícias, Público, Expresso, Observador, ECO (economy/business), and official Portuguese government sites (.gov.pt) for policy; cross-check thin aggregators against a tier-one outlet before relying on them.
 
-FORMAT RULES:
-- Avoid long walls of unbroken prose outside the opening paragraph.
-- For substantive_analysis (non-news), prefer: ## Short Answer, ## Analysis, ## Recommendation, ## Pitfalls, ## Next Steps.
-- Use bullet points by default in substantive and news sections, usually 3-6 bullets per section where applicable.
-- Use numbered steps only for sequences or action plans.
-- Bold the key recommendation when helpful (substantive/recommendation modes).
-- For casual replies, stay conversational and do not over-format.
+{_render_format_rules(conversational)}
 
 CONTEXT USE:
 - Use recent thread history only when it changes the answer.
@@ -368,8 +433,15 @@ def append_response_policy(
     *,
     surface: str,
     mentorship_enabled: bool = False,
+    conversational: bool = False,
 ) -> str:
-    return f"{system_prompt.rstrip()}\n\n{render_response_policy_prompt(user_message, surface=surface, mentorship_enabled=mentorship_enabled)}"
+    policy = render_response_policy_prompt(
+        user_message,
+        surface=surface,
+        mentorship_enabled=mentorship_enabled,
+        conversational=conversational,
+    )
+    return f"{system_prompt.rstrip()}\n\n{policy}"
 
 
 def append_context_guidance(system_prompt: str, guidance: Optional[str]) -> str:

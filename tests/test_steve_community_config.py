@@ -13,7 +13,7 @@ def test_paid_steve_package_config_defaults_are_cost_safe():
     cfg = get_paid_steve_package_config({})
 
     assert cfg.monthly_credit_pool == 200
-    assert cfg.monthly_provider_cost_ceiling_usd == 5.0
+    assert cfg.monthly_provider_cost_ceiling_usd == 19.99
     assert cfg.provider_cost_reservation_usd == 0.03
     assert cfg.model == "grok-4.3"
     assert cfg.multi_agent_enabled is False

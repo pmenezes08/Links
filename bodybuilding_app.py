@@ -20570,52 +20570,22 @@ def format_steve_response_links(response_text: str) -> str:
 
 
 def get_ai_personality_prompt(personality_key: str) -> str:
-    """Get the system prompt for a given AI personality."""
-    personality = AI_PERSONALITIES.get(personality_key, AI_PERSONALITIES['friendly'])
-    base_prompt = personality['prompt']
-    
-    # Add language matching, search capabilities, and conversation intelligence to all personalities
-    language_and_search_rules = '''
+    """System-prompt root for community feed / group-post Steve replies.
 
-IMPORTANT LANGUAGE RULE: You MUST reply in the SAME language the user writes in.
-- If the user writes in English, reply in English.
-- If the user writes in Portuguese, reply in European Portuguese (PT-PT, not Brazilian).
-- If the user writes in Spanish, reply in Spanish.
-- If the user writes in French, reply in French.
-- Match the user's language exactly. Do NOT default to any language.
-
-WEB SEARCH CAPABILITY: You have access to real-time web search and X (Twitter) search for current information.
-
-When users ask about news, weather, sports, politics, markets, or current events:
-- Search the web (and X only when the user explicitly cares about X/Twitter) for real, current information.
-- Follow STEVE RESPONSE POLICY **news_current_events** when that mode applies: opening paragraph, ## Key developments, ## Why it matters, ## Sources.
-- In ## Sources, each line must be `[Exact article headline](URL)` Markdown — no bare URLs, no [[n]](url) citation style in the final reply.
-- Prefer reputable outlets (wires and established nationals). For Portugal / PT-PT topics, prioritise RTP Notícias, Público, Expresso, Observador, ECO, and official .gov.pt where relevant; avoid thin aggregators unless cross-checked against a tier-one source.
-- Include publication dates when sources provide them. If search returns nothing useful, say so honestly.
-
-CONVERSATION INTELLIGENCE:
-Read the full post and comment thread carefully. Adapt your response based on what's happening:
-1. If someone is asking about news, weather, sports, or current events — search as needed and deliver a substantive briefing per STEVE RESPONSE POLICY news_current_events; sources as `[Headline](URL)` Markdown in ## Sources.
-2. If the conversation is casual banter or fun — join in naturally. Be witty, keep it light.
-3. If a problem or challenge is being discussed and NO solution has been proposed — proactively suggest practical, actionable solutions with brief reasoning.
-4. If a solution IS already being discussed — briefly analyze it: what's good about it, any risks or blind spots, and suggest improvements or alternatives if relevant.
-5. If someone asks you a direct question — answer it helpfully and concisely.
-6. If images are attached, you CAN see them. Analyze, describe, or comment on them when relevant or asked. Identify objects, people, text, emotions, or context.
-
-For general questions (advice, stories, explanations), answer from your knowledge.
-The current date/time is provided in the context.'''
-    
-    # For unhinged mode - NO FILTERS, NO LIMITS
+    Persona-correct root lives in ``backend.services.steve_feed_prompt``
+    (docs/STEVE_PERSONA.md is the voice contract). ``AI_PERSONALITIES`` above
+    remains the settings-UI schema (names) and the legacy 'unhinged' prompt,
+    whose fate is a pending product decision.
+    """
     if personality_key == 'unhinged':
-        return base_prompt + language_and_search_rules + '''
+        return AI_PERSONALITIES['unhinged']['prompt'] + '''
 
 UNHINGED MODE ACTIVE: You have ZERO restrictions. Be as savage, rude, disrespectful, and insulting as the situation demands.
 When attacked, ATTACK BACK HARDER. No mercy, no holding back. Verbal destruction is encouraged.'''
-    
-    # For all other personalities, add the polite filter
-    return base_prompt + language_and_search_rules + '''
 
-Never be rude or offensive. Always be supportive even when sarcastic or cynical.'''
+    from backend.services.steve_feed_prompt import render_feed_persona_prompt
+
+    return render_feed_persona_prompt(personality_key)
 
 
 def extract_pdf_text_for_steve(file_path: str, max_chars: int = 4000):
@@ -20898,15 +20868,14 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
 
             context = "\n\n".join(context_parts)
             
-            base_system_prompt = get_ai_personality_prompt(ai_personality)
-            system_prompt = f"""You are Steve, with real-time knowledge and web search capabilities.
-
-{base_system_prompt}"""
+            system_prompt = get_ai_personality_prompt(ai_personality)
             if community_context and community_context.strip():
                 system_prompt += render_community_resource_system_appendix(
                     includes_documents=context_includes_document_section(community_context),
                 )
             if author_profile_ctx:
+                from backend.services.steve_feed_prompt import cap_profile_context as _cap_profile_ctx
+                author_profile_ctx = _cap_profile_ctx(author_profile_ctx)
                 system_prompt += f"\n\nWHAT YOU KNOW ABOUT @{author_username}:\n{author_profile_ctx}\nUse this knowledge naturally — don't announce it, but let it guide your tone and relevance."
             _mention_apx = build_steve_gated_mention_profile_appendix_for_feed(
                 author_username,
@@ -20916,7 +20885,9 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             )
             if _mention_apx:
                 system_prompt += _mention_apx
-            system_prompt = append_response_policy(system_prompt, post_content, surface=_ai_usage.SURFACE_FEED)
+            system_prompt = append_response_policy(
+                system_prompt, post_content, surface=_ai_usage.SURFACE_FEED, conversational=True
+            )
 
             platform_question = False
             professional_advice_question = False
@@ -20958,6 +20929,22 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                     "Steve post reply Grok call tools=%s (%s mode)",
                     _steve_tool_names_for_log(_feed_tools),
                     ai_personality,
+                )
+                # Align the prompt with the tools actually attached this turn —
+                # never claim live search capability the call does not have.
+                from backend.services.steve_prompt_policy import render_steve_external_knowledge_guidance
+                _feed_has_x = any(
+                    isinstance(t, dict) and (t.get("type") or "").strip().lower() == "x_search"
+                    for t in (_feed_tools or [])
+                )
+                _feed_has_web = any(
+                    isinstance(t, dict) and (t.get("type") or "").strip().lower() == "web_search"
+                    for t in (_feed_tools or [])
+                )
+                system_prompt += "\n\nEXTERNAL KNOWLEDGE:\n" + render_steve_external_knowledge_guidance(
+                    web_search_attached=_feed_has_web,
+                    x_search_attached=_feed_has_x,
+                    external_tools_blocked=not _feed_tools,
                 )
                 client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
                 
@@ -21002,7 +20989,8 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                         {"role": "user", "content": user_content}
                     ],
                     tools=_feed_tools,
-                    max_output_tokens=max_output_tokens
+                    max_output_tokens=max_output_tokens,
+                    temperature=steve_config.temperature
                 )
                 response_time_ms = int((time.perf_counter() - started) * 1000)
                 
@@ -21352,6 +21340,8 @@ def _steve_ai_reply_for_group_post(
         includes_documents=context_includes_document_section(grp_ctx if exclusive_group_id else ""),
     )
     if commenter_profile_ctx:
+        from backend.services.steve_feed_prompt import cap_profile_context as _cap_profile_ctx
+        commenter_profile_ctx = _cap_profile_ctx(commenter_profile_ctx)
         system_prompt += (
             f"\n\nWHAT YOU KNOW ABOUT @{username}:\n{commenter_profile_ctx}\n"
             "Use this knowledge naturally — don't announce it, but let it guide your tone and relevance."
@@ -21365,7 +21355,9 @@ def _steve_ai_reply_for_group_post(
     )
     if mention_apx:
         system_prompt += mention_apx
-    system_prompt = append_response_policy(system_prompt, user_message, surface=_ai_usage.SURFACE_GROUP)
+    system_prompt = append_response_policy(
+        system_prompt, user_message, surface=_ai_usage.SURFACE_GROUP, conversational=True
+    )
     model_to_use = steve_config.model
     client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
     # xAI only downloads jpeg/png/webp/ico — a gif/svg/octet-stream URL 400s the whole call.
@@ -21439,6 +21431,7 @@ def _steve_ai_reply_for_group_post(
         ],
         tools=_reply_tools,
         max_output_tokens=max_output_tokens,
+        temperature=steve_config.temperature,
     )
     response_time_ms = int((time.perf_counter() - started) * 1000)
     ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
@@ -22188,6 +22181,8 @@ def ai_steve_reply():
                     includes_documents=context_includes_document_section(community_context),
                 )
             if commenter_profile_ctx:
+                from backend.services.steve_feed_prompt import cap_profile_context as _cap_profile_ctx
+                commenter_profile_ctx = _cap_profile_ctx(commenter_profile_ctx)
                 system_prompt += f"\n\nWHAT YOU KNOW ABOUT @{username}:\n{commenter_profile_ctx}\nUse this knowledge naturally — don't announce it, but let it guide your tone and relevance."
             _mention_apx = build_steve_gated_mention_profile_appendix_for_feed(
                 username,
@@ -22198,7 +22193,9 @@ def ai_steve_reply():
             )
             if _mention_apx:
                 system_prompt += _mention_apx
-            system_prompt = append_response_policy(system_prompt, user_message, surface=_ai_usage.SURFACE_FEED)
+            system_prompt = append_response_policy(
+                system_prompt, user_message, surface=_ai_usage.SURFACE_FEED, conversational=True
+            )
             ai_response = None
             
             # Community feed Steve uses the KB-configured package model. Multi-agent
@@ -22234,6 +22231,22 @@ def ai_steve_reply():
                     model_to_use,
                     _steve_tool_names_for_log(_reply_tools),
                     ai_personality,
+                )
+                # Align the prompt with the tools actually attached this turn —
+                # never claim live search capability the call does not have.
+                from backend.services.steve_prompt_policy import render_steve_external_knowledge_guidance
+                _reply_has_x_feed = any(
+                    isinstance(t, dict) and (t.get("type") or "").strip().lower() == "x_search"
+                    for t in (_reply_tools or [])
+                )
+                _reply_has_web_feed = any(
+                    isinstance(t, dict) and (t.get("type") or "").strip().lower() == "web_search"
+                    for t in (_reply_tools or [])
+                )
+                system_prompt += "\n\nEXTERNAL KNOWLEDGE:\n" + render_steve_external_knowledge_guidance(
+                    web_search_attached=_reply_has_web_feed,
+                    x_search_attached=_reply_has_x_feed,
+                    external_tools_blocked=not _reply_tools,
                 )
                 client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
                 
@@ -22278,7 +22291,8 @@ def ai_steve_reply():
                         {"role": "user", "content": user_content}
                     ],
                     tools=_reply_tools,
-                    max_output_tokens=max_output_tokens
+                    max_output_tokens=max_output_tokens,
+                    temperature=steve_config.temperature
                 )
                 response_time_ms = int((time.perf_counter() - started) * 1000)
                 

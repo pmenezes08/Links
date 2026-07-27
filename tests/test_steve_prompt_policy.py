@@ -59,6 +59,14 @@ def test_context_injection_heuristics_are_deliberate():
     assert should_include_user_profile("List my communities")
     assert not should_include_user_profile("What is a good breakfast?")
 
+
+def test_profile_gate_ignores_steve_invocation_mention():
+    # Feed/@Steve surfaces are mention-gated, so every message contains
+    # "@steve"; the invocation itself must not inject the full dossier.
+    assert not should_include_user_profile("@steve what do you think?")
+    assert not should_include_user_profile("@Steve concordas com isto?")
+    assert should_include_user_profile("@steve can you introduce me to @mary?")
+
     assert should_include_community_resources("Can you summarize the uploaded PDF?")
     assert should_include_community_resources("What events are in the calendar?")
     assert should_include_community_resources("read the documents")
@@ -79,6 +87,37 @@ def test_thread_activation_with_plurals_and_followups():
         "nice post!",
         has_recent_docs=False,
     )
+
+
+def test_thread_activation_is_not_sticky_on_reply_tail():
+    # One resource mention in the recent-reply tail (often Steve's own earlier
+    # answer) must not pin the resource block into every later reply.
+    assert not should_include_community_resources_from_thread(
+        "so who's coming on Saturday?",
+        original_post="Weekend plans",
+        parent_reply="count me in",
+        recent_replies=["I summarised the document above — see the PDF for details."],
+        has_recent_docs=True,
+    )
+    # But a resource signal in the message being replied to still activates.
+    assert should_include_community_resources_from_thread(
+        "can you take a look?",
+        parent_reply="I uploaded the budget document just now",
+    )
+
+
+def test_conversational_policy_drops_heading_template():
+    message = "How should we price this community product and what are the risks?"
+    conversational = render_response_policy_prompt(message, surface="feed", conversational=True)
+    formal = render_response_policy_prompt(message, surface="dm")
+
+    assert "## Short Answer" not in conversational
+    assert "conversation between community members" in conversational
+    assert "never end with a summary or next-steps section by default" in conversational
+    # News mode keeps its required shape on every surface.
+    assert "## Key developments" in conversational
+    # DM keeps the structured template.
+    assert "## Short Answer" in formal
 
 
 def test_document_section_detection_and_conditional_system_prompt():

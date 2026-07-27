@@ -65,7 +65,9 @@ def test_format_thread_labels_steve_prior_replies():
 
     assert STEVE_PRIOR_REPLY_LABEL in block
     assert "NASA digital transformation example." in block
-    assert plain == ["What about NASA?", "NASA digital transformation example."]
+    # plain feeds doc-retrieval queries — Steve's own replies are excluded so
+    # his mentions cannot re-trigger the same retrieval every turn.
+    assert plain == ["What about NASA?"]
     assert "#1" in block and "#2" in block
 
 
@@ -109,3 +111,72 @@ def test_render_thread_grounding_appendix_mentions_multilingual_and_prior_replie
     text = render_thread_grounding_appendix()
     assert "multilingual" in text.lower()
     assert STEVE_PRIOR_REPLY_LABEL in text
+    assert "never restate them" in text
+    assert "Do not loop back to earlier thread topics" in text
+
+
+def _steve_reply(i: int, text: str) -> ThreadComment:
+    return ThreadComment(id=i, username="steve", content=text, parent_reply_id=None)
+
+
+def _human_reply(i: int, text: str) -> ThreadComment:
+    return ThreadComment(id=i, username=f"user{i}", content=text, parent_reply_id=None)
+
+
+def test_older_steve_replies_are_condensed_to_stubs():
+    long_reply = "Here is my full analysis.\nWith many lines.\n" + "x" * 500
+    comments = [
+        _human_reply(1, "first question"),
+        _steve_reply(2, long_reply),          # oldest Steve reply → stub
+        _human_reply(3, "second question"),
+        _steve_reply(4, "Second Steve answer, also long. " * 10),  # kept verbatim
+        _human_reply(5, "third question"),
+        _steve_reply(6, "Third Steve answer."),                     # kept verbatim
+    ]
+    block, plain = format_thread_for_steve(
+        comments,
+        post_description="Original post by mary: Topic",
+        current_username="paulo",
+        current_message="@steve next question",
+        max_chars=12000,
+    )
+
+    assert "…condensed; do not restate…" in block
+    assert "With many lines." not in block          # older reply lost its body
+    assert "Third Steve answer." in block           # newest kept verbatim
+    assert ("Second Steve answer, also long. " * 10).strip() in block
+    # Steve content never leaks into the retrieval-query list.
+    assert plain == ["first question", "second question", "third question"]
+
+
+def test_two_or_fewer_steve_replies_stay_verbatim():
+    comments = [
+        _human_reply(1, "question"),
+        _steve_reply(2, "Full first answer.\nSecond line kept."),
+        _steve_reply(3, "Full second answer."),
+    ]
+    block, _ = format_thread_for_steve(
+        comments,
+        post_description="Original post by mary: Topic",
+        current_username="paulo",
+        current_message="@steve follow up",
+        max_chars=12000,
+    )
+    assert "Second line kept." in block
+    assert "condensed" not in block
+
+
+def test_multi_user_note_only_when_another_user_is_addressed():
+    comments = [_human_reply(1, "hello")]
+    kwargs = dict(
+        post_description="Original post by mary: Topic",
+        current_username="paulo",
+        current_message="@steve what do you think?",
+        max_chars=12000,
+    )
+    block_plain_mention, _ = format_thread_for_steve(comments, **kwargs)
+    assert "look through the comments above" not in block_plain_mention
+
+    kwargs["current_message"] = "@steve can you help @mary with her question?"
+    block_other_mention, _ = format_thread_for_steve(comments, **kwargs)
+    assert "look through the comments above" in block_other_mention
