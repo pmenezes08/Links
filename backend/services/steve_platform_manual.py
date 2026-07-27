@@ -411,15 +411,27 @@ def is_platform_question(message: str | None) -> bool:
     return detect_platform_manual_intent(message)
 
 
+# Word-boundary matching only: bare substring checks misfire on other languages
+# (pt "problema" contains "problem") and hijack the whole DM turn. Bare ambiguous
+# words ("problem", "issue", "feedback", "suggestion") are excluded — those turns
+# go to the normal AI reply instead of being auto-filed as a report.
+_FEEDBACK_INTENT_RE = re.compile(
+    r"\b(?:"
+    r"bugs?|bug report|report a bug|glitch(?:y|es)?|broken|crash(?:es|ed|ing)?|errors?"
+    r"|not working|stopped working|won[’']?t work|doesn[’']?t work|does not work|isn[’']?t working"
+    r"|feature request|product idea|complaint"
+    r"|i wish|should add|can you add|please add"
+    r"|i have (?:some )?feedback|some feedback|my feedback|give (?:you )?feedback"
+    r"|i have a suggestion"
+    r")\b"
+)
+
+
 def is_feedback_intent(message: str | None) -> bool:
     msg = _norm(message)
     if not msg:
         return False
-    terms = _CARD_BY_ID["feedback.bugs_features"].intents + (
-        "doesn't work", "does not work", "crash", "error", "issue", "problem",
-        "i wish", "should add", "can you add", "improvement", "suggestion",
-    )
-    return any(term in msg for term in terms)
+    return bool(_FEEDBACK_INTENT_RE.search(msg))
 
 
 def is_pricing_intent(message: str | None) -> bool:

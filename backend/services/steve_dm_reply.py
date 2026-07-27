@@ -157,10 +157,11 @@ def run_steve_dm_reply(
         _clear_steve_typing()
         return
 
+    # Feedback capture — only private DM with Steve (no third participant)
     try:
         from backend.services.steve_platform_manual import is_feedback_intent
 
-        if is_feedback_intent(user_message):
+        if not other_username and is_feedback_intent(user_message):
             from backend.services.steve_feedback import create_feedback_item
 
             text = (user_message or "").strip()
