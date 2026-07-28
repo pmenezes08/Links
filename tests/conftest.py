@@ -453,6 +453,11 @@ _TRUNCATE_TABLES: List[str] = [
     "lifecycle_email_sends",
     "pending_signups",
     "messages",
+    # The DM badge count (count_dm_unread_excluding_cleared) LEFT JOINs
+    # deleted_chat_threads and anti-joins blocked_users, so a leaked cutoff or
+    # block row silently changes a later suite's unread total.
+    "deleted_chat_threads",
+    "blocked_users",
     "group_chats",
     "group_chat_members",
     "group_chat_messages",

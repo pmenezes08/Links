@@ -15,6 +15,15 @@ def _login(client, username: str) -> None:
 
 
 def _ensure_messages_table() -> None:
+    """Create ``messages`` with every column ``fetch_dm_messages`` reads.
+
+    ``CREATE TABLE IF NOT EXISTS`` is a no-op when another suite in the shared
+    CI database created the table first, so a bare create here does NOT
+    guarantee the media columns exist. ``/get_messages`` selects
+    ``image_path``/``video_path``/``audio_path``/... in every branch of its
+    fallback chain, so a missing column fails the whole read with
+    ``success: False`` rather than degrading. Add each column explicitly.
+    """
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute(
@@ -30,6 +39,31 @@ def _ensure_messages_table() -> None:
             )
             """
         )
+        for col, ddl in (
+            ("image_path", "ALTER TABLE messages ADD COLUMN image_path VARCHAR(512) NULL"),
+            ("video_path", "ALTER TABLE messages ADD COLUMN video_path VARCHAR(512) NULL"),
+            ("audio_path", "ALTER TABLE messages ADD COLUMN audio_path VARCHAR(512) NULL"),
+            ("audio_duration_seconds", "ALTER TABLE messages ADD COLUMN audio_duration_seconds INT NULL"),
+            ("audio_mime", "ALTER TABLE messages ADD COLUMN audio_mime VARCHAR(100) NULL"),
+            ("audio_summary", "ALTER TABLE messages ADD COLUMN audio_summary TEXT NULL"),
+            ("media_paths", "ALTER TABLE messages ADD COLUMN media_paths TEXT NULL"),
+            ("media_dims", "ALTER TABLE messages ADD COLUMN media_dims TEXT NULL"),
+            ("file_path", "ALTER TABLE messages ADD COLUMN file_path VARCHAR(512) NULL"),
+            ("file_name", "ALTER TABLE messages ADD COLUMN file_name VARCHAR(255) NULL"),
+            ("is_encrypted", "ALTER TABLE messages ADD COLUMN is_encrypted TINYINT(1) DEFAULT 0"),
+            ("encrypted_body", "ALTER TABLE messages ADD COLUMN encrypted_body TEXT NULL"),
+            ("encrypted_body_for_sender", "ALTER TABLE messages ADD COLUMN encrypted_body_for_sender TEXT NULL"),
+            ("edited_at", "ALTER TABLE messages ADD COLUMN edited_at DATETIME NULL"),
+            ("reaction", "ALTER TABLE messages ADD COLUMN reaction VARCHAR(32) NULL"),
+            ("reaction_by", "ALTER TABLE messages ADD COLUMN reaction_by VARCHAR(191) NULL"),
+        ):
+            try:
+                c.execute(f"SELECT {col} FROM messages LIMIT 1")
+            except Exception:
+                try:
+                    c.execute(ddl)
+                except Exception:
+                    pass
         try:
             conn.commit()
         except Exception:

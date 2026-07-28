@@ -217,10 +217,16 @@ def test_dm_badge_excludes_blocked_pairs(mysql_dsn):
         c = conn.cursor()
         ph = get_sql_placeholder()
 
+        # ``timestamp`` is supplied explicitly: whichever suite created the
+        # shared CI ``messages`` table first decides its schema, and some
+        # variants declare the column with no default (insert -> error 1364).
+        ts = "2026-07-28 10:00:00"
+
         def dm(sender: str, receiver: str) -> None:
             c.execute(
-                f"INSERT INTO messages (sender, receiver, message, is_read) VALUES ({ph}, {ph}, {ph}, 0)",
-                (sender, receiver, "x"),
+                f"INSERT INTO messages (sender, receiver, message, timestamp, is_read) "
+                f"VALUES ({ph}, {ph}, {ph}, {ph}, 0)",
+                (sender, receiver, "x", ts),
             )
 
         dm("bl_friend", "bl_user")    # COUNTED
