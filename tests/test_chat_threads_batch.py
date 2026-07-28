@@ -219,10 +219,13 @@ def test_steve_tagged_rows_belong_to_the_human_pair(needs_mysql):
     payload = _fresh_payload("ctb_v4")
     threads = _threads_by_peer(payload)
 
-    # The tagged Steve reply is the human pair's preview...
+    # The tagged Steve reply is the human pair's preview AND its unread (the
+    # badge endpoint counts the row, so the pair thread must surface it —
+    # otherwise the user sees a badge with no unread thread anywhere).
     pair = threads["ctb_p5"]
     assert pair["last_message_text"] == "steve in-thread answer"
     assert pair["last_sender"] == "steve"
+    assert pair["unread_count"] == 1
 
     # ...and must NOT leak into the private Steve thread (preview or unread).
     steve_thread = threads["steve"]
@@ -230,6 +233,68 @@ def test_steve_tagged_rows_belong_to_the_human_pair(needs_mysql):
     assert steve_thread["unread_count"] == 1
 
     _assert_batch_matches_legacy("ctb_v4", payload)
+
+
+def test_batch_thread_stats_runs_without_fallback(needs_mysql):
+    """The batch path must actually execute — a NameError/SQL error inside
+    ``_batch_thread_stats`` silently degrades every thread-list build to the
+    legacy N+1 loop (this happened: ``human_pair_thread_key`` was used without
+    being imported), and the payload-equality tests can't see it."""
+    _ensure_tables()
+    make_user("ctb_v6")
+    make_user("ctb_p8")
+
+    _send("ctb_v6", "ctb_p8", "hello", "2026-07-11 09:00:00")
+    _send("ctb_p8", "ctb_v6", "hi back", "2026-07-11 09:01:00", is_read=0)
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        ph = get_sql_placeholder()
+        # Raises (instead of returning) on any regression — no silent fallback.
+        last_by_peer, unread_by_peer = dm_chat_threads._batch_thread_stats(
+            c, ph, "ctb_v6", ["ctb_p8"]
+        )
+    assert unread_by_peer.get("ctb_p8") == 1
+    assert last_by_peer["ctb_p8"]["message"] == "hi back"
+
+
+def test_no_ghost_badge_steve_in_thread_rows(needs_mysql):
+    """Regression: badge said N unread while no thread showed any unread and
+    nothing could clear it. Every row the badge counts must (a) appear as
+    unread on some thread and (b) be cleared by opening that thread."""
+    from backend.services.dm_unread import (
+        count_dm_unread_excluding_cleared,
+        mark_dm_thread_read,
+    )
+
+    _ensure_tables()
+    make_user("ctb_v7")
+    make_user("ctb_p9")
+    make_user("steve")
+
+    thr = human_pair_thread_key("ctb_v7", "ctb_p9")
+    _send("ctb_v7", "ctb_p9", "question for the pair", "2026-07-11 10:00:00")
+    _send("steve", "ctb_v7", "steve in-thread reply 1", "2026-07-11 10:01:00", is_read=0, thr=thr)
+    _send("steve", "ctb_v7", "steve in-thread reply 2", "2026-07-11 10:02:00", is_read=0, thr=thr)
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        badge = count_dm_unread_excluding_cleared(c, "ctb_v7")
+    assert badge == 2
+
+    # The badge total must be attributable to visible threads.
+    payload = _fresh_payload("ctb_v7")
+    visible_unread = sum(t["unread_count"] for t in payload["threads"])
+    assert visible_unread == badge == 2
+    assert _threads_by_peer(payload)["ctb_p9"]["unread_count"] == 2
+
+    # Opening the pair thread clears the tagged Steve rows -> badge drops to 0.
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        marked = mark_dm_thread_read(c, "ctb_v7", "ctb_p9")
+        conn.commit()
+        assert marked == 2
+        assert count_dm_unread_excluding_cleared(c, "ctb_v7") == 0
 
 
 def test_deleted_thread_cutoff_filters_preview_and_unread(needs_mysql):

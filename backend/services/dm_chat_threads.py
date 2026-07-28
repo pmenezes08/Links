@@ -14,6 +14,7 @@ from backend.services.dm_chats_tables import ensure_archived_chats_table
 from backend.services.dm_human_thread import (
     dm_last_message_where_clause,
     ensure_human_dm_thread_column,
+    human_pair_thread_key,
     is_private_steve_dm_peer,
 )
 from backend.services.profile_pictures import CaseInsensitiveUserMap
@@ -203,8 +204,8 @@ def _batch_thread_stats(
                 _consider(peer_key, d)
 
     # Unread per counterpart. Human senders are never tagged, so excluding
-    # tagged Steve rows only affects the private Steve thread — matching the
-    # legacy per-peer queries (normal: plain count; steve: untagged only).
+    # tagged Steve rows here only affects the private Steve thread (untagged
+    # rows only); tagged Steve rows are attributed to their human pair below.
     unread_by_peer: dict[str, int] = {}
     c.execute(
         f"""
@@ -220,6 +221,28 @@ def _batch_thread_stats(
         cnt = r["cnt"] if hasattr(r, "keys") else r[1]
         key = str(sender or "").lower()
         unread_by_peer[key] = unread_by_peer.get(key, 0) + int(cnt or 0)
+
+    # Unread Steve in-thread rows count toward the human pair they belong to.
+    # The badge count (count_dm_unread_excluding_cleared) includes these rows,
+    # so leaving them out of every thread produced a "ghost badge": unread > 0
+    # with no thread showing unread and no way to clear it.
+    if thr_to_peer:
+        placeholders = ",".join([ph] * len(thr_to_peer))
+        c.execute(
+            f"""
+            SELECT human_dm_thread AS thr, COUNT(*) AS cnt FROM messages
+            WHERE receiver = {ph} AND is_read = 0 AND sender = 'steve'
+              AND human_dm_thread IN ({placeholders})
+            GROUP BY human_dm_thread
+            """,
+            (username,) + tuple(thr_to_peer.keys()),
+        )
+        for r in c.fetchall():
+            thr = r["thr"] if hasattr(r, "keys") else r[0]
+            cnt = r["cnt"] if hasattr(r, "keys") else r[1]
+            peer_key = thr_to_peer.get(str(thr or ""))
+            if peer_key:
+                unread_by_peer[peer_key] = unread_by_peer.get(peer_key, 0) + int(cnt or 0)
 
     return last_by_peer, unread_by_peer
 
@@ -241,6 +264,10 @@ def build_chat_threads_payload(username: str) -> dict:
         with get_db_connection() as conn:
             c = conn.cursor()
 
+            try:
+                ensure_human_dm_thread_column(c)
+            except Exception:
+                pass
             ensure_archived_chats_table(c)
             try:
                 c.execute(f"SELECT other_username FROM archived_chats WHERE username = {ph}", (username,))
@@ -422,8 +449,10 @@ def build_chat_threads_payload(username: str) -> dict:
                                 )
                             else:
                                 c.execute(
-                                    f"SELECT COUNT(*) as count FROM messages WHERE sender={ph} AND receiver={ph} AND is_read=0 AND timestamp > {ph}",
-                                    (other_username, username, del_at_for_preview),
+                                    f"SELECT COUNT(*) as count FROM messages WHERE receiver={ph} AND is_read=0 AND timestamp > {ph} "
+                                    f"AND (sender={ph} OR (sender='steve' AND human_dm_thread={ph}))",
+                                    (username, del_at_for_preview, other_username,
+                                     human_pair_thread_key(username, other_username)),
                                 )
                         else:
                             if is_private_steve_dm_peer(other_username):
@@ -433,9 +462,13 @@ def build_chat_threads_payload(username: str) -> dict:
                                     ("steve", username),
                                 )
                             else:
+                                # Same visibility as the thread itself: peer rows
+                                # plus Steve in-thread rows tagged for this pair.
                                 c.execute(
-                                    f"SELECT COUNT(*) as count FROM messages WHERE sender={ph} AND receiver={ph} AND is_read=0",
-                                    (other_username, username),
+                                    f"SELECT COUNT(*) as count FROM messages WHERE receiver={ph} AND is_read=0 "
+                                    f"AND (sender={ph} OR (sender='steve' AND human_dm_thread={ph}))",
+                                    (username, other_username,
+                                     human_pair_thread_key(username, other_username)),
                                 )
                         unread_row = c.fetchone()
                         unread_count = (

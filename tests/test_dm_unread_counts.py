@@ -1,19 +1,57 @@
-"""Tests for ``backend.services.dm_unread.count_group_unread_excluding_cleared``.
+"""Tests for the ``/check_unread_messages`` badge counts (``backend.services.dm_unread``).
 
-The single batched JOIN must reproduce the former per-group ``COUNT`` loop in
-``/check_unread_messages``: a message is unread for the user only when its ``id``
-is greater than the user's per-group ``last_read_message_id`` (0 with no receipt),
-it is not deleted, it was not sent by the user, and the user belongs to the group.
+Group count: the single batched JOIN must reproduce the former per-group ``COUNT``
+loop — a message is unread for the user only when its ``id`` is greater than the
+user's per-group ``last_read_message_id`` (0 with no receipt), it is not deleted,
+it was not sent by the user, and the user belongs to a group that still exists.
+
+Ghost-badge invariant: the badge must never count rows the thread list can't
+surface (blocked pairs, orphaned group memberships) — those would show a badge
+number the user has no way to clear.
 """
 
 from __future__ import annotations
 
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services.dm_unread import (
+    count_dm_unread_excluding_cleared,
     count_group_unread_excluding_cleared,
     count_unread_notifications,
 )
 from tests.fixtures import make_user
+
+
+def _ensure_dm_tables() -> None:
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS messages (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                sender VARCHAR(191) NOT NULL,
+                receiver VARCHAR(191) NOT NULL,
+                message TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                is_read TINYINT(1) DEFAULT 0,
+                is_encrypted TINYINT(1) DEFAULT 0,
+                human_dm_thread VARCHAR(191) NULL
+            )"""
+        )
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS deleted_chat_threads (
+                username VARCHAR(191) NOT NULL,
+                other_username VARCHAR(191) NOT NULL,
+                deleted_at DATETIME NULL,
+                PRIMARY KEY (username, other_username)
+            )"""
+        )
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS blocked_users (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                blocker_username VARCHAR(191) NOT NULL,
+                blocked_username VARCHAR(191) NOT NULL
+            )"""
+        )
+        conn.commit()
 
 
 def _ensure_group_tables() -> None:
@@ -118,6 +156,15 @@ def test_count_group_unread_excluding_cleared_matches_loop_semantics(mysql_dsn):
         add_member(gc, "gu_other")
         msg(gc, "gu_other")             # not a member               -> not counted
 
+        # Group D: orphaned membership — group_chats row deleted but member +
+        # message rows survived (prod FKs don't cascade everywhere). No visible
+        # chat exists, so counting it would be an uncleareable ghost badge.
+        gd = new_group("D")
+        add_member(gd, "gu_member")
+        add_member(gd, "gu_other")
+        msg(gd, "gu_other")             # orphaned group             -> not counted
+        c.execute(f"DELETE FROM group_chats WHERE id = {ph}", (gd,))
+
         conn.commit()
 
         # gu_member: one fresh message in A + one in B.
@@ -154,3 +201,39 @@ def test_count_unread_notifications_excludes_message_and_reaction(mysql_dsn):
 
         assert count_unread_notifications(c, "nu_user") == 2
         assert count_unread_notifications(c, "nu_other") == 1
+
+
+def test_dm_badge_excludes_blocked_pairs(mysql_dsn):
+    """The thread list hides blocked threads entirely, so unread rows from a
+    blocked pair must not count toward the badge — they would be a permanent
+    ghost badge with no visible thread to open and clear them."""
+    _ensure_dm_tables()
+    make_user("bl_user")
+    make_user("bl_friend")
+    make_user("bl_blocked")
+    make_user("bl_blocker")
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        ph = get_sql_placeholder()
+
+        def dm(sender: str, receiver: str) -> None:
+            c.execute(
+                f"INSERT INTO messages (sender, receiver, message, is_read) VALUES ({ph}, {ph}, {ph}, 0)",
+                (sender, receiver, "x"),
+            )
+
+        dm("bl_friend", "bl_user")    # COUNTED
+        dm("bl_blocked", "bl_user")   # excluded: bl_user blocked them
+        dm("bl_blocker", "bl_user")   # excluded: they blocked bl_user
+        c.execute(
+            f"INSERT INTO blocked_users (blocker_username, blocked_username) VALUES ({ph}, {ph})",
+            ("bl_user", "bl_blocked"),
+        )
+        c.execute(
+            f"INSERT INTO blocked_users (blocker_username, blocked_username) VALUES ({ph}, {ph})",
+            ("bl_blocker", "bl_user"),
+        )
+        conn.commit()
+
+        assert count_dm_unread_excluding_cleared(c, "bl_user") == 1

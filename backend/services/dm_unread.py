@@ -1,30 +1,91 @@
-"""DM unread counts excluding one-sided cleared threads (deleted_chat_threads)."""
+"""DM unread counts excluding one-sided cleared threads (deleted_chat_threads).
+
+Invariant: every message row this module counts as unread must (a) surface as
+unread on some thread in /api/chat_threads and (b) be marked read by
+``mark_dm_thread_read`` when that thread is opened. Any row that violates this
+becomes a "ghost badge" — an app-icon/tab count the user can never clear.
+"""
 
 from __future__ import annotations
 
 from backend.services.database import get_sql_placeholder
+from backend.services.dm_human_thread import (
+    human_pair_thread_key,
+    is_private_steve_dm_peer,
+)
 
 
 def count_dm_unread_excluding_cleared(cursor, username: str) -> int:
     """
     Count unread DMs for the receiver, ignoring messages at or before a WhatsApp-style
-    clear/delete boundary (deleted_chat_threads).
+    clear/delete boundary (deleted_chat_threads) and messages from blocked pairs
+    (the thread list hides blocked threads, so counting them would produce an
+    uncleareable ghost badge).
     """
     ph = get_sql_placeholder()
-    sql = f"""
+    base = f"""
         SELECT COUNT(*) AS cnt FROM messages m
         LEFT JOIN deleted_chat_threads dct
           ON dct.username = m.receiver AND dct.other_username = m.sender
         WHERE m.receiver = {ph} AND m.is_read = 0
           AND (dct.deleted_at IS NULL OR m.timestamp > dct.deleted_at)
     """
-    cursor.execute(sql, (username,))
-    row = cursor.fetchone()
+    blocked_filter = """
+          AND NOT EXISTS (
+              SELECT 1 FROM blocked_users bu
+              WHERE (bu.blocker_username = m.receiver AND bu.blocked_username = m.sender)
+                 OR (bu.blocker_username = m.sender AND bu.blocked_username = m.receiver)
+          )
+    """
+    try:
+        cursor.execute(base + blocked_filter, (username,))
+        row = cursor.fetchone()
+    except Exception:
+        # blocked_users table may not exist yet in this environment.
+        cursor.execute(base, (username,))
+        row = cursor.fetchone()
     if row is None:
         return 0
     if hasattr(row, "keys"):
         return int(list(row.values())[0] or 0)
     return int(row[0] or 0)
+
+
+def mark_dm_thread_read(cursor, username: str, other_username: str) -> int:
+    """Mark every message the viewer can see in this DM thread as read.
+
+    This must clear exactly what the thread displays (dm_messages_where_clause):
+    rows from the peer PLUS Steve in-thread rows tagged for this human pair
+    (``sender='steve' AND human_dm_thread=<pair key>``). The previous plain
+    ``sender = peer`` UPDATE never cleared tagged Steve rows, so the badge count
+    (which includes them) stayed above zero forever. Returns rows updated.
+    """
+    ph = get_sql_placeholder()
+    if is_private_steve_dm_peer(other_username):
+        # Legacy behaviour: opening the private Steve chat clears all Steve rows.
+        cursor.execute(
+            f"UPDATE messages SET is_read=1 WHERE sender={ph} AND receiver={ph} AND is_read=0",
+            (other_username, username),
+        )
+        return cursor.rowcount or 0
+    thr_key = human_pair_thread_key(username, other_username)
+    try:
+        cursor.execute(
+            f"""
+            UPDATE messages SET is_read=1
+            WHERE receiver = {ph} AND is_read = 0
+              AND (sender = {ph} OR (sender = 'steve' AND human_dm_thread = {ph}))
+            """,
+            (username, other_username, thr_key),
+        )
+        return cursor.rowcount or 0
+    except Exception:
+        # human_dm_thread column may not exist yet in this environment.
+        cursor.execute(
+            f"UPDATE messages SET is_read=1 WHERE sender={ph} AND receiver={ph} AND is_read=0",
+            (other_username, username),
+        )
+        return cursor.rowcount or 0
 
 
 def count_group_unread_excluding_cleared(cursor, username: str) -> int:
@@ -39,9 +100,14 @@ def count_group_unread_excluding_cleared(cursor, username: str) -> int:
     loop's semantics exactly.
     """
     ph = get_sql_placeholder()
+    # The JOIN on group_chats drops orphaned memberships (group deleted but the
+    # member/message rows survived — prod FKs don't cascade everywhere): those
+    # groups have no visible chat, so counting them would be a ghost badge.
     sql = f"""
         SELECT COUNT(*) AS cnt
         FROM group_chat_members gcm
+        JOIN group_chats gc
+          ON gc.id = gcm.group_id
         LEFT JOIN group_chat_read_receipts gcr
           ON gcr.group_id = gcm.group_id AND gcr.username = gcm.username
         JOIN group_chat_messages m

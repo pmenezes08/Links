@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 
-from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
+from backend.services.database import get_db_connection, get_sql_placeholder
 from redis_cache import cache, invalidate_message_cache
 
 logger = logging.getLogger(__name__)
@@ -136,10 +136,13 @@ def fetch_dm_messages(
                         dm_marked_read = 0
                         if not before_id_int:
                             try:
+                                from backend.services.dm_unread import mark_dm_thread_read
                                 with get_db_connection() as _mr_conn:
                                     _mr_c = _mr_conn.cursor()
-                                    _mr_c.execute("UPDATE messages SET is_read=1 WHERE sender=%s AND receiver=%s AND is_read=0" if USE_MYSQL else "UPDATE messages SET is_read=1 WHERE sender=? AND receiver=? AND is_read=0", (peer_username, username))
-                                    dm_marked_read = _mr_c.rowcount or 0
+                                    # Covers peer rows AND Steve in-thread rows tagged
+                                    # for this pair — both are visible in the thread
+                                    # and counted by the badge.
+                                    dm_marked_read = mark_dm_thread_read(_mr_c, username, peer_username)
                                     _mr_conn.commit()
                                     if dm_marked_read > 0:
                                         try:
@@ -438,9 +441,10 @@ def fetch_dm_messages(
                 except Exception:
                     pass
             
-            # Mark messages from other user as read
-            c.execute("UPDATE messages SET is_read=1 WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
-            marked_read = c.rowcount
+            # Mark everything visible in this thread as read: peer rows AND
+            # Steve in-thread rows tagged for this pair (badge counts both).
+            from backend.services.dm_unread import mark_dm_thread_read
+            marked_read = mark_dm_thread_read(c, username, other_username)
             conn.commit()
             
             # Update badge if any messages were marked as read
