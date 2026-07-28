@@ -214,6 +214,7 @@ export function mergePolledDmMessages<T extends object>(
       file_path: docFields.file_path,
       file_name: docFields.file_name,
       sent: isSentByMe,
+      is_steve: m.is_steve ?? (existing as { is_steve?: boolean } | undefined)?.is_steve,
       time: existing?.time ?? normalizedTime,
       reaction: serverReaction || existing?.reaction || idBasedReaction || meta.reaction,
       replySnippet: replySnippet || existing?.replySnippet || meta.replySnippet,

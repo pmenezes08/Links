@@ -138,6 +138,7 @@ jobs:
             tests/test_dm_unread_counts.py \
             tests/test_dm_audio_idempotency.py \
             tests/test_dm_typing.py \
+            tests/test_steve_human_dm_thread_isolation.py \
             tests/test_chat_threads_batch.py \
             tests/test_http_conditional.py \
             tests/test_builder_guide_unit.py \

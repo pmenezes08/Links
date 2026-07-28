@@ -1014,6 +1014,12 @@ export default function Messages(){
                         )}
                       </div>
                       <div className="text-[13px] text-c-text-tertiary truncate">
+                        {/* Steve's in-thread replies need attribution in the preview,
+                            or the row reads as if the human peer wrote them. */}
+                        {(thread.last_sender || '').toLowerCase() === 'steve' &&
+                          thread.other_username.toLowerCase() !== 'steve' && (
+                            <span className="text-cpoint-turquoise">Steve: </span>
+                          )}
                         {formatLastMessagePreview(thread.last_message_text, t)}
                       </div>
                     </div>
@@ -1131,6 +1137,10 @@ export default function Messages(){
                                 )}
                               </div>
                               <div className="text-[13px] text-c-text-tertiary truncate">
+                                {(archivedThread.last_sender || '').toLowerCase() === 'steve' &&
+                                  archivedThread.other_username.toLowerCase() !== 'steve' && (
+                                    <span className="text-cpoint-turquoise">Steve: </span>
+                                  )}
                                 {formatLastMessagePreview(archivedThread.last_message_text, t)}
                               </div>
                             </div>

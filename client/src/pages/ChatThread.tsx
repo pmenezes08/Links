@@ -215,6 +215,7 @@ export default function ChatThread(){
       text: newest.text,
       time: newest.time,
       sentByViewer: !!newest.sent,
+      steveAuthored: !!newest.is_steve,
     })
   }, [viewer, username, messages])
 
@@ -2643,7 +2644,7 @@ export default function ChatThread(){
                   onReply={() => {
                     setReplyTo({
                       text: m.text,
-                      sender: m.sent ? 'You' : (otherProfile?.display_name || username || 'User'),
+                      sender: m.sent ? 'You' : (m.is_steve ? 'Steve' : (otherProfile?.display_name || username || 'User')),
                       image_path: m.image_path,
                       video_path: m.video_path,
                       audio_path: m.audio_path,
@@ -2681,7 +2682,7 @@ export default function ChatThread(){
                   onReply={() => {
                     setReplyTo({
                       text: m.text,
-                      sender: m.sent ? 'You' : (otherProfile?.display_name || username || 'User'),
+                      sender: m.sent ? 'You' : (m.is_steve ? 'Steve' : (otherProfile?.display_name || username || 'User')),
                       image_path: m.image_path,
                       video_path: m.video_path,
                       audio_path: m.audio_path,

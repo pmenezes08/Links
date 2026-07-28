@@ -63,6 +63,19 @@ describe('bumpDmThreadPreview', () => {
     expect(readThreads()![0].last_sender).toBe(VIEWER)
   })
 
+  it("attributes Steve's in-thread reply to steve, not the human peer", () => {
+    // The inbox row prefixes "Steve:" off last_sender. Attributing Steve's
+    // reply to the peer would make the row read as if the peer wrote it.
+    seedThreads([row('alice')])
+    bumpDmThreadPreview(VIEWER, 'alice', {
+      text: 'here is what I found',
+      time: '2026-07-28T09:30:00',
+      sentByViewer: false,
+      steveAuthored: true,
+    })
+    expect(readThreads()![0].last_sender).toBe('steve')
+  })
+
   it('media rows (no text) only zero the unread badge, preserving preview and order', () => {
     seedThreads([row('alice'), row('bob')])
     bumpDmThreadPreview(VIEWER, 'bob', { text: '', time: null, sentByViewer: false })

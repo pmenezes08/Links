@@ -36,6 +36,8 @@ export interface DmPreviewBump {
   /** Message time as delivered by the server or optimistic send. */
   time?: string | null
   sentByViewer: boolean
+  /** Steve's in-thread replies attribute to 'steve' (inbox shows a "Steve:" prefix). */
+  steveAuthored?: boolean
 }
 
 /**
@@ -65,7 +67,7 @@ export function bumpDmThreadPreview(
   if (hasText) {
     row.last_message_text = bump.text as string
     row.last_activity_time = bumpTime
-    row.last_sender = bump.sentByViewer ? viewerUsername : peerUsername
+    row.last_sender = bump.steveAuthored ? 'steve' : bump.sentByViewer ? viewerUsername : peerUsername
   }
 
   // New activity floats the row to the top (matches server recency sort);

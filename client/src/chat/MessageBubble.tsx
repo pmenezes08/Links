@@ -20,6 +20,7 @@ import VideoEmbed from '../components/VideoEmbed'
 import YouTubeChatSnippet from '../components/YouTubeChatSnippet'
 import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
 import { normalizeMediaPath, formatMessageTime, parseMessageTime, resolveDocUrl } from './utils'
+import { SteveGlyph } from '../components/steve/SteveMark'
 import AudioMessage from './AudioMessage'
 import LongPressActionable from './LongPressActionable'
 import { renderBoldText, renderTextWithSourceLinks } from '../utils/linkUtils'
@@ -147,6 +148,13 @@ function MessageBubbleInner({
   // frame rather than inside a big rounded box. Mirrors GroupChatThread.tsx.
   const showTextBubble = isEditing || showLinkifiedBody || !!m.replySnippet || !!m.storyReply || !!videoEmbed
 
+  // Steve's in-thread replies inside a human DM carry a sender tag — otherwise
+  // they render exactly like the other person's bubbles and the reader can't
+  // tell who is talking. Redundant (and hidden) in the private Steve chat,
+  // where the thread header already identifies Steve.
+  const showSteveTag =
+    !m.sent && !!m.is_steve && (otherUsername || '').trim().toLowerCase() !== 'steve'
+
   return (
     <LongPressActionable
       onDelete={onDelete}
@@ -160,6 +168,13 @@ function MessageBubbleInner({
     >
       <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
         <div className={`relative flex flex-col ${m.sent ? 'items-end' : 'items-start'} ${isEditing ? 'w-full' : 'max-w-[82%] md:max-w-[65%]'} ${m.reaction ? 'mb-6' : ''} ${m.sendFailed ? 'opacity-60' : m.isOptimistic ? 'opacity-70' : 'opacity-100'}`}>
+
+          {showSteveTag && (
+            <div className="flex items-center gap-1 mb-0.5 ml-1 text-cpoint-turquoise">
+              <SteveGlyph size={12} />
+              <span className="text-[11px] font-semibold leading-none">Steve</span>
+            </div>
+          )}
 
           {/* Grouped media display — rendered OUTSIDE the text bubble */}
           {m.media_paths && m.media_paths.length > 0 ? (

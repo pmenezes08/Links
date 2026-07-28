@@ -84,6 +84,46 @@ describe('dmPollMerge', () => {
     expect(next[0].reaction).toBe('👍')
   })
 
+  it('messagePollSignature reacts to is_steve so the badge can appear on a cached row', () => {
+    // A thread painted from a device cache written before is_steve existed has
+    // rows without the flag. The poll supplies it; if the signature ignored it,
+    // retainMessagesIfUnchanged would keep the old array and the Steve badge
+    // would never render until the cache expired.
+    const withoutFlag = { id: 5, text: 'in-thread reply', sent: false }
+    const withFlag = { id: 5, text: 'in-thread reply', sent: false, is_steve: true }
+    expect(messagePollSignature(withoutFlag)).not.toBe(messagePollSignature(withFlag))
+    expect(retainMessagesIfUnchanged([withoutFlag], [withFlag], messagePollSignature)).toEqual([
+      withFlag,
+    ])
+  })
+
+  it('mergePolledDmMessages carries is_steve through so in-thread replies stay attributed', () => {
+    const prev = [
+      { id: 20, text: 'steve answer', sent: false, time: '2026-07-28T12:00:00.000Z', clientKey: '20' },
+    ]
+    const next = mergePolledDmMessages(
+      prev,
+      [
+        {
+          id: 20,
+          text: 'steve answer',
+          sent: false,
+          is_steve: true,
+          time: '2026-07-28T12:00:00.000Z',
+        },
+      ],
+      {
+        username: 'bob',
+        metaRef: {},
+        idBridge: { tempToServer: new Map(), serverToTemp: new Map() },
+        recentOptimistic: new Map(),
+        pendingDeletions: new Set(),
+        storedReactions: {},
+      },
+    )
+    expect((next[0] as { is_steve?: boolean }).is_steve).toBe(true)
+  })
+
   it('mergePolledDmMessages keeps prev ref when server delta is unchanged', () => {
     const prev = [
       { id: 10, text: 'hello', reaction: '👍', sent: false, time: '2026-05-26T12:00:00.000Z', clientKey: '10' },

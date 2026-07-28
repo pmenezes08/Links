@@ -374,6 +374,9 @@ def fetch_dm_messages(
                 msg_dict = {
                     'id': msg['id'],
                     'text': msg['message'],
+                    # Steve's in-thread replies render with a Steve badge — without
+                    # this flag the client can't tell Steve from the human peer.
+                    'is_steve': str(msg['sender'] or '').strip().lower() == 'steve',
                     'image_path': image_path_val,
                     'video_path': video_path_val,
                     'audio_path': audio_path_val,

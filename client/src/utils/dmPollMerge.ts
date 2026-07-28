@@ -88,6 +88,7 @@ export function messagePollSignature(m: DmPollMessageLike & {
   edited_at?: string | null
   decryption_error?: boolean
   media_paths?: string[] | null
+  is_steve?: boolean
 }): string {
   const mediaPaths = m.media_paths?.join('\u001e') ?? ''
   return [
@@ -104,6 +105,10 @@ export function messagePollSignature(m: DmPollMessageLike & {
     m.audio_path ?? '',
     m.file_path ?? '',
     m.file_name ?? '',
+    // Rendered as the Steve sender badge. A thread painted from a device cache
+    // written before is_steve existed would otherwise never show the badge: the
+    // poll sets the field, but an unchanged signature retains the old array.
+    m.is_steve ? 1 : 0,
   ].join('\u001f')
 }
 

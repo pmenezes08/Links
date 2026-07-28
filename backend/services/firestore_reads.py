@@ -84,6 +84,9 @@ def _format_dm_message(doc, username: str) -> dict:
         'file_path': d.get('file_path'),
         'file_name': d.get('file_name'),
         'sent': d.get('sender') == username,
+        # Steve's in-thread replies render with a Steve badge — without this
+        # flag the client can't tell Steve from the human peer.
+        'is_steve': str(d.get('sender') or '').strip().lower() == 'steve',
         'time': _ts_to_str(d.get('created_at')),
         'edited_at': _ts_to_str(d.get('edited_at')),
         'reaction': d.get('reaction'),

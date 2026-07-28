@@ -82,6 +82,25 @@ def _insert_private_steve_dm(*, viewer: str, body: str) -> None:
             pass
 
 
+def _send_human_dm(*, sender: str, receiver: str, body: str) -> None:
+    ph = get_sql_placeholder()
+    ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        ensure_human_dm_thread_column(c)
+        c.execute(
+            f"""
+            INSERT INTO messages (sender, receiver, message, timestamp, human_dm_thread)
+            VALUES ({ph}, {ph}, {ph}, {ph}, NULL)
+            """,
+            (sender, receiver, body, ts),
+        )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+
 def _user_id(username: str) -> int:
     ph = get_sql_placeholder()
     with get_db_connection() as conn:
@@ -150,3 +169,40 @@ def test_in_thread_steve_visible_in_human_peer_dm(mysql_dsn):
     assert body["success"] is True
     texts = [m.get("text") for m in body.get("messages") or []]
     assert "Visible in alice-bob thread" in texts
+
+
+def test_in_thread_steve_rows_are_flagged_is_steve(mysql_dsn):
+    """Steve's bubble inside a human DM must be distinguishable from the peer's.
+
+    The DM payload carries no sender field (``sent`` is just a boolean), so
+    without ``is_steve`` the client renders Steve's in-thread reply exactly like
+    the human peer's messages and the reader cannot tell who is talking.
+    """
+    import bodybuilding_app
+    from redis_cache import cache
+
+    cache.flush_all()
+    _ensure_messages_table()
+    make_user("alice", subscription="premium")
+    make_user("bob", subscription="premium")
+    make_user("steve", subscription="free")
+
+    _insert_steve_in_human_thread(
+        peer_a="alice",
+        peer_b="bob",
+        body="Steve speaking in the pair thread",
+        receiver="alice",
+    )
+    _send_human_dm(sender="bob", receiver="alice", body="Bob speaking")
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "alice")
+    bob_id = _user_id("bob")
+
+    resp = client.post("/get_messages", data={"other_user_id": str(bob_id)})
+    assert resp.status_code == 200
+    by_text = {m.get("text"): m for m in resp.get_json().get("messages") or []}
+
+    assert by_text["Steve speaking in the pair thread"]["is_steve"] is True
+    # A human peer's row must never be flagged — that would badge Bob as Steve.
+    assert by_text["Bob speaking"]["is_steve"] is False

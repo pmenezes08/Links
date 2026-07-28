@@ -12,6 +12,9 @@ export interface ChatMessage {
   audio_duration_seconds?: number
   audio_summary?: string | null
   sent: boolean
+  /** True when the row was authored by Steve (in-thread @Steve replies inside a
+   * human DM render a Steve badge so the reader knows who's talking). */
+  is_steve?: boolean
   time: string
   reaction?: string
   replySnippet?: string
