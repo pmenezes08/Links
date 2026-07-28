@@ -10,7 +10,10 @@ import { normalizeHandleInput } from './HandleSettings'
  * identical for nonexistent and non-findable handles (the server
  * guarantees the responses match; this component guarantees the pixels
  * do). The pending state never promises a reply — declines are silent
- * by design, so the copy only commits to the positive path.
+ * by design, so the copy only commits to the positive path. A declined
+ * request simply resets server-side (lookup returns request_status
+ * null), so the ask-to-join button reappears and the user may knock
+ * again — the owner/admins are re-notified.
  */
 
 type FoundCommunity = {

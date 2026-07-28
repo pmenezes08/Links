@@ -8,9 +8,10 @@ The member-in mirror of the owner-out invite flow. Invariants:
 * **Lookup payload allowlist** — name, @handle, short description, a
   *bucketed* member count, and the join policy flag (message required).
   Never owner, members, structure, or tier.
-* **Silent expiry on decline** — the requester's state is identical to
-  no-action-yet; after the cooldown window the request quietly resets.
-  No reason, no decline notification, ever.
+* **Silent decline, open door** — a decline sends no notification and
+  records no reason, but it does not lock the door: the requester's
+  state resets immediately, so they may knock again right away and the
+  owner/admins are re-notified (covers owner mis-taps on reject).
 * **Accept parity** — accepting routes through the same membership write,
   cap checks (CommunityMembershipLimitError → render_member_cap_error),
   introduce-thread + new-member notification hooks, and cache
@@ -23,7 +24,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from redis_cache import cache as _shared_cache, invalidate_user_cache
@@ -48,10 +49,6 @@ from backend.services.steve_community_welcome import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Requester may knock again this many days after a decline. Enforced
-# silently: within the window a re-request reports the pending state.
-REJECT_COOLDOWN_DAYS = 30
 
 LOOKUP_RATE_LIMIT = (20, 60)          # 20 lookups / minute / user
 REQUEST_RATE_LIMIT = (10, 86_400)     # 10 join requests / day / user
@@ -182,18 +179,15 @@ def lookup_by_handle(username: str, handle: str) -> Tuple[Dict[str, Any], int]:
         request_status = None
         if not already_member:
             c.execute(
-                f"SELECT status, decided_at FROM community_join_requests WHERE community_id = {ph} AND username = {ph}",
+                f"SELECT status FROM community_join_requests WHERE community_id = {ph} AND username = {ph}",
                 (community_id, username),
             )
             req = c.fetchone()
             if req:
                 status = req["status"] if hasattr(req, "keys") else req[0]
-                decided_at = req["decided_at"] if hasattr(req, "keys") else req[1]
-                # Silent expiry: a recent decline reads as still pending;
-                # past the window it resets to "can ask again".
+                # Only a live pending request shows; a decided or withdrawn
+                # row reads as "can ask again" so the requester may re-knock.
                 if status == "pending":
-                    request_status = "pending"
-                elif status == "rejected" and _within_cooldown(decided_at):
                     request_status = "pending"
 
     description = (get("description", 3) or "").strip()
@@ -213,16 +207,6 @@ def lookup_by_handle(username: str, handle: str) -> Tuple[Dict[str, Any], int]:
             "join_prompt": get("join_request_prompt", 7) or None,
         },
     }, 200
-
-
-def _within_cooldown(decided_at) -> bool:
-    if not decided_at:
-        return False
-    try:
-        parsed = decided_at if hasattr(decided_at, "year") else datetime.strptime(str(decided_at), "%Y-%m-%d %H:%M:%S")
-        return datetime.utcnow() < parsed + timedelta(days=REJECT_COOLDOWN_DAYS)
-    except Exception:
-        return False
 
 
 # ── Requester side ──────────────────────────────────────────────────────
@@ -281,7 +265,7 @@ def create_request(
             return {"success": False, "error": "Already a member"}, 400
 
         c.execute(
-            f"SELECT id, status, decided_at FROM community_join_requests WHERE community_id = {ph} AND username = {ph}",
+            f"SELECT id, status FROM community_join_requests WHERE community_id = {ph} AND username = {ph}",
             (int(community_id), username),
         )
         existing = c.fetchone()
@@ -292,9 +276,9 @@ def create_request(
             status = ex("status", 1)
             if status == "pending":
                 return {"success": True, "request_status": "pending"}, 200
-            if status == "rejected" and _within_cooldown(ex("decided_at", 2)):
-                # Silent cooldown: report pending, change nothing.
-                return {"success": True, "request_status": "pending"}, 200
+            # Any decided/withdrawn row resets to pending and re-notifies —
+            # a rejected requester may knock again immediately (owners can
+            # mis-tap reject; the daily rate limit bounds repeat knocks).
             c.execute(
                 f"""
                 UPDATE community_join_requests
@@ -479,8 +463,9 @@ def decide_request(
 
     Accept runs the invite-parity join path: cap checks, introduce-thread,
     new-member notification, cache invalidation. Decline is silent for the
-    requester — status flips, nothing is sent, the lookup keeps reporting
-    "pending" until the cooldown lapses.
+    requester — status flips, nothing is sent — but the door stays open:
+    the requester may submit a fresh request immediately, which re-notifies
+    the owner/admins.
     """
     if action not in ("accept", "reject"):
         return {"success": False, "error": "Invalid action"}, 400
