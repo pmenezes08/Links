@@ -6,9 +6,9 @@ Locks down:
   2. Lookup payload allowlist — bucketed member count, no owner, no
      member list, nothing structural.
   3. Request lifecycle — single pending row per (community, user),
-     idempotent re-request, withdraw, and the silent-expiry decline:
-     a rejected requester keeps seeing "pending" during the cooldown
-     and the decline writes nothing requester-visible.
+     idempotent re-request, withdraw, and the silent-but-open decline:
+     no decline notification is ever sent, but the rejected requester
+     may knock again immediately and the admins are re-notified.
   4. Accept parity — membership write goes through the (stubbed) shared
      join path; cap errors leave the request pending.
   5. Rate limiting — lookup returns 429 past the window limit.
@@ -205,23 +205,30 @@ class TestRequestLifecycle:
         assert body["request_status"] == "pending"
         assert _request_row(cid, "knocker")["status"] == "pending"
 
-    def test_decline_is_silent_and_cooldown_holds(self, mysql_dsn):
+    def test_decline_is_silent_but_re_request_reopens_and_renotifies(self, mysql_dsn, _stub_side_effects):
         make_user("knocker")
         make_user("owner")
         cid, handle = _make_findable("Polite House", "owner")
         cjr.create_request("knocker", cid)
         cjr.decide_request("owner", cid, "knocker", "reject")
 
-        # DB knows the truth…
+        # The decline itself sends nothing — only the original
+        # admin-notify entries from the first knock exist.
+        assert all(a[2] == "community_join_request" for (a, k) in _stub_side_effects)
+
+        # DB records the decision…
         assert _request_row(cid, "knocker")["status"] == "rejected"
-        # …the requester does not: lookup still reads pending,
+        # …and the requester's state resets: lookup shows no live request,
         body, _ = cjr.lookup_by_handle("knocker", handle)
-        assert body["community"]["request_status"] == "pending"
-        # …and a re-knock inside the cooldown changes nothing.
+        assert body["community"]["request_status"] is None
+        # …so a re-knock goes straight back to pending,
+        _stub_side_effects.clear()
         again, status = cjr.create_request("knocker", cid)
         assert status == 200
         assert again["request_status"] == "pending"
-        assert _request_row(cid, "knocker")["status"] == "rejected"
+        assert _request_row(cid, "knocker")["status"] == "pending"
+        # …and the owner is notified again (mis-taps are recoverable).
+        assert any(a[2] == "community_join_request" and a[0] == "owner" for (a, k) in _stub_side_effects)
 
 
 # ── 4. Owner decisions ──────────────────────────────────────────────────
