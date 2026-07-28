@@ -1,7 +1,7 @@
 # Steve & Voice Notes — Architecture Guide
 
 **Status:** Required reading before you build or touch anything Steve- or
-voice-note related. Last updated 2026-05-15.
+voice-note related. Last updated 2026-07-26.
 
 This document is the single source of truth for how Steve (the LLM
 assistant) and Whisper (audio transcription) are wired into C-Point. If
@@ -153,6 +153,8 @@ Preset **agents** on **`group_posts` / `group_replies`**: owners enable on **gro
 | `backend.services.entitlements_gate` | Decide "can `user` call Steve on `surface` right now?". Writes `log_block` rows on denial. | Roll your own `if is_premium: …` check. |
 | `backend.services.entitlements_errors` | Canonical JSON error shape + reason enum + copy. The UI's `LimitReachedModal` / inline bubble depend on this contract. | Return ad-hoc 429/403 payloads. |
 | `backend.services.whisper_service` | Reference implementation for gated + logged transcription (used by `/api/summaries/voice/preflight` and any new blueprint). | Call `openai.audio.transcriptions.create` directly. |
+| `backend.services.transcription_providers` | STT provider chain: OpenAI `whisper-1` primary, xAI Grok STT (`POST /v1/stt`) fallback. Returns `{text, language, duration_seconds, model, provider}`. | Call a vendor STT endpoint directly, or hard-code `model="whisper-1"` in a usage row — log the model the chain returned. |
+| `backend.services.voice_note_providers` | Chat-leg provider chain for the voice pipeline (summary + translation): OpenAI `gpt-4o-mini` primary, xAI `grok-4.3` fallback. Owns the shared account-level circuit breaker. | Duplicate the fallback logic per call-site, or log usage inside this module (callers log). |
 
 ---
 
@@ -245,6 +247,50 @@ and xAI server-side tool invocations `$5 / 1k` calls. KB fields mirror
 those values so operators can re-verify and update without code drift.
 
 ---
+
+## Voice-pipeline provider redundancy (added 2026-07-26)
+
+On 2026-07-25 OpenAI served 500s; on 2026-07-26 the account hit
+`insufficient_quota` — both took voice-note summaries down platform-wide.
+Every leg of the voice pipeline now fails over:
+
+| Leg | Primary | Fallback | ai_usage `model` values |
+|---|---|---|---|
+| Transcription | OpenAI `whisper-1` | xAI STT `POST https://api.x.ai/v1/stt` (reuses `XAI_API_KEY`) | `whisper-1` / `grok-stt` |
+| Summary | OpenAI `gpt-4o-mini` | xAI `grok-4.3` | `gpt-4o-mini` / `grok-4.3` |
+| Translation (`/translate_summary`) | OpenAI `gpt-4o-mini` | xAI `grok-4.3` | same |
+
+Rules and facts:
+
+- **Circuit breaker:** account-level failures (`insufficient_quota`,
+  invalid key, 401) open a per-instance breaker shared across all legs of
+  that provider for `VOICE_PROVIDER_BREAKER_SECONDS` (default 600s) —
+  Whisper quota exhaustion immediately stops the summary leg from paying
+  a failed OpenAI round-trip too. Transient errors (5xx, timeouts) fail
+  over for that one call without opening the breaker.
+- **Model column is truth:** callers log the `model` the chain actually
+  returned. `grok-stt` is a synthetic label (xAI's STT endpoint has no
+  public model id); cost math per model lives in
+  `transcription_providers.stt_cost_usd` (whisper-1 $0.006/min whole-minute;
+  xAI STT $0.10/hr pro-rated — https://docs.x.ai/developers/models).
+- **xAI STT specifics:** NOT OpenAI-SDK-compatible (plain multipart POST;
+  option fields must precede `file`). The documented `url` field 400s on
+  our R2 CDN links in practice (2026-07-26 staging QA) — we always
+  download and upload the bytes ourselves. Returns exact `duration`
+  (preferred over probe/word-estimate when the client didn't send one)
+  and `language` (observed as ISO code `en` live, docs say full name —
+  both normalised to lowercase; downstream lang maps accept either).
+  Formats: WAV/MP3/OGG/Opus/FLAC/AAC/MP4/M4A/MKV documented; **webm is
+  undocumented** — browser-recorded webm notes may fail on the fallback
+  path (worst case equals no-fallback behaviour). Verified live from the
+  EU account 2026-07-26 (200 + correct transcript on a WAV upload).
+- **Env overrides:** `VOICE_SUMMARY_OPENAI_MODEL`, `VOICE_SUMMARY_XAI_MODEL`,
+  `VOICE_STT_OPENAI_MODEL`, `VOICE_PROVIDER_BREAKER_SECONDS`.
+- Monolith `transcribe_audio_file` / `summarize_text` are now thin legacy
+  wrappers over these services (tuple/string contracts preserved for old
+  call-sites). New code should call the services directly to get the
+  model/tokens/duration for honest usage rows.
+- Tests: `tests/test_voice_note_fallback_unit.py` (pure unit, in the CI list).
 
 ## How to add a new voice-note entry point (checklist)
 
